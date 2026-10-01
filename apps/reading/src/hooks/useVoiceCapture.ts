@@ -107,6 +107,8 @@ export interface CaptureOpts {
   /** Optional role/policy hints threaded onto the typed event. */
   role?: string;
   policyId?: string;
+  /** The destination may be revoked while recording or ASR is finishing. */
+  canDispatch?: () => boolean;
 }
 
 function blobToStatus(text: string): "ok" | "empty" {
@@ -130,12 +132,19 @@ export function useVoiceCapture(): UseVoiceCapture {
 
   const stopAndCapture = useCallback(
     async (opts: CaptureOpts): Promise<VoiceCaptureResult | null> => {
+      const admitted = () => {
+        if (opts.canDispatch?.() !== false) return true;
+        setPhase("error");
+        setError("This capture's destination is unavailable. Try recording again in the current view.");
+        return false;
+      };
       // Stop the recorder and wait for the blob. useVoiceRecorder finalizes
       // the blob asynchronously on MediaRecorder.onstop; poll its ref via a
       // microtask loop bounded by a short deadline so we don't hang if the
       // recorder never produced data.
       recorder.stop();
       const blob = await waitForBlob(() => recorder.blob);
+      if (!admitted()) return null;
 
       if (!blob || blob.size === 0) {
         setPhase("error");
@@ -174,6 +183,8 @@ export function useVoiceCapture(): UseVoiceCapture {
         }
         return null;
       }
+
+      if (!admitted()) return null;
 
       // (a) silent audio — keep the transcript blank, flag it; do NOT invent.
       const transcriptStatus = blobToStatus(transcriptText);

@@ -56,6 +56,7 @@ function renderVtd() {
       investigationId="inv-1"
       blockIndex={0}
       onDrafted={vi.fn()}
+      canDispatch={() => true}
     />,
   );
 }

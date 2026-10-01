@@ -40,6 +40,8 @@ export interface VoiceToDraftProps {
   blockIndex: number;
   /** Refresh after the block is placed. */
   onDrafted: () => void | Promise<void>;
+  /** Reads the current section session across awaited capture boundaries. */
+  canDispatch: () => boolean;
 }
 
 export default function VoiceToDraft({
@@ -48,6 +50,7 @@ export default function VoiceToDraft({
   investigationId,
   blockIndex,
   onDrafted,
+  canDispatch,
 }: VoiceToDraftProps) {
   const voice = useVoiceCapture();
   const [persisting, setPersisting] = useState(false);
@@ -55,14 +58,19 @@ export default function VoiceToDraft({
   const [saved, setSaved] = useState(false);
 
   const capture = useCallback(async () => {
+    if (!canDispatch()) return;
     setError(null);
     setSaved(false);
     if (voice.phase === "recording") {
       // Stop → transcribe → persist VOICE_CAPTURED (source_kind "user").
-      const res = await voice.stopAndCapture({ investigationId });
+      const res = await voice.stopAndCapture({ investigationId, canDispatch });
       // rigor #3c: a transcription failure returns null + sets voice.error —
       // persist nothing, surface it, never a silent drop or a mislabel.
       if (!res) return;
+      if (!canDispatch()) {
+        setError("This section became unavailable before your spoken draft could be added.");
+        return;
+      }
       if (res.transcriptStatus === "empty" || !res.transcript.trim()) {
         setError("Didn't catch any words — try speaking again.");
         return;
@@ -80,7 +88,7 @@ export default function VoiceToDraft({
           deliverable_id: deliverableId,
         });
         setSaved(true);
-        await onDrafted();
+        if (canDispatch()) await onDrafted();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't save your spoken draft.");
       } finally {
@@ -89,7 +97,7 @@ export default function VoiceToDraft({
     } else {
       await voice.start();
     }
-  }, [voice, investigationId, sectionId, deliverableId, blockIndex, onDrafted]);
+  }, [voice, investigationId, sectionId, deliverableId, blockIndex, onDrafted, canDispatch]);
 
   return (
     <div data-testid="voice-to-draft" className="flex items-center gap-2">
@@ -97,7 +105,7 @@ export default function VoiceToDraft({
         variant="tertiary"
         size="sm"
         onClick={() => void capture()}
-        disabled={persisting || voice.phase === "transcribing" || voice.phase === "persisting"}
+        disabled={!canDispatch() || persisting || voice.phase === "transcribing" || voice.phase === "persisting"}
       >
         {voice.phase === "recording"
           ? "■ Stop & add"

@@ -94,6 +94,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -216,5 +217,41 @@ describe("useVoiceCapture — transcription 503 (rigor #3c)", () => {
     expect(result.current.error).toMatch(/isn’t available|not available|unavailable/i);
     // The load-bearing assertion: a 503 NEVER becomes a persisted node.
     expect(fetchCalls.find((c) => c.url.includes("/events/typed"))).toBeUndefined();
+  });
+});
+
+
+describe("useVoiceCapture — live destination admission", () => {
+  it("does not admit ASR after blob readiness when the destination was revoked", async () => {
+    vi.useFakeTimers();
+    let admitted = true;
+    const { result } = renderHook(() => useVoiceCapture());
+    let operation: Promise<unknown> = Promise.resolve();
+    act(() => { operation = result.current.stopAndCapture({ investigationId: "inv-1", canDispatch: () => admitted }); });
+    admitted = false; fakeBlob = blobOf(32);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); await operation; });
+    expect(fetchCalls).toEqual([]);
+    expect(result.current.phase).toBe("error");
+    vi.useRealTimers();
+  });
+
+  it("reports a truthfully admitted event acknowledgment even after destination revocation", async () => {
+    let admitted = true; fakeBlob = blobOf(32);
+    let resolve: (response: Response) => void = () => { throw new Error("not initialized"); };
+    const response = new Promise<Response>((done) => { resolve = done; });
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input); fetchCalls.push({ url });
+      return url.includes("/events/typed") ? response : jsonResponse(200, { transcript: "Captured thought", language: "en", duration_seconds: 1 });
+    });
+    const { result } = renderHook(() => useVoiceCapture());
+    let operation: ReturnType<typeof result.current.stopAndCapture> = Promise.resolve(null);
+    act(() => { operation = result.current.stopAndCapture({ investigationId: "inv-1", canDispatch: () => admitted }); });
+    await act(async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); });
+    expect(fetchCalls.map((call) => new URL(call.url, "http://localhost").pathname)).toEqual(["/voice/transcribe", "/events/typed"]);
+    admitted = false;
+    let captured: Awaited<typeof operation> = null;
+    await act(async () => { resolve(jsonResponse(200, { event_id: "truthful-ack" })); captured = await operation; });
+    expect(captured).toEqual(expect.objectContaining({ eventId: "truthful-ack", transcript: "Captured thought", sourceKind: "user" }));
+    expect(result.current.phase).toBe("captured");
   });
 });

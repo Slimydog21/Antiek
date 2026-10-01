@@ -202,10 +202,12 @@ function SectionCard({
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
   const editorRef = useRef<Editor | null>(null);
-  const editingAllowed = useCallback(() => {
+  const sectionAccess = useCallback(() => {
     const current = proseSession.getSnapshot();
-    return interactive && current.available && current.dispatchAllowed && current.generation.status !== "generating";
+    return interactive && current.available && current.dispatchAllowed;
   }, [proseSession, interactive]);
+  const editingAllowed = useCallback(() =>
+    sectionAccess() && proseSession.getSnapshot().generation.status !== "generating", [sectionAccess, proseSession]);
   const handleContentChange = useCallback((text: string) => {
     proseSession.edit(text, editorRef.current?.getJSON() ?? null);
   }, [proseSession]);
@@ -492,9 +494,11 @@ function SectionCard({
           deliverableId={deliverableId}
           investigationId={investigationId}
           blockIndex={blocks.length}
+          canDispatch={sectionAccess}
           onDrafted={async () => {
+            if (!sectionAccess()) return;
             await refreshBlocks();
-            await onChanged();
+            if (sectionAccess()) await onChanged();
           }}
         />
         {/* M3: draft ↔ X-ray toggle (shown once there's persisted prose). */}
