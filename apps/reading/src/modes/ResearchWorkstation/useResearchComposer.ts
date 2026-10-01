@@ -1,11 +1,21 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useModeNavigate } from "../../workspace/useModeNavigate";
 import {
   type OwnerModelController,
   type PreparedModelLaunch,
 } from "../../hooks/useOwnerModelController";
 import { useAuth } from "../../lib/auth";
-import type { ModelExecutionScope } from "../../lib/modelExecutionScope";
+import type {
+  ModelExecutionScope,
+  ReadyModelScope,
+} from "../../lib/modelExecutionScope";
 import { track, trackException } from "../../lib/analytics";
 import {
   startInvestigation,
@@ -25,6 +35,15 @@ export interface ResearchComposerProps {
 }
 
 type DraftBinding = Readonly<{ scope: ModelExecutionScope; props: object }>;
+const UNCERTAIN_START_MESSAGE =
+  "Could not confirm the start. The request may have been accepted or charged.";
+function reportLaunchTelemetry(report: () => void): void {
+  try {
+    report();
+  } catch {
+    // Telemetry cannot change a research start outcome.
+  }
+}
 /** Project private lifecycle observations into visible draft and launch controls. */
 function projectComposerState({
   controller,
@@ -58,7 +77,7 @@ function projectComposerState({
       (controller.selection.kind === "saved" ||
         controller.selection.kind === "house"));
   const uncertainBlocked =
-    !!controller && !!intent && !rootResearchLaunchArchive.canBegin(intent);
+    !!intent && !rootResearchLaunchArchive.canBegin(intent);
   return {
     question:
       questionBinding.scope === scope && questionBinding.props === props
@@ -70,9 +89,7 @@ function projectComposerState({
         : null,
     busy,
     editingDisabled: busy || !editingAllowed,
-    showUncertainty:
-      (!!controller && rootResearchLaunchArchive.hasUnresolved()) ||
-      uncertainBlocked,
+    showUncertainty: rootResearchLaunchArchive.hasUnresolved() || uncertainBlocked,
     submitDisabled:
       busy ||
       pending ||
@@ -89,6 +106,11 @@ export function useResearchComposer({
   onSubmitted,
   controller,
 }: ResearchComposerProps & { controller?: OwnerModelController }) {
+  useSyncExternalStore(
+    rootResearchLaunchArchive.subscribe,
+    rootResearchLaunchArchive.getVersion,
+    rootResearchLaunchArchive.getVersion,
+  );
   const [question, setQuestion] = useState(spawnContext ?? "");
   const questionRef = useRef(question);
   const [error, setErrorState] = useState<string | null>(null);
@@ -156,12 +178,12 @@ export function useResearchComposer({
       intentRef.current = rootResearchLaunchArchive.createIntent();
   }, []);
   type Action = {
-    scope: ReturnType<typeof modelExecution.readCurrent>;
+    scope: ReadyModelScope;
     props: typeof propsToken;
     question: string;
     phase: "pending" | "unknown" | "accepted";
     prepared?: Exclude<PreparedModelLaunch, { kind: "blocked" }>;
-    handle?: RootResearchLaunchHandle;
+    handle: RootResearchLaunchHandle;
   };
   const actionRef = useRef<Action | null>(null);
   useLayoutEffect(() => {
@@ -196,14 +218,19 @@ export function useResearchComposer({
       !admitsCurrentRender() ||
       questionRef.current !== question ||
       actionRef.current?.phase === "pending" ||
-      (controller &&
-        questionBindingRef.current.scope !== modelExecution.readCurrent())
+      questionBindingRef.current.scope !== modelExecution.readCurrent()
     )
       return;
-    if (modelExecution.readCurrent().kind !== "ready") return;
+    const scope = modelExecution.readCurrent();
+    if (scope.kind !== "ready") return;
     const q = question.trim();
     if (q.length < 3) {
       setError("Question is too short. At least 3 characters.");
+      return;
+    }
+    const intent = intentRef.current;
+    if (!intent || !rootResearchLaunchArchive.canBegin(intent)) {
+      setError("A previous research request may have been accepted or charged.");
       return;
     }
     const request: Readonly<StartInvestigationRequest> = Object.freeze({
@@ -215,13 +242,6 @@ export function useResearchComposer({
     let handle: RootResearchLaunchHandle | null = null;
     let fields: Readonly<StartInvestigationRequest> = request;
     if (controller) {
-      const intent = intentRef.current;
-      if (!intent || !rootResearchLaunchArchive.canBegin(intent)) {
-        setError(
-          "A previous research request may have been accepted or charged.",
-        );
-        return;
-      }
       const result = controller.prepareLaunch({
         semanticKey: JSON.stringify({ turn: intent.nonce, request }),
       });
@@ -229,64 +249,73 @@ export function useResearchComposer({
         setError("Choose an available model or the house route before asking.");
         return;
       }
-      if (!controller.isCurrent(result)) return;
+      if (!controller.isCurrent(result) || result.scope !== scope) return;
       prepared = result;
       fields = Object.freeze({
         ...request,
         ...(result.kind === "saved" ? result.fields : {}),
       });
       handle = rootResearchLaunchArchive.begin(intent, fields, result);
-      if (!handle) return;
+    } else {
+      handle = rootResearchLaunchArchive.beginChild(intent, request, scope);
     }
+    if (!handle) return;
     const action: Action = {
-      scope: modelExecution.readCurrent(),
+      scope,
       props: propsToken,
       question,
       phase: "pending",
       prepared,
-      handle: handle ?? undefined,
+      handle,
     };
     actionRef.current = action;
     setError(null);
     renderAction((value) => value + 1);
     try {
       const response = await startInvestigation(fields);
-      const accepted = handle
-        ? rootResearchLaunchArchive.accepted(handle, response)
-        : typeof response.investigation_id === "string" &&
-          !!response.investigation_id;
+      const accepted = rootResearchLaunchArchive.accepted(handle, response);
       if (!accepted) {
-        if (handle) rootResearchLaunchArchive.uncertain(handle);
+        rootResearchLaunchArchive.uncertain(handle);
         action.phase = "unknown";
         if (currentAction(action))
-          setError(
-            "Could not confirm the start. The request may have been accepted or charged.",
-          );
+          setError(UNCERTAIN_START_MESSAGE);
         return;
       }
       action.phase = "accepted";
       if (!currentAction(action)) return;
-      if (controller)
-        intentRef.current = rootResearchLaunchArchive.createIntent();
-      track("investigation_started", {
-        question_length: q.length,
-        has_parent: parentInvestigationId != null,
-        has_spawn_context: spawnContext != null,
-      });
+      intentRef.current = rootResearchLaunchArchive.createIntent();
+      reportLaunchTelemetry(() =>
+        track("investigation_started", {
+          question_length: q.length,
+          has_parent: parentInvestigationId != null,
+          has_spawn_context: spawnContext != null,
+        }),
+      );
       questionRef.current = "";
       setQuestion("");
       if (onSubmitted) onSubmitted(response.investigation_id);
       else navigate(`/inv/${response.investigation_id}`);
     } catch {
-      if (handle) rootResearchLaunchArchive.uncertain(handle);
+      if (action.phase === "accepted") {
+        if (
+          actionRef.current === action &&
+          admitsCurrentRender() &&
+          (!action.prepared || controller?.isCurrent(action.prepared))
+        ) {
+          reportLaunchTelemetry(() =>
+            trackException(new Error("Research start completion callback failed.")),
+          );
+          setError("Research started, but the composer could not open it.");
+        }
+        return;
+      }
+      rootResearchLaunchArchive.uncertain(handle);
       action.phase = "unknown";
       if (currentAction(action)) {
-        trackException(new Error("Research start could not be confirmed."));
-        setError(
-          controller
-            ? "Could not confirm the start. The request may have been accepted or charged."
-            : "Submit failed. Please try again.",
+        reportLaunchTelemetry(() =>
+          trackException(new Error("Research start could not be confirmed.")),
         );
+        setError(UNCERTAIN_START_MESSAGE);
       }
     } finally {
       if (currentAction(action)) renderAction((value) => value + 1);

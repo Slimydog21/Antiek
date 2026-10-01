@@ -12,13 +12,18 @@ vi.mock("../Write/sectionProseOwner", () => ({
   setSectionProseOwner: vi.fn(),
   suspendSectionProseDispatch: vi.fn(),
 }));
-import { AuthProvider } from "../../lib/auth";
+import { AuthProvider, useAuth } from "../../lib/auth";
 import {
   useOwnerModelController,
   type OwnerModelController,
 } from "../../hooks/useOwnerModelController";
 import { createRootResearchLaunchArchive } from "./rootResearchLaunch";
 let controller: OwnerModelController;
+let modelExecution: ReturnType<typeof useAuth>["modelExecution"];
+function ScopeProbe() {
+  modelExecution = useAuth().modelExecution;
+  return null;
+}
 function Probe() {
   controller = useOwnerModelController({
     operationPrefix: "fixture",
@@ -66,6 +71,13 @@ async function prepared() {
   });
   if (value.kind === "blocked") throw new Error("blocked");
   return value;
+}
+async function readyChildScope() {
+  render(createElement(AuthProvider, { children: createElement(ScopeProbe) }));
+  await waitFor(() => expect(modelExecution.readCurrent().kind).toBe("ready"));
+  const scope = modelExecution.readCurrent();
+  if (scope.kind !== "ready") throw new Error("missing ready child scope");
+  return scope;
 }
 const receipt = {
   investigation_id: "inv-fixture",
@@ -131,5 +143,103 @@ describe("memory-only issued root research continuity", () => {
     archive.uncertain(handle);
     expect(archive.hasUnresolved()).toBe(true);
     expect(archive.canBegin(archive.createIntent())).toBe(false);
+  });
+});
+
+describe("memory-only issued child research continuity", () => {
+  it("records a pending child once and retains its unknown hold until a complete receipt", async () => {
+    const scope = await readyChildScope();
+    const archive = createRootResearchLaunchArchive();
+    const intent = archive.createIntent();
+    const handle = archive.beginChild(
+      intent,
+      { question: "child question", parent_investigation_id: "", spawn_context: "" },
+      scope,
+    );
+    if (!handle) throw new Error("missing child handle");
+    expect(archive.hasUnresolved()).toBe(true);
+    expect(archive.beginChild(intent, { question: "blind repeat" }, scope)).toBeNull();
+    expect(archive.canBegin(archive.createIntent())).toBe(false);
+    archive.uncertain(handle);
+    expect(archive.hasUnresolved()).toBe(true);
+    cleanup();
+    expect(archive.accepted(handle, receipt)).toBe(true);
+    expect(archive.hasUnresolved()).toBe(false);
+    expect(archive.accepted(handle, receipt)).toBe(true);
+    expect(archive.accepted(handle, { ...receipt, start_event_id: "other" })).toBe(false);
+    expect(archive.canBegin(intent)).toBe(false);
+    expect(archive.canBegin(archive.createIntent())).toBe(true);
+  });
+
+  it.each([
+    null,
+    {},
+    { investigation_id: "inv-only" },
+    { ...receipt, investigation_id: " " },
+    { ...receipt, status: "" },
+    { ...receipt, status: " " },
+    { ...receipt, start_event_id: "" },
+    { ...receipt, start_event_id: " " },
+    { ...receipt, start_event_id: 12 },
+  ])("retains child uncertainty for malformed receipt %j", async (response) => {
+    const scope = await readyChildScope();
+    const archive = createRootResearchLaunchArchive();
+    const handle = archive.beginChild(
+      archive.createIntent(),
+      { question: "child malformed receipt" },
+      scope,
+    );
+    if (!handle) throw new Error("missing child handle");
+    const version = archive.getVersion();
+    expect(archive.accepted(handle, response)).toBe(false);
+    expect(archive.getVersion()).toBe(version);
+    archive.uncertain(handle);
+    expect(archive.hasUnresolved()).toBe(true);
+    expect(archive.canBegin(archive.createIntent())).toBe(false);
+  });
+
+  it("shares root and child holds and rejects a stale separate acknowledgment", async () => {
+    const launch = await prepared();
+    const archive = createRootResearchLaunchArchive();
+    const root = archive.begin(archive.createIntent(), { question: "root" }, launch);
+    if (!root) throw new Error("missing root handle");
+    const stale = archive.createIntent(true);
+    expect(archive.beginChild(archive.createIntent(), { question: "child" }, launch.scope)).toBeNull();
+    const child = archive.beginChild(archive.createIntent(true), { question: "child" }, launch.scope);
+    if (!child) throw new Error("missing child handle");
+    expect(archive.canBegin(stale)).toBe(false);
+    const bothHolds = archive.createIntent(true);
+    expect(archive.accepted(root, receipt)).toBe(true);
+    expect(archive.hasUnresolved()).toBe(true);
+    expect(archive.canBegin(bothHolds)).toBe(false);
+    expect(archive.begin(archive.createIntent(), { question: "blocked root" }, launch)).toBeNull();
+    const separateRoot = archive.begin(archive.createIntent(true), { question: "separate root" }, launch);
+    if (!separateRoot) throw new Error("missing separate root handle");
+    expect(archive.accepted(child, { ...receipt, investigation_id: "inv-child" })).toBe(true);
+    expect(archive.hasUnresolved()).toBe(true);
+    expect(archive.accepted(separateRoot, { ...receipt, investigation_id: "inv-separate" })).toBe(true);
+    expect(archive.hasUnresolved()).toBe(false);
+  });
+
+  it("publishes scalar changes for issue, uncertainty and late acceptance, but not duplicate receipts", async () => {
+    const scope = await readyChildScope();
+    const archive = createRootResearchLaunchArchive();
+    const versions: number[] = [];
+    const unsubscribe = archive.subscribe(() => versions.push(archive.getVersion()));
+    const handle = archive.beginChild(archive.createIntent(), { question: "late child" }, scope);
+    if (!handle) throw new Error("missing child handle");
+    archive.uncertain(handle);
+    archive.uncertain(handle);
+    expect(versions).toEqual([1, 2]);
+    cleanup();
+    expect(archive.accepted(handle, receipt)).toBe(true);
+    expect(versions).toEqual([1, 2, 3]);
+    expect(archive.accepted(handle, receipt)).toBe(true);
+    expect(archive.accepted(handle, { ...receipt, status: "conflicting" })).toBe(false);
+    expect(versions).toEqual([1, 2, 3]);
+    unsubscribe();
+    archive.beginChild(archive.createIntent(), { question: "next child" }, scope);
+    expect(versions).toEqual([1, 2, 3]);
+    expect(archive.getVersion()).toBe(4);
   });
 });
