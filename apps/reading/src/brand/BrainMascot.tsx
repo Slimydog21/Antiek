@@ -33,11 +33,11 @@ import type { MascotMood } from "../design/tokens";
 import type { SceneMood } from "../scene/mood";
 import { mascotMoodForScene } from "./mascotSceneMap";
 
-import brainIdle from "./mascot-brain/01_hero_front_transparent.png";
-import brainClosed from "./mascot-brain/blink_closed_transparent.png";
-import brainThinking from "./mascot-brain/mood_thinking.png";
-import brainEmpty from "./mascot-brain/mood_sleepy.png";
-import brainCelebrate from "./mascot-brain/mood_excited.png";
+import brainIdle from "./mascot-brain/athletic/01_hero_front_b_20261001.png";
+import brainClosed from "./mascot-brain/athletic/blink_closed_b_20261001.png";
+import brainThinking from "./mascot-brain/athletic/mood_thinking_b_20261001.png";
+import brainEmpty from "./mascot-brain/athletic/mood_sleepy_b_20261001.png";
+import brainCelebrate from "./mascot-brain/athletic/mood_excited_b_20261001.png";
 
 import "./mascot-brain/brainMascot.css";
 
