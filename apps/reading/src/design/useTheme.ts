@@ -2,9 +2,11 @@ import { useSyncExternalStore } from "react";
 
 import {
   motionPreference,
+  readingLightPreference,
   prefersReducedMotion,
   resolvedTheme,
   setMotionPreference,
+  setReadingLightPreference,
   setThemePreference,
   subscribeAppearance,
   themePreference,
@@ -47,4 +49,9 @@ export function useMotionPreference(): {
     () => "system false",
   ).split(" ") as [MotionPreference, string];
   return { preference, reduced: reduced === "true", setPreference: setMotionPreference };
+}
+
+export function useReadingLightPreference() {
+  const preference = useSyncExternalStore(subscribeAppearance, readingLightPreference, () => "standard" as const);
+  return { preference, setPreference: setReadingLightPreference };
 }
