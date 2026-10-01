@@ -485,8 +485,14 @@ describe("drifted and orphaned inheritance (the parent's rule)", () => {
     await renderReader();
     const mark = await screen.findByText("The ope");
     expect(mark.getAttribute("data-anchor-treatment")).toBe("drifted");
-    const glyphButton = document.querySelector('[data-island-id="a-island"]')!;
-    expect(glyphButton).toBeTruthy();
+    // The glyph mounts after the island measure/resolve effect — under CI
+    // contention a synchronous querySelector races it (observed in CI run
+    // 36821156848). waitFor the glyph instead of asserting non-null sync.
+    const glyphButton = await waitFor(() => {
+      const g = document.querySelector('[data-island-id="a-island"]');
+      expect(g).toBeTruthy();
+      return g!;
+    });
     fireEvent.click(glyphButton);
     await screen.findByText("Open research →");
   });
