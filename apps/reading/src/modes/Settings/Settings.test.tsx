@@ -28,6 +28,7 @@ import {
   type ModelDecisionResponse,
 } from "../../api/settings";
 import { fetchComposerProjection } from "../../api/composerProjection";
+import { ApiError } from "../../lib/api";
 import { fetchSettingsUsage } from "../../api/settingsUsage";
 import { fetchUserModels } from "../../api/settingsModels";
 import Settings from "./index";
@@ -507,8 +508,12 @@ describe("Settings SPR-01", () => {
     await user.click(screen.getByRole("button", { name: "Approve exact terms" }));
     expect(screen.getByRole("button", { name: "Approving..." }).hasAttribute("disabled")).toBe(true);
     expect(approveFallbackReceipt).toHaveBeenCalledTimes(1);
-    rejectApproval(new Error("approval terms changed"));
-    expect((await screen.findByRole("alert")).textContent).toContain("approval terms changed");
+    // The raw construction (method, path, status, body) must never reach a person:
+    // the alert carries describeFailure's plain title and detail only.
+    rejectApproval(new ApiError("GET /books failed: HTTP 503", 503, "raw server body"));
+    const approvalAlert = await screen.findByRole("alert");
+    expect(approvalAlert.textContent).toContain("Couldn't approve the exact terms.");
+    expect(approvalAlert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
     expect(screen.getByText(/Hard ceiling \$1\.00/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Approve exact terms" })).toBeTruthy();
   });
