@@ -193,12 +193,16 @@ export default function OwnerModelUsagePickerImpl({
         const result = await fetchSettingsUsage();
         if (!cycle.isCurrent()) return;
         const ids = new Set(inventory.rows.map((row) => row.id));
-        const values = new Map(
-          result.keys.map((entry) => [entry.api_key_id, entry]),
-        );
+        // Owner usage history can outlive a deleted model registration.
+        // Validate uniqueness across the response, then join only current keys.
         const valid =
-          values.size === result.keys.length &&
-          result.keys.every((entry) => ids.has(entry.api_key_id));
+          new Set(result.keys.map((entry) => entry.api_key_id)).size ===
+          result.keys.length;
+        const values = new Map(
+          result.keys
+            .filter((entry) => ids.has(entry.api_key_id))
+            .map((entry) => [entry.api_key_id, entry]),
+        );
         update(cycle, (previous) => ({
           ...previous,
           usage: valid ? { kind: "ready", values } : { kind: "failed" },

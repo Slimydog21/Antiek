@@ -210,13 +210,33 @@ describe("mandatory scoped model usage picker", () => {
       await mount();
       await open();
       await screen.findByText(
-        kind === "absent"
-          ? "Usage unavailable (no entry)"
-          : "Usage unavailable",
+        kind === "duplicate"
+          ? "Usage unavailable"
+          : "Usage unavailable (no entry)",
       );
       expect(document.body.textContent).not.toContain("uncapped");
     },
   );
+  it("retains current-key usage when owner history includes a deleted key", async () => {
+    usage = [
+      { ...usage[0], api_key_id: "deleted-key", limit_cents: null },
+      usage[0],
+    ];
+    await mount();
+    await open();
+    await screen.findByText(/cap \$0.00/);
+    expect(document.body.textContent).toContain("held $0.02");
+    expect(document.body.textContent).toContain("available $-0.03");
+    expect(document.body.textContent).not.toContain("deleted-key");
+    expect(document.body.textContent).not.toContain("uncapped");
+    expect(document.body.textContent).not.toContain("Usage unavailable");
+    fireEvent.click(screen.getByText("secondary"));
+    expect(controller.selection).toEqual({
+      kind: "saved",
+      recordId: "key-0",
+      modelId: "secondary",
+    });
+  });
   it.each(["record", "catalog"])(
     "refuses mismatched balance %s without removing model choice",
     async (kind) => {
