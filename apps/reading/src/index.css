@@ -94,12 +94,50 @@
     color: rgb(var(--text-3-rgb));
   }
 
-  /* The highlighter: selection is the weathered sun veil everywhere (was
-     browser blue outside three prose selectors), ink stays ink. */
+  /* The reader's own fluorescent highlighter, with dark ink in both themes. */
   ::selection {
     background-color: var(--mark);
+    color: var(--mark-ink);
   }
 }
+
+:root {
+  --reading-ground: var(--reading-page);
+  --reading-text: var(--reading-ink);
+}
+:root[data-reading-light="soft"] {
+  --reading-ground: var(--reading-soft-page);
+  --reading-text: var(--reading-soft-ink);
+}
+.reading-page {
+  background-color: var(--reading-ground);
+  color: var(--reading-text);
+}
+.reading-page.prose-antiek {
+  color: var(--reading-text);
+}
+.reading-page.prose-antiek :where(h1, h2, h3, h4) {
+  color: var(--reading-text);
+}
+.antiek-highlight,
+.reading-page mark,
+.anchor-active,
+.anchor-drifted {
+  background-color: var(--mark);
+  color: var(--mark-ink);
+  text-decoration-color: var(--mark-ink);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.antiek-highlight :where(*),
+.reading-page :where(mark, .anchor-active, .anchor-drifted) :where(*) {
+  color: inherit;
+  background-color: transparent;
+}
+.anchor-drifted {
+  text-decoration: underline dashed;
+}
+
 
 /* The pdf.js text layer needs to overlay the canvas with transparent
    text so selection works against the rendered glyphs. We position it
