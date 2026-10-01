@@ -12,6 +12,7 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import ReadingAppearance from "../../components/reader/ReadingAppearance";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { useModeNavigate } from "../../workspace/useModeNavigate";
@@ -1001,8 +1002,8 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       <main className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
           <div className="pb-2 border-b border-hairline">
-            <header className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 min-w-0">
+            <header className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 basis-48 items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => setTocOpen((open) => !open)}
@@ -1019,7 +1020,8 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
                   {book.title ?? documentId}
                 </h1>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <ReadingAppearance />
                 <LemonTag colour={colour} dot>
                   {label}
                 </LemonTag>

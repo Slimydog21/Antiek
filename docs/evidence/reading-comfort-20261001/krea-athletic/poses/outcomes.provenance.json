@@ -1,0 +1,17 @@
+{
+  "asset_id": "9b3f4830-e855-4cf0-b464-fc02a16c0ce2",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/workflow-art/outcomes-512.png",
+  "source_sha256": "cfc38ca8f9c8bf717cc06843dc935572e64dee8b5183138959f1949c140e8458",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Keep the exact existing props and expression of image 1.",
+  "requested_at": "2026-10-01T06:27:28.013418+00:00",
+  "preview_only": true,
+  "job_id": "72165a1a-c9a1-4375-9123-bc542c196f1c",
+  "status": "completed",
+  "output": "outcomes-krea-b.png",
+  "generated_at": "2026-10-01T06:27:49.312Z",
+  "sha256": "af400c2a2330db5d415738a6f2e42d95fbda5ccf4ec5ec67f49912cfc1126d03"
+}
