@@ -12,14 +12,15 @@
  */
 
 export interface PageWindow {
+  kind: "text";
   /** 0-based page index — the canonical locator. */
   pageIndex: number;
   /** 1-based page number shown to the reader (`## Page N`). */
   pageNumber: number;
   /** The page's body (the `## Page N` marker stripped). */
   text: string;
-  /** The offset of `text`'s first scalar in the (normalized) source markdown
-   *  the windows were split from. This is what maps a body-anchored range
+  /** The UTF-16 string offset of `text` in the normalized source markdown.
+   *  This maps a body-anchored range
    *  (e.g. an anchored highlight's [start, end) from the anchor-map) into
    *  page-relative offsets — content-derived, like the index itself. */
   bodyStart: number;
@@ -42,7 +43,7 @@ export function paginate(markdown: string): PageWindow[] {
   const windows: PageWindow[] = [];
   let current: { pageNumber: number; buf: string[]; bufStart: number } | null =
     null;
-  // The running offset of the CURRENT line's first scalar in the source
+  // The running UTF-16 offset of the current line in the source
   // markdown (each split consumed its trailing "\n").
   let pos = 0;
 
@@ -66,6 +67,7 @@ export function paginate(markdown: string): PageWindow[] {
     const trimmed = markdown.trim();
     return [
       {
+        kind: "text",
         pageIndex: 0,
         pageNumber: 1,
         text: trimmed,
@@ -85,6 +87,7 @@ function finish(c: {
   const raw = c.buf.join("\n");
   const trimmedStart = raw.length - raw.trimStart().length;
   return {
+    kind: "text",
     pageIndex: c.pageNumber - 1,
     pageNumber: c.pageNumber,
     text: raw.trim(),
@@ -92,12 +95,13 @@ function finish(c: {
   };
 }
 
-/** Map a TOC entry's page_index to the window index to jump to, clamped
- * into range. Returns null when the TOC entry has no resolvable page. */
+/** Resolve an actual page index. A stale or malformed reference must not
+ * silently navigate to a different page. Saved positions clamp separately. */
 export function windowForTocPage(
-  pages: PageWindow[],
+  pages: readonly { pageIndex: number }[],
   tocPageIndex: number | null,
 ): number | null {
-  if (tocPageIndex === null || pages.length === 0) return null;
-  return Math.max(0, Math.min(tocPageIndex, pages.length - 1));
+  if (tocPageIndex === null || !Number.isInteger(tocPageIndex) || tocPageIndex < 0) return null;
+  const index = pages.findIndex((page) => page.pageIndex === tocPageIndex);
+  return index < 0 ? null : index;
 }

@@ -56,6 +56,7 @@ function anchor(over: Partial<BookAnchor> = {}): BookAnchor {
 }
 
 const PAGE: PageWindow = {
+  kind: "text",
   pageIndex: 0,
   pageNumber: 1,
   text: "The opening of the book.",

@@ -9,6 +9,7 @@ import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
+import richBody from "./__fixtures__/passive_html_rich_body.json";
 
 const {
   getBookMock,
@@ -82,6 +83,7 @@ vi.mock("react-router-dom", async (orig) => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 // ── jsdom selection helper (mirrors FloatMenu.test.tsx) ──────────────
@@ -145,9 +147,13 @@ describe("paginate", () => {
     expect(paginate("")).toEqual([]);
   });
 
-  it("windowForTocPage clamps into range", () => {
+  it("windowForTocPage resolves only an actual integer page", () => {
     const pages = paginate("## Page 1\n\na\n\n## Page 2\n\nb");
-    expect(windowForTocPage(pages, 5)).toBe(1); // clamps to last
+    expect(windowForTocPage(pages, 5)).toBeNull();
+    expect(windowForTocPage(pages, -1)).toBeNull();
+    expect(windowForTocPage(pages, 0.5)).toBeNull();
+    expect(windowForTocPage(pages, Number.NaN)).toBeNull();
+    expect(windowForTocPage(pages, 1)).toBe(1);
     expect(windowForTocPage(pages, null)).toBeNull();
     expect(windowForTocPage([], 0)).toBeNull();
   });
@@ -298,6 +304,7 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     spinResearchMock.mockReset();
+    apiFetchMock.mockReset().mockResolvedValue(new Response(JSON.stringify({ text: "reply" }), { status: 200 }));
     navigateMock.mockReset();
     useWorkspace.getState().reset();
     resetReadingStateBus();
@@ -355,6 +362,145 @@ describe("BookReader", () => {
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
   });
 
+  it("renders structural HTML and jumps to the visible heading from its TOC", async () => {
+    getBookMock.mockResolvedValue(makeDetail({
+      pagination_scheme: "html_section",
+      toc: [
+        { title: "Opening", page_index: 0, level: 0 },
+        { title: "Evidence", page_index: 1, level: 1 },
+      ],
+    }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      content_format: "html",
+      full_text: '<article><h1 id="opening">Opening</h1><p>First passage.</p>' +
+        '<h2 id="evidence">Evidence</h2><table><tbody><tr><td>42</td></tr></tbody></table>' +
+        '<blockquote><p>Source note.</p></blockquote></article>',
+    }));
+    const { container } = await renderReader();
+    await waitFor(() => expect(container.querySelector("article h1#opening")).toBeTruthy());
+    expect(container.querySelector("article h2#evidence")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Evidence" }));
+    await waitFor(() => expect(container.querySelector("article h2#evidence")).toBeTruthy());
+    expect(container.querySelector("article table td")?.textContent).toBe("42");
+    expect(container.querySelector("article blockquote")?.textContent).toContain("Source note.");
+    expect(container.querySelector("article h1#opening")).toBeNull();
+  });
+
+  it("follows an HTML fragment into another section and focuses its heading", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      content_format: "html",
+      full_text: '<h1 id="first">First</h1><p><a href="#second">Continue</a></p>' +
+        '<h2 id="second">Second</h2><p>Destination passage.</p>',
+    }));
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const { container } = await renderReader();
+      const link = await screen.findByRole("link", { name: "Continue" });
+      expect(container.querySelector("article #second")).toBeNull();
+      fireEvent.click(link);
+      const target = await waitFor(() => {
+        const heading = container.querySelector<HTMLElement>("article #second");
+        expect(heading).toBeTruthy();
+        expect(document.activeElement).toBe(heading);
+        return heading;
+      });
+      expect(screen.getByText("Destination passage.")).toBeTruthy();
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(scrollIntoView.mock.contexts[0]).toBe(target);
+      expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("handles same-page and missing fragments within the reader and leaves external links to the browser", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      content_format: "html",
+      full_text: '<h1 id="first">First</h1><p><a href="#first">Back to first</a>' +
+        '<a href="#missing">Missing target</a>' +
+        '<a href="https://example.org/source">Source</a></p>' +
+        '<h2 id="second">Second</h2>',
+    }));
+    await renderReader();
+    const preventedByReader: boolean[] = [];
+    const stopNavigation = (event: MouseEvent) => {
+      preventedByReader.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    window.addEventListener("click", stopNavigation);
+    try {
+      for (const name of ["Back to first", "Missing target", "Source"]) {
+        const link = await screen.findByRole("link", { name });
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+      }
+      expect(preventedByReader).toEqual([true, true, false]);
+    } finally {
+      window.removeEventListener("click", stopNavigation);
+    }
+  });
+
+  it("leaves cross-section fragments with another browsing target to the browser", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      content_format: "html",
+      full_text: '<h1 id="first">First</h1><p>' +
+        '<a href="#second" target="_blank">New tab</a>' +
+        '<a href="#second" target="notes">Named tab</a></p>' +
+        '<h2 id="second">Second</h2>',
+    }));
+    await renderReader();
+    const preventedByReader: boolean[] = [];
+    const stopNavigation = (event: MouseEvent) => {
+      preventedByReader.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    window.addEventListener("click", stopNavigation);
+    try {
+      for (const name of ["New tab", "Named tab"]) {
+        const link = await screen.findByRole("link", { name });
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+      }
+      expect(preventedByReader).toEqual([false, false]);
+    } finally {
+      window.removeEventListener("click", stopNavigation);
+    }
+  });
+
+  it("lists gated TOC metadata without offering jumps into withheld pages", async () => {
+    getBookMock.mockResolvedValue(makeDetail({
+      servability: "gated_metadata_only",
+      servable_full_text: false,
+      toc: [
+        { title: "Preview chapter", page_index: 0, level: 0 },
+        { title: "Withheld chapter", page_index: 1, level: 0 },
+      ],
+    }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      servable: false,
+      full_text: null,
+      snippet: "Only a snippet is permitted.",
+      reason: "gated_metadata_only",
+    }));
+
+    await renderReader();
+
+    const toc = await screen.findByRole("navigation", { name: "Table of contents" });
+    expect(screen.getByText(/page navigation is unavailable/)).toBeTruthy();
+    const withheld = within(toc).getByRole("button", { name: "Withheld chapter" });
+    expect(withheld).toBeInstanceOf(HTMLButtonElement);
+    if (!(withheld instanceof HTMLButtonElement)) throw new Error("Expected a TOC button");
+    expect(withheld.disabled).toBe(true);
+    fireEvent.click(withheld);
+    expect(screen.getByText("Only a snippet is permitted.")).toBeTruthy();
+    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+  });
+
   it("opens talk-to-book from a reader deep link", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
@@ -363,6 +509,140 @@ describe("BookReader", () => {
 
     await waitFor(() => expect(screen.getByTestId("talk-to-book")).toBeTruthy());
     expect(screen.getByText("Thought partner · “A Servable Book”")).toBeTruthy();
+  });
+
+  it("restores an HTML section from the server position without inventing chunk attribution", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>First</h1><p>Opening.</p><h2>Second</h2><p>Restored section.</p>' }));
+    apiFetchMock.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      document_id: "doc-1", page_index: 1, revision: 4, anchor_ref: null, prefs: {}, updated_at: "2026-10-01T00:00:00Z",
+    }), { status: 200 })));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => Promise.resolve(new Response(JSON.stringify(
+      String(input).includes("reading-state")
+        ? { document_id: "doc-1", page_index: 1, revision: 4, anchor_ref: null, prefs: {} }
+        : { anchors: [], investigations: [], count: 0 },
+    ), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = await renderReader();
+    await screen.findByText("Restored section.");
+    expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
+    expect(container.querySelector("[data-akb-asset-id]")?.getAttribute("data-akb-asset-id")).toBe("doc-1");
+    expect(container.querySelector("[data-akb-chunk-id]")).toBeNull();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("anchor-map"))).toBe(false);
+  });
+
+  it("renders the actual server-sanitized rich-body fixture through both heading windows", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section", toc: [{ title: "Opening", page_index: 0, level: 0 }, { title: "Evidence", page_index: 1, level: 1 }] }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: richBody.served_html }));
+    const { container } = await renderReader();
+    await screen.findByRole("heading", { name: "Opening" });
+    expect(container.querySelector("article dl dd")?.textContent).toBe("Meaning");
+    expect(container.querySelector("article pre code")?.textContent).toBe("  x\n y");
+    fireEvent.click(screen.getByRole("button", { name: "Evidence" }));
+    await screen.findByRole("heading", { name: "Evidence" });
+    expect(container.querySelector("article table caption")?.textContent).toBe("Measurements");
+    expect(container.querySelector("article td")?.textContent).toBe("42");
+    const image = container.querySelector("article img");
+    expect(image?.getAttribute("alt")).toBe("Image description");
+    expect(image?.hasAttribute("src")).toBe(false);
+    expect(screen.queryByText(/cannot be displayed safely/)).toBeNull();
+  });
+
+  it("keeps HTML in a non-section scheme as one HTML window and lists unresolvable contents", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "unknown", toc: [{ title: "Second", page_index: 1, level: 1 }] }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>First</h1><h2>Second</h2><p>Whole HTML body.</p>' }));
+    await renderReader();
+    await screen.findByRole("heading", { name: "Second" });
+    expect(screen.getByText(/Page 1 of 1/)).toBeTruthy();
+    const toc = screen.getByRole("navigation", { name: "Table of contents" });
+    expect(within(toc).getByRole("button", { name: "Second" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/page navigation is unavailable/)).toBeTruthy();
+  });
+
+  it("refuses unsafe HTML before mounting resources or exposing page actions", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section", toc: [{ title: "Unsafe", page_index: 0, level: 0 }] }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>Unsafe</h1><img src="https://tracker.example/pixel" onerror="alert(1)"><script>alert(1)</script>' }));
+    const { container } = await renderReader();
+    await screen.findByText(/HTML cannot be displayed safely/);
+    expect(container.querySelector("[data-antiek-html-body], img, script, [data-akb-asset-id]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Research from here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Next/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Unsafe" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("withholds HTML passage actions without sending selected text, pins or false chunk identity", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>Opening</h1><p>A selectable HTML passage.</p>' }));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => Promise.resolve(new Response(JSON.stringify({ anchors: [], investigations: [], count: 0 }), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = await renderReader();
+    const passage = await screen.findByText("A selectable HTML passage.");
+    selectTextIn(passage, "A selectable HTML passage.");
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    const research = screen.getByRole("button", { name: "Research from here" });
+    expect(research.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(research);
+    expect(spinResearchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+    expect(container.querySelector("[data-akb-chunk-id], [data-anchor-id]")).toBeNull();
+    expect(screen.getByText(/Passage highlights and research from a selection are unavailable/)).toBeTruthy();
+  });
+
+  it("admits an owner-private HTML TOC for local reading without asset attribution", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section", servability: "private_authored", servable_full_text: false, toc: [{ title: "Second", page_index: 1, level: 0 }] }));
+    getFullTextMock.mockResolvedValue(makeBody({ servable: false, servability: "private_authored", reason: "owner_private_authored", ad_eligible: false, content_format: "html", full_text: '<h1>First</h1><h2>Second</h2><p>Private section.</p>' }));
+    const { container } = await renderReader();
+    fireEvent.click(await screen.findByRole("button", { name: "Second" }));
+    await screen.findByText("Private section.");
+    expect(container.querySelector("[data-akb-asset-id], [data-akb-chunk-id]")).toBeNull();
+    expect(screen.queryByText(/Preview only/)).toBeNull();
+  });
+
+  it("decodes fragments and focuses a non-heading destination while stale TOC entries stay disabled", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section", toc: [{ title: "Wrong section", page_index: 1, level: 0 }, { title: "Missing", page_index: 99, level: 0 }] }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>Opening</h1><p><a href="#note%3A2">Jump to note</a></p><h2>Second</h2><blockquote id="note:2"><p>Destination note.</p></blockquote>' }));
+    const { container } = await renderReader();
+    const toc = await screen.findByRole("navigation", { name: "Table of contents" });
+    expect(within(toc).getAllByRole("button").every((button) => button.hasAttribute("disabled"))).toBe(true);
+    fireEvent.click(screen.getByRole("link", { name: "Jump to note" }));
+    await screen.findByText("Destination note.");
+    expect(document.activeElement).toBe(container.querySelector('blockquote[id="note:2"]'));
+  });
+
+  it("focuses the new HTML heading through the pager and resolves same-section links inside the article", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1 id="first">First</h1><h2 id="second">Second</h2><p><a href="#second">Back to section</a></p>' }));
+    const { container } = await renderReader();
+    fireEvent.click(await screen.findByRole("button", { name: /Next/ }));
+    await screen.findByRole("heading", { name: "Second" });
+    expect(document.activeElement).toBe(container.querySelector("article #second"));
+    fireEvent.click(screen.getByRole("link", { name: "Back to section" }));
+    expect(document.activeElement).toBe(container.querySelector("article #second"));
+    fireEvent.click(screen.getByRole("button", { name: /Previous/ }));
+    await screen.findByRole("heading", { name: "First" });
+    expect(document.activeElement).toBe(container.querySelector("article #first"));
+  });
+
+  it("refuses missing, malformed and duplicate fragments without focusing document chrome", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>Opening</h1><p><a href="#outside">Missing</a><a href="#%ZZ">Malformed</a><a href="#duplicate">Duplicate</a></p><p id="duplicate">First duplicate</p><h2>Second</h2><p id="duplicate">Second duplicate</p>' }));
+    const { container } = await renderReader();
+    const chrome = document.createElement("button");
+    chrome.id = "outside";
+    document.body.append(chrome);
+    try {
+      chrome.focus();
+      for (const name of ["Missing", "Malformed", "Duplicate"]) {
+        const link = await screen.findByRole("link", { name });
+        const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+        act(() => { link.dispatchEvent(event); });
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(chrome);
+        expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+        expect(container.querySelector("article h2")).toBeNull();
+      }
+    } finally { chrome.remove(); }
   });
 
   it("shows the preview banner and snippet for a gated book", async () => {

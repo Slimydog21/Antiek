@@ -3,7 +3,8 @@ import type { CSSProperties } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { List as ListIcon } from "lucide-react";
 
-import { LemonButton, LemonTag } from "../../components/lemon";
+import { LemonButton } from "../../components/lemon/LemonButton";
+import { LemonTag } from "../../components/lemon/LemonTag";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel, spinResearch } from "../../api/books";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
@@ -29,7 +30,9 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
-import { paginate, windowForTocPage } from "./paginate";
+import { paginate } from "./paginate";
+import { paginateHtml, readerToc, type ReaderPageWindow } from "./htmlPages";
+import { useHtmlNavigation } from "./useHtmlNavigation";
 import { useReadingState } from "../../hooks/useReadingState";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
@@ -154,13 +157,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
 
 
 
+  const htmlBody = body?.content_format === "html";
+
   useEffect(() => {
     // The anchor-map is only meaningful with a readable body (the reader
     // renders only gate-served text — a gated snippet carries no anchorable
     // passages). An admitted private body uses the owner manifest without
     // granting the separate FloatMenu outbound permission.
     const readable = body?.servable || body?.reason === "owner_personal_reading" || privateAuthoredReadable;
-    if (!documentId || !readable) {
+    if (!documentId || !readable || htmlBody) {
       setAnchorMapChunks([]);
       return;
     }
@@ -180,17 +185,22 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     return () => {
       cancelled = true;
     };
-  }, [documentId, body, privateAuthoredReadable]);
+  }, [documentId, body, privateAuthoredReadable, htmlBody]);
 
-  // The ONE scalar space: the anchor-map's offsets and the anchor schema
-  // both pin to unicode-nfc-v1 normalized text, so the body the reader
-  // paginates is normalized the same way (anchorRanges.normalizeNodeText
-  // mirrors substrate/feedback/domain.py:18-20).
+  // Text retains its existing normalized-string offsets. HTML fragments
+  // remain display-only until a served-byte-bound projection is available.
   const normalizedBody = useMemo(
-    () => normalizeNodeText(body?.full_text ?? body?.snippet ?? ""),
-    [body],
+    () => htmlBody ? "" : normalizeNodeText(body?.full_text ?? body?.snippet ?? ""),
+    [body, htmlBody],
   );
-  const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
+  const htmlPagination = useMemo(
+    () => htmlBody ? paginateHtml(body?.full_text ?? body?.snippet ?? "", book?.pagination_scheme === "html_section") : null,
+    [body, book?.pagination_scheme, htmlBody],
+  );
+  const pages: ReaderPageWindow[] = useMemo(
+    () => htmlPagination ? htmlPagination.pages : paginate(normalizedBody),
+    [htmlPagination, normalizedBody],
+  );
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
@@ -326,17 +336,10 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     [islandLayoutMap],
   );
 
-  // Citation → page jump (M2). A talk-to-book / search citation carries a
-  // resolved 0-based page; map it to the window index and move the reader.
-  // REUSES the EXISTING reader navigation (windowForTocPage + setPageIndex) —
-  // the SAME path TOC jumps use, not a parallel one.
-  const jumpToPage = useCallback(
-    (page: number) => {
-      const window = windowForTocPage(pages, page);
-      if (window !== null) setPageIndex(window);
-    },
-    [pages, setPageIndex],
-  );
+  const articleRef = useRef<HTMLElement>(null);
+  const jumpToPage = useHtmlNavigation({
+    articleRef, documentId, pages, pageIndex, setPageIndex, loading,
+  });
 
   // Reader ad-impression flushing (SPR-05). A stable session id per mount;
   // the hook tracks focused dwell and flushes the page's slots on change.
@@ -374,6 +377,10 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // The current page's chunk for the source.read event — resolved live from
   // the anchor-map (the HONEST GAP closure), never the old null placeholder.
   const pageChunkRef = useRef<string | null>(null);
+  useEffect(() => {
+    const page = pages[pageIndex];
+    pageChunkRef.current = page?.kind === "text" ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null;
+  }, [pages, pageIndex, anchorMapChunks]);
   const onDwell = useCallback(
     (dwell: { totalDwellMs: number; pagesSeen: number }) => {
       if (readEmittedRef.current) return;
@@ -401,8 +408,6 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // (the old inline "Go deeper" affordance) is GENERALIZED through this menu:
   // Deep-research (highlight) used to open ChaseThread without book provenance;
   // that path never hit spin-research / notebook distill. Wire to spin-research.
-
-  const articleRef = useRef<HTMLElement>(null);
 
   // §9.0 servability of the open book — the in-book selection's servability.
   // The reader renders only gate-served body (verified: getBookFullText returns
@@ -433,7 +438,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
       return;
     }
     const pageText =
-      ownerReadable && pages[pageIndex]?.text
+      ownerReadable && pages[pageIndex]?.kind === "text" && pages[pageIndex]?.text
         ? pages[pageIndex].text
         : null;
     setReadingFocus({
@@ -464,7 +469,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
       text: string,
     ): { chunkId: string; start: number; end: number; bodyOffset: number } | null => {
       const page = pages[pageIndex];
-      if (!page || !text) return null;
+      if (!page || page.kind !== "text" || !text) return null;
       const first = page.text.indexOf(text);
       if (first < 0 || page.text.indexOf(text, first + 1) >= 0) return null;
       const bodyOffset = page.bodyStart + first;
@@ -563,7 +568,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // text anywhere.
   const spawnFreeInquiry = useCallback(() => {
     const page = pages[pageIndex];
-    if (!page) return;
+    if (!page || page.kind !== "text") return;
     const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
     if (!lead) return;
     const startInPage = page.text.indexOf(lead);
@@ -676,10 +681,10 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   }, [tocOpen]);
   const jumpFromToc = useCallback(
     (index: number) => {
-      setPageIndex(index);
+      jumpToPage(index);
       setTocOpen(false);
     },
-    [setPageIndex],
+    [jumpToPage],
   );
 
   // The reader's own companion column duplicates the cockpit's right pane
@@ -697,7 +702,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // anchors never paint — they list honestly below instead.
   const pageMarks = useMemo(() => {
     const current = pages[pageIndex];
-    if (!current || anchors.length === 0 || anchorMapChunks.length === 0) return [];
+    if (!current || current.kind !== "text" || anchors.length === 0 || anchorMapChunks.length === 0) return [];
     const paintable = anchors.filter(
       (a) => a.status !== "orphaned" && anchorBodyRange(a, anchorChunksById),
     );
@@ -809,9 +814,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
 
   const { label, colour } = servabilityLabel(book.servability);
   const page = pages[pageIndex];
-  pageChunkRef.current = page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null;
 
 
+
+  const toc = readerToc(book.toc, pages, ownerReadable || privateAuthoredReadable, book.pagination_scheme === "html_section");
+  const referenceOnlyToc = book.toc.length > 0 && toc.every((entry) => entry.page_index === null);
 
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
@@ -874,7 +881,12 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
-        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={jumpFromToc} />
+        {referenceOnlyToc && (
+          <p className="mb-2 px-2 text-xs text-ink-mute dark:text-moonlight">
+            Contents are listed for reference; page navigation is unavailable.
+          </p>
+        )}
+        <TocPanel toc={toc} currentPageIndex={pageIndex} onJump={jumpFromToc} />
         {(orphanedAnchors.length > 0 || hiddenIslands.size > 0) && (
           <div
             className="mt-3 border-t border-rule dark:border-charcoal-1 pt-2"
@@ -955,7 +967,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
-        selection={selection}
+        selection={htmlBody ? null : selection}
         investigationId={readingThreadId}
         onDeepResearch={onDeepResearch}
         onPinAnchor={onPinAnchor}
@@ -1108,16 +1120,25 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                       T1 the gate served extracted hosted TEXT (no PDF blob exists —
                       see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
                       through this SAME markdown column, no PDF.js. */}
-                  <ReadingColumn
+                  {htmlPagination?.kind === "unsafe" ? (
+                    <p role="status" className="text-sm text-ink-mute dark:text-moonlight">
+                      This document's HTML cannot be displayed safely. Its contents and your notes are unchanged.
+                    </p>
+                  ) : <ReadingColumn
                     ref={articleRef}
                     assetId={ownerReadable ? documentId : null}
                     chunkId={
-                      page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
+                      page?.kind === "text" ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
                     }
                     text={page?.text ?? ""}
                     contentFormat={body.content_format ?? "text"}
                     marks={pageMarks}
-                  />
+                  />}
+                  {page?.kind === "html" && (
+                    <p role="status" className="text-xs text-ink-mute dark:text-moonlight">
+                      Passage highlights and research from a selection are unavailable for this HTML document.
+                    </p>
+                  )}
 
                   {/* Per-page actions: voice note + spin a deep research. */}
                   {page && (
@@ -1137,11 +1158,14 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                           variant="secondary"
                           size="sm"
                           onClick={spawnFreeInquiry}
-                          title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
+                          disabled={page.kind === "html"}
+                          title={page.kind === "html"
+                            ? "Passage research is unavailable for this HTML document."
+                            : "Pin this page's lead passage and start a research thread on it — the island stays on the passage"}
                         >
                           Research from here
                         </LemonButton>
-                        <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
+                        {page.kind === "text" && <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />}
                       </div>
                       {showVoice && (
                         <VoiceNote
@@ -1175,7 +1199,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                     size="sm"
                     type="button"
                     disabled={pageIndex <= 0}
-                    onClick={() => setPageIndex(pageIndex - 1)}
+                    onClick={() => jumpToPage(pageIndex - 1)}
                   >
                     ← Previous
                   </LemonButton>
@@ -1186,7 +1210,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                     size="sm"
                     type="button"
                     disabled={pageIndex >= pages.length - 1}
-                    onClick={() => setPageIndex(pageIndex + 1)}
+                    onClick={() => jumpToPage(pageIndex + 1)}
                   >
                     Next →
                   </LemonButton>

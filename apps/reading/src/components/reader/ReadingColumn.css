@@ -1,0 +1,87 @@
+[data-antiek-html-body] {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+[data-antiek-html-body] :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-block: 1.5em 0.5em;
+}
+
+[data-antiek-html-body] :where(h1, h2, h3, h4, h5, h6):first-child {
+  margin-block-start: 0;
+}
+
+[data-antiek-html-body] :where(p, ul, ol, blockquote, figure, pre, table) {
+  margin-block: 0 1em;
+}
+
+[data-antiek-html-body] :where(ul, ol) {
+  padding-inline-start: 1.5em;
+}
+
+[data-antiek-html-body] ul {
+  list-style-type: disc;
+}
+
+[data-antiek-html-body] ol {
+  list-style-type: decimal;
+}
+
+[data-antiek-html-body] li + li {
+  margin-block-start: 0.25em;
+}
+
+[data-antiek-html-body] blockquote {
+  border-inline-start: 2px solid var(--sun-deep);
+  color: var(--ink-soft);
+  font-style: italic;
+  padding-inline-start: 1em;
+}
+
+[data-antiek-html-body] blockquote > :last-child {
+  margin-block-end: 0;
+}
+
+[data-antiek-html-body] table {
+  border-collapse: collapse;
+  min-width: 24rem;
+  width: 100%;
+}
+
+[data-antiek-html-body] :where(th, td) {
+  border-block-end: 1px solid var(--rule);
+  padding: 0.6em 0.75em;
+  text-align: start;
+  vertical-align: top;
+}
+
+[data-antiek-html-body] th {
+  font-weight: 600;
+}
+
+[data-antiek-html-body] :where(img, svg) {
+  height: auto;
+  max-width: 100%;
+}
+
+[data-antiek-html-body] :where(pre, code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+[data-antiek-html-body] pre {
+  overflow-x: auto;
+}
+
+[data-antiek-html-body] a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+[data-antiek-html-body] :focus-visible {
+  outline: 2px solid var(--sun-deep);
+  outline-offset: 2px;
+}
