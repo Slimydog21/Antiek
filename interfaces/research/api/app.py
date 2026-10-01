@@ -97,7 +97,8 @@ from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 # Retry-After hint (seconds) served with every 503 mapped from
 # runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
 # Conservative client backoff hint, not a measured hold time.
-_DB_CONNECTION_RETRY_AFTER_S = "2"
+_READ_LOCK_RETRY_AFTER_S = "2"
+_DB_CONNECTION_RETRY_AFTER_S = _READ_LOCK_RETRY_AFTER_S
 
 # ---------------------------------------------------------------------------
 # Request / response models

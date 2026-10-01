@@ -119,6 +119,9 @@ def test_read_lock_conflict_is_503_with_retry_after(held_db: str) -> None:
             f"{method} {url} 503 is missing an integer Retry-After header"
         )
         assert retry_after == "2"
-        assert response.json() == {
-            "detail": "database read is temporarily unavailable; retry shortly"
-        }
+        expected_detail = {
+            "/ad-inventory/select": "database read is temporarily unavailable; retry shortly",
+            "/books": "read_unavailable",
+            "/library": "read_unavailable",
+        }[url]
+        assert response.json() == {"detail": expected_detail}
