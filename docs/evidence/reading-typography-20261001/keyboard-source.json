@@ -1,0 +1,323 @@
+{
+  "base": "0fa478338d4950dd8c0c10890f7c50b0d20454fd",
+  "previous_reviewed_source": "250cf14f722edfbfd189155177d4d601c8555476",
+  "source_delta": "Named keyboard-focusable preview region, token-based focus-visible outline, and removal of unsupported aria-label from a paragraph; other 77 pins unchanged",
+  "files": [
+    {
+      "path": "apps/reading/index.html",
+      "sha256": "77c761096f1ed302c0deff37f1592b469106d2c1440163b75301b588044963da"
+    },
+    {
+      "path": "apps/reading/public/appearance-boot.js",
+      "sha256": "e6635ce36cdd62cdacb71a0a42b48b4bb86f0b82fae03439e77994932402529f"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-OFL.txt",
+      "sha256": "aca6a428580965d2297d1b718042dd427c2a9443ece3b0d02d758e161e0c4030"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-italic-latin-ext.woff2",
+      "sha256": "c0c8da569118e5b2c17032c4f1d0e293271e478fb50d869aefd08fcffdf2042b"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-italic-latin.woff2",
+      "sha256": "4a5037bfaf6680f40147407407ec09fa42925774bde809a579283d27f9f08106"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-regular-latin-ext.woff2",
+      "sha256": "7dae0c6c66af1aec82e096186aeb1f0e6fa36ab8061ed65422f2b7daf4dd93f3"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-regular-latin.woff2",
+      "sha256": "18b2a1a39a2fa298b0ba5390aca68462669826c90925656f1c1f6796e0e1bbaf"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/atkinson-upstream.txt",
+      "sha256": "abe8ea2afbe2c4f224707d0605139d0527e817ed9299c76474906f5f1bee10dc"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-OFL.txt",
+      "sha256": "8742963604cd89dc81437811a850018fc03b2bfad686d7422c8235967c87614e"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-cyrillic-ext.woff2",
+      "sha256": "fd71d598ad1f4304c2a8acef7ae66574a2e74dac6157044c8cec87e3234b226f"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-cyrillic.woff2",
+      "sha256": "37c470b724396cf95e39c99ce27d9fd02b5b552672c90cbdc603bdc9145139e7"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-greek-ext.woff2",
+      "sha256": "d10f79be056e2ca47cac7602877d256ee25c58d184ab32f35719514109ef8226"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-greek.woff2",
+      "sha256": "6d7605de1880b037552f30e47477a4bb37d97f1be7387b61ef35ae800a272e29"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-latin-ext.woff2",
+      "sha256": "09e48237261b84a90f2d6011c050d10d4bacd060cd884a10fe4edf69c0bf3870"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-latin.woff2",
+      "sha256": "97bc5aa317653eb249d66782c8533e5f1bd7d27a97b5265155a3d1700e785b7b"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-italic-vietnamese.woff2",
+      "sha256": "e7906bb79b12a47663ef5755fcd2f5a1d0ea9644aa5be19620c2ad1fa5cafc18"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-cyrillic-ext.woff2",
+      "sha256": "777c82bd95a9e0a51cf8ca579be4a667aa800bd41ba29e8490d99a39f728d391"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-cyrillic.woff2",
+      "sha256": "a9054771acc03576b03c0f18daf6f4785dfd65f1427863d14610be7a647a4373"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-greek-ext.woff2",
+      "sha256": "ddec2c8446e758de47732823748e46d677c359e4c7d28b8a6f5a105e232127b6"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-greek.woff2",
+      "sha256": "1a7f2e3f1b37ae8c92b57eb8f164da44ac369783bd58ad6295368bbc7b9f7d08"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-latin-ext.woff2",
+      "sha256": "1160835f4cdae6a86572ed501c13b62b341480cc7c13fc88ba0c21efdf1fcd73"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-latin.woff2",
+      "sha256": "29de894c768689feef6ab4ef274a9a16d19bfc5b0c3cbfcdac80ef220816210c"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-regular-vietnamese.woff2",
+      "sha256": "6264a9207554ec7e0740e8732134586012d56f9f0804e3e72701f31926c059ad"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/literata-upstream.txt",
+      "sha256": "da3a5061068bd3a8d4fa4da0ed04d3f85be21ab5bf801c2cdac79f9f0a9c4ab6"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/manifest.json",
+      "sha256": "950a7c1fb4f6d6a9b1a2d06347e9f47519f84ba67cd06932d9468448e60aeb39"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-OFL.txt",
+      "sha256": "09746787287a289323b0ec3cff4d1a4a801331b82b7207c1e186f5d26619a392"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-cyrillic-ext.woff2",
+      "sha256": "e31d1fc39f2fa419e06bebc48b3bd1c6876b349e2effa4a629e0b947a7fd241b"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-cyrillic.woff2",
+      "sha256": "747ba5266ef049efc6d67eaa99058a81efa134ec00483c246ed388ef288186d2"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-greek-ext.woff2",
+      "sha256": "4c9e2fb8dbc56263b83752747ad6ad08dbb171d1d9dadd55a2181a5c200c9363"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-greek.woff2",
+      "sha256": "34177ef48786984f32c045dd5b4a717a69cd6f14b6da5adbaf7b7a2e62470bc7"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-latin-ext.woff2",
+      "sha256": "6fe10a66ec416f77a26309b645471d032ad8175063bb605b886e9b7e57efaaa8"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-latin.woff2",
+      "sha256": "9a15dafc2c2b2414aaa9d6c30830d9aab4361329d8495b1574633603b994b411"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-italic-vietnamese.woff2",
+      "sha256": "a9dedfb0c65bcd734e9a4b2dcefb382f1d9cdc784e1238c5431708d7dcd45ae8"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-cyrillic-ext.woff2",
+      "sha256": "6aba01e1a800f890b4d91094c4cf5e1769aaf77085371a3ad96065d586186796"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-cyrillic.woff2",
+      "sha256": "b6b721e08d0324b9e743858e8260463085d4c5e1e684f036f9d4a8ca6c62996f"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-greek-ext.woff2",
+      "sha256": "3576fb9237b1a58cb5b38369bd63074a6f884dbeb9f88069690b6bc67ee5d3ff"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-greek.woff2",
+      "sha256": "5360981f035cd4307cd65e4cf46a27693a2409702d3234403c534d9e656d7844"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-latin-ext.woff2",
+      "sha256": "a85a7459bdb3cdc1136751e151a506bae653fc29ada3ca86237477df6f1b59e6"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-latin.woff2",
+      "sha256": "7a19a7027e125257d310c6dbd78ae3a30b5ea1e3794d60b12bb28227a003bfda"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-regular-vietnamese.woff2",
+      "sha256": "ff34bf5a131a3f9d194f47b4ff7de95aceef5dad72b74709a5d5bf2c069e1f86"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-sans-upstream.txt",
+      "sha256": "ddf42bad59422117e3f4f611be03245ad20b5d4f927540ffecfd658ef3d4d99f"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-OFL.txt",
+      "sha256": "5f94c3fd3a23131a417ab5a0c8452de57e70c3cfb9f604d88241f7065ebf9fd9"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-cyrillic-ext.woff2",
+      "sha256": "99a84c1761574935d04279e0b02dc7116a06e578fd1d2d553604273ab0d496a5"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-cyrillic.woff2",
+      "sha256": "db1083ed2d695783955e1144c0ad784b6cbb7fa564524d6697e0aa09b7228ac0"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-greek.woff2",
+      "sha256": "d29b0cfc1b6bdca3d8ccca2b242f04f7c13d50934d31ea46fe19eb2313bc01bb"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-latin-ext.woff2",
+      "sha256": "2078240cee94e627d0e180d56d74a11b2a1d387bbd61a9b7269f0a43df756896"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-latin.woff2",
+      "sha256": "96e6393209728ab93c334ae739af8a040cd2006c82e8614d6465a8084db88f89"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-italic-vietnamese.woff2",
+      "sha256": "71e3725632d812d331d1680e95c62a0fcf16f898a9b1de576ca90e9c487e1438"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-cyrillic-ext.woff2",
+      "sha256": "c4fbd9994039466f864b5f025fdb214f0f58a8c2f888d99c1885efcd516baf2d"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-cyrillic.woff2",
+      "sha256": "e553fa829fd9ae0900931584f73c6b894539558b598d5ee7c4907140a1f29f05"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-greek.woff2",
+      "sha256": "d69b8909cbccf5948675c7de331858d40f48b1ef3e4a9fc5ddfaa8c097fb434b"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-latin-ext.woff2",
+      "sha256": "155f6e701097cc269cf8d5d7ac86795f263f1afbeb47c14d1d747108c9335389"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-latin.woff2",
+      "sha256": "f2ea9c12d2fe9bd3a9589b02ad2c0909da88f30938c91adc838c4f4098f9f9e0"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-regular-vietnamese.woff2",
+      "sha256": "e08ad84517b0cf6f4090101fedb82f9897cf5fb8b1684c65530f476c2803492d"
+    },
+    {
+      "path": "apps/reading/public/fonts/reading/source-serif-upstream.txt",
+      "sha256": "f39be0abd726c1b15f4a1605ce1abc1a8a514baa5231f1ce111073c1199d946b"
+    },
+    {
+      "path": "apps/reading/scripts/reading_fonts_requirements.txt",
+      "sha256": "7210f300336e55a8d1837f0198e75d5000d0a3c03bfb917df0682e941ad523eb"
+    },
+    {
+      "path": "apps/reading/scripts/vendor_reading_fonts.py",
+      "sha256": "6d64536a71a6d2b30e6288fc52a413e0189353794067f493445fbb9edf8aa95e"
+    },
+    {
+      "path": "apps/reading/src/components/reader/ReadingAppearance.tsx",
+      "sha256": "8e935293cfd833ce483f2c2169e44a1217caf2799651feafb60eb026d3b00dc1"
+    },
+    {
+      "path": "apps/reading/src/components/reader/ReadingColumn.tsx",
+      "sha256": "2853a838faf37f511a4db2d887807bce24be195f9ddaaaf37868f15b13301835"
+    },
+    {
+      "path": "apps/reading/src/components/reader/ReadingTypography.stories.tsx",
+      "sha256": "fd39867d38ed346592ae8ff57824f8a1a4a8f6a592b2d9ae446c1ebde4d850e6"
+    },
+    {
+      "path": "apps/reading/src/components/reader/ReadingTypography.test.tsx",
+      "sha256": "ed32b0fb12683257b2d51bc8888310cdacc5d8a6b6360e2d74cc084d147dda30"
+    },
+    {
+      "path": "apps/reading/src/components/reader/ReadingTypography.tsx",
+      "sha256": "7f0fee365c7963ee1a1f3c9e1dd1d371bec0fc0527c5c80bfb70d8a377a5ecca"
+    },
+    {
+      "path": "apps/reading/src/design/readingFonts.css",
+      "sha256": "0ee4359de4a507039cf540528071217e168a9d68a34238c9c5f0d0f3a66308e5"
+    },
+    {
+      "path": "apps/reading/src/design/readingTypography.css",
+      "sha256": "5c539fd98d7f5bf3a7ef18d319b40d337a9b2caf2e8db7aed98914e52152c804"
+    },
+    {
+      "path": "apps/reading/src/design/theme.ts",
+      "sha256": "d35377a1fc40a7de2890c1bccc17a82dcd24808aa762dedd95cfd01673c9db8f"
+    },
+    {
+      "path": "apps/reading/src/design/tokens.css",
+      "sha256": "aeac1de2f198215ac547967a05475c9b05c234f37975267ef0396720cb9bf356"
+    },
+    {
+      "path": "apps/reading/src/design/useTheme.ts",
+      "sha256": "d92174bd79c16902621d932566412b96f51b0b9815b2a1c991d73adadd8f6289"
+    },
+    {
+      "path": "apps/reading/src/index.css",
+      "sha256": "699c076a5cd359ed4975cdbd7616e09c738f599096da426e335aeea90f399dd2"
+    },
+    {
+      "path": "apps/reading/src/lib/readingTypography.test.ts",
+      "sha256": "80ca7a7e2c80780900ed9c4dd03ec826735d845e54bdc5f29f6aa45c6511d037"
+    },
+    {
+      "path": "apps/reading/src/lib/readingTypography.ts",
+      "sha256": "a6382addf5b2d4fea64fa50b4c53ea73445f6699e4fdd06a4d2735ce4eb514d9"
+    },
+    {
+      "path": "apps/reading/src/modes/Reading/Reading.islands.test.tsx",
+      "sha256": "00697bd9d93011e9010a6ef6bb14d359a489469ec0ad175bbacccca20f944828"
+    },
+    {
+      "path": "apps/reading/src/modes/Reading/Reading.reformat.test.tsx",
+      "sha256": "31d77769dc56067f975f6a1f0e2e2b0fe533ac620e6446744be385e77474375e"
+    },
+    {
+      "path": "apps/reading/src/modes/Reading/Reading.test.tsx",
+      "sha256": "4d2c3ce1c5883a5bb5862e073fa7a80bc212700ad3195a1fb7d0d4a7d4eebcaa"
+    },
+    {
+      "path": "apps/reading/src/modes/Reading/index.tsx",
+      "sha256": "82847ad31d0fbb0178a706a59466679437a3013f5b029c1e97114cf5db8ed23c"
+    },
+    {
+      "path": "apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.test.tsx",
+      "sha256": "5a27ef1140d0cdbc2e8277f32079008b84880345b0710a19ff3e8619cf77cb64"
+    },
+    {
+      "path": "apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx",
+      "sha256": "b669e7c9b9a9306df86a28ae2c2cbb2492aa848ae05fc37c8e56c21bcd8bcc5e"
+    },
+    {
+      "path": "apps/reading/src/modes/Settings/AppearancePanel.tsx",
+      "sha256": "46795e3a062a839bba3878b37fc7626611102e5ed73a75177e94649cbae142b4"
+    },
+    {
+      "path": "apps/reading/src/workspace/writeMode.test.tsx",
+      "sha256": "59cd4734fe9f0466994efc82ad27d166b2024367b50aed507897aba719cce4a3"
+    },
+    {
+      "path": "docs/decisions/reading-typography-20261001.md",
+      "sha256": "a859428752e2c5d4a05362c3b862efc4903ab2c6f1b29af11ae5fbe4de9726c5"
+    }
+  ]
+}
