@@ -3,6 +3,7 @@ import LemonCard from "../../components/lemon/LemonCard";
 import { LemonSelect } from "../../components/lemon";
 import type { MotionPreference, ThemePreference } from "../../design/theme";
 import { useMotionPreference, useTheme } from "../../design/useTheme";
+import { ReadingLightControl } from "../../components/reader/ReadingAppearance";
 
 const THEMES: Array<{ value: ThemePreference; label: string }> = [
   { value: "system", label: "System" },
@@ -52,6 +53,7 @@ export default function AppearancePanel() {
           <ReadingTypographyControls />
         </section>
       </div>
+      <div className="border-t border-hairline p-4"><ReadingLightControl /></div>
     </LemonCard>
   );
 }

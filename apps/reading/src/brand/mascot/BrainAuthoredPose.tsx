@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
-import mascotHeadTilt from "../mascot-brain/authored/mascot_head_tilt_v1_transparent.png";
-import mascotSleeping from "../mascot-brain/authored/mascot_sleeping_v1_transparent.png";
+import mascotHeadTilt from "../mascot-brain/athletic/authored/mascot_head_tilt_v1_transparent.png";
+import mascotSleeping from "../mascot-brain/athletic/authored/mascot_sleeping_v1_transparent.png";
 
 /**
  * Authored illustration poses used inside sanctioned animated wrappers.

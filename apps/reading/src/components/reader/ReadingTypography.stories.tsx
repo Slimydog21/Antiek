@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import ReadingTypography from "./ReadingTypography";
+import ReadingAppearance from "./ReadingAppearance";
 import ReadingColumn from "./ReadingColumn";
 import MasterMdViewer from "../../modes/ResearchWorkstation/MasterMdViewer";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 import AppearancePanel from "../../modes/Settings/AppearancePanel";
 import { DEFAULT_READING_TYPOGRAPHY, READING_FONTS, readingTypographyStyle } from "../../lib/readingTypography";
 
-const TEXT = "## A place for a thought\n\nThe best place to think is one where you can forget the page and follow the thought. A quiet sentence leaves room for an unexpected idea. A familiar word can gather new meaning when there is time to read it carefully.\n\nReading on a screen gives us a choice. We can make the type larger, give the lines more room, or choose letterforms that feel easier to follow. Keep the setting that helps you stay with the passage.\n\nIl1 O0 rn m · é ö ñ · 0123456789";
+const TEXT = "# A place for a thought\n\nThe best place to think is one where you can forget the page and follow the thought. A quiet sentence leaves room for an unexpected idea. A familiar word can gather new meaning when there is time to read it carefully.\n\nReading on a screen gives us a choice. We can make the type larger, give the lines more room, or choose letterforms that feel easier to follow. Keep the setting that helps you stay with the passage.\n\nIl1 O0 rn m · é ö ñ · 0123456789";
 
 const meta = { title: "Reading/Typography", component: ReadingTypography, tags: ["a11y-audit"] } satisfies Meta<typeof ReadingTypography>;
 export default meta;
@@ -14,7 +15,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Reader: Story = {
   render: () => <main className="min-h-screen bg-card text-1 p-4 sm:p-8">
-    <header className="flex items-center justify-between gap-4 max-w-3xl mx-auto mb-8"><h1 className="text-xl font-serif">Typography specimen</h1><ReadingTypography /></header>
+    <header className="flex flex-wrap items-center justify-between gap-4 max-w-3xl mx-auto mb-8"><h1 className="text-xl font-serif">Typography specimen</h1><div className="flex items-center gap-2"><ReadingAppearance /><ReadingTypography /></div></header>
     <ReadingColumn assetId="typography-fixture" text={TEXT} />
   </main>,
 };

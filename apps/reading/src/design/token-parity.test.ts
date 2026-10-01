@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { parseTokensCss, resolveVar, toRgba } from "./tokenCss";
-import { semantic, state, surface, type Theme } from "./tokens";
+import { highlighter, mascot, primitive, semantic, state, surface, type Theme } from "./tokens";
 import { zIndex } from "./zIndex";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/reading/src/design
@@ -54,6 +54,23 @@ describe("token-parity guard (the CI command)", () => {
 });
 
 describe("the semantic layer: one value per token per theme", () => {
+  it("keeps original coral and magenta on the mascot in both themes", () => {
+    for (const theme of THEMES) {
+      const palette = mascot[theme === "light" ? "day" : "night"];
+      expect(resolveVar(sheet, theme, "--mascot-coat")).toBe(primitive.mascotCoral);
+      expect(resolveVar(sheet, theme, "--mascot-bill")).toBe(primitive.mascotMagenta);
+      expect(resolveVar(sheet, theme, "--mascot-bill")).toBe(palette.bill);
+      expect(resolveVar(sheet, theme, "--mascot-foot")).toBe(palette.foot);
+      expect(resolveVar(sheet, theme, "--mascot-coat")).toBe(palette.coat);
+      expect(resolveVar(sheet, theme, "--mascot-belly")).toBe(palette.belly);
+    }
+  });
+  it("uses the operator's highlighter pigment and its readable ink in both themes", () => {
+    for (const theme of THEMES) {
+      expect(resolveVar(sheet, theme, "--mark")).toBe(highlighter.color);
+      expect(resolveVar(sheet, theme, "--mark-ink")).toBe(highlighter.ink);
+    }
+  });
   it("tokens.ts `semantic` equals what tokens.css resolves to, in both themes", () => {
     const cssName = (k: string) => `--${k.replace(/([A-Z0-9])/g, (m) => `-${m.toLowerCase()}`)}`;
     for (const theme of THEMES) {
@@ -148,10 +165,10 @@ describe("Tailwind keys call sites use resolve to the right token", () => {
     expect(ext.colors.rule).toBe(ch("border-rule"));
   });
 
-  it("the *-night shadows cast var(--sun-deep)", () => {
+  it("the *-night shadows cast near-black var(--void)", () => {
     const shadows = ext.boxShadow;
     for (const key of ["z1-night", "z2-night", "z3-night", "lift-night"]) {
-      expect(shadows[key]).toContain("var(--sun-deep)");
+      expect(shadows[key]).toContain("var(--void)");
       expect(shadows[key]).not.toMatch(/#[0-9a-fA-F]{3,8}/);
     }
   });

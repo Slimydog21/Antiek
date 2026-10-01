@@ -291,10 +291,10 @@ export default function MasterMdViewer({
   }, [synthesis, typography]);
 
   return (
-    <div className="bg-ice-0 dark:bg-charcoal-2">
+    <div className="reading-page">
       <article
         ref={articleRef}
-        className="reading-prose mx-auto px-4 sm:px-6 py-10 text-ink dark:text-bright"
+        className="reading-prose mx-auto px-4 sm:px-6 py-10"
         style={readingTypographyStyle(typography)}>
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
