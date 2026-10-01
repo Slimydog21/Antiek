@@ -11,6 +11,7 @@ import {
   type KeymapTask,
   type Platform,
 } from "./keymap";
+import { LAYOUT_PRESET_DEFAULT } from "../../workspace/persistence";
 
 /** The key-sheet group of each action. */
 export const TASK_OF: Record<ActionId, KeymapTask> = {
@@ -51,9 +52,11 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
   "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",
   "pane.fullscreen": "Esc or the same key restores both panes.",
-  // The stored preset defaults to DOCKED, so this key SUMMONS the cockpit; the
-  // earlier copy told the operator the opposite (see keymapView.presetCopy.test.ts).
-  "layout.togglePreset": "Switches between docked and the cockpit inset (two tall panes). A workspace that has never chosen one starts docked, so this key brings the cockpit in.",
+  // Built FROM LAYOUT_PRESET_DEFAULT rather than restating it: the shipped copy
+  // used to say the cockpit was already the default while the reader returned
+  // "docked", and a sentence that interpolates the constant cannot drift from it.
+  "layout.togglePreset":
+    `Switches between docked and the cockpit inset (two tall panes). A workspace that has never chosen one starts ${LAYOUT_PRESET_DEFAULT}, so this key brings the cockpit in.`,
   "tab.next":
     "Acts on the focused pane: document tabs on the left, agent tabs (block tabs when writing) on the right. With neither pane focused, the left. Wraps.",
   "tab.prev": "The same pane rule as the next tab.",
