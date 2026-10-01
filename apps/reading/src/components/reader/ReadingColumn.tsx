@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 
+
 /**
  * ReadingColumn — the calm, centered reading body that renders a servable
  * work's text INSIDE the shell-level SPR-07 ad border (Read SPR-09 M3).
@@ -39,7 +40,7 @@ import { forwardRef } from "react";
 /** One painted highlight range (page-relative [start, end)), from
  *  anchorRanges.rangesForPage. `treatment` is the closed vocabulary the
  *  highlight-anchor augmentation declares; the classes below are the ONLY
- *  mapping from it to tokens (sun wash + underline; dashed when drifted). */
+ *  mapping from it to tokens (highlighter + underline; dashed when drifted). */
 export interface AnchorMark {
   anchorId: string;
   start: number;
@@ -83,13 +84,12 @@ export interface ReadingColumnProps {
  * levels into one h2.) Sizes, weights and rhythm come from the prose layer.
  */
 /** The ONLY treatment→classes mapping (the closed vocabulary, tokens only):
- *  active = a sun wash + 2px underline at reduced emphasis — part of the
+ *  active = the highlighter pigment + 2px underline — part of the
  *  text, no card/border/shadow/motion; drifted = the same mark dashed at
  *  lower opacity, with the honest "moved" affordance on the title. */
 const MARK_CLASSES: Record<AnchorMark["treatment"], string> = {
-  active: "bg-sun/20 underline decoration-2 decoration-sun/60 underline-offset-2",
-  drifted:
-    "bg-sun/10 underline decoration-2 decoration-dashed decoration-sun/50 underline-offset-2 opacity-70",
+  active: "antiek-highlight underline decoration-2 underline-offset-2",
+  drifted: "antiek-highlight underline decoration-2 decoration-dashed underline-offset-2 opacity-70",
 };
 
 /** Split one block's text at mark boundaries and wrap marked segments.
@@ -181,7 +181,7 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // chunk stays asset-level (the contract's cover/title-card case).
         {...(assetId ? { "data-akb-asset-id": assetId } : {})}
         {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
-        className="prose-antiek flex-1"
+        className="prose-antiek reading-page flex-1"
       >
         {text.trim() ? (
           contentFormat === "html" ? (
