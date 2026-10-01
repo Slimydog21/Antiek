@@ -31,9 +31,15 @@ const NOUN: Record<TabKind, string> = {
   reader: "Document",
   research: "Research",
   document: "Draft",
-  companion: "Companion",
-  thread: "Thread",
+  // Right-side (agent) kinds: the client spawns none yet (A14), but a tree
+  // read from the server holds them.
+  dialogue: "Dialogue",
+  reformat: "Reformat",
+  diligence: "Diligence",
+  island: "Island",
+  findings: "Findings",
   flags: "Flags",
+  block: "Block",
 };
 
 const BRANCH_NOUN: Record<BranchKind, string> = {
@@ -44,6 +50,7 @@ const BRANCH_NOUN: Record<BranchKind, string> = {
   research: "Research",
   manual: "Branch",
   agent: "From an agent",
+  derivation: "Reformatted",
 };
 
 /** The one-word name of a tab's kind (sections read as "Section"). */

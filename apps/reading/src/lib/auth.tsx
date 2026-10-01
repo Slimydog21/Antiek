@@ -1,3 +1,4 @@
+import { setTabOwner, suspendTabDispatch } from "../workspace/tabTreeOwner";
 // Auth context + helpers for the Antiek-issued magic-link session.
 //
 // Backend contract:
@@ -253,6 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshEpochRef.current !== epoch) return;
     if (answer.kind === "unavailable") {
       suspendSectionProseDispatch();
+      suspendTabDispatch();
       // Unknown transport failure is not an identity transition. Keep the
       // reading-state owner until /auth/me proves a different or null user;
       // this preserves pending work across a transient API outage. F-03:
@@ -269,8 +271,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!(answer.kind === "anonymous" && answer.inferred)) {
       setReadingStateOwner(identity?.user_id ?? null);
       setSectionProseOwner(identity?.user_id ?? null);
+      setTabOwner(identity?.user_id ?? null);
     } else {
       suspendSectionProseDispatch();
+      suspendTabDispatch();
     }
     if (identity) {
       setState({ status: "authenticated", identity });
@@ -287,6 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshEpochRef.current += 1;
     setReadingStateOwner(null);
     setSectionProseOwner(null);
+    setTabOwner(null);
     await apiFetch(authUrl("/auth/logout"), { method: "POST" });
     setState({ status: "unauthenticated" });
   }, []);

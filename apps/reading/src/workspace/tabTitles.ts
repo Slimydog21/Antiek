@@ -105,7 +105,6 @@ async function draftTitle(ref: string): Promise<string | null> {
 const DEFAULT_RESOLVERS: Partial<Record<TabKind, TitleResolver>> = {
   reader: async (ref) => (await getBook(ref)).title,
   research: questionOf,
-  thread: questionOf,
   document: draftTitle,
 };
 

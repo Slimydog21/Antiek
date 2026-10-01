@@ -77,7 +77,8 @@ describe("cross-pane requests keep their original route and parent", () => {
     response.resolve(toSnapshot(emptyTabTree("research")));
     const child = await resultTab();
     const tree = tabs().trees.research!;
-    expect(child.parent_tab_id).toBe("root:research:/inv/A");
+    expect(child.parent_tab_id).toMatch(/^t[A-Za-z0-9_-]{22}$/);
+    expect(tabs().trees.research!.nodes[child.parent_tab_id!]).toMatchObject({ side: "left", kind: "research", ref: "/inv/A" });
     expect(tree.nodes[child.parent_tab_id!].ref).toBe("/inv/A");
     expect(Object.values(tree.nodes).some((node) => node.ref === "Book")).toBe(false);
     expect(tree.active_tab_id).toBeNull();
@@ -135,7 +136,8 @@ describe("cross-pane requests keep their original route and parent", () => {
     openDocumentInLeftPane("doc-9", origin, "Source title");
     response.resolve(toSnapshot(emptyTabTree("research")));
     const child = await resultTab();
-    expect(child.parent_tab_id).toBe("root:research:/inv/A");
+    expect(child.parent_tab_id).toMatch(/^t[A-Za-z0-9_-]{22}$/);
+    expect(tabs().trees.research!.nodes[child.parent_tab_id!]).toMatchObject({ side: "left", kind: "research", ref: "/inv/A" });
     expect(child.opened_by).toEqual({ thread_id: "agent-1", agent_kind: "research" });
     expect(tabs().trees.research?.active_tab_id).toBe(child.tab_id);
     expect(tabs().navIntent?.tabId).toBe(child.tab_id);

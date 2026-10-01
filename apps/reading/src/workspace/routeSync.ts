@@ -10,7 +10,8 @@
  * lazily) still files under the tab showing the route, never as a root.
  */
 import type { BranchIntent } from "./branchNavigation";
-import { adoptTabForRoute, branchOriginOf, childTabId, freshTabId, rootTabId } from "./documentSpace";
+import { adoptTabForRoute, branchOriginOf } from "./documentSpace";
+import { newTabId } from "./tabId";
 import type { Mothership } from "./tabTree";
 import { useTabTrees } from "./tabTreeStore";
 
@@ -22,7 +23,10 @@ export async function syncRouteToTree(
   pathname: string,
   intent: BranchIntent | null = null,
 ): Promise<void> {
-  await useTabTrees.getState().ensureMothership(mothership);
+  const store = useTabTrees.getState();
+  const epoch = store.contextEpoch;
+  await store.ensureMothership(mothership);
+  if (useTabTrees.getState().contextEpoch !== epoch) return;
   adoptRoute(mothership, pathname, intent);
 }
 
@@ -38,7 +42,7 @@ export function adoptRoute(mothership: Mothership, pathname: string, intent: Bra
       mothership,
       null,
       {
-        tab_id: freshTabId(tree, rootTabId(adoption.ref)),
+        tab_id: newTabId(tree),
         kind: adoption.ref.kind,
         ref: adoption.ref.ref,
         mothership,
@@ -51,7 +55,7 @@ export function adoptRoute(mothership: Mothership, pathname: string, intent: Bra
       mothership,
       adoption.parentId,
       {
-        tab_id: freshTabId(tree, childTabId(adoption.parentId, adoption.ref.kind, adoption.ref.ref)),
+        tab_id: newTabId(tree),
         origin: branchOriginOf(adoption.origin),
         kind: adoption.ref.kind,
         ref: adoption.ref.ref,

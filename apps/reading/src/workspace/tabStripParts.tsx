@@ -25,12 +25,16 @@ export function KindGlyph({ tab, className = "" }: { tab: Pick<TabNode, "kind" |
       return <Search {...props} />;
     case "document":
       return sectionIdFromRef(tab.ref) !== null ? <Pilcrow {...props} /> : <FileText {...props} />;
-    case "thread":
+    case "dialogue":
       return <MessagesSquare {...props} />;
-    case "companion":
-      return <Bot {...props} />;
     case "flags":
       return <Flag {...props} />;
+    case "reformat":
+    case "diligence":
+    case "island":
+    case "findings":
+    case "block":
+      return <Bot {...props} />;
     default:
       return null;
   }

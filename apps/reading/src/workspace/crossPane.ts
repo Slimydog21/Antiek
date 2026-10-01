@@ -13,8 +13,9 @@
  * never changes.
  */
 import { toast } from "../components/lemon/LemonToast";
-import { adoptTabForRoute, branchOriginOf, childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { adoptTabForRoute, branchOriginOf, findOpenTab, mothershipForPath } from "./documentSpace";
 import { adoptRoute } from "./routeSync";
+import { newTabId } from "./tabId";
 import { setTabTitle } from "./tabTitles";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 
@@ -39,8 +40,9 @@ export interface OpenDocumentRequest {
 
 /** The D6 handler: a left child tab under the spawning (active) tab — or a
  *  root tab when nothing is active. Re-opening the same document under the
- *  same parent ACTIVATES the open tab (never a duplicate); reopening one
- *  that was closed takes a fresh id, since the closed id stays in history. */
+ *  same parent ACTIVATES the open tab (never a duplicate), found by its
+ *  fields; reopening one that was closed opens a new tab (a new opaque id:
+ *  the closed one stays in history). */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
   const pathname = window.location.pathname;
   const mothership = mothershipForPath(pathname, window.location.search);
@@ -77,10 +79,7 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       if (adoption.action === "none") parentId = tree.active_tab_id;
       else if (adoption.action === "activate") parentId = adoption.tabId;
       else {
-        const base = adoption.action === "branch"
-          ? childTabId(adoption.parentId, adoption.ref.kind, adoption.ref.ref)
-          : rootTabId(adoption.ref);
-        parentId = freshTabId(tree, base);
+        parentId = newTabId(tree);
         const seeded = s.spawnTab(mothership, adoption.action === "branch" ? adoption.parentId : null, {
           tab_id: parentId,
           kind: adoption.ref.kind,
@@ -108,16 +107,13 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       else if (!takeScreen) notifyLateOpen();
       return;
     }
-    const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
-    const open = siblings.find(shows);
+    // Found by its fields, never by its (opaque) id.
+    const open = findOpenTab(tree, { side: "left", kind: "reader", ref: req.documentId, parent_tab_id: parentId });
     if (open) {
       if (takeScreen) s.activateTab(mothership, open);
       else notifyLateOpen();
       return;
     }
-    const base = parentId
-      ? childTabId(parentId, "reader", req.documentId)
-      : rootTabId({ kind: "reader", ref: req.documentId });
     if (req.documentTitle) setTabTitle("reader", req.documentId, req.documentTitle);
     // §2.2 rev 7 (S1): an agent-opened document is a LEFT node of origin
     // kind "agent" carrying opened_by {thread_id, agent_kind}, in the
@@ -127,7 +123,7 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     const agentKind = req.origin.agentKind?.trim();
     const agentOpened = threadId && agentKind ? { thread_id: threadId, agent_kind: agentKind } : null;
     const spawned = s.spawnTab(mothership, parentId, {
-      tab_id: freshTabId(tree, base),
+      tab_id: newTabId(tree),
       origin: { document_id: req.documentId, kind: agentOpened ? "agent" : "reference" },
       ...(agentOpened ? { opened_by: agentOpened } : {}),
       kind: "reader",

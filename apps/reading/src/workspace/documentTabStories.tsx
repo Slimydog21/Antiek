@@ -51,6 +51,8 @@ function builder(mothership: Mothership = "reading") {
   const titles: Titles = {};
   let n = 0;
   function add(parent: string | null, input: Omit<SpawnInput, "tab_id" | "mothership">, title?: string | null): string {
+    // Deterministic fixture ids for stories and render tests (legal §1.6 ids,
+    // stable across runs so snapshots hold). App code mints through newTabId().
     const id = `t${n++}`;
     const r = spawnChild(tree, parent, { ...input, tab_id: id, mothership, activate: false });
     if (!r.ok) throw new Error(r.error.message);

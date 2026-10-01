@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "../components/lemon/LemonToast";
-import { checkInvariants, closeTab, createInMemoryTabTreeAdapter, emptyTabTree, fromSnapshot, rebase, restoreClosed, spawnChild, toSnapshot, undo, type TabTree, type TabTreeAdapter, type TabTreeResult } from "./tabTree";
+import { checkInvariants, closeTab, createInMemoryTabTreeAdapter, emptyTabTree, fromSnapshot, rebase, restoreClosed, spawnChild, toSnapshot, undo, type TabTree, type TabTreeAdapter, type SaveResult, type TabTreeSnapshot, type TabTreeResult } from "./tabTree";
 import { useTabTrees } from "./tabTreeStore";
 function must<T>(result: TabTreeResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result; }
 function spawn(tree: TabTree, parent: string | null, id: string): TabTree { return must(spawnChild(tree, parent, { tab_id: id, ref: id, kind: "reader", mothership: "reading" })).tree; }
 function base(): TabTree { return spawn(spawn(spawn(emptyTabTree("reading"), null, "R"), "R", "P"), "P", "seen"); }
 const tabs = () => useTabTrees.getState();
+function saved(snapshot: TabTreeSnapshot, version: number): SaveResult {
+  const accepted = structuredClone(snapshot);
+  accepted.version = version;
+  delete accepted.restoring;
+  for (const node of Object.values(accepted.tree.nodes)) delete node.pruned_at;
+  return { status: "saved", snapshot: accepted };
+}
 async function drain(): Promise<void> { for (let i = 0; i < 30; i++) await Promise.resolve(); }
 beforeEach(() => { tabs().resetTabTrees(); });
 afterEach(() => { tabs().resetTabTrees(); vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -25,7 +32,7 @@ describe("signed §2.2 restore and rebase", () => {
     const restored = must(restoreClosed(remote, "P")).tree;
     const forged = toSnapshot(restored);
     forged.tree.nodes.P.ref = "different-document";
-    expect((await adapter.save("default", "reading", forged)).status).toBe("rejected");
+    expect((await adapter.save("default", "reading", forged)).status).toBe("invalid");
     expect((await adapter.save("default", "reading", toSnapshot(restored))).status).toBe("saved");
     const saved = await adapter.load("default", "reading");
     expect(saved.tree.nodes.P.pruned_at).toBeUndefined();
@@ -66,8 +73,8 @@ describe("signed §2.2 restore and rebase", () => {
     const info = vi.spyOn(toast, "info"); let calls = 0;
     const adapter: TabTreeAdapter = {
       load: async () => toSnapshot(local),
-      save: async () => ++calls === 1 ? { status: "conflict", current: toSnapshot(remote) } : { status: "saved", version: 2 },
-      allocate: async () => ({ public_number: 1 }),
+      save: async (_p, _m, snapshot) => ++calls === 1 ? { status: "conflict", reason: "version_stale", current: toSnapshot(remote) } : saved(snapshot, 2),
+      allocate: createInMemoryTabTreeAdapter().allocate,
     };
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading"); action(); await drain(); return info;
   }
@@ -98,35 +105,36 @@ describe("signed §2.2 restore and rebase", () => {
   });
 
   it("an old save acknowledgment cannot change a reset context", async () => {
-    let finish!: (value: { status: "saved"; version: number }) => void;
+    let finish!: (value: SaveResult) => void;
     const adapter: TabTreeAdapter = {
       load: async () => toSnapshot(base()),
       save: () => new Promise((resolve) => { finish = resolve; }),
-      allocate: async () => ({ public_number: 1 }),
+      allocate: createInMemoryTabTreeAdapter().allocate,
     };
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
     tabs().activateTab("reading", "R"); await drain();
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
-    finish({ status: "saved", version: 99 }); await drain();
+    finish(saved(toSnapshot(base()), 99)); await drain();
     expect(tabs().trees.reading!.version).toBe(0);
   });
 
-  it("retains restore intent when a conflict retry is not accepted", async () => {
+  it("retains restore intent through two conflicts then accepts it without another user action", async () => {
+    vi.useFakeTimers();
     const closed = must(closeTab(base(), "P", "prune", "t1")).tree;
     let calls = 0;
     const adapter: TabTreeAdapter = {
       load: async () => toSnapshot(closed),
-      save: async () => ++calls <= 2
-        ? { status: "conflict", current: toSnapshot(closed) }
-        : { status: "saved", version: 1 },
-      allocate: async () => ({ public_number: 1 }),
+      save: async (_p, _m, snapshot) => ++calls <= 2
+        ? { status: "conflict", reason: "version_stale", current: toSnapshot(closed) }
+        : saved(snapshot, 1),
+      allocate: createInMemoryTabTreeAdapter().allocate,
     };
     const save = vi.spyOn(adapter, "save");
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
     tabs().undoLastClose("reading"); await drain();
-    expect(tabs().pendingOps.reading).toEqual([{ type: "restore", tab_id: "P", close_id: "P@t1" }]);
+    expect(tabs().pendingOps.reading).toContainEqual({ type: "restore", tab_id: "P", close_id: "P@t1" });
     expect(tabs().trees.reading!.nodes.P.pruned_at).toBe("t1");
-    tabs().activateTab("reading", "R"); await drain();
+    await vi.advanceTimersByTimeAsync(100); await drain();
     expect(save.mock.calls[2][2].tree.nodes.P.pruned_at).toBe("t1");
     expect(tabs().pendingOps.reading).toEqual([]);
     expect(tabs().trees.reading!.nodes.P.pruned_at).toBeUndefined();
@@ -134,22 +142,22 @@ describe("signed §2.2 restore and rebase", () => {
 
   it("a close held across a 409 preserves and reports a remote child", async () => {
     vi.useFakeTimers();
-    let respond!: (value: { status: "conflict"; current: ReturnType<typeof toSnapshot> }) => void;
+    let respond!: (value: SaveResult) => void;
     let calls = 0;
     const remote = spawn(base(), "P", "new");
     const adapter: TabTreeAdapter = {
       load: async () => toSnapshot(base()),
-      save: () => ++calls === 1
+      save: (_p, _m, snapshot) => ++calls === 1
         ? new Promise((resolve) => { respond = resolve; })
-        : Promise.resolve({ status: "saved", version: calls }),
-      allocate: async () => ({ public_number: 1 }),
+        : Promise.resolve(saved(snapshot, calls)),
+      allocate: createInMemoryTabTreeAdapter().allocate,
     };
     const save = vi.spyOn(adapter, "save");
     const info = vi.spyOn(toast, "info");
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
     tabs().activateTab("reading", "R"); await drain();
     tabs().closeTabById("reading", "P", "prune");
-    respond({ status: "conflict", current: toSnapshot(remote) }); await drain();
+    respond({ status: "conflict", reason: "version_stale", current: toSnapshot(remote) }); await drain();
     expect(tabs().trees.reading!.nodes.new.parent_tab_id).toBe("R");
     expect(info).toHaveBeenCalledWith("Moved under 1: kept a tab added on another device");
     expect(save.mock.calls[1][2].tree.nodes.P).toBeTruthy();

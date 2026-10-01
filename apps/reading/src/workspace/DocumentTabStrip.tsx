@@ -41,6 +41,7 @@ import { mothershipForPath, routeForTab, routeTabFor, tabShowsPath } from "./doc
 import { MODE_HOME } from "./mothershipForPath";
 import { syncRouteToTree } from "./routeSync";
 import { sectionIdFromRef } from "./sectionRef";
+import { TabPersistenceStatus } from "./TabPersistenceStatus";
 import { SiblingStrip } from "./SiblingStrip";
 import { TabPathHeader } from "./TabPathHeader";
 import { TabTreePanel } from "./TabTreePanel";
@@ -75,6 +76,7 @@ function DocumentTabStripInner() {
   const mothership = mothershipForPath(location.pathname, location.search);
 
   const tree = useTabTrees((s) => s.trees[mothership]);
+  const contextEpoch = useTabTrees((s) => s.contextEpoch);
   const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
   const subtreeFocusId = useTabTrees((s) => s.subtreeFocusId);
@@ -87,7 +89,7 @@ function DocumentTabStripInner() {
     void syncRouteToTree(mothership, location.pathname, intent);
     // `intent` is derived from the entry `location.key` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.key, mothership]);
+  }, [location.pathname, location.key, mothership, contextEpoch]);
 
   // tree → route: a USER activation's intent, taken once. An intent left
   // behind by a newer activation, or by a tab the route sync has since moved
@@ -164,6 +166,8 @@ function DocumentTabStripInner() {
   const status: StripStatus = tree ? "ready" : loadError ? "error" : "loading";
 
   return (
+    <>
+    {status === "ready" && <TabPersistenceStatus mothership={mothership} />}
     <DocumentTabStripView
       status={status}
       errorDetail={loadError}
@@ -184,6 +188,7 @@ function DocumentTabStripInner() {
       onRowsShown={requestRows}
       onCloseTab={(id, mode) => useTabTrees.getState().closeTabById(mothership, id, mode)}
     />
+    </>
   );
 }
 

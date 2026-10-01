@@ -4,17 +4,24 @@
  * reading), keyed by the current mode, persisted ONLY through a
  * TabTreeAdapter (the model's §1.6: never localStorage/sessionStorage).
  *
- * Persistence honesty: the default adapter is the model's IN-MEMORY one, so
- * trees are SESSION-scoped — a reload starts from the adapter's in-memory
- * rows (empty across a real reload). Lane B owns the HTTP adapter
- * (GET/PUT/allocate); `setTabTreeAdapter` is the seam, and every save goes
- * through the same snapshot + expected-version + rebase-after-409 path the
- * server adapter will drive, so swapping adapters changes no caller.
+ * Persistence honesty: `tabsPersistence` says which it is. The default
+ * adapter is the model's IN-MEMORY one ("session": a reload starts empty).
+ * `bindActiveProject` binds the trees to the active project's server row
+ * through the HTTP adapter (tabTreeHttpAdapter.ts, lane B's LB-2 routes) and
+ * reports "server"; when GET /projects answers 404, or a 200 that is not
+ * JSON (the route is not deployed), it keeps the in-memory adapter and
+ * reports "session", so the UI can say "Tabs aren't saved across reloads
+ * yet"; a network error is retried first (1 s, 4 s, 15 s). Every save goes
+ * through one path for both adapters: snapshot + expected version, adopt the
+ * server's answer (replaying ops made in flight), rebase after a 409, and
+ * after a 422 log, refetch, rebase and record that tree's `persistenceIssues`
+ * entry (cleared only by the next accepted save of the same tree), so "server"
+ * never claims tabs are saved while the server is refusing them (`tabsSaved`).
  *
  * Tabs are NAVIGATION state (tab ≠ branch): closing or pruning a tab never
- * touches the investigation/document it pointed at. public_number stays null
- * this wave — the model assigns one only from the server's allocate route,
- * which is lane B's; a null number is the lawful state until then.
+ * touches the investigation/document it pointed at. New tabs receive their
+ * public number from the adapter before their first snapshot is saved.
+ * A failed allocation retains the tab and retries with the same ID.
  *
  * Close is HELD locally through the 10 s undo window (§2.2): the tree drops
  * the tab at once, a LemonToast offers Undo for UNDO_TTL_MS, and the close
@@ -27,11 +34,13 @@
 import { create } from "zustand";
 
 import { toast, UNDO_TTL_MS } from "../components/lemon/LemonToast";
+import { ApiError } from "../lib/api";
+import { listProjects } from "../lib/api/projects";
 import { labelForTab } from "./tabLabels";
 import { resetTabTitles, titleKey, useTabTitles } from "./tabTitles";
 import { tabTreeHandle } from "./tabTreeHandle";
 import {
-  acknowledgeRestores,
+  assignPublicNumber,
   closeTab,
   createInMemoryTabTreeAdapter,
   emptyTabTree,
@@ -51,13 +60,84 @@ import {
   type TabOp,
   type TabTree,
   type TabTreeAdapter,
+  type TabTreeSnapshot,
   type UndoToken,
 } from "./tabTree";
+import { getTabOwner, subscribeTabOwner } from "./tabTreeOwner";
+import { createHttpTabTreeAdapter } from "./tabTreeHttpAdapter";
 
-/** The project the trees are filed under. Single-project until the
- *  workstation layer (lane B) owns real project ids — a named constant, not
- *  a secret default. */
-export const TAB_PROJECT_ID = "default";
+/** The key the in-memory adapter files session trees under. It never
+ *  reaches a server: a server-bound store uses the active project's id. */
+export const SESSION_PROJECT_KEY = "default";
+
+/** Where the trees are saved to: "session" (in memory, gone on reload) or
+ *  "server" (the active project's row, §1.6). It claims the tabs ARE saved
+ *  only after its work is acknowledged: see `tabsSaved`. */
+export type TabsPersistence = "session" | "server";
+
+/** The last save of `mothership`'s tree was refused (a 422: Part 2 §2.2
+ *  calls it a lane-A bug). The store has already logged it, refetched and
+ *  rebased, so the tabs are on screen but not saved. A later accepted save of
+ *  that tree clears it. `at` is when the refusal came back (ISO 8601). */
+export interface PersistenceIssue {
+  reason: "refused" | "transport" | "conflict" | "unreadable";
+  at: string;
+  mothership: Mothership;
+}
+
+/** One slot per tree: a refusal of one tree is never overwritten or cleared
+ *  by another tree's save. */
+export type PersistenceIssues = Record<Mothership, PersistenceIssue | null>;
+
+function noIssues(): PersistenceIssues {
+  return { research: null, writing: null, reading: null };
+}
+
+/** The newest outstanding issue across the trees (null when none). */
+function newestIssue(issues: PersistenceIssues): PersistenceIssue | null {
+  let newest: PersistenceIssue | null = null;
+  for (const issue of Object.values(issues)) {
+    if (issue && (newest === null || issue.at >= newest.at)) newest = issue;
+  }
+  return newest;
+}
+
+/** True when the tabs are saved on the server: bound to a project, and the
+ *  last save of EVERY tree was accepted (or none has been refused). */
+export function tabsSaved(s: Pick<TabTreeState, "tabsPersistence" | "persistenceIssues" | "pendingOps" | "heldClose" | "saving" | "dispatchAllowed" | "loadError" | "loaded" | "trees">): boolean {
+  return s.tabsPersistence === "server" && s.dispatchAllowed && s.heldClose === null &&
+    Object.values(s.loaded).some(Boolean) &&
+    (["reading", "writing", "research"] as const).every((m) => s.trees[m] === null || s.loaded[m]) &&
+    Object.values(s.persistenceIssues).every((issue) => issue === null) &&
+    Object.values(s.pendingOps).every((ops) => ops.length === 0) &&
+    Object.values(s.loadError).every((error) => error === null) &&
+    Object.values(s.saving).every((busy) => !busy);
+}
+
+/** GET /projects retries after a network error (A2b item 6): three, after
+ *  1 s, 4 s and 15 s. */
+export const PROJECT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000, 15_000];
+
+/** The active project's id, or null when there is none to bind to. May throw
+ *  (an ApiError 404 means GET /projects is not deployed). */
+export type ActiveProjectSource = (signal?: AbortSignal) => Promise<string | null>;
+
+/** The default source: the first non-archived project GET /projects lists. */
+export async function firstOpenProject(signal?: AbortSignal): Promise<string | null> {
+  const projects = await listProjects({ signal });
+  return projects.find((p) => p.archived_at === null)?.project_id ?? null;
+}
+
+/** The HTTP adapter the store binds with: titles come from the tabTitles
+ *  cache, the source the strip's labels read. */
+function serverAdapter(): TabTreeAdapter {
+  return createHttpTabTreeAdapter({ titleOf: (node) => knownTitle(node.kind, node.ref) });
+}
+
+function knownTitle(kind: TabNode["kind"], ref: string): string | null {
+  const entry = useTabTitles.getState().entries[titleKey(kind, ref)];
+  return entry?.state === "known" ? (entry.title ?? "") : null;
+}
 
 export type { Mothership, TabNode, TabTree, UndoToken };
 
@@ -112,6 +192,9 @@ export interface SpawnTabResult {
 interface TabTreeState {
   /** Invalidates in-flight work even when the same adapter is selected again. */
   contextEpoch: number;
+  dispatchAllowed: boolean;
+  saving: Record<Mothership, boolean>;
+  retrySave: (mothership: Mothership) => void;
   trees: Record<Mothership, TabTree | null>;
   /** Motherships whose initial adapter load has completed. */
   loaded: Record<Mothership, boolean>;
@@ -129,8 +212,28 @@ interface TabTreeState {
   /** The last user activation not yet shown (null = none pending). */
   navIntent: NavIntent | null;
   adapter: TabTreeAdapter;
+  /** The project the trees are bound to (null = session, in memory). */
+  projectId: string | null;
+  tabsPersistence: TabsPersistence;
+  /** Per tree: set when that tree's last save was refused, null when it was
+   *  accepted (or none has run). The UI copy for it is not written yet; the
+   *  state is exposed. */
+  persistenceIssues: PersistenceIssues;
+  /** Derived from `persistenceIssues`: the newest outstanding issue, null
+   *  only when every tree is clean. Kept for callers that want one flag. */
+  persistenceIssue: PersistenceIssue | null;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
+  /** Bind the trees to the active project (default source: the first
+   *  non-archived project). A network error is retried (PROJECT_RETRY_DELAYS_MS)
+   *  before giving up. A 404 from GET /projects, a 200 that is not JSON (the
+   *  route is absent), no project, or any other failure keeps the in-memory
+   *  adapter ("session"). A load waits for a binding in flight, retries
+   *  included. */
+  bindActiveProject: (
+    source?: ActiveProjectSource,
+    makeAdapter?: () => TabTreeAdapter,
+  ) => Promise<TabsPersistence>;
   /** Load a mothership's tree once. Never rejects: a failure lands in
    *  loadError and retryLoad tries again. */
   ensureMothership: (mothership: Mothership) => Promise<void>;
@@ -166,11 +269,24 @@ interface TabTreeState {
   resetTabTrees: () => void;
 }
 
+/** The binding in flight (loads wait for it), and whether one has started
+ *  (tabTreeHandle.bindOnLoad starts one on the first load). */
+let binding: Promise<TabsPersistence> | null = null;
+let bindingStarted = false;
 /** Serialize adapter saves per mothership (expected-version discipline). */
 const saveQueues = new Map<Mothership, Promise<void>>();
 /** One in-flight load per mothership (the route sync and a cross-pane open
  *  can both ask on the same tick). */
 const loads = new Map<Mothership, Promise<void>>();
+const resumeLoads = new Set<Mothership>();
+let dispatchController = new AbortController();
+
+function cancelRequests(): void {
+  dispatchController.abort();
+  dispatchController = new AbortController();
+  loads.clear();
+  saveQueues.clear();
+}
 /** Saves asked for while a close was held; run when the hold resolves. */
 const deferredSaves = new Set<Mothership>();
 let holdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,6 +296,59 @@ const undoToasts = new Map<string, number>();
 let navSeq = 0;
 /** Written closes still inside their toast's window, by close_id. */
 const recentCloses = new Map<string, { mothership: Mothership; token: UndoToken }>();
+
+/** How a failed GET /projects is read. */
+type ProjectFailure = "absent" | "network" | "other";
+
+function classifyProjectFailure(e: unknown): ProjectFailure {
+  // 404: the route is not deployed.
+  if (e instanceof ApiError) {
+    const htmlFallback = e.status === 0 && /^\s*(?:<!doctype html|<html)[\s>]/i.test(e.body);
+    return e.status === 404 || htmlFallback ? "absent" : "other";
+  }
+  // A 200 whose body is not JSON: the edge does not route /projects to the
+  // API and the SPA fallback answered index.html, so resp.json() threw a
+  // SyntaxError. The route is absent exactly as a 404 says it is.
+  if (e instanceof SyntaxError) return "absent";
+  // fetch rejects (a TypeError) when there is no response at all: the
+  // network, not the route. Worth another try.
+  return "network";
+}
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", finish); resolve(); };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+/** The active project's id, or null (stay on session). A network error is
+ *  retried after each of PROJECT_RETRY_DELAYS_MS; a route that is absent is
+ *  not retried and not logged; anything else is logged once. */
+type ProjectLookup = { kind: "found"; projectId: string | null } | { kind: "unavailable" };
+
+async function readActiveProject(source: ActiveProjectSource, current: () => boolean, signal: AbortSignal): Promise<ProjectLookup> {
+  for (let attempt = 0; ; attempt++) {
+    if (!current()) return { kind: "unavailable" };
+    try {
+      return { kind: "found", projectId: await source(signal) };
+    } catch (e) {
+      if (!current()) return { kind: "unavailable" };
+      const kind = classifyProjectFailure(e);
+      if (kind === "absent") return { kind: "unavailable" };
+      if (kind === "network" && attempt < PROJECT_RETRY_DELAYS_MS.length) {
+        await wait(PROJECT_RETRY_DELAYS_MS[attempt], signal);
+        continue;
+      }
+      // Logged, and the session trees kept rather than lose the operator's tabs.
+      // eslint-disable-next-line no-console
+      console.error("[antiek/tabs] could not read the active project; tabs stay in this session:", e);
+      return { kind: "unavailable" };
+    }
+  }
+}
 
 function noErrors(): Record<Mothership, string | null> {
   return { research: null, writing: null, reading: null };
@@ -247,9 +416,20 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       deferredSaves.add(mothership);
       return;
     }
-    const prior = saveQueues.get(mothership) ?? Promise.resolve();
+    if (saveQueues.has(mothership)) return;
     const contextEpoch = get().contextEpoch;
-    const run = prior.then(() => get().contextEpoch === contextEpoch ? saveNow(mothership) : undefined);
+    const signal = dispatchController.signal;
+    const attempted = new Set<TabOp>();
+    const run = Promise.resolve().then(async () => {
+      if (get().contextEpoch === contextEpoch && !signal.aborted) await saveNow(mothership, attempted);
+    }).finally(() => {
+      if (saveQueues.get(mothership) !== run) return;
+      saveQueues.delete(mothership);
+      // Only a mutation not included in the preceding attempt asks for another
+      // write. Duplicate retry clicks cannot multiply a failed CAS sequence.
+      if (get().contextEpoch === contextEpoch && !signal.aborted && get().dispatchAllowed &&
+        get().pendingOps[mothership].some((op) => !attempted.has(op))) queueSave(mothership);
+    });
     saveQueues.set(mothership, run);
   }
 
@@ -258,119 +438,182 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     return held && held.mothership === mothership ? held : null;
   }
 
-  /** Record a save's new version on the tree, and drop from the pending log
-   *  the ops that save carried (ops made while it was in flight stay, for a
-   *  later rebase). */
-  function markSaved(mothership: Mothership, version: number, sentOps: number, sent: TabTree): void {
-    acceptedTrees.set(mothership, acknowledgeRestores(sent, sent, version));
-    set((s) => ({
-      trees: {
-        ...s.trees,
-        [mothership]: s.trees[mothership] ? acknowledgeRestores(s.trees[mothership]!, sent, version) : s.trees[mothership],
-      },
-      pendingOps: { ...s.pendingOps, [mothership]: (s.pendingOps[mothership] ?? []).slice(sentOps) },
-    }));
+  function adapterKey(): string {
+    return get().projectId ?? SESSION_PROJECT_KEY;
   }
 
-  async function saveNow(mothership: Mothership): Promise<void> {
-    // The hold is checked when the save RUNS, not when it was queued: a save
-    // queued before a close would otherwise run inside the window and write
-    // the close that the toast may yet undo (critic P-A). It waits instead,
-    // and commitHeld/undoClose run it once the hold resolves.
+  function adopt(mothership: Mothership, snapshot: TabTreeSnapshot, ops: TabOp[]): TabTree | null {
+    const parsed = fromSnapshot(snapshot);
+    if (!parsed.ok) {
+      setIssue(mothership, { reason: "unreadable", at: new Date().toISOString(), mothership });
+      console.error("[antiek/tabs] unreadable snapshot:", parsed.error.message);
+      return null;
+    }
+    acceptedTrees.set(mothership, parsed.tree);
+    const replayed = rebase(parsed.tree, ops);
+    const { dropped, reparented } = replayed;
+    const rebased = prepareRestores(mothership, replayed.tree);
+    const notices = new Set<string>();
+    for (const { tab_id, reason } of reparented) {
+      const moved = rebased.nodes[tab_id];
+      if (!moved) continue;
+      const parent_tab_id = moved.parent_tab_id;
+      const destination = parent_tab_id === null ? "to the root" : `under ${rebased.nodes[parent_tab_id].hier_number}`;
+      const cause = reason === "closed_parent" ? "its parent was closed on another device" : "kept a tab added on another device";
+      notices.add(`Moved ${destination}: ${cause}`);
+    }
+    for (const { reason } of dropped) {
+      notices.add(reason === "tab_not_open" || reason === "unknown_tab"
+        ? "A tab was closed on another device; your other changes were kept."
+        : reason === "duplicate_tab_id"
+        ? "A tab already exists on another device; your other changes were kept."
+        : reason === "not_closed_by_token"
+          ? "That close changed on another device; your other changes were kept."
+          : "A tab change could not be applied to the updated tree; your other changes were kept.");
+    }
+    // A close held while the save was in flight stays held: it is replayed
+    // onto the rebased tree for the screen only (same close_id, so its
+    // toast's Undo still finds it), and the retry below writes the tree
+    // WITHOUT it.
+    const held = heldOn(mothership);
+    let shown = rebased;
+    if (held && held.op.type === "close") {
+      const op = held.op;
+      const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
+      if (replay.ok) {
+        shown = replay.tree;
+        for (const node of Object.values(shown.nodes)) {
+          if (op.mode !== "prune" || node.parent_tab_id === rebased.nodes[node.tab_id]?.parent_tab_id) continue;
+          const destination = node.parent_tab_id === null ? "to the root" : `under ${shown.nodes[node.parent_tab_id].hier_number}`;
+          notices.add(`Moved ${destination}: kept a tab added on another device`);
+        }
+        set({ heldClose: { ...held, token: replay.undo, op: replay.op } });
+      } else {
+        // Another device already closed it: nothing is left to hold.
+        if (holdTimer !== null) clearTimeout(holdTimer);
+        holdTimer = null;
+        set({ heldClose: null });
+      }
+    }
+    for (const notice of notices) toast.info(notice);
+    const droppedOps = new Set(dropped.map(({ op }) => op));
+    const remainingOps = ops.filter((op) => !droppedOps.has(op));
+    set((s) => ({
+      trees: { ...s.trees, [mothership]: shown },
+      pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
+    }));
+    return rebased;
+  }
+
+  async function saveNow(mothership: Mothership, attempted: Set<TabOp>): Promise<void> {
+    for (const op of get().pendingOps[mothership]) attempted.add(op);
     if (heldOn(mothership)) {
       deferredSaves.add(mothership);
       return;
     }
-    const { adapter, trees, pendingOps, contextEpoch } = get();
-    const currentTree = trees[mothership];
-    if (!currentTree) return;
-    const tree = prepareRestores(mothership, currentTree);
-    if (tree !== currentTree) set((s) => ({ trees: { ...s.trees, [mothership]: tree } }));
-    const sentOps = (pendingOps[mothership] ?? []).length;
-    const result = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(tree));
-    if (get().contextEpoch !== contextEpoch) return;
-    if (result.status === "saved") {
-      markSaved(mothership, result.version, sentOps, tree);
-      return;
-    }
-    if (result.status === "conflict") {
-      // Another writer won. Rebase the pending ops onto the remote snapshot
-      // (spawns are never lost; dead ops drop with one quiet toast) and save
-      // once more. The in-memory adapter cannot produce this path in a single
-      // tab; lane B's multi-device adapter can, and it is fully wired.
-      const parsed = fromSnapshot(result.current);
-      if (!parsed.ok) return;
-      acceptedTrees.set(mothership, parsed.tree);
-      // Every op made so far, including those made while the save was in
-      // flight; a close still inside its window is not one of them.
-      const ops = get().pendingOps[mothership] ?? [];
-      const replayed = rebase(parsed.tree, ops);
-      const { dropped, reparented } = replayed;
-      const rebased = prepareRestores(mothership, replayed.tree);
-      const notices = new Set<string>();
-      for (const { tab_id, reason } of reparented) {
-        const moved = rebased.nodes[tab_id];
-        if (!moved) continue;
-        const parent_tab_id = moved.parent_tab_id;
-        const destination = parent_tab_id === null ? "to the root" : `under ${rebased.nodes[parent_tab_id].hier_number}`;
-        const cause = reason === "closed_parent" ? "its parent was closed on another device" : "kept a tab added on another device";
-        notices.add(`Moved ${destination}: ${cause}`);
-      }
-      for (const { reason } of dropped) {
-        notices.add(reason === "tab_not_open" || reason === "unknown_tab"
-          ? "A tab was closed on another device; your other changes were kept."
-          : reason === "duplicate_tab_id"
-            ? "A tab already exists on another device; your other changes were kept."
-            : reason === "not_closed_by_token"
-              ? "That close changed on another device; your other changes were kept."
-              : "A tab change could not be applied to the updated tree; your other changes were kept.");
-      }
-      // A close held while the save was in flight stays held: it is replayed
-      // onto the rebased tree for the screen only (same close_id, so its
-      // toast's Undo still finds it), and the retry below writes the tree
-      // WITHOUT it.
-      const held = heldOn(mothership);
-      let shown = rebased;
-      if (held && held.op.type === "close") {
-        const op = held.op;
-        const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
-        if (replay.ok) {
-          shown = replay.tree;
-          for (const node of Object.values(shown.nodes)) {
-            if (op.mode !== "prune" || node.parent_tab_id === rebased.nodes[node.tab_id]?.parent_tab_id) continue;
-            const destination = node.parent_tab_id === null ? "to the root" : `under ${shown.nodes[node.parent_tab_id].hier_number}`;
-            notices.add(`Moved ${destination}: kept a tab added on another device`);
-          }
-          set({ heldClose: { ...held, token: replay.undo, op: replay.op } });
-        } else {
-          // Another device already closed it: nothing is left to hold.
-          if (holdTimer !== null) clearTimeout(holdTimer);
-          holdTimer = null;
-          set({ heldClose: null });
+    const requestedEpoch = get().contextEpoch;
+    const requestedSignal = dispatchController.signal;
+    if (!get().dispatchAllowed) return;
+    if (binding) await binding;
+    if (get().contextEpoch !== requestedEpoch || requestedSignal.aborted) return;
+    const { adapter, contextEpoch } = get();
+    const signal = dispatchController.signal;
+    const current = () => get().contextEpoch === contextEpoch && !signal.aborted;
+    const canDispatch = () => current() && get().dispatchAllowed;
+    if (!canDispatch()) return;
+    if (!get().loaded[mothership]) await get().ensureMothership(mothership);
+    if (!canDispatch() || !get().loaded[mothership]) return;
+    const key = adapterKey();
+    set((state) => ({ saving: { ...state.saving, [mothership]: true } }));
+    try {
+      let retryTree: TabTree | null = null;
+      let retryOps = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (!canDispatch()) return;
+        if (!retryTree && heldOn(mothership)) { deferredSaves.add(mothership); return; }
+        // Allocate before taking the PUT snapshot. A retry after a lost answer
+        // uses the same tab ID; the server registry makes it idempotent.
+        const freshIds = new Set(get().pendingOps[mothership].flatMap((op) => op.type === "spawn" ? [op.input.tab_id] : []));
+        const candidates = retryTree ? [] : Object.values(get().trees[mothership]?.nodes ?? {}).filter((node) => freshIds.has(node.tab_id));
+        // Ordered requests let suspension stop the next POST rather than
+        // dispatching every pending tab's allocation at once.
+        for (const node of candidates) {
+          if (node.public_number !== null) continue;
+          if (!canDispatch()) return;
+          const number = await adapter.allocate(key, mothership, node.tab_id, signal);
+          if (!current()) return;
+          const tree = get().trees[mothership];
+          if (!tree) return;
+          const assigned = assignPublicNumber(tree, node.tab_id, number.public_number);
+          if (assigned.ok) set((state) => ({
+            trees: { ...state.trees, [mothership]: assigned.tree },
+            pendingOps: { ...state.pendingOps, [mothership]: [...state.pendingOps[mothership], assigned.op] },
+          }));
+          else if (tree.nodes[node.tab_id]) throw new Error(assigned.error.message);
+          if (assigned.ok) attempted.add(assigned.op);
         }
+        if (!canDispatch()) return;
+        if (!retryTree && heldOn(mothership)) { deferredSaves.add(mothership); return; }
+        const currentTree = retryTree ?? get().trees[mothership];
+        if (!currentTree || get().pendingOps[mothership].length === 0) return;
+        const tree = prepareRestores(mothership, currentTree);
+        const sentOps = retryTree ? retryOps : get().pendingOps[mothership].length;
+        for (const op of get().pendingOps[mothership].slice(0, sentOps)) attempted.add(op);
+        const result = await adapter.save(key, mothership, toSnapshot(tree), signal);
+        if (!current()) return;
+        if (result.status === "saved") {
+          const remaining = get().pendingOps[mothership].slice(sentOps);
+          const focused = get().trees[mothership]?.active_tab_id;
+          const adopted = adopt(mothership, result.snapshot, remaining);
+          if (adopted) {
+            if (focused && adopted.nodes[focused]) set((state) => {
+              const shown = state.trees[mothership];
+              return current() && shown?.nodes[focused]
+                ? { trees: { ...state.trees, [mothership]: { ...shown, active_tab_id: focused } } }
+                : state;
+            });
+            setIssue(mothership, null);
+          }
+          return;
+        }
+        if (result.status === "conflict") {
+          retryTree = adopt(mothership, result.current, get().pendingOps[mothership]);
+          retryOps = get().pendingOps[mothership].length;
+          if (!retryTree) return;
+          if (attempt === 2) {
+            setIssue(mothership, { reason: "conflict", at: new Date().toISOString(), mothership });
+            return;
+          }
+          if (attempt > 0) await wait(100, signal);
+          continue;
+        }
+        reportInvalid(mothership, result);
+        if (!canDispatch()) return;
+        const fresh = await adapter.load(key, mothership, signal);
+        if (current()) adopt(mothership, fresh, get().pendingOps[mothership]);
+        return;
       }
-      for (const notice of notices) toast.info(notice);
-      const droppedOps = new Set(dropped.map(({ op }) => op));
-      const remainingOps = ops.filter((op) => !droppedOps.has(op));
-      set((s) => ({
-        trees: { ...s.trees, [mothership]: shown },
-        pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
-      }));
-      const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
-      if (get().contextEpoch !== contextEpoch) return;
-      if (retry.status === "saved") markSaved(mothership, retry.version, remainingOps.length, rebased);
-      else if (retry.status === "rejected") {
-        // eslint-disable-next-line no-console
-        console.error("[antiek/tabs] snapshot rejected:", retry.reasons);
-      }
-      // The hold may have ended while the rebase was in flight.
-      if (!heldOn(mothership)) flushDeferred();
-      return;
+    } catch (error) {
+      if (!current()) return;
+      setIssue(mothership, { reason: "transport", at: new Date().toISOString(), mothership });
+      console.error("[antiek/tabs] save failed; pending changes retained:", error);
+    } finally {
+      if (current()) set((state) => ({ saving: { ...state.saving, [mothership]: false } }));
     }
-    // "rejected" — the adapter refused the snapshot as invalid. The model's
-    // own validation should make this unreachable; log honestly, never crash.
+  }
+
+  /** A 422: log it (a lane-A bug) and record that the tabs are not saved. */
+  function reportInvalid(mothership: Mothership, result: { reason: string; tab_id: string | null; detail: string }): void {
     // eslint-disable-next-line no-console
-    console.error("[antiek/tabs] snapshot rejected:", result.reasons);
+    console.error(
+      `[antiek/tabs] the server refused the tab snapshot (${result.reason}${result.tab_id ? `, tab ${result.tab_id}` : ""}), a lane-A bug: ${result.detail}`,
+    );
+    setIssue(mothership, { reason: "refused", at: new Date().toISOString(), mothership });
+  }
+
+  function setIssue(mothership: Mothership, issue: PersistenceIssue | null): void {
+    const persistenceIssues = { ...get().persistenceIssues, [mothership]: issue };
+    set({ persistenceIssues, persistenceIssue: newestIssue(persistenceIssues) });
   }
 
   /** The hold lapsed (or a newer close superseded it): the close joins the
@@ -423,6 +666,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 
   return {
     contextEpoch: 0,
+    dispatchAllowed: !getTabOwner().suspended,
+    saving: emptyLoaded(),
+    retrySave: queueSave,
     trees: { research: null, writing: null, reading: null },
     loaded: emptyLoaded(),
     loadError: noErrors(),
@@ -432,9 +678,14 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     heldClose: null,
     navIntent: null,
     adapter: createInMemoryTabTreeAdapter(),
+    projectId: null,
+    tabsPersistence: "session",
+    persistenceIssues: noIssues(),
+    persistenceIssue: null,
 
     setTabTreeAdapter: (adapter) => {
-      loads.clear();
+      cancelRequests();
+      resumeLoads.clear();
       acceptedTrees.clear();
       saveQueues.clear();
       deferredSaves.clear();
@@ -443,40 +694,118 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       undoToasts.clear();
       if (holdTimer !== null) clearTimeout(holdTimer);
       holdTimer = null;
+      // An explicit adapter is its own binding: no project detection runs.
+      bindingStarted = true;
+      binding = null;
       set({
         heldClose: null,
         navIntent: null,
         contextEpoch: get().contextEpoch + 1,
+        saving: emptyLoaded(),
+        dispatchAllowed: (!tabTreeHandle.bindOnLoad || getTabOwner().owner !== null) && !getTabOwner().suspended,
         adapter,
+        projectId: null,
+        tabsPersistence: "session",
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
         loadError: noErrors(),
         pendingOps: { research: [], writing: [], reading: [] },
+        persistenceIssues: noIssues(),
+        persistenceIssue: null,
       });
+    },
+
+    bindActiveProject: (source = firstOpenProject, makeAdapter = serverAdapter) => {
+      if (binding) return binding;
+      const epoch = get().contextEpoch;
+      const owner = getTabOwner();
+      const signal = dispatchController.signal;
+      if (!owner.owner || owner.suspended) return Promise.resolve(get().tabsPersistence);
+      bindingStarted = true;
+      const run = (async (): Promise<TabsPersistence> => {
+        const lookup = await readActiveProject(source, () => get().contextEpoch === epoch && !signal.aborted && !getTabOwner().suspended, signal);
+        if (get().contextEpoch !== epoch || signal.aborted || getTabOwner().suspended) return get().tabsPersistence;
+        if (lookup.kind === "unavailable") return get().tabsPersistence;
+        const { projectId } = lookup;
+        if (projectId === null) {
+          if (get().projectId !== null) {
+            get().resetTabTrees();
+            bindingStarted = true;
+          }
+          set({ tabsPersistence: "session", projectId: null });
+          return "session";
+        }
+        const switchingProject = get().projectId !== null && get().projectId !== projectId;
+        const adapter = makeAdapter();
+        if (switchingProject) get().resetTabTrees();
+        else cancelRequests();
+        acceptedTrees.clear();
+        bindingStarted = true;
+        set({
+          adapter,
+          projectId,
+          tabsPersistence: "server",
+          persistenceIssues: noIssues(),
+          persistenceIssue: null,
+          loaded: emptyLoaded(),
+          loadError: noErrors(),
+        });
+        for (const mothership of ["reading", "writing", "research"] as const) {
+          if (get().pendingOps[mothership].length) queueSave(mothership);
+        }
+        return "server";
+      })();
+      binding = run;
+      void run.finally(() => {
+        if (binding === run) binding = null;
+      });
+      return run;
     },
 
     ensureMothership: (mothership) => {
       if (get().loaded[mothership]) return Promise.resolve();
       const inflight = loads.get(mothership);
       if (inflight) return inflight;
-      const { adapter, contextEpoch } = get();
+      if (!bindingStarted && tabTreeHandle.bindOnLoad) void get().bindActiveProject();
+      const requestedEpoch = get().contextEpoch;
+      const requestedOwnerEpoch = getTabOwner().epoch;
       let run: Promise<void> | null = null;
       run = (async () => {
+        const waitingForBinding = binding;
+        if (waitingForBinding) await waitingForBinding;
+        if (waitingForBinding && getTabOwner().epoch === requestedOwnerEpoch && get().projectId !== null && loads.get(mothership) !== run) {
+          await get().ensureMothership(mothership);
+          return;
+        }
+        if (get().contextEpoch !== requestedEpoch) {
+          if (waitingForBinding && getTabOwner().epoch === requestedOwnerEpoch && get().projectId !== null) {
+            await get().ensureMothership(mothership);
+          }
+          return;
+        }
+        const { adapter, contextEpoch } = get();
+        const signal = dispatchController.signal;
+        if (get().tabsPersistence === "server" && !get().dispatchAllowed) return;
         try {
-          const snapshot = await adapter.load(TAB_PROJECT_ID, mothership);
-          if (get().contextEpoch !== contextEpoch) return; // swapped mid-flight
+          const snapshot = await adapter.load(adapterKey(), mothership, signal);
+          if (get().contextEpoch !== contextEpoch || signal.aborted) return;
           const parsed = fromSnapshot(snapshot);
-          if (parsed.ok) acceptedTrees.set(mothership, parsed.tree);
+          if (!parsed.ok) {
+            // Never start from an empty tree here: its first save would close
+            // every tab the server holds.
+            throw new Error(`the saved tabs are unreadable: ${parsed.error.message}`);
+          }
+          // Ops made before the load landed replay on the loaded tree.
+          const pending = get().pendingOps[mothership] ?? [];
+          const tree = adopt(mothership, snapshot, pending);
+          if (!tree) throw new Error("the saved tabs are unreadable");
           set((s) => ({
-            trees: {
-              ...s.trees,
-              [mothership]: parsed.ok ? parsed.tree : emptyTabTree(mothership, snapshot.version),
-            },
             loaded: { ...s.loaded, [mothership]: true },
             loadError: { ...s.loadError, [mothership]: null },
           }));
+          if (get().pendingOps[mothership].length) queueSave(mothership);
         } catch (e) {
-          if (get().contextEpoch !== contextEpoch) return;
+          if (get().contextEpoch !== contextEpoch || signal.aborted) return;
           set((s) => ({
             loadError: { ...s.loadError, [mothership]: e instanceof Error ? e.message : String(e) },
           }));
@@ -495,7 +824,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 
     spawnTab: (mothership, parentId, input, source = "user") => {
       const tree = get().trees[mothership] ?? emptyTabTree(mothership);
-      const result = spawnChild(tree, parentId, input);
+      const title = input.title ?? knownTitle(input.kind, input.ref) ?? undefined;
+      const result = spawnChild(tree, parentId, title === undefined ? input : { ...input, title });
       if (!result.ok) return { ok: false, error: result.error.message };
       apply(mothership, result.tree, result.op, source === "user" && input.activate === true);
       return { ok: true, tabId: input.tab_id, hier: result.tree.nodes[input.tab_id].hier_number };
@@ -642,7 +972,10 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     resetTabTrees: () => {
       if (holdTimer !== null) clearTimeout(holdTimer);
       holdTimer = null;
-      loads.clear();
+      cancelRequests();
+      resumeLoads.clear();
+      binding = null;
+      bindingStarted = false;
       deferredSaves.clear();
       recentCloses.clear();
       undoToasts.clear();
@@ -651,6 +984,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       acceptedTrees.clear();
       set({
         contextEpoch: get().contextEpoch + 1,
+        saving: emptyLoaded(),
+        dispatchAllowed: (!tabTreeHandle.bindOnLoad || getTabOwner().owner !== null) && !getTabOwner().suspended,
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
         loadError: noErrors(),
@@ -660,6 +995,10 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         heldClose: null,
         navIntent: null,
         adapter: createInMemoryTabTreeAdapter(),
+        projectId: null,
+        tabsPersistence: "session",
+        persistenceIssues: noIssues(),
+        persistenceIssue: null,
       });
     },
   };
@@ -668,3 +1007,34 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 // The keyboard dispatcher (entry chunk) reaches the store through this
 // handle; the store itself loads with the lazy strip.
 tabTreeHandle.store = useTabTrees;
+
+let ownerEpoch = getTabOwner().epoch;
+subscribeTabOwner(() => {
+  const owner = getTabOwner();
+  if (owner.epoch !== ownerEpoch) {
+    ownerEpoch = owner.epoch;
+    useTabTrees.getState().resetTabTrees();
+  }
+  const allowed = owner.owner !== null && !owner.suspended;
+  if (!allowed && useTabTrees.getState().dispatchAllowed) {
+    for (const mothership of loads.keys()) resumeLoads.add(mothership);
+    cancelRequests();
+    if (binding) {
+      binding = null;
+      bindingStarted = false;
+    }
+    useTabTrees.setState((state) => ({
+      saving: emptyLoaded(),
+      ...(state.tabsPersistence === "server" ? { loaded: emptyLoaded() } : {}),
+    }));
+  }
+  useTabTrees.setState({ dispatchAllowed: allowed });
+  if (allowed) {
+    const state = useTabTrees.getState();
+    if (tabTreeHandle.bindOnLoad && !bindingStarted) void state.bindActiveProject();
+    for (const mothership of ["reading", "writing", "research"] as const) {
+      if (resumeLoads.delete(mothership) || (state.tabsPersistence === "server" && state.trees[mothership])) void state.ensureMothership(mothership);
+      if (state.pendingOps[mothership].length) state.retrySave(mothership);
+    }
+  }
+});

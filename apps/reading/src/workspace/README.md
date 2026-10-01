@@ -194,9 +194,44 @@ one helper (`mothershipForPath.inMode`, `useModeNavigate`, `ModeLink`).
 `c` / `ctrl+alt+c` (new tab) and `i` / `ctrl+alt+i` (attention inbox) are
 held for surfaces not yet built: their handlers return "not mine" and the
 key sheet marks them "Not built yet" (`keymapView.ts` `PENDING`).
-Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage) —
-the in-memory adapter makes trees session-scoped until lane B's HTTP adapter
-lands (`setTabTreeAdapter` is the seam).
+Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage).
+`bindActiveProject` (run on the first load when the app sets
+`tabTreeHandle.bindOnLoad`) binds the trees to the first non-archived project
+through `tabTreeHttpAdapter.ts` over lane B's routes and reports
+`tabsPersistence: "server"`; a 404 on `GET /projects`, or a 200 that is not
+JSON (the SPA fallback), keeps the in-memory adapter (`"session"`: trees end
+with the page), and a network error is retried after 1 s, 4 s and 15 s first.
+A save the server refuses (422) sets that tree's `persistenceIssues` entry
+until a later save of the same tree is accepted (`persistenceIssue` is the
+newest outstanding one); `tabsSaved(state)` is true only when bound and every
+displayed tree has loaded, every change is acknowledged, dispatch is allowed,
+and no pending operation, held close, active request or load/save failure remains.
+The document strip displays session, paused, loading, unavailable, pending,
+unsaved and saved states. Its load/save retries act on the affected mode.
+Save attempts are serialized per mode, duplicate retry clicks share one
+attempt sequence, and three successive conflicts retain work for explicit retry.
+Owner changes discard prior navigation context before logout completes.
+Temporary auth uncertainty aborts requests and retains pending work; same-owner
+confirmation reloads the accepted tree before continuing. A late canceled
+response cannot update the HTTP adapter's remembered retirement state.
+Initial session-to-server binding retains pending operations and route intent;
+a confirmed project switch starts a separate navigation context. A failed
+project lookup retains an existing binding, while a confirmed empty result
+returns that scope to session state. This remains the first-open-project
+fallback, not a selected-project registry UI.
+`tabTreeWire.ts` maps the
+model to the §1.6 wire (history ↔ `retired[]`, island ↔ selection,
+`next_root_index` ↔ `next_child_index.root`); `setTabTreeAdapter` stays the
+test seam. Every tab_id is opaque (`tabId.ts` `newTabId()`, the one minting
+path: `t` + base64url of 16 random bytes); the model refuses any id outside
+§1.6's 1 to 64 of `[A-Za-z0-9_-]`, and a tab is found by its fields
+(`documentSpace.findOpenTab` / `findClosedTab`), never by parsing its id.
+The literal id `root` is also refused because it collides with the server's
+root-counter key. Existing server rows using that id are diagnosed and retained
+as unreadable; the client never renames or overwrites them. This is a frontend
+compatibility exception to coordinate with the backend contract owner.
+Restore history currently contains the newest 200 unrestored rows supplied by
+GET. Older-page loading remains deferred to the history UI.
 
 **THREAD-CONTRACT §2.2 rev 7: what is in, what is staged (lane A decision,
 2026-09-27).** In the model now: every node carries `side` (a child inherits

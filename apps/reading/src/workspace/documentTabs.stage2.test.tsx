@@ -80,6 +80,7 @@ import { openDocumentInLeftPane } from "./crossPane";
 import { mothershipForPath, rootRefForPath } from "./documentSpace";
 import { useWorkspace } from "./WorkspaceStore";
 import { useTabTrees } from "./tabTreeStore";
+import { tabIdOf } from "./tabTestKit";
 import { installShortcuts } from "./shortcuts";
 import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 import {
@@ -217,7 +218,8 @@ describe("defect 2 — a child tab stays a child through activation and route ch
     expect(tree.active_tab_id).toBe("child-ref");
     expect(tree.nodes["child-ref"].parent_tab_id).toBe(rootId);
     expect(tree.root_order).toEqual([rootId]);
-    expect(tree.nodes["root:reader:doc-10"]).toBeUndefined();
+    // No root was seeded for doc-10: the one tab showing it is the child.
+    expect(Object.values(tree.nodes).filter((n) => n.ref === "doc-10").map((n) => n.tab_id)).toEqual(["child-ref"]);
   });
 
   it("across motherships: a research-spawned reader child keeps the research tree", async () => {
@@ -566,7 +568,10 @@ describe("defect 9 — Loading/Empty/Error primitives and ensureMothership's err
     act(() => screen.getByRole("button", { name: "Try again" }).click());
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await waitFor(() => expect(tabs().trees.reading?.active_tab_id).toBe("root:reader:doc-9"));
+    await waitFor(() => {
+      const reading = tabs().trees.reading!;
+      expect(reading.active_tab_id).toBe(tabIdOf(reading, "reader", "doc-9"));
+    });
     expect(strip().querySelector("[role='alert']")).toBeNull();
   });
 

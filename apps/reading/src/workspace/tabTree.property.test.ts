@@ -213,7 +213,9 @@ function closeViolations(before: TabTree, after: TabTree, tabId: string, mode: C
   const removed = new Set(mode === "prune" ? subtreeOf(before, tabId) : [tabId]);
   for (const id of removed) {
     const h = Object.hasOwn(after.history, id) ? after.history[id] : undefined;
-    if (!h || h.node.pruned_at !== now) out.push(`close: ${id} not in history with pruned_at`);
+    if (!h || h.closed_at !== now) out.push(`close: ${id} not in history with closed_at`);
+    // Preserve the composed local undo marker; wire restoration uses the accepted retirement.
+    if (h && h.node.pruned_at !== now) out.push(`close: ${id} missing local undo marker`);
     if (Object.hasOwn(after.nodes, id)) out.push(`close: ${id} still open`);
   }
   if (mode === "lift_children") {
@@ -630,7 +632,7 @@ async function runTwoDevice(c: TwoDeviceCase): Promise<{ violations: string[]; d
   const server = createInMemoryTabTreeAdapter();
   const pool: number[] = [];
   const opCount = c.base.length + c.remote.length + c.local.length;
-  for (let i = 0; i < opCount; i++) pool.push((await server.allocate("ws", MOTHERSHIP)).public_number);
+  for (let i = 0; i < opCount; i++) pool.push((await server.allocate("ws", MOTHERSHIP, `pool-${i}`)).public_number);
   let taken = 0;
   const alloc: Allocator = { take: () => pool[taken++] };
   const bail = (where: string, why: string) => ({ violations: [`${where}: ${why}`], dropped: 0, renumbered: 0 });

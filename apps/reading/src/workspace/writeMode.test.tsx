@@ -91,7 +91,7 @@ import { useCompanion } from "./companionStore";
 import { useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
 import { WRITE_OUTLINE_PANEL_ID, useWriteOutline } from "./writeOutlineStore";
-import { childTabId } from "./documentSpace";
+import { tabIdOf } from "./tabTestKit";
 import { installShortcuts } from "./shortcuts";
 import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 
@@ -103,6 +103,10 @@ vi.mock("./useViewportTier", () => ({
 let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const tabs = () => useTabTrees.getState();
+/** The piece's body tab and its section tabs, found by what they show
+ *  (tab ids are opaque). Each throws until the tab is open. */
+const BODY = () => tabIdOf(tabs().trees.writing!, "document", "/write/d-1");
+const SEC = (id: string) => tabIdOf(tabs().trees.writing!, "document", `section:${id}`, BODY());
 const outline = () => useWriteOutline.getState();
 const sources = () => useBlockSources.getState();
 
@@ -191,7 +195,7 @@ describe("the writing mothership tree (C5 left)", () => {
     await screen.findAllByText("Intro section");
     const main = container.querySelector("main")!;
     expect(within(main as HTMLElement).getAllByText("Body section").length).toBeGreaterThan(0);
-    const cid = childTabId("root:document:/write/d-1", "document", "section:s-2");
+    const cid = await waitFor(() => SEC("s-2"));
     act(() => {
       tabs().activateTab("writing", cid);
     });
@@ -211,7 +215,7 @@ describe("the writing mothership tree (C5 left)", () => {
     expect(within(main as HTMLElement).getAllByText("Body section").length).toBeGreaterThan(0);
     // Back to the body tab: both sections again.
     act(() => {
-      tabs().activateTab("writing", "root:document:/write/d-1");
+      tabs().activateTab("writing", BODY());
     });
     await within(main as HTMLElement).findAllByText("Intro section");
     expect(within(main as HTMLElement).getAllByText("Body section").length).toBeGreaterThan(0);
@@ -330,8 +334,8 @@ describe("the keys in writing mode", () => {
   it("with the left pane focused, the same keys walk the body and section tabs instead", async () => {
     mountCockpit("/write/d-1");
     await screen.findAllByText("alpha claim");
-    const s1 = childTabId("root:document:/write/d-1", "document", "section:s-1");
-    const s2 = childTabId("root:document:/write/d-1", "document", "section:s-2");
+    const s1 = await waitFor(() => SEC("s-1"));
+    const s2 = await waitFor(() => SEC("s-2"));
     act(() => {
       tabs().activateTab("writing", s1);
       ws().setFocusedPane("left");
@@ -363,12 +367,10 @@ describe("the keys in writing mode", () => {
     await screen.findAllByText("Intro section");
     key(document.body, "ctrl+b");
     key(document.body, "o");
-    expect(tabs().trees.writing!.active_tab_id).toBe(
-      childTabId("root:document:/write/d-1", "document", "section:s-1"),
-    );
+    expect(tabs().trees.writing!.active_tab_id).toBe(SEC("s-1"));
     key(document.body, "ctrl+b");
     key(document.body, "u");
-    expect(tabs().trees.writing!.active_tab_id).toBe("root:document:/write/d-1");
+    expect(tabs().trees.writing!.active_tab_id).toBe(BODY());
   });
 });
 
@@ -378,7 +380,7 @@ describe("section tabs scope in place (defect 5)", () => {
   it("an active section tab is labelled by its heading and shows no 'opens as window' bridge", async () => {
     const { container } = mountCockpit("/write/d-1");
     await screen.findAllByText("alpha claim");
-    const cid = childTabId("root:document:/write/d-1", "document", "section:s-2");
+    const cid = await waitFor(() => SEC("s-2"));
     act(() => {
       tabs().activateTab("writing", cid);
     });

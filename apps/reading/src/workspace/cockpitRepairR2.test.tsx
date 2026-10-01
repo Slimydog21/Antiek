@@ -258,12 +258,12 @@ describe("H1 — from a reader, an agent opens its source as a left tab in readi
 describe("H5 — §2.2 rev 7 node fields: side and opened_by", () => {
   it("every node carries a side; a child inherits it; an agent-opened child is always left", () => {
     let t = emptyTabTree("reading");
-    const a = spawnChild(t, null, { tab_id: "root:reader:a", kind: "reader", ref: "a", mothership: "reading" });
+    const a = spawnChild(t, null, { tab_id: "t-fixture-a", kind: "reader", ref: "a", mothership: "reading" });
     if (!a.ok) throw new Error(a.error.message);
     t = a.tree;
-    expect(t.nodes["root:reader:a"].side).toBe("left");
-    const b = spawnChild(t, "root:reader:a", {
-      tab_id: "child:a:reader:b",
+    expect(t.nodes["t-fixture-a"].side).toBe("left");
+    const b = spawnChild(t, "t-fixture-a", {
+      tab_id: "t-fixture-b",
       kind: "reader",
       ref: "b",
       mothership: "reading",
@@ -271,14 +271,14 @@ describe("H5 — §2.2 rev 7 node fields: side and opened_by", () => {
       opened_by: { thread_id: "inv-1", agent_kind: "research" },
     });
     if (!b.ok) throw new Error(b.error.message);
-    expect(b.tree.nodes["child:a:reader:b"].side).toBe("left");
-    expect(b.tree.nodes["child:a:reader:b"].opened_by).toEqual({ thread_id: "inv-1", agent_kind: "research" });
+    expect(b.tree.nodes["t-fixture-b"].side).toBe("left");
+    expect(b.tree.nodes["t-fixture-b"].opened_by).toEqual({ thread_id: "inv-1", agent_kind: "research" });
   });
 
   it("an agent origin without opened_by is refused: tab_origin_invalid, never a silent tab", () => {
     const t = emptyTabTree("reading");
     const r = spawnChild(t, null, {
-      tab_id: "root:reader:x",
+      tab_id: "t-fixture-x",
       kind: "reader",
       ref: "x",
       mothership: "reading",
@@ -291,7 +291,7 @@ describe("H5 — §2.2 rev 7 node fields: side and opened_by", () => {
   it("the snapshot carries side, the agent origin and opened_by through a round trip", () => {
     let t = emptyTabTree("reading");
     const r = spawnChild(t, null, {
-      tab_id: "root:reader:y",
+      tab_id: "t-fixture-y",
       kind: "reader",
       ref: "y",
       mothership: "reading",
@@ -301,24 +301,24 @@ describe("H5 — §2.2 rev 7 node fields: side and opened_by", () => {
     if (!r.ok) throw new Error(r.error.message);
     t = r.tree;
     const snap = toSnapshot(t);
-    const wire = snap.tree.nodes["root:reader:y"];
+    const wire = snap.tree.nodes["t-fixture-y"];
     expect(wire.side).toBe("left");
     expect(wire.branch_origin?.kind).toBe("agent");
     expect(wire.opened_by).toEqual({ thread_id: "inv-9", agent_kind: "research" });
     const back = fromSnapshot(JSON.parse(JSON.stringify(snap)));
     expect(back.ok).toBe(true);
-    if (back.ok) expect(back.tree.nodes["root:reader:y"].opened_by?.thread_id).toBe("inv-9");
+    if (back.ok) expect(back.tree.nodes["t-fixture-y"].opened_by?.thread_id).toBe("inv-9");
   });
 
   it("a server agent node without opened_by is refused on load; a legacy node without side reads as left", () => {
-    const t = spawnChild(emptyTabTree("reading"), null, { tab_id: "root:reader:z", kind: "reader", ref: "z", mothership: "reading" });
+    const t = spawnChild(emptyTabTree("reading"), null, { tab_id: "t-fixture-z", kind: "reader", ref: "z", mothership: "reading" });
     if (!t.ok) throw new Error(t.error.message);
     const snap = JSON.parse(JSON.stringify(toSnapshot(t.tree)));
-    delete snap.tree.nodes["root:reader:z"].side;
+    delete snap.tree.nodes["t-fixture-z"].side;
     const legacy = fromSnapshot(snap);
     expect(legacy.ok).toBe(true);
-    if (legacy.ok) expect(legacy.tree.nodes["root:reader:z"].side).toBe("left");
-    snap.tree.nodes["root:reader:z"].branch_origin = { document_id: "z", kind: "agent" };
+    if (legacy.ok) expect(legacy.tree.nodes["t-fixture-z"].side).toBe("left");
+    snap.tree.nodes["t-fixture-z"].branch_origin = { document_id: "z", kind: "agent" };
     const bad = fromSnapshot(snap);
     expect(bad.ok).toBe(false);
   });

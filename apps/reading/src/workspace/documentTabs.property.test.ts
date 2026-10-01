@@ -38,7 +38,7 @@ import {
 export const SEED = 0x57a6e2;
 const CASES = 300;
 
-const KINDS: TabKind[] = ["reader", "research", "document", "thread"];
+const KINDS: TabKind[] = ["reader", "research", "document"];
 const MOTHERSHIPS: Mothership[] = ["research", "writing", "reading"];
 
 function refFor(rng: Rng, kind: TabKind, pool: number): string {
@@ -47,7 +47,6 @@ function refFor(rng: Rng, kind: TabKind, pool: number): string {
     case "reader":
       return `doc-${n}`;
     case "research":
-    case "thread":
       return `/inv/inv-${n}`;
     case "document":
       return rng.next() < 0.5 ? `/write/d-${n}` : `section:s-${n}`;
@@ -142,9 +141,9 @@ describe("(P1) route adoption never orphans a tab", () => {
       if (!r.ok) throw new Error(r.error.message);
       tree = r.tree;
     };
-    step(spawnChild(tree, null, { tab_id: "root", kind: "research", ref: "/inv/inv-1", mothership: "research" }));
+    step(spawnChild(tree, null, { tab_id: "root-tab", kind: "research", ref: "/inv/inv-1", mothership: "research" }));
     step(
-      spawnChild(tree, "root", {
+      spawnChild(tree, "root-tab", {
         tab_id: "child",
         kind: "reader",
         ref: "doc-9",
@@ -156,13 +155,13 @@ describe("(P1) route adoption never orphans a tab", () => {
     expect(routeForTab(tree.nodes.child)).toBe("/read/doc-9?m=research");
     expect(adoptTabForRoute(tree, "/read/doc-9")).toEqual({ action: "none" });
     // Back to the investigation: its root is adopted, the child untouched.
-    expect(adoptTabForRoute(tree, "/inv/inv-1")).toEqual({ action: "activate", tabId: "root" });
-    tree = activate(tree, "root");
+    expect(adoptTabForRoute(tree, "/inv/inv-1")).toEqual({ action: "activate", tabId: "root-tab" });
+    tree = activate(tree, "root-tab");
     // Forward again: the child is adopted, not a new root.
     expect(adoptTabForRoute(tree, "/read/doc-9")).toEqual({ action: "activate", tabId: "child" });
     tree = activate(tree, "child");
-    expect(tree.nodes.child.parent_tab_id).toBe("root");
-    expect(tree.root_order).toEqual(["root"]);
+    expect(tree.nodes.child.parent_tab_id).toBe("root-tab");
+    expect(tree.root_order).toEqual(["root-tab"]);
   });
 
   it("meta-reading routes never adopt or seed", () => {

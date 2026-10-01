@@ -65,6 +65,11 @@ export default defineConfig({
       "/syntheses": API_TARGET,
       "/docs": API_TARGET,
       "/ops": API_TARGET,
+      // Project registry + per-project tab trees (THREAD-CONTRACT §1.5/§1.6,
+      // project_routes.py). Same-origin in dev so the tab store's
+      // GET /projects feature detection sees the backend's answer (a 404
+      // when the routes are not deployed), not the SPA's index.html.
+      "/projects": API_TARGET,
       "/ws": {
         target: "ws://127.0.0.1:8000",
         ws: true,

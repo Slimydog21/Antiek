@@ -10,6 +10,7 @@ import { PostHogRoot } from "./lib/PostHogRoot";
 import { AppErrorBoundary } from "./lib/AppErrorBoundary";
 import { installChunkLoadRecovery } from "./lib/chunkLoadRecovery";
 import { RouteTitle } from "./lib/RouteTitle";
+import { tabTreeHandle } from "./workspace/tabTreeHandle";
 
 /**
  * S12 cutover flag.
@@ -35,6 +36,10 @@ if (import.meta.env.DEV) {
 // P-05: a stale tab whose hashed chunks were replaced by a deploy reloads
 // once per failed asset, then falls through to the boundary (never a loop).
 installChunkLoadRecovery();
+
+// Tabs persist to the active project's server row when lane B's routes
+// answer (THREAD-CONTRACT §1.6); otherwise they stay in this session.
+tabTreeHandle.bindOnLoad = true;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

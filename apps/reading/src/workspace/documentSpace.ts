@@ -15,6 +15,9 @@
  *     seeded, so a child tab stays a child (forensic defect 2); a navigation
  *     that carries a branch intent files its surface under the tab it was
  *     triggered from (critic P-D).
+ *   - findOpenTab / findClosedTab: a tab by its fields (side, kind, ref,
+ *     parent) in its tree. tab_ids are opaque (tabId.ts): nothing here or
+ *     in any caller builds or parses one.
  */
 import type { BranchIntent } from "./branchNavigation";
 import { mothershipForPath } from "./mothershipForPath";
@@ -25,6 +28,7 @@ import {
   type BranchOrigin,
   type TabKind,
   type TabNode,
+  type TabSide,
   type TabTree,
 } from "./tabTree";
 
@@ -39,7 +43,6 @@ function basePathForTab(tab: TabNode): string | null {
     case "reader":
       return `/read/${encodeURIComponent(tab.ref)}`;
     case "research":
-    case "thread":
       return tab.ref.startsWith("/") ? tab.ref : `/inv/${encodeURIComponent(tab.ref)}`;
     case "document":
       return tab.ref.startsWith("/") ? tab.ref : null;
@@ -87,27 +90,41 @@ export function tabShowsPath(tab: TabNode, pathname: string): boolean {
   return base !== null && segment(base) === segment(pathname);
 }
 
-/** Stable root tab id for a surface ref. */
-export function rootTabId(ref: RootRef): string {
-  return `root:${ref.kind}:${ref.ref}`;
+/** What identifies a tab's view, for finding it: its tree (the mothership),
+ *  pane side, kind, ref and parent. A tab_id is opaque (tabId.ts) and is
+ *  never parsed for any of these. */
+export interface TabFields {
+  side?: TabSide;
+  kind: TabKind;
+  ref: string;
+  parent_tab_id: string | null;
 }
 
-/** Stable child tab id under a parent (unique per parent, so the same
- *  surface can lawfully branch off two parents — tabs are navigation state,
- *  not provenance). */
-export function childTabId(parentTabId: string, kind: TabKind, ref: string): string {
-  return `child:${parentTabId}:${kind}:${ref}`;
+function matches(tree: TabTree, node: TabNode, q: TabFields): boolean {
+  return (
+    node.mothership === tree.mothership &&
+    node.side === (q.side ?? "left") &&
+    node.kind === q.kind &&
+    node.ref === q.ref &&
+    node.parent_tab_id === q.parent_tab_id
+  );
 }
 
-/** `base` when no tab (open or closed) holds it, else `base~2`, `base~3`…
- *  A closed tab keeps its id in history (its numbers stay retired and its
- *  undo stays valid), so reopening the same surface takes a fresh id. */
-export function freshTabId(tree: TabTree, base: string): string {
-  const known = (id: string) => Object.hasOwn(tree.nodes, id) || Object.hasOwn(tree.history, id);
-  if (!known(base)) return base;
-  let n = 2;
-  while (known(`${base}~${n}`)) n++;
-  return `${base}~${n}`;
+/** The open tab showing `q` under `q.parent_tab_id` (null = a root), or
+ *  null. Duplicate-open, re-attach and the cross-pane seam find a tab here. */
+export function findOpenTab(tree: TabTree, q: TabFields): string | null {
+  const siblings =
+    q.parent_tab_id === null
+      ? tree.root_order
+      : Object.hasOwn(tree.nodes, q.parent_tab_id)
+        ? tree.nodes[q.parent_tab_id].child_order
+        : [];
+  return siblings.find((id) => Object.hasOwn(tree.nodes, id) && matches(tree, tree.nodes[id], q)) ?? null;
+}
+
+/** A retired tab that showed `q` under that parent when it closed, or null. */
+export function findClosedTab(tree: TabTree, q: TabFields): string | null {
+  return Object.keys(tree.history).find((id) => matches(tree, tree.history[id].node, q)) ?? null;
 }
 
 export type RouteAdoption =
