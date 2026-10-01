@@ -1,0 +1,14 @@
+{
+  "label": "ai-generated",
+  "tool": "Krea API",
+  "model": "google/nano-banana-pro",
+  "reference_asset_id": "50a9110e-2d39-4c9c-8df1-59e7a92a451c",
+  "prompt": "Edit this exact Antiek brain mascot image. Preserve the original coral body, its exact silhouette, small friendly face, long thin magenta legs, pose, scale, brown outlines, and original gentle shading. ADD A VISIBLE BASKETBALL HEADBAND. The headband is like the simple close-fitting elastic sweatband worn by Alex Caruso: plain narrow terry cloth, a continuous band encircling the forehead above the eyes, no tie, knot, tails or bow. Draw it across the forehead approximately from y=260 to y=325 in the 1024-square reference, curving gently around the head, and wrapping behind the side edges. Solid green-teal #6ECB8F matching Antiek UI, a subtle woven texture and very restrained darker green edge. Center the exact word \"Antiek\" on the FRONT of the band in dark ink, clean simple small athletic lettering. Only this word, no sportswear logos. This must look like a basketball player training band, not a hat or a ribbon. The headband must be clearly visible. Preserve the mascot illustration style. Full body with generous margins on a flat solid warm cream background, no floor shadow. Keep the original rounded bare magenta feet. Change ONLY by adding the headband.",
+  "requested_at": "2026-10-01T05:41:57.229800+00:00",
+  "status": "completed",
+  "preview_only": true,
+  "job_id": "18926b50-7c3a-486f-858c-b9706f5869d6",
+  "generated_at": "2026-10-01T05:42:16.889Z",
+  "output": "f-caruso-headband-edit.png",
+  "bytes": 847703
+}

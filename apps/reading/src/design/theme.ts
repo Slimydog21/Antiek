@@ -18,9 +18,11 @@
 export type ThemePreference = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 export type MotionPreference = "system" | "reduce" | "full";
+export type ReadingLightPreference = "standard" | "soft";
 
 export const THEME_KEY = "antiek.theme";
 export const MOTION_KEY = "antiek.motion";
+export const READING_LIGHT_KEY = "antiek.reading-light";
 const DARK = "(prefers-color-scheme: dark)";
 const REDUCE = "(prefers-reduced-motion: reduce)";
 
@@ -75,6 +77,21 @@ export function setThemePreference(pref: ThemePreference): void {
   applyTheme(pref);
 }
 
+export function readingLightPreference(): ReadingLightPreference {
+  if (typeof document === "undefined") return "standard";
+  return (html().getAttribute("data-reading-light") ?? stored(READING_LIGHT_KEY)) === "soft" ? "soft" : "standard";
+}
+
+function applyReadingLight(pref: ReadingLightPreference): void {
+  html().setAttribute("data-reading-light", pref);
+  notify();
+}
+
+export function setReadingLightPreference(pref: ReadingLightPreference): void {
+  persist(READING_LIGHT_KEY, pref);
+  applyReadingLight(pref);
+}
+
 export function motionPreference(): MotionPreference {
   if (typeof document === "undefined") return "system";
   const m = html().getAttribute("data-motion") ?? stored(MOTION_KEY);
@@ -102,6 +119,7 @@ function listen(): () => void {
   const onStorage = (e: StorageEvent) => {
     if (e.key === THEME_KEY) applyTheme(e.newValue === "light" || e.newValue === "dark" ? e.newValue : "system");
     if (e.key === MOTION_KEY) setMotionPreference(e.newValue === "reduce" || e.newValue === "full" ? e.newValue : "system");
+    if (e.key === READING_LIGHT_KEY || e.key === null) applyReadingLight(e.newValue === "soft" ? "soft" : "standard");
   };
   dark?.addEventListener?.("change", onTheme);
   reduce?.addEventListener?.("change", notify);

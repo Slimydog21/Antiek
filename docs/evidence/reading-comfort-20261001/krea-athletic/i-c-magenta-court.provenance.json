@@ -1,0 +1,14 @@
+{
+  "label": "ai-generated",
+  "tool": "Krea API",
+  "model": "google/nano-banana-pro",
+  "reference_job_id": "be8c7515-8991-4b49-900b-d1b28a0c3cf8",
+  "prompt": "Refine the exact Antiek mascot in this image. Keep this same charming brain illustration, silhouette, face, original coral body, posture, shoe size, gentle shading, and hand-drawn brown outlines. Keep the shoe design that is already present. Use muted MAGENTA #943D4A as the SECONDARY SHOE COLOR, with green-teal #6ECB8F as the PRIMARY ACCENT COLOR. The magenta must be distinctly noticeable, not barely visible or pink/coral. Recolor both full legs to the same muted magenta #943D4A while retaining their shading. Also make the existing headband a simple narrow close-fitting continuous elastic terrycloth BASKETBALL SWEATBAND like Alex Caruso wears, green-teal #6ECB8F, clean even edges without bulging folds, no knot or tails, with the exact word \"Antiek\" centered in dark lettering. Keep the top brain lobes visible, and make the band slim, about a tenth of head height. Plain warm cream background, no floor shadow, single full-body mascot. C green court shoe colorway: keep the green-teal upper and cream sole, then add clearly visible magenta #943D4A heel and toe-side trim, magenta lace details, and a magenta capital A monogram on each green side panel. Green upper is primary; magenta is the clear secondary shoe color. Make the A legible with a subtle cream outline if needed. Only green-teal, exact muted magenta, cream and warm brown linework palette.",
+  "requested_at": "2026-10-01T05:42:53.963647+00:00",
+  "status": "completed",
+  "preview_only": true,
+  "job_id": "81b22495-3ccc-4dda-aa38-c3bd67fe0d3a",
+  "generated_at": "2026-10-01T05:43:19.026Z",
+  "output": "i-c-magenta-court.png",
+  "bytes": 748985
+}

@@ -1,0 +1,17 @@
+{
+  "asset_id": "00381363-8ddb-4ca4-857a-7e64fcc0900b",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/mascot-brain/mood_thinking.png",
+  "source_sha256": "ccbfe66bd78aa3f1915f3ce29f17c7c4e68fdf7a935a4abe2d252169e0a38a64",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Preserve the thinking expression and original three-dot thought bubble above the head; do not add arms.",
+  "requested_at": "2026-10-01T06:23:52.364696+00:00",
+  "preview_only": true,
+  "job_id": "63af6cc8-09cd-4cc2-8fe4-14baa17b2ed2",
+  "status": "completed",
+  "output": "thinking-krea-b.png",
+  "generated_at": "2026-10-01T06:24:17.508Z",
+  "sha256": "ae6b3259774f66549bc887acb7cdec520de58d72ed759b53a06198006f2b8b9a"
+}
