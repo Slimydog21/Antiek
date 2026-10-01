@@ -116,8 +116,9 @@ export default defineConfig({
       : [
           {
             command: "npx --yes http-server storybook-static -p 6006 -s --cors",
+            name: "storybook on :6006",
             url: "http://localhost:6006",
-            reuseExistingServer: true,
+            reuseExistingServer: !process.env.CI,
             timeout: 30_000,
           },
         ]),
@@ -183,8 +184,9 @@ export default defineConfig({
         ? [
             {
               command: "npx vite preview --port 4173 --strictPort",
+              name: "app preview on :4173",
               url: AMS_APP_BASE,
-              reuseExistingServer: true,
+              reuseExistingServer: !process.env.CI,
               timeout: 60_000,
             },
           ]
