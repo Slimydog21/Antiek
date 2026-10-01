@@ -51,6 +51,21 @@ export function headingTitle(text: string): string {
   return text.replace(/[\t\n\r\f ]+/g, " ").trim();
 }
 
+/** Wrapper links start with their first content. Original empty named
+ * markers retain their source position. */
+function fragmentStart(element: Element): Node {
+  const walker = element.ownerDocument.createTreeWalker(
+    element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  );
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === Node.TEXT_NODE && (
+      (node.textContent ?? "").trim().length > 0 || node.parentElement?.closest("pre")
+    )) return node;
+    if (node instanceof Element && /^(br|hr|img)$/.test(node.localName)) return node;
+  }
+  return element;
+}
+
 /** Parse in an inert div context, like the mounted reader body. A template's
  * document prevents resource loading during validation. Server sanitization
  * remains the admission authority; this check refuses active markup without
@@ -68,9 +83,10 @@ export function paginateHtml(html: string, splitHeadings = true): HtmlPagination
   const idsByPage = Array.from({ length: Math.max(1, headings.length) }, () => new Set<string>());
   const idCounts = new Map<string, number>();
   for (const element of root.querySelectorAll("[id]")) {
+    const start = fragmentStart(element);
     let index = 0;
     for (let i = 1; i < headings.length; i += 1) {
-      if (headings[i] === element || (headings[i].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+      if (headings[i] === start || (headings[i].compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING)) {
         index = i;
       }
     }

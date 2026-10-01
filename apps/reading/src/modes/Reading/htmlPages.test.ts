@@ -34,6 +34,37 @@ describe("passive HTML section windows", () => {
     expect(pages.every((page) => !("bodyStart" in page))).toBe(true);
   });
 
+  it("assigns wrapped section destinations to the page containing their first content", () => {
+    const pages = htmlPages('<h1>First</h1><p><a href="#s">Go</a></p><section id="s">\n<h2>Evidence</h2><p>42</p></section><article id="t"><div id="nested"><h3>Conclusion</h3><p>Done.</p></div></article>');
+    expect(pages.map((page) => page.fragmentIds)).toEqual([[], ["s"], ["t", "nested"]]);
+    const first = document.createElement("div");
+    first.innerHTML = pages[0].text;
+    expect(first.querySelector("#s, #t, #nested")).toBeNull();
+    const evidence = document.createElement("div");
+    evidence.innerHTML = pages[1].text;
+    expect(evidence.querySelector("#s h2")?.textContent).toBe("Evidence");
+    expect(evidence.querySelector("#s p")?.textContent).toBe("42");
+    const conclusion = document.createElement("div");
+    conclusion.innerHTML = pages[2].text;
+    expect(conclusion.querySelector("#t #nested h3")?.textContent).toBe("Conclusion");
+  });
+
+  it("preserves wrapper preambles and original empty named anchors on their real window", () => {
+    const pages = htmlPages('<h1>First</h1><section id="intro"><p>Introduction.</p><span id="empty"></span><h2>Evidence</h2><p>42</p></section>');
+    expect(pages.map((page) => page.fragmentIds)).toEqual([["intro", "empty"], []]);
+    const first = document.createElement("div");
+    first.innerHTML = pages[0].text;
+    expect(first.querySelector("#intro p")?.textContent).toBe("Introduction.");
+    expect(first.querySelector("#empty")?.textContent).toBe("");
+    expect(pages[1].text).not.toContain('id="intro"');
+    expect(pages[1].text).not.toContain('id="empty"');
+  });
+
+  it("keeps visible leaf content and preformatted whitespace before a nested heading", () => {
+    const pages = htmlPages('<h1>First</h1><section id="rule"><hr><h2>Second</h2></section><section id="space"><pre>  \n </pre><h3>Third</h3></section>');
+    expect(pages.map((page) => page.fragmentIds)).toEqual([["rule"], ["space"], []]);
+  });
+
   it("keeps heading-free safe HTML byte-for-byte, including preformatted spaces", () => {
     const source = '  <dl><dt>Term</dt><dd>Value</dd></dl><pre>  x\n y</pre><figure><img alt="No automatic image fetch"><figcaption>Caption</figcaption></figure>  ';
     const pages = htmlPages(source);

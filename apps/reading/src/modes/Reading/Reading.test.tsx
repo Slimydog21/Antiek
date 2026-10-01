@@ -619,6 +619,27 @@ describe("BookReader", () => {
     expect(document.activeElement).toBe(container.querySelector('blockquote[id="note:2"]'));
   });
 
+  it("follows wrapper fragment links to the real section content and preserves empty named anchors", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>First</h1><p><a href="#s">Evidence link</a><a href="#empty">Empty anchor</a></p><span id="empty"></span><section id="s">\n<h2>Evidence</h2><p>42</p><a href="#t">Conclusion link</a><a href="#s">Same section</a></section><article id="t"><h3>Conclusion</h3><p>Done.</p></article>' }));
+    const { container } = await renderReader();
+    fireEvent.click(await screen.findByRole("link", { name: "Empty anchor" }));
+    expect(screen.getByText(/Page 1 of 3/)).toBeTruthy();
+    expect(document.activeElement).toBe(container.querySelector("article #empty"));
+    fireEvent.click(screen.getByRole("link", { name: "Evidence link" }));
+    await screen.findByText("42");
+    expect(screen.getByText(/Page 2 of 3/)).toBeTruthy();
+    const section = container.querySelector("article section#s");
+    expect(section?.textContent).toContain("Evidence");
+    expect(document.activeElement).toBe(section);
+    fireEvent.click(screen.getByRole("link", { name: "Same section" }));
+    expect(document.activeElement).toBe(section);
+    fireEvent.click(screen.getByRole("link", { name: "Conclusion link" }));
+    await screen.findByText("Done.");
+    expect(screen.getByText(/Page 3 of 3/)).toBeTruthy();
+    expect(document.activeElement).toBe(container.querySelector("article article#t"));
+  });
+
   it("focuses the new HTML heading through the pager and resolves same-section links inside the article", async () => {
     getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
     getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1 id="first">First</h1><h2 id="second">Second</h2><p><a href="#second">Back to section</a></p>' }));
