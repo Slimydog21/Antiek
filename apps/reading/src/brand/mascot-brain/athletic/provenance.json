@@ -1,0 +1,435 @@
+{
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "approved_colorway_job": "ab887cec-2b86-43da-b004-7e32e57fa7fa",
+  "integrated_wordmark_job": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "operator_approval": "I like it! on 2026-10-01, after restoring integrated lettering and original B shoes",
+  "magenta": "#943D4A",
+  "rgb": [
+    148,
+    61,
+    74
+  ],
+  "typography": "Image-integrated bold lettering inspired by Inter/Source Serif 4; no text or glyph overlay",
+  "method": "Krea reference edits retain the pose roles and props. Local preparation fixes material RGB and removes background. Idle retains original B shoes; blink changes only eye regions; authored tilt rotates the approved anchor 5 degrees. Each full pose is uniformly scaled to its original optical bounds without distorting shoe proportions.",
+  "original_assets_retained": true,
+  "poses": [
+    {
+      "pose": "idle",
+      "original_source": "mascot-brain/01_hero_front_transparent.png",
+      "original_sha256": "da9cd0ebf6c69804aec2588a1beca3267d683f9da3a4dc3beb5df2a2fccd23a6",
+      "inputs": [
+        {
+          "file": "h-b-magenta-court.png",
+          "sha256": "1be9d5a59aca85843b75f2022d3d31dc84515b4e1e8e60ff687c4d29081efbf6"
+        },
+        {
+          "file": "k-b-integrated-bold.png",
+          "sha256": "54604398dfb726f5ec6fb2a2e8ab6dbd8c45112e7eed86bee8bed3c69c2decf1"
+        }
+      ],
+      "output": "01_hero_front_b_20261001.png",
+      "output_sha256": "6dfc5c833a5fae87740506a640e55c3b37a610ddda12526af183136e509aacb5",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 509397,
+      "magenta_material_pixels_corrected": 16706,
+      "exact_magenta_pixels": 28860
+    },
+    {
+      "pose": "blink",
+      "original_source": "mascot-brain/blink_closed_transparent.png",
+      "original_sha256": "61c8421b2b950829f696f5d614cb250e78dad45ecfb1346545cd96cb3b2e3c93",
+      "inputs": [
+        {
+          "file": "h-b-magenta-court.png",
+          "sha256": "1be9d5a59aca85843b75f2022d3d31dc84515b4e1e8e60ff687c4d29081efbf6"
+        },
+        {
+          "file": "k-b-integrated-bold.png",
+          "sha256": "54604398dfb726f5ec6fb2a2e8ab6dbd8c45112e7eed86bee8bed3c69c2decf1"
+        },
+        {
+          "file": "poses/blink-krea-b.png",
+          "sha256": "3197814f2b594bba49ad217158a063d5dd1c9407f68486c32ba56a98e187dbd0"
+        }
+      ],
+      "output": "blink_closed_b_20261001.png",
+      "output_sha256": "dca8868de24ebf53c1202b7a10012dabcfe0cb12b8e5d3419d9531808f16ed9a",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 526540,
+      "magenta_material_pixels_corrected": 16706,
+      "exact_magenta_pixels": 30334
+    },
+    {
+      "pose": "thinking",
+      "original_source": "mascot-brain/mood_thinking.png",
+      "original_sha256": "ccbfe66bd78aa3f1915f3ce29f17c7c4e68fdf7a935a4abe2d252169e0a38a64",
+      "inputs": [
+        {
+          "file": "poses-corrections/thinking-krea-b.png",
+          "sha256": "a0c9d778a24bd319b38be9ae679bdab10fa8fd356b28cf458d1ed28de1139dee"
+        }
+      ],
+      "output": "mood_thinking_b_20261001.png",
+      "output_sha256": "e6b0db6d43961a7c0b4c4392067002e38b1bdcfd1312097b0e9cdaf502447d55",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 566791,
+      "magenta_material_pixels_corrected": 16075,
+      "exact_magenta_pixels": 16075
+    },
+    {
+      "pose": "empty",
+      "original_source": "mascot-brain/mood_sleepy.png",
+      "original_sha256": "48791971f360819b73a5d466bc1f62ad76f1511ea1d2403cb39f8fe6e61dcb7d",
+      "inputs": [
+        {
+          "file": "poses/empty-krea-b.png",
+          "sha256": "4e632c87cbb4245b52203c3581c6da8e2745799841149a6ce54cf69cb3088b7f"
+        }
+      ],
+      "output": "mood_sleepy_b_20261001.png",
+      "output_sha256": "0894df57d0c60d978828911f10ec94295fa287a81fa40dae0a9cdbea87ed1382",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 517065,
+      "magenta_material_pixels_corrected": 16459,
+      "exact_magenta_pixels": 26936
+    },
+    {
+      "pose": "celebrate",
+      "original_source": "mascot-brain/mood_excited.png",
+      "original_sha256": "36c2d76bfefac62db3a0e63c47c516b52e4d7bcddfe81f37146360b9315090c8",
+      "inputs": [
+        {
+          "file": "poses-corrections/celebrate-krea-b.png",
+          "sha256": "c7a67ce945282c4c65575173eb590e1b7fbb7302237d07ed2483ce62e5c52d38"
+        }
+      ],
+      "output": "mood_excited_b_20261001.png",
+      "output_sha256": "9246054a28540016935c5278a7226f11491e27ba4d056bd999ad50ec627f56b9",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 527183,
+      "magenta_material_pixels_corrected": 14447,
+      "exact_magenta_pixels": 14338
+    },
+    {
+      "pose": "headTilt",
+      "original_source": "mascot-brain/authored/mascot_head_tilt_v1_transparent.png",
+      "original_sha256": "3774e256e562746170ba0164ec5e8d7c48177ddc5f61678bcc3dc4dd94db7f31",
+      "inputs": [
+        {
+          "file": "h-b-magenta-court.png",
+          "sha256": "1be9d5a59aca85843b75f2022d3d31dc84515b4e1e8e60ff687c4d29081efbf6"
+        },
+        {
+          "file": "k-b-integrated-bold.png",
+          "sha256": "54604398dfb726f5ec6fb2a2e8ab6dbd8c45112e7eed86bee8bed3c69c2decf1"
+        }
+      ],
+      "output": "authored/mascot_head_tilt_v1_transparent.png",
+      "output_sha256": "b6105441dbddf9bf306531ea2b215b45edd1d422101d96b48fb604411313b938",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 596932,
+      "magenta_material_pixels_corrected": 16706,
+      "exact_magenta_pixels": 32700
+    },
+    {
+      "pose": "sleeping",
+      "original_source": "mascot-brain/authored/mascot_sleeping_v1_transparent.png",
+      "original_sha256": "a70b3a91d9662f40ea96c0b9c840fda9dfab52451029a626cdca9c479c2a8fe8",
+      "inputs": [
+        {
+          "file": "poses/sleeping-krea-b.png",
+          "sha256": "ece59a06cad2668ebaeb230412160a7523448ea066f16c5b8f99556b6a137b0e"
+        }
+      ],
+      "output": "authored/mascot_sleeping_v1_transparent.png",
+      "output_sha256": "2f11fad253aba62d878b2ebfc807a77b5fd9d267760c836918c61ab43e42f1cf",
+      "size": [
+        1024,
+        1024
+      ],
+      "bytes": 374498,
+      "magenta_material_pixels_corrected": 15288,
+      "exact_magenta_pixels": 15288
+    },
+    {
+      "pose": "read",
+      "original_source": "workflow-art/read-512.png",
+      "original_sha256": "5ef7abc6f5351c3bc969d24c7fb6b9de3502257928a49fa5ac5292684d1f7dce",
+      "inputs": [
+        {
+          "file": "poses/read-krea-b.png",
+          "sha256": "a362cb3bce22599a2c3f4233e7a06dbe7052cd835e7bcaaf3857862ecdcbbf50"
+        }
+      ],
+      "output": "read-b-20261001.png",
+      "output_sha256": "31538363d0a0568303efe4f66e14c94d3bc97daf2bd8ded354c0400a3db64d9d",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 191572,
+      "magenta_material_pixels_corrected": 14711,
+      "exact_magenta_pixels": 6817
+    },
+    {
+      "pose": "research",
+      "original_source": "workflow-art/research-512.png",
+      "original_sha256": "dc01647bdebe377ee858a3e6b1dca7c19cdbc16412ca23b471d39bd861b71489",
+      "inputs": [
+        {
+          "file": "poses/research-krea-b.png",
+          "sha256": "9ff3ce3cbb18b16d1967e50bd35ed4c7ecf97de322d6e1a4b42c32bcf23d8405"
+        }
+      ],
+      "output": "research-b-20261001.png",
+      "output_sha256": "28689bd23ddd363c4693136f782aee168233f7076327dfc7520ac069f52814dd",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 209187,
+      "magenta_material_pixels_corrected": 16365,
+      "exact_magenta_pixels": 8425
+    },
+    {
+      "pose": "speak",
+      "original_source": "workflow-art/speak-512.png",
+      "original_sha256": "429453bc68830e52c9125f1af9db1af0c41297d2f766f2b9af4c9d3ba57d8afb",
+      "inputs": [
+        {
+          "file": "poses/speak-krea-b.png",
+          "sha256": "fa0377de2b44be944ca2fb59c7039e03ca1e2a9da9f2f7050d95a4a43d751e02"
+        }
+      ],
+      "output": "speak-b-20261001.png",
+      "output_sha256": "85e81a1d5f0365b08e7e3e283f97c47c5c625518be62d3a158a73f40d759f5b9",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 182795,
+      "magenta_material_pixels_corrected": 16561,
+      "exact_magenta_pixels": 8028
+    },
+    {
+      "pose": "biography",
+      "original_source": "workflow-art/biography-512.png",
+      "original_sha256": "b1901dd7901656b7983eb0045b77d3436915a5c5d60c7020566c0600cd8ceb27",
+      "inputs": [
+        {
+          "file": "poses/biography-krea-b.png",
+          "sha256": "a8d15e0060805a4b7c100094ecae3dc916fabc2c5d3955d79026bc16092d812a"
+        }
+      ],
+      "output": "biography-b-20261001.png",
+      "output_sha256": "b87461cb1fe073c9cb48eff6f7bdedd0947961d52a85502a1b3fcacdce5487c1",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 184561,
+      "magenta_material_pixels_corrected": 15781,
+      "exact_magenta_pixels": 7414
+    },
+    {
+      "pose": "library",
+      "original_source": "workflow-art/library-512.png",
+      "original_sha256": "f75b18895a4616bdc4e343893b452f3d4d024ee3e5e9057877380fd44b341712",
+      "inputs": [
+        {
+          "file": "poses/library-krea-b.png",
+          "sha256": "b8ce7efddc3a399d59e1491fa1f10d154a7a145617b9bf4506334cf560a502b4"
+        }
+      ],
+      "output": "library-b-20261001.png",
+      "output_sha256": "c9b78b7893e27fedcdd80c12536d2e9e4d615fb70273b273cd464fcfbf2efe3d",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 186921,
+      "magenta_material_pixels_corrected": 34414,
+      "exact_magenta_pixels": 8428
+    },
+    {
+      "pose": "wrestler",
+      "original_source": "workflow-art/wrestler-512.png",
+      "original_sha256": "6bbb7af5737f70188b3695c8c89ff0a2427cfa80dc5fe24ba259b2e08d3acc31",
+      "inputs": [
+        {
+          "file": "poses/wrestler-krea-b.png",
+          "sha256": "a4fe6801913e72b3c02aa1fbfdbe47edeaaf0826dea37d22c30a0a29fa59c30c"
+        }
+      ],
+      "output": "wrestler-b-20261001.png",
+      "output_sha256": "ba4882ad34e359d32ade077c003759748210ab18d9febf92c1ce3b210ad1ce18",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 185343,
+      "magenta_material_pixels_corrected": 8509,
+      "exact_magenta_pixels": 3594
+    },
+    {
+      "pose": "outcomes",
+      "original_source": "workflow-art/outcomes-512.png",
+      "original_sha256": "cfc38ca8f9c8bf717cc06843dc935572e64dee8b5183138959f1949c140e8458",
+      "inputs": [
+        {
+          "file": "poses/outcomes-krea-b.png",
+          "sha256": "af400c2a2330db5d415738a6f2e42d95fbda5ccf4ec5ec67f49912cfc1126d03"
+        }
+      ],
+      "output": "outcomes-b-20261001.png",
+      "output_sha256": "a64ad96f277d0b986ad5c3f7179c3a86a85fa8b7c9ea15607306cdf22ddcb1da",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 180020,
+      "magenta_material_pixels_corrected": 16713,
+      "exact_magenta_pixels": 7311
+    },
+    {
+      "pose": "interviews",
+      "original_source": "workflow-art/interviews-512.png",
+      "original_sha256": "28e4eb327c202df4b7ccee0764f076d9107f777a4c8b902aef6945557bfa1435",
+      "inputs": [
+        {
+          "file": "poses/interviews-krea-b.png",
+          "sha256": "3b85b12917faec5bd8a2c3c325f85aaefbf700b136a35e768fc0711b063550c7"
+        }
+      ],
+      "output": "interviews-b-20261001.png",
+      "output_sha256": "1f4e2938c74c21f616fa2ef07dd811eef0b13c148bd23b3a399855a6a32801ff",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 168315,
+      "magenta_material_pixels_corrected": 16379,
+      "exact_magenta_pixels": 6791
+    },
+    {
+      "pose": "notebooks",
+      "original_source": "workflow-art/notebooks-512.png",
+      "original_sha256": "4241ea826e8c2a9b6853d0c34d0d43a91647a93c1c5457ccfd9ade14b29474f2",
+      "inputs": [
+        {
+          "file": "poses/notebooks-krea-b.png",
+          "sha256": "af8a480e865e6e969dde06fd813a3ee023278389d2051a56ab02f08906efb98e"
+        }
+      ],
+      "output": "notebooks-b-20261001.png",
+      "output_sha256": "4d95c5d4024195bfec3a9472969417340eea6535ccd772c179a16161d15a3e3e",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 151143,
+      "magenta_material_pixels_corrected": 17382,
+      "exact_magenta_pixels": 4361
+    },
+    {
+      "pose": "sources",
+      "original_source": "workflow-art/sources-512.png",
+      "original_sha256": "17e9d0ad15c23f146271c2d1c37e393d3a6537be54bf869d33a7e1eedac7fed3",
+      "inputs": [
+        {
+          "file": "poses/sources-krea-b.png",
+          "sha256": "693ea3205046ffbbcce5dfc1636a7eb6423bde9c6c40cfeaa21cc68792ab728a"
+        }
+      ],
+      "output": "sources-b-20261001.png",
+      "output_sha256": "66ac1969222b6ceecb81d08be32c76e28b99cf6c6353fce44212b36b498fae8b",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 180784,
+      "magenta_material_pixels_corrected": 21149,
+      "exact_magenta_pixels": 5469
+    },
+    {
+      "pose": "pricing",
+      "original_source": "workflow-art/pricing-512.png",
+      "original_sha256": "aa333d97214151052f34330b706d0508b9885fb9dee61d3c94d7ae6eeefc9a31",
+      "inputs": [
+        {
+          "file": "poses/pricing-krea-b.png",
+          "sha256": "854349be28e56f1b5a2a5d50f68c249e16f96cef4377b53d77397c0fbb2cf758"
+        }
+      ],
+      "output": "pricing-b-20261001.png",
+      "output_sha256": "4a851c20c891d6fb12664e8006b3c5811f795616fc646ba4294d67f0f7ebaa5b",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 172506,
+      "magenta_material_pixels_corrected": 16462,
+      "exact_magenta_pixels": 6587
+    },
+    {
+      "pose": "trust",
+      "original_source": "workflow-art/trust-512.png",
+      "original_sha256": "6c7bf9ce1f90ab502d04aadc3876cf1d020043e0914d0c8985247d194024691f",
+      "inputs": [
+        {
+          "file": "poses/trust-krea-b.png",
+          "sha256": "8c8da3af8fd9342e63b1ed64efc514f6ebd8d982a15786fb5cc049567474a547"
+        }
+      ],
+      "output": "trust-b-20261001.png",
+      "output_sha256": "8057ba8688de691334137fdeee960f7d14b3efb680ef304fa1602902fdd1551b",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 179434,
+      "magenta_material_pixels_corrected": 16606,
+      "exact_magenta_pixels": 4085
+    },
+    {
+      "pose": "write",
+      "original_source": "workflow-art/write-hands-20261001.png",
+      "original_sha256": "0148cd3d92b787a7e4cccc95ebea06bb49dc2083843b323a4e4f0a0f4979827e",
+      "inputs": [
+        {
+          "file": "poses/write-krea-b.png",
+          "sha256": "f31bababdde43071b9cf1cbbbe90058fb03507f1e6834fdd7fe276cdaed8eec8"
+        }
+      ],
+      "output": "write-b-20261001.png",
+      "output_sha256": "025728a635184c6c5a41196d9af5e625ae8f345a5ec5f20bbbbf2301a96234ed",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 218348,
+      "magenta_material_pixels_corrected": 16510,
+      "exact_magenta_pixels": 4301
+    }
+  ]
+}

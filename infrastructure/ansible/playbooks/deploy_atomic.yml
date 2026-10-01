@@ -39,12 +39,39 @@
 
   vars:
     antiek_public_dir: "{{ antiek_install_dir }}"
+    # Single source of truth for the release-path consumers, and WHY (prod
+    # incident 2026-10-01). The deploy stops these before schema migrate and
+    # starts them again afterwards. The pause loop and the "require complete
+    # consumer pause" post-condition both read THIS list, so the post-condition
+    # cannot drift from what was actually paused. The 2026-10-01 deploy died on
+    # a later assert whose conditional raised `object of type 'dict' has no
+    # attribute 'skipped'`; its rescue raised the same error, so the box was
+    # left with backups, the health probe, backup-freshness and
+    # continuous-research all stopped. Nothing in the play noticed.
+    release_path_consumers:
+      - antiek-continuous-research.service
+      - antiek-arxiv-oai-sync.timer
+      - antiek-arxiv-oai-sync.service
+      - antiek-backup.timer
+      - antiek-backup.service
+      - antiek-health-probe.service
+      - antiek-health-probe.timer
+      - antiek-backup-freshness.service
+      - antiek-backup-freshness.timer
     antiek_release_root: "/opt/antiek-releases"
     antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
     antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
     antiek_previous_sha: ""
     antiek_release_min_free_gb: 12
     antiek_release_retention_count: 4
+    # The pre-migration DuckDB snapshot is ~940 MB per deploy and NOTHING
+    # pruned it until this task existed: measured 2026-10-01 on prod, 46
+    # copies / 40.6 GB across six days (17 in one day, 14.9 GB) on a 150 GB
+    # disk with 72 GB free. The release directories were already pruned to
+    # `antiek_release_retention_count`; the database copies the same playbook
+    # created were not. Retention keeps the newest N, and the task always
+    # protects the three the playbook can still need.
+    antiek_duckdb_snapshot_retention_count: 4
 
   pre_tasks:
     # The gate is tagged `always`, and only `always`. Every --tags selection
@@ -556,28 +583,156 @@
             antiek_previous_sha: "{{ current_release_lookup.stdout | trim }}"
           tags: [code]
 
-        - name: record whether an arXiv crawl was in flight before pause
-          ansible.builtin.command:
-            cmd: systemctl is-active antiek-arxiv-oai-sync.service
-          register: arxiv_sync_pre_pause
-          failed_when: false
+        - name: stop the arxiv timer before observing its service
+          ansible.builtin.shell: |
+            set -euo pipefail
+            policy=$(systemctl show antiek-arxiv-oai-sync.timer --property=UnitFileState,ActiveState)
+            unit_file_state=$(sed -n 's/^UnitFileState=//p' <<< "$policy")
+            active_state=$(sed -n 's/^ActiveState=//p' <<< "$policy")
+            case "$unit_file_state:$active_state" in
+              enabled:active|enabled:inactive|disabled:active|disabled:inactive) ;;
+              *) echo 'Unknown arXiv timer policy; refusing to stop it' >&2; exit 1 ;;
+            esac
+            printf 'UnitFileState=%s\nActiveState=%s\n' "$unit_file_state" "$active_state"
+            systemctl disable --now antiek-arxiv-oai-sync.timer
+          args:
+            executable: /bin/bash
+          register: arxiv_timer_pause_result
+          tags: [code]
+
+        - name: remember arxiv timer policy before pause
+          ansible.builtin.set_fact:
+            arxiv_timer_was_enabled: "{{ 'UnitFileState=enabled' in arxiv_timer_pause_result.stdout_lines }}"
+            arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
+          tags: [code]
+
+        - name: capture arxiv service and timer before pause
+          ansible.builtin.shell: |
+            set -euo pipefail
+            # v255 show prints Job= for no job and a numeric positive ID otherwise.
+            # --all retains empty fields; reject missing/duplicate/malformed properties.
+            # list-jobs exposes JOB UNIT TYPE STATE. Match ID/unit and re-read.
+            export SYSTEMD_COLORS=0 LC_ALL=C
+            valid_snapshot() {
+              awk '
+                /^ActiveState=(active|activating|inactive|failed|deactivating|reloading)$/ {state++; next}
+                /^Job=([1-9][0-9]*)?$/ {job++; next}
+                /^ExecMainStartTimestampMonotonic=[0-9]*$/ {stamp++; next}
+                {bad++}
+                END {exit !(state == 1 && job == 1 && stamp == 1 && bad == 0)}
+              ' <<< "$1"
+            }
+            for attempt in {1..5}; do
+              before=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$before"; then
+                echo 'Malformed arXiv service snapshot; refusing service pause' >&2
+                exit 1
+              fi
+              job=$(sed -n 's/^Job=//p' <<< "$before")
+              pending_type=none
+              if [[ "$job" =~ ^[1-9][0-9]*$ ]]; then
+                jobs=$(systemctl list-jobs --no-legend --no-pager --plain --full)
+                pending_type=$(awk -v id="$job" '$1 == id && $2 == "antiek-arxiv-oai-sync.service" {print $3}' <<< "$jobs")
+              elif [ -n "$job" ]; then
+                echo 'Invalid arXiv job identity; refusing service pause' >&2
+                exit 1
+              fi
+              after=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$after"; then
+                echo 'Malformed arXiv service recapture; refusing service pause' >&2
+                exit 1
+              fi
+              if [ "$before" = "$after" ] && [[ "$pending_type" =~ ^(none|start|stop)$ ]]; then
+                printf '%s\nPendingJobType=%s\n' "$after" "$pending_type"
+                break
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo 'Ambiguous arXiv pending job; refusing service pause' >&2
+                exit 1
+              fi
+              sleep 1
+            done
+            printf 'TimerLastTrigger=%s\n' "$(systemctl show antiek-arxiv-oai-sync.timer --property=LastTriggerUSecMonotonic --value)"
+          args:
+            executable: /bin/bash
+          register: arxiv_before_pause
           changed_when: false
+          tags: [code]
+
+        - name: remember whether an arxiv run was interrupted
+          ansible.builtin.set_fact:
+            arxiv_was_running: "{{ arxiv_before_pause.stdout is search('ActiveState=(active|activating)|PendingJobType=start') }}"
+            arxiv_timer_before: "{{ (arxiv_before_pause.stdout | regex_findall('TimerLastTrigger=(.*)') | first) | default('unknown') }}"
+            arxiv_service_start_before: "{{ (arxiv_before_pause.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first) | default('unknown', true) }}"
+          tags: [code]
+
+        - name: pause the arxiv service before cutover
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ "$ARXIV_TIMER_STOP_OK" != 1 ]; then
+              echo 'arXiv timer stop did not complete; refusing to pause its service' >&2
+              exit 1
+            fi
+            printf 'ServicePauseAttempted=1\n'
+            systemctl stop antiek-arxiv-oai-sync.service
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_STOP_OK: "{{ '1' if (arxiv_timer_pause_result | default({})).rc | default(1) == 0 else '0' }}"
+          register: arxiv_service_pause_result
           tags: [code]
 
         - name: pause every release-path consumer before cutover
           ansible.builtin.systemd:
             name: "{{ item }}"
             state: stopped
-          loop:
-            - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
-            - antiek-arxiv-oai-sync.service
-            - antiek-backup.timer
-            - antiek-backup.service
-            - antiek-health-probe.service
-            - antiek-health-probe.timer
-            - antiek-backup-freshness.service
-            - antiek-backup-freshness.timer
+          loop: "{{ release_path_consumers }}"
+          when:
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+            - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
+            - (arxiv_service_pause_result | default({})).rc | default(1) == 0
+          register: arxiv_pause_result
+          tags: [code]
+
+        - name: observe every release-path consumer state after the pause
+          # Ask the BOX what happened rather than parsing the bookkeeping of a
+          # loop result. `selectattr('skipped', ...)` over loop results is
+          # version-coupled (a result for a non-skipped item carries no
+          # `skipped` key) and it is what killed the 2026-10-01 deploy. A state
+          # probe is both safer and strictly stronger: it proves the pause
+          # happened, not that the task reported it.
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - "{{ item }}"
+              - --property=ActiveState
+          loop: "{{ release_path_consumers }}"
+          register: consumer_pause_states
+          changed_when: false
+          failed_when: false
+          tags: [code]
+
+        - name: require complete consumer pause before schema or cutover
+          ansible.builtin.assert:
+            that:
+              - arxiv_timer_was_enabled is defined
+              - arxiv_timer_was_active is defined
+              - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
+              - (arxiv_service_pause_result | default({})).rc | default(1) == 0
+              - (consumer_pause_states | default({})).results | default([]) | length
+                == (release_path_consumers | length)
+              # Every consumer must be affirmatively inactive (or failed, which
+              # is still stopped): an empty or unknown ActiveState does not pass.
+              - >-
+                (consumer_pause_states.results | map(attribute='stdout') | map('trim')
+                 | reject('equalto', 'ActiveState=inactive')
+                 | reject('equalto', 'ActiveState=failed') | list | length) == 0
+            fail_msg: >-
+              Release-path consumers are not all stopped: {{ consumer_pause_states.results
+              | map(attribute='stdout') | map('trim') | list }}.
+              Refusing to migrate the schema or cut over while a consumer is live.
           tags: [code]
 
         - name: stop antiek before schema migrate
@@ -781,21 +936,9 @@
             state: started
           loop:
             - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
             - antiek-backup.timer
             - antiek-health-probe.timer
             - antiek-backup-freshness.timer
-          tags: [code]
-
-        # A deploy intentionally interrupts a running oneshot crawl. Restart
-        # only that interrupted unit after the candidate is healthy; do not
-        # turn a deploy into an unscheduled crawl. Backup is deliberately
-        # timer-only.
-        - name: resume the interrupted arXiv sync crawl, if any
-          ansible.builtin.systemd:
-            name: antiek-arxiv-oai-sync.service
-            state: started
-          when: (arxiv_sync_pre_pause.stdout | default('inactive')) in ["active", "activating"]
           tags: [code]
 
         - name: GET public health from the candidate
@@ -824,9 +967,197 @@
           delegate_to: localhost
           become: false
           changed_when: false
+          register: candidate_parity
           tags: [verify]
 
+        - name: resume the arxiv timer after candidate verification
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          register: arxiv_candidate_timer_resume
+          when:
+            - candidate_health is defined
+            - candidate_health is not skipped
+            - candidate_parity is defined
+            - candidate_parity is not skipped
+            - arxiv_timer_pause_result is defined
+            - arxiv_timer_pause_result is not skipped
+            - arxiv_pause_result is defined
+            - arxiv_pause_result is not skipped
+            - arxiv_service_pause_result is defined
+            - arxiv_service_pause_result is not skipped
+          tags: [code]
+
+        - name: observe arxiv timer after candidate verification
+          ansible.builtin.shell: |
+            set -euo pipefail
+            for attempt in {1..10}; do
+              timer=$(systemctl show antiek-arxiv-oai-sync.timer --property=ActiveState,SubState,LastTriggerUSecMonotonic,NextElapseUSecRealtime)
+              last_trigger=$(sed -n 's/^LastTriggerUSecMonotonic=//p' <<< "$timer")
+              if [ "$last_trigger" != "$ARXIV_TIMER_BEFORE" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              next_elapse=$(sed -n 's/^NextElapseUSecRealtime=//p' <<< "$timer")
+              next_epoch=$(date -u -d "$next_elapse" +%s 2>/dev/null || true)
+              if grep -qx 'ActiveState=active' <<< "$timer" &&
+                 grep -qx 'SubState=waiting' <<< "$timer" &&
+                 [ -n "$next_epoch" ] && [ "$next_epoch" -gt "$(($(date -u +%s) + 5))" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              if [ "$attempt" -lt 10 ]; then sleep 1; fi
+            done
+            echo 'arXiv timer trigger state remained ambiguous after 10 seconds' >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_BEFORE: "{{ arxiv_timer_before }}"
+          register: arxiv_candidate_timer
+          changed_when: false
+          when:
+            - arxiv_pause_result is defined
+            - arxiv_pause_result is not skipped
+            - arxiv_timer_pause_result is defined
+            - arxiv_timer_pause_result is not skipped
+            - candidate_health is defined
+            - candidate_health is not skipped
+            - candidate_parity is defined
+            - candidate_parity is not skipped
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - arxiv_timer_was_active | bool
+          tags: [code]
+
+        - name: resume the interrupted arxiv run on the verified candidate
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: started
+            no_block: true
+          register: arxiv_candidate_resume
+          when:
+            - arxiv_was_running | default(false) | bool
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - >-
+              not (arxiv_timer_was_active | bool)
+              or (arxiv_candidate_timer is defined and arxiv_candidate_timer is not skipped
+                  and arxiv_timer_before == (arxiv_candidate_timer.stdout | default('') | trim))
+          tags: [code]
+
+        - name: observe the candidate arxiv run started by timer or deploy
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - antiek-arxiv-oai-sync.service
+              - --property=ActiveState,MainPID,Result,ExecMainStartTimestampMonotonic
+          register: arxiv_candidate_status
+          changed_when: false
+          retries: 12
+          delay: 1
+          until:
+            - "arxiv_candidate_status.stdout is search('ExecMainStartTimestampMonotonic=[1-9]')"
+            - "(arxiv_candidate_status.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first | default('unknown', true)) != arxiv_service_start_before"
+            - "'Result=success' in arxiv_candidate_status.stdout"
+            - >-
+              (arxiv_candidate_status.stdout is search('ActiveState=activating')
+              and arxiv_candidate_status.stdout is search('MainPID=[1-9][0-9]*'))
+              or arxiv_candidate_status.stdout is search('ActiveState=(active|inactive)')
+          when:
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - >-
+              (arxiv_candidate_resume is defined and arxiv_candidate_resume is changed)
+              or (arxiv_timer_was_active | bool
+                  and arxiv_candidate_timer is defined and arxiv_candidate_timer is not skipped
+                  and arxiv_timer_before != (arxiv_candidate_timer.stdout | default('') | trim))
+          tags: [code]
+
       rescue:
+        - name: classify arxiv service pause stage
+          # This task is the RESCUE's classifier: if it raises, no rollback task
+          # runs at all and the paused consumers stay dark (prod 2026-10-01).
+          # `rejectattr('skipped', ...)` is what raised: a loop result for an
+          # item that RAN carries no `skipped` key, and strict undefined makes
+          # that an error rather than a miss. `map(attribute=..., default=...)`
+          # supplies the missing key explicitly, so "ran" and "skipped" are
+          # both values and neither can raise.
+          #
+          # The semantics are deliberately precise, not merely safe: these two
+          # facts answer "was THIS unit actually stopped", not "did the loop
+          # run". The loop pauses nine units; an arxiv item that was skipped
+          # must not read as attempted.
+          #
+          # Idiom and the stdout_lines guard below came from the sibling lane's
+          # PR #3585 (2026-10-01T05:43Z), which diagnosed the same deploy
+          # failure independently; they are folded in here so the two fixes
+          # cannot lose each other.
+          ansible.builtin.set_fact:
+            arxiv_service_pause_attempted: >-
+              {{ (arxiv_service_pause_result | default({})).stdout | default('')
+                 is search('(?m)^ServicePauseAttempted=1$')
+                 or ((arxiv_pause_result | default({})).results | default([])
+                     | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service')
+                     | map(attribute='skipped', default=false)
+                     | select('equalto', false) | list | length > 0) }}
+            arxiv_loop_timer_pause_attempted: >-
+              {{ (arxiv_pause_result | default({})).results | default([])
+                 | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.timer')
+                 | map(attribute='skipped', default=false)
+                 | select('equalto', false) | list | length > 0 }}
+          tags: [rollback]
+
+        - name: recover arxiv timer policy from attempted stop
+          ansible.builtin.set_fact:
+            arxiv_timer_was_enabled: "{{ 'UnitFileState=enabled' in arxiv_timer_pause_result.stdout_lines }}"
+            arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
+          when:
+            - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
+            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
+            - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
+            - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
+          tags: [rollback]
+
+        - name: restore arxiv timer policy before service pause
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          when:
+            - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
+            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
+            - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
+            - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
+            - not (arxiv_service_pause_attempted | default(false) | bool)
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+          tags: [rollback]
+
+        - name: disable the arxiv timer before rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          when: >-
+            arxiv_service_pause_attempted | default(false) | bool
+            or arxiv_loop_timer_pause_attempted | default(false) | bool
+          tags: [rollback]
+
         - name: report that candidate verification failed
           ansible.builtin.debug:
             msg: Candidate release failed verification; restoring {{ antiek_previous_sha }}.
@@ -838,8 +1169,6 @@
             state: stopped
           loop:
             - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
-            - antiek-arxiv-oai-sync.service
             - antiek-backup.timer
             - antiek-backup.service
             - antiek-health-probe.service
@@ -847,7 +1176,18 @@
             - antiek-backup-freshness.service
             - antiek-backup-freshness.timer
           failed_when: false
-          when: antiek_previous_sha | length > 0
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
+          tags: [rollback]
+
+        - name: re-quiesce arxiv service before rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
           tags: [rollback]
 
         - name: stop a failing candidate before rollback
@@ -981,7 +1321,6 @@
             state: started
           loop:
             - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
             - antiek-backup.timer
             - antiek-health-probe.timer
             - antiek-backup-freshness.timer
@@ -1006,6 +1345,197 @@
           when: antiek_previous_sha | length > 0
           tags: [rollback]
 
+        - name: prove the previous arxiv parser can read the current cursor and source
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_public_dir }}/.venv/bin/python"
+              - -c
+              - |
+                import sys
+                from runtime.db_lock import connect_read
+                from substrate.graph.schema import load_arxiv_bulk_progress
+                from tools.arxiv_bulk_resume import assert_physical_boundary, verify_snapshot
+
+                with connect_read(sys.argv[1], external_lock_timeout_s=45) as con:
+                    progress = load_arxiv_bulk_progress(con)
+                if progress is not None and progress['phase'] in {'bulk', 'tail'}:
+                    source = verify_snapshot(progress['source_path'])
+                    if (source.path != progress['source_path'] or
+                            source.sha256 != progress['source_sha256'] or
+                            source.size != progress['source_size_bytes']):
+                        raise ValueError('current source does not match persisted cursor')
+                    assert_physical_boundary(
+                        source, progress['next_byte_offset'], progress['physical_line_count']
+                    )
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_public_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          register: arxiv_rollback_compatibility
+          changed_when: false
+          failed_when: false
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+            - rollback_health is defined
+            - rollback_health is not skipped
+          tags: [rollback]
+
+        - name: resume the arxiv timer on a compatible previous release
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          register: arxiv_rollback_timer_resume
+          ignore_errors: true
+          when:
+            - arxiv_rollback_compatibility is defined
+            - arxiv_rollback_compatibility.rc | default(1) == 0
+          tags: [rollback]
+
+        - name: observe arxiv timer after compatible rollback
+          ansible.builtin.shell: |
+            set -euo pipefail
+            for attempt in {1..10}; do
+              timer=$(systemctl show antiek-arxiv-oai-sync.timer --property=ActiveState,SubState,LastTriggerUSecMonotonic,NextElapseUSecRealtime)
+              last_trigger=$(sed -n 's/^LastTriggerUSecMonotonic=//p' <<< "$timer")
+              if [ "$last_trigger" != "$ARXIV_TIMER_BEFORE" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              next_elapse=$(sed -n 's/^NextElapseUSecRealtime=//p' <<< "$timer")
+              next_epoch=$(date -u -d "$next_elapse" +%s 2>/dev/null || true)
+              if grep -qx 'ActiveState=active' <<< "$timer" &&
+                 grep -qx 'SubState=waiting' <<< "$timer" &&
+                 [ -n "$next_epoch" ] && [ "$next_epoch" -gt "$(($(date -u +%s) + 5))" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              if [ "$attempt" -lt 10 ]; then sleep 1; fi
+            done
+            echo 'arXiv rollback timer trigger state remained ambiguous after 10 seconds' >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_BEFORE: "{{ arxiv_timer_before }}"
+          register: arxiv_rollback_timer
+          changed_when: false
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_rollback_compatibility is defined
+            - arxiv_rollback_compatibility.rc | default(1) == 0
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - arxiv_timer_was_active | bool
+          tags: [rollback]
+
+        - name: disable an ambiguous arxiv timer after rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer is defined
+            - arxiv_rollback_timer is failed
+          tags: [rollback]
+
+        - name: stop an ambiguous arxiv service after rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          when:
+            - arxiv_rollback_timer is defined
+            - arxiv_rollback_timer is failed
+          tags: [rollback]
+
+        - name: resume the interrupted arxiv run on the compatible previous release
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: started
+            no_block: true
+          register: arxiv_rollback_resume
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_was_running | default(false) | bool
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - >-
+              not (arxiv_timer_was_active | bool)
+              or (arxiv_rollback_timer is defined and arxiv_rollback_timer is not skipped
+                  and arxiv_rollback_timer.rc | default(1) == 0
+                  and arxiv_timer_before == (arxiv_rollback_timer.stdout | default('') | trim))
+          tags: [rollback]
+
+        - name: observe the rollback arxiv run started by timer or deploy
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - antiek-arxiv-oai-sync.service
+              - --property=ActiveState,MainPID,Result,ExecMainStartTimestampMonotonic
+          register: arxiv_rollback_status
+          changed_when: false
+          retries: 12
+          delay: 1
+          until:
+            - "arxiv_rollback_status.stdout is search('ExecMainStartTimestampMonotonic=[1-9]')"
+            - "(arxiv_rollback_status.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first | default('unknown', true)) != arxiv_service_start_before"
+            - "'Result=success' in arxiv_rollback_status.stdout"
+            - >-
+              (arxiv_rollback_status.stdout is search('ActiveState=activating')
+              and arxiv_rollback_status.stdout is search('MainPID=[1-9][0-9]*'))
+              or arxiv_rollback_status.stdout is search('ActiveState=(active|inactive)')
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - >-
+              (arxiv_rollback_resume is defined and arxiv_rollback_resume is changed)
+              or (arxiv_timer_was_active | bool
+                  and arxiv_rollback_timer is defined and arxiv_rollback_timer is not skipped
+                  and arxiv_rollback_timer.rc | default(1) == 0
+                  and arxiv_timer_before != (arxiv_rollback_timer.stdout | default('') | trim))
+          tags: [rollback]
+
+        - name: disable arxiv timer after failed rollback continuation
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          register: arxiv_rollback_timer_cleanup
+          ignore_errors: true
+          when:
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
+          tags: [rollback]
+
+        - name: stop arxiv service after failed rollback continuation
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          register: arxiv_rollback_service_cleanup
+          ignore_errors: true
+          when:
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
+          tags: [rollback]
+
         - name: fail the deploy after a verified rollback
           ansible.builtin.fail:
             msg: >-
@@ -1013,7 +1543,61 @@
               restored to {{ antiek_previous_sha }}; the DuckDB snapshot is
               {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}.
               Code rollback does not reverse database writes.
+              {% if (arxiv_rollback_resume | default({})) is failed or (arxiv_rollback_timer_resume | default({})) is failed %}
+              arXiv timer restoration or async enqueue failed. Timer disable and service
+              stop were attempted; verify both units before any operator restart.
+              {% endif %}
+              {% if (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) and arxiv_rollback_compatibility.rc | default(1) != 0 %}
+              The arXiv timer is disabled and no automatic sync restart was
+              permitted: original timer policy or previous parser/source compatibility
+              was not proven. Inspect the timer, cursor, and source before restarting it.
+              {% endif %}
+              {% if not (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) %}
+              The arXiv service was not paused; its original timer policy was retained
+              or restored before rollback.
+              {% endif %}
+              {% if (arxiv_rollback_timer_cleanup | default({})) is failed or (arxiv_rollback_service_cleanup | default({})) is failed %}
+              arXiv fail-closed cleanup failed. The timer or service may remain enabled
+              or active; operator action is required before further deployment.
+              {% endif %}
+              {% if arxiv_rollback_status is defined and arxiv_rollback_status is failed %}
+              The resumed arXiv run did not reach a successful new execution;
+              its timer was disabled and service stopped for operator investigation.
+              {% endif %}
+              {% if arxiv_rollback_timer is defined and arxiv_rollback_timer is failed %}
+              The arXiv timer catch-up state stayed ambiguous; its service was
+              stopped and timer disabled for operator investigation.
+              {% endif %}
           tags: [rollback]
+
+      always:
+        # THE INVARIANT THIS ENCODES (prod incident 2026-10-01): a deploy
+        # attempt must never end with the operator's data protection dark. That
+        # day the play died before cutover and its rescue died on the same
+        # conditional, leaving antiek-backup.timer, antiek-backup-freshness.timer,
+        # antiek-health-probe.timer and antiek-continuous-research.service all
+        # stopped with no further task to notice. `always` runs after a
+        # successful block AND after a rescue that itself failed, so no failure
+        # path can skip it. Each unit is started with the policy the design
+        # intends (enabled), and `failed_when: false` keeps a wedged unit from
+        # masking the real failure the rescue is about to report.
+        #
+        # The arXiv timer is deliberately NOT here: its post-deploy policy is
+        # release-dependent (enabled only when the candidate or the rollback
+        # target proved compatibility), and both the success path and the rescue
+        # already set it explicitly.
+        - name: never leave release-path monitoring or backups stopped
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          failed_when: false
+          tags: [code, rollback]
 
     - name: prune only unreferenced complete releases beyond retention
       ansible.builtin.shell: |
@@ -1030,6 +1614,51 @@
             rm -rf --one-file-system "$release"
           fi
         done < <(find "{{ antiek_release_root }}" -mindepth 1 -maxdepth 1 -type d           -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%T@ %p\n'           | sort -nr | cut -d' ' -f2-)
+      args:
+        executable: /bin/bash
+      changed_when: true
+      tags: [code]
+
+    - name: prune DuckDB pre-migration snapshots beyond retention
+      # WHY THIS EXISTS (measured 2026-10-01): `snapshot the quiesced DuckDB
+      # before migration` writes {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-<sha>
+      # on every deploy and nothing ever removed one. Prod held 46 of them
+      # (40.6 GB across six days, one day alone 17 copies / 14.9 GB) on a 150 GB
+      # disk with 72 GB free, i.e. ~6.6 GB/day against a nightly backup that
+      # also writes to this host. The same playbook already prunes RELEASE
+      # directories to a retention count; the database copies it created were
+      # the untracked half of the same leak. This task closes it with the same
+      # discipline: sort by mtime, keep the newest
+      # `antiek_duckdb_snapshot_retention_count`, and always protect the three
+      # SHAs the playbook can still reach for -- the snapshot it just took
+      # (`keep`), the one that predates the release being replaced
+      # (`previous`, the operator's before-state for a release rollback), and
+      # the release currently pointed at by the public path (`current`).
+      #
+      # Safety: `-name 'antiek.duckdb.pre-atomic-*'` can only match that one
+      # family, `--one-file-system` keeps rm on this filesystem, and an EMPTY
+      # match is a no-op. The find error abort under `set -euo pipefail` means
+      # a missing state directory fails the task rather than silently
+      # pretending the disk was swept.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        state="{{ antiek_state_dir }}"
+        keep="{{ antiek_target_sha }}"
+        previous="{{ antiek_previous_sha }}"
+        current=$(basename "$(readlink -f "{{ antiek_public_dir }}")")
+        count=0
+        while IFS= read -r snapshot; do
+          sha="${snapshot##*antiek.duckdb.pre-atomic-}"
+          count=$((count + 1))
+          if [ "$sha" = "$keep" ] || [ "$sha" = "$previous" ] || [ "$sha" = "$current" ]; then
+            continue
+          fi
+          if [ "$count" -gt "{{ antiek_duckdb_snapshot_retention_count }}" ]; then
+            rm -f --one-file-system "$snapshot"
+          fi
+        done < <(find "$state" -mindepth 1 -maxdepth 1 \
+                   -name 'antiek.duckdb.pre-atomic-*' -type f \
+                   -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2-)
       args:
         executable: /bin/bash
       changed_when: true

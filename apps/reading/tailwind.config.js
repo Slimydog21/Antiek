@@ -41,9 +41,9 @@ export default {
         sun: ch("sun"),
         "sun-hover": ch("sun-hover"),
         "sun-press": ch("sun-press"),
-        // The brand as TEXT: day #75620F, night the sun itself.
+        // The brand as text uses forest green by day, sage by night.
         "sun-ink": ch("sun-ink"),
-        // The weathered ochre EDGE (>= 3:1 as a line). text-sun-deep is
+        // The green EDGE (>= 3:1 as a line). text-sun-deep is
         // remapped to sun-ink in textColor below.
         "sun-deep": ch("sun-deep"),
         "sun-glow": "var(--sun-glow)",
@@ -146,17 +146,17 @@ export default {
         glass: "var(--glass-border)",
       },
       boxShadow: {
-        // Day: cast in the fixed ink (#0F1419)
+        // Day: cast in the fixed walnut ink
         z1: "3px 3px 0 0 var(--fixed-ink)",
         z2: "5px 5px 0 0 var(--fixed-ink)",
         z3: "8px 8px 0 0 var(--fixed-ink)",
         lift: "12px 12px 0 0 var(--fixed-ink)",
-        // Night: cast in var(--sun-deep) (night value #84722F). Applied only
+        // Night: cast in var(--void). Applied only
         // behind dark:, byte-identical to tokens.css --shadow-z*.
-        "z1-night": "3px 3px 0 0 var(--sun-deep)",
-        "z2-night": "5px 5px 0 0 var(--sun-deep)",
-        "z3-night": "8px 8px 0 0 var(--sun-deep)",
-        "lift-night": "12px 12px 0 0 var(--sun-deep)",
+        "z1-night": "3px 3px 0 0 var(--void)",
+        "z2-night": "5px 5px 0 0 var(--void)",
+        "z3-night": "8px 8px 0 0 var(--void)",
+        "lift-night": "12px 12px 0 0 var(--void)",
       },
       borderWidth: {
         edge: "2.5px",
