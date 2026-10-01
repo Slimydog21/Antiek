@@ -21,6 +21,10 @@ import type {
 
 import { API_BASE, apiFetch } from "./api";
 import {
+  createModelExecutionScope,
+  type ModelExecutionLifecycle,
+} from "./modelExecutionScope";
+import {
   authDiagnosticLayer,
   type AuthDiagnosticCode,
   type AuthDiagnosticLayer,
@@ -72,6 +76,7 @@ export type AuthState =
 
 export interface AuthContextValue {
   state: AuthState;
+  modelExecution: ModelExecutionLifecycle;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
   refresh: () => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
@@ -239,9 +244,24 @@ function AuthUnavailableScreen({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
   const refreshEpochRef = useRef(0);
+  const mountedRef = useRef(true);
+  const scopeRef = useRef<ReturnType<typeof createModelExecutionScope> | null>(null);
+  if (!scopeRef.current) scopeRef.current = createModelExecutionScope();
+  const scope = scopeRef.current;
+  const [modelScope, setModelScope] = useState(scope.readCurrent);
+  const logoutRef = useRef<{ token: object; promise: Promise<void> } | null>(null);
+  const publishSuspended = useCallback(
+    (reason: Parameters<typeof scope.suspend>[0]) => {
+      const next = scope.suspend(reason);
+      if (mountedRef.current) setModelScope(next);
+    },
+    [scope],
+  );
 
   const refresh = useCallback(async () => {
+    if (!mountedRef.current || logoutRef.current) return;
     const epoch = ++refreshEpochRef.current;
+    publishSuspended("checking_identity");
     let answer: IdentityAnswer;
     try {
       answer = await fetchIdentity();
@@ -250,8 +270,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // braces for a bug in that classification, and it errs to unavailable.
       answer = { kind: "unavailable", reason: "offline" };
     }
-    if (refreshEpochRef.current !== epoch) return;
+    if (!mountedRef.current || logoutRef.current || refreshEpochRef.current !== epoch) return;
     if (answer.kind === "unavailable") {
+      publishSuspended("unavailable");
       suspendSectionProseDispatch();
       // Unknown transport failure is not an identity transition. Keep the
       // reading-state owner until /auth/me proves a different or null user;
@@ -262,6 +283,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
+    if (identity) setModelScope(scope.verify(identity));
+    else publishSuspended("no_identity");
     // An inferred (CORS-masked) 401 is not proof of a null user: leave the
     // reading-state owner as it was, the pre-F-03 behaviour for transport
     // failures, so pending work survives a blip that /health happened to
@@ -279,21 +302,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setState({ status: "unauthenticated" });
     }
-  }, []);
+  }, [publishSuspended, scope]);
 
-  const signOut = useCallback(async () => {
-    // A logout invalidates every identity answer already in flight; it must
-    // never be reversed by an older /auth/me response.
+  const signOut = useCallback((): Promise<void> => {
+    if (logoutRef.current) return logoutRef.current.promise;
+    if (!mountedRef.current) return Promise.resolve();
+    const token = {};
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<void>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    logoutRef.current = { token, promise };
     refreshEpochRef.current += 1;
+    publishSuspended("logout_pending");
     setReadingStateOwner(null);
     setSectionProseOwner(null);
-    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
-    setState({ status: "unauthenticated" });
-  }, []);
+    void (async () => {
+      try {
+        const response = await apiFetch(authUrl("/auth/logout"), { method: "POST" });
+        if (response.status !== 204) throw new Error("Antiek couldn't sign you out.");
+        if (mountedRef.current && logoutRef.current?.token === token) {
+          refreshEpochRef.current += 1;
+          publishSuspended("no_identity");
+          setState({ status: "unauthenticated" });
+        }
+        resolve();
+      } catch (error: unknown) {
+        if (mountedRef.current && logoutRef.current?.token === token) {
+          publishSuspended("logout_failed");
+        }
+        reject(error);
+      } finally {
+        if (logoutRef.current?.token === token) logoutRef.current = null;
+      }
+    })();
+    return promise;
+  }, [publishSuspended]);
 
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
-  }, [refresh]);
+    return () => {
+      mountedRef.current = false;
+      refreshEpochRef.current += 1;
+      logoutRef.current = null;
+      scope.suspend("unmounted");
+    };
+  }, [refresh, scope]);
 
   // Link the PostHog person to the substrate session as auth state resolves.
   // distinct_id is the substrate user_id (never PII); email + auth_method are
@@ -320,9 +377,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     posthog.reset();
   }, [state]);
 
+  const modelExecution = useMemo<ModelExecutionLifecycle>(
+    () => ({
+      current: modelScope,
+      readCurrent: scope.readCurrent,
+      isCurrent: scope.isCurrent,
+    }),
+    [modelScope, scope],
+  );
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signOut }),
-    [state, refresh, signOut],
+    () => ({ state, refresh, signOut, modelExecution }),
+    [state, refresh, signOut, modelExecution],
   );
   return (
     <AuthCtx.Provider value={value}>
