@@ -149,6 +149,7 @@ class ByotUsageLedger:
     def _ensure_schema(self) -> None:
         con = self._connect()
         try:
+            con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "CREATE TABLE IF NOT EXISTS byot_usage_meta ("
                 "  key TEXT PRIMARY KEY, value TEXT NOT NULL"

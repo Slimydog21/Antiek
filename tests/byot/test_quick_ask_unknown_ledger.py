@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
@@ -186,3 +188,79 @@ def test_recent_quick_ask_read_is_owner_scoped_bound_and_fixed_at_ten(
     ]
     with pytest.raises(ValueError):
         ledger.recent_quick_ask_operations("")
+
+
+def test_concurrent_v3_constructors_preserve_holds_and_terminal_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "concurrent-v3.sqlite3"
+    ledger = ByotUsageLedger(path)
+    ledger.set_limit("key-a", "owner-a", 100)
+    ledger.prepare_operation("key-a", "owner-a", "quick-ask:legacy", 7, "a" * 64)
+    ledger.mark_operation_sent("owner-a", "quick-ask:legacy")
+    ledger.record_unknown_result(
+        "owner-a", "quick-ask:legacy", result_text="legacy answer",
+        dispatch_event_id="evt-legacy", provider_id="key-a", model_id="model-a",
+    )
+    with sqlite3.connect(path) as con:
+        for name in ("request_digest", "finish_reason", "quote_estimate_usd", "cost_usd_estimate"):
+            con.execute(f"ALTER TABLE byot_operation_journal DROP COLUMN {name}")
+        con.execute("UPDATE byot_usage_meta SET value = '3' WHERE key = 'schema_version'")
+
+    starts = Barrier(2)
+    unprotected_alters = Barrier(2)
+    connect = sqlite3.connect
+
+    class RacingConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            # Force the vulnerable read-before-write interleaving on real SQLite.
+            # A constructor already holding its write transaction cannot race here.
+            if sql == "ALTER TABLE byot_operation_journal ADD COLUMN request_digest TEXT" and not self.in_transaction:
+                unprotected_alters.wait(timeout=5)
+            return super().execute(sql, parameters)
+
+    def racing_connect(*args, **kwargs):
+        return connect(*args, **kwargs, factory=RacingConnection)
+
+    def construct():
+        starts.wait(timeout=5)
+        return ByotUsageLedger(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sqlite3, "connect", racing_connect)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(construct) for _ in range(2)]
+            ledgers = [future.result(timeout=10) for future in futures]
+
+    for current in ledgers:
+        old = current.operation("owner-a", "quick-ask:legacy")
+        assert old is not None
+        assert (old.state, old.result_text, old.reserved_cents) == ("unknown", "legacy answer", 7)
+        assert old.request_digest is None
+        assert current.recent_quick_ask_operations("owner-a") == []
+        usage = current.key_usage("key-a", "owner-a")
+        assert usage is not None and (usage.used_cents, usage.held_cents, usage.limit_cents) == (0, 7, 100)
+
+    operation = f"quick-ask:{uuid4()}"
+    ledger = ledgers[0]
+    ledger.prepare_operation(
+        "key-a", "owner-a", operation, 2, "a" * 64,
+        request_digest="b" * 64, quote_estimate_usd="0.002",
+    )
+    ledger.mark_operation_sent("owner-a", operation)
+    ledger.record_operation_result(
+        "owner-a", operation, actual_cents=1, evidence_sha256="e" * 64,
+        dispatch_event_id="evt-new", provider_id="key-a", model_id="model-a",
+        result_text="saved answer", finish_reason="length", cost_usd_estimate="0.0038",
+    )
+    ledger.settle_operation("owner-a", operation, 1, "e" * 64)
+    receipt = ledger.operation("owner-a", operation)
+    reopened = ByotUsageLedger(path)
+    assert reopened.operation("owner-a", operation) == receipt
+    assert receipt is not None and receipt.state == "settled"
+    assert (receipt.request_digest, receipt.result_text, receipt.finish_reason) == (
+        "b" * 64, "saved answer", "length",
+    )
+    assert (receipt.quote_estimate_usd, receipt.cost_usd_estimate) == ("0.002", "0.0038")
+    usage = reopened.key_usage("key-a", "owner-a")
+    assert usage is not None and (usage.used_cents, usage.held_cents) == (1, 7)
