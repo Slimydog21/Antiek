@@ -261,6 +261,17 @@ def _deploy_step() -> dict:
     )
 
 
+def _declared_release_path_consumers() -> list[str]:
+    """The pause loop reads ONE declared list (deploy_atomic.yml
+    `release_path_consumers`), so assertions resolve that list rather than
+    searching the loop expression."""
+    playbook = yaml.safe_load(
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
+    )
+    play = next(p for p in playbook if "release_path_consumers" in (p.get("vars") or {}))
+    return list(play["vars"]["release_path_consumers"])
+
+
 def _deploy_playbook_tasks() -> list[dict]:
     playbook = yaml.safe_load(
         (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
@@ -313,8 +324,12 @@ def test_deploy_pause_captures_arxiv_service_after_durable_timer_pause():
     assert "ActiveState,Job" in capture["ansible.builtin.shell"]
     assert capture["changed_when"] is False
     assert tasks.index(stop) < tasks.index(capture) < tasks.index(pause)
-    assert "antiek-arxiv-oai-sync.timer" in pause["loop"]
-    assert "antiek-arxiv-oai-sync.service" in pause["loop"]
+    # The pause loop reads ONE declared list (deploy_atomic.yml
+    # `release_path_consumers`); assert against that list, not the loop string.
+    assert pause["loop"] == "{{ release_path_consumers }}"
+    consumers = _declared_release_path_consumers()
+    assert "antiek-arxiv-oai-sync.timer" in consumers
+    assert "antiek-arxiv-oai-sync.service" in consumers
 
 
 def test_deploy_resume_enqueues_interrupted_arxiv_after_public_parity():
