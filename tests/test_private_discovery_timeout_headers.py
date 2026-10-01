@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -25,9 +24,15 @@ def discovery(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     monkeypatch.setenv("ANTIEK_EMAIL_PROVIDER", "mock")
     from substrate.multi_user.auth import mint_session_cookie
+    from substrate.graph.schema import init_database
 
-    con = duckdb.connect(str(tmp_path / "catalog.duckdb"))
-    con.close()
+    db_path = str(tmp_path / "catalog.duckdb")
+    with db_lock.connect_write(
+        db_path,
+        purpose="test-private-discovery-timeout-headers-init",
+        keepalive_s=0,
+    ) as con:
+        init_database(con)
     from interfaces.research.api import app as app_module
 
     client = TestClient(app_module.create_app(
