@@ -381,7 +381,8 @@ function BlockOverflowMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // A hidden overflow menu must not eat Escape (A1c low 11).
+      if (e.key !== "Escape" || e.defaultPrevented || ref.current?.closest("[hidden]")) return;
       e.preventDefault();
       setOpen(false);
       triggerRef.current?.focus();

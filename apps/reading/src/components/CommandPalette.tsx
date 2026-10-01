@@ -10,6 +10,10 @@ import {
   project,
 } from "../workspace/persistence";
 import { toggleAISidecar } from "../workspace/shortcuts";
+import {
+  investigationIdForPath,
+  routeKey,
+} from "../workspace/useWorkspaceHydration";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -613,11 +617,13 @@ export default function CommandPalette() {
         title: "Reset workspace layout (this route)",
         subtitle: "Workspace · clears the per-route saved layout",
         run: () => {
-          // Compute the route key the same way useWorkspaceHydration does;
-          // we conservatively use the current pathname.
+          // The SAME collapsed route key useWorkspaceHydration writes under
+          // (a raw pathname cleared a key that never existed on dynamic
+          // routes like /wrestle/:id — G-X2). reset() itself suppresses the
+          // debounced write-back of the emptied layout.
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          clearScope({ kind: "route", route: path });
+          clearScope({ kind: "route", route: routeKey(path) });
           useWorkspace.getState().reset();
           toast.ok("Layout reset for this route.");
         },
@@ -633,14 +639,14 @@ export default function CommandPalette() {
         run: () => {
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          const m = path.match(/\/inv\/([^/]+)/);
-          if (!m) {
+          const investigationId = investigationIdForPath(path);
+          if (!investigationId) {
             toast.warn("No investigation in URL — nothing to reset.");
             return;
           }
-          clearScope({ kind: "investigation", id: m[1] });
+          clearScope({ kind: "investigation", id: investigationId });
           useWorkspace.getState().reset();
-          toast.ok(`Layout reset for investigation ${m[1].slice(0, 8)}.`);
+          toast.ok(`Layout reset for investigation ${investigationId.slice(0, 8)}.`);
         },
       },
       {

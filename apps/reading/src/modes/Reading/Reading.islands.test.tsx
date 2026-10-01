@@ -511,7 +511,7 @@ describe("the island actions", () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();
     await screen.findByText("The ope");
-    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await awaitIsland("a-island"));
     const open = await screen.findByText("Open research →");
     expect(open.closest("a")!.getAttribute("href")).toBe("/inv/inv-thread");
     const dig = document.querySelector("[data-island-dig-deeper]")! as HTMLButtonElement;
@@ -535,7 +535,7 @@ describe("the island actions", () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();
     await screen.findByText("The ope");
-    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await awaitIsland("a-island"));
     fireEvent.click(await screen.findByText("Hide"));
     await waitFor(() =>
       expect(document.querySelector('[data-island-id="a-island"]')).toBeNull(),

@@ -285,7 +285,10 @@ describe("B3-2 writing: a preset round trip leaves exactly one outline", () => {
       </BrowserRouter>,
     );
   }
-  const outlines = () => document.querySelectorAll("[data-write-outline]").length;
+  // A1c low 14 regression guard: the detector was already global; this keeps
+  // it from narrowing to one pane later.
+  const outlines = () =>
+    document.querySelectorAll("[data-write-outline]").length;
   async function togglePreset() {
     key(document.body, "ctrl+b");
     key(document.body, "shift+i");
@@ -322,6 +325,16 @@ describe("B3-2 writing: a preset round trip leaves exactly one outline", () => {
     act(() => { tierRef.current = "xl"; ws().setFocusedPane("right"); });
     expect(document.querySelector("[data-write-outline]")).toBe(outline);
     expect(outline?.closest("[hidden]")).toBeNull();
+  });
+
+  it("the duplicate detector does not silently ignore an outline in either pane", async () => {
+    mountWrite("docked");
+    await waitFor(() => expect(outlines()).toBe(1));
+    const first = document.querySelector<HTMLElement>("[data-write-outline]")!;
+    const duplicate = first.cloneNode(true) as HTMLElement;
+    duplicate.dataset.a1cDuplicateControl = "left-or-right";
+    first.parentElement!.append(duplicate);
+    expect(outlines()).toBe(2);
   });
 });
 

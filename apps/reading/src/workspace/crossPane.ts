@@ -30,6 +30,13 @@ export interface OpenDocumentOrigin {
   agentKind?: string;
 }
 
+// STAGED DEPENDENCY (A1c low 13 / R8): OpenDocumentRequest has no `anchor`
+// field, so agent-opened nodes never carry the named passage. THREAD-CONTRACT
+// §2.2 rev 7 S1 requires `anchor` on `agent`-origin nodes (l.419). Requires
+// lane-B wire addition. Do not mark complete until `anchor` is on the request
+// and a test proves an agent-open lands at the passage.
+// Tracker: docs/forensic-v1-design-20260929/REMAINING-WORK-LEDGER.md P1-4.
+
 export interface OpenDocumentRequest {
   documentId: string;
   origin: OpenDocumentOrigin;

@@ -51,10 +51,10 @@ export function Trail({
     return (
       <div
         className="px-4 py-1.5 text-xs font-mono text-emperor"
-        data-testid="thread-breadcrumb-integrity-warning"
+        data-testid="trail-breadcrumb-integrity-warning"
         role="alert"
       >
-        Thread integrity error — a workflow holds a copy ({forked}) instead of
+        Trail integrity error — a workflow holds a copy ({forked}) instead of
         the one entity. Navigation suppressed.
       </div>
     );
@@ -64,9 +64,9 @@ export function Trail({
 
   return (
     <nav
-      aria-label="Cross-workflow thread"
+      aria-label="Cross-workflow trail"
       className="px-4 min-w-0"
-      data-testid="thread-breadcrumb"
+      data-testid="trail-breadcrumb"
     >
       <ol className="flex items-center gap-1.5 text-xs font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
         {thread.hops.map((hop, i) => {
@@ -97,7 +97,7 @@ export function Trail({
                 // plainly it's not available. Never a fake clickable target.
                 <span
                   className="text-ink-mute dark:text-moonlight/50 italic cursor-not-allowed"
-                  data-testid={`thread-hop-stub-${hop.workflow}`}
+                  data-testid={`trail-hop-stub-${hop.workflow}`}
                   title={`${meta.label} is not built yet — this hop is a stub.`}
                 >
                   {meta.label} — not yet available
@@ -106,7 +106,7 @@ export function Trail({
                 <span
                   className="text-ink dark:text-bright font-semibold"
                   aria-current="step"
-                  data-testid={`thread-hop-current-${hop.workflow}`}
+                  data-testid={`trail-hop-current-${hop.workflow}`}
                 >
                   {label}
                   {hop.viaProvisionalSeam && (
@@ -120,7 +120,7 @@ export function Trail({
                   type="button"
                   onClick={() => onJump?.(hop)}
                   className="text-ink dark:text-bright hover:underline"
-                  data-testid={`thread-hop-${hop.workflow}`}
+                  data-testid={`trail-hop-${hop.workflow}`}
                 >
                   {label}
                   {hop.viaProvisionalSeam && (

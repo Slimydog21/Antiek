@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useParams } from "react-router-dom";
 
 import { getHydrationGeneration, useWorkspace } from "./WorkspaceStore";
 import type { PanelKind, PanelMode } from "./panel.types";
@@ -27,6 +28,19 @@ import type { PanelKind, PanelMode } from "./panel.types";
  * Starters are opened on mount and closed on unmount (unless the
  * operator pinned them — pinned panels survive route changes once
  * S9 persistence lands).
+ *
+ * STARTER KEY (MS-01 F5 generalized, GAPS §8 G-X1): React keeps ONE
+ * instance when only a path param changes ("/wrestle" and
+ * "/wrestle/:documentId" render the same element type at the same tree
+ * position), so "open on mount" opened the starters exactly once per
+ * component instance. The starters effect is therefore keyed on the
+ * route's params (joined, sorted) plus the starters' identity. When the
+ * key moves — /wrestle → /wrestle/:id, /create → /create/:id,
+ * /inv/a → /inv/b — the outgoing starters close and the current ones
+ * open, exactly as if the host had remounted. A hydration of a new scope
+ * (AppShell's layout effect, which runs first) already replaced the
+ * workspace and bumps the hydration generation; then the outgoing close
+ * is skipped and the open below layers over the restored layout.
  */
 export type StarterPanel = {
   kind: PanelKind;
@@ -47,11 +61,20 @@ export function PanelHost({ starters = [], children }: Props) {
   const open = useWorkspace((s) => s.open);
   const close = useWorkspace((s) => s.close);
   const panels = useWorkspace((s) => s.panels);
+  const params = useParams();
+
+  // Latest starters for the effect (see the key comment above): the effect
+  // re-runs only when the starter key moves, and must then open the CURRENT
+  // list, not the one captured when the key last moved.
+  const startersRef = useRef(starters);
+  startersRef.current = starters;
+
+  const signature = starterSignature(starters, params);
 
   useEffect(() => {
     const generation = getHydrationGeneration();
     const openedIds: string[] = [];
-    for (const starter of starters) {
+    for (const starter of startersRef.current) {
       const id = open(starter.kind, starter.props ?? {}, {
         mode: starter.mode,
         title: starter.title,
@@ -76,18 +99,38 @@ export function PanelHost({ starters = [], children }: Props) {
         close(id);
       }
     };
-    // Intentional: starters are immutable per-mount. Re-running this
-    // effect on every render would tear down + reopen panels on each
-    // parent re-render. Route changes naturally unmount + remount.
+    // Re-runs only when the starter key moves (route params) or the starter
+    // list's identity changes — never on ordinary parent re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [signature]);
 
-  // The eslint-disable above keeps the static behaviour. `panels` is
-  // pulled in for future use (and tree-shaking would drop the useEffect
-  // line; this is the harmless way to keep the dependency list visible).
+  // `panels` is pulled in for future use (and tree-shaking would drop the
+  // useEffect line; this is the harmless way to keep the dependency list
+  // visible).
   void panels;
 
   return <>{children}</>;
+}
+
+/**
+ * The starter key: the route params the starters hang off (sorted `k=v`
+ * pairs) plus the starters' own identity (id/kind/mode/title — NOT props,
+ * which carry live objects and change every render). Two renders with the
+ * same signature need no starter work; a move re-opens the list.
+ */
+function starterSignature(
+  starters: StarterPanel[],
+  params: Readonly<Record<string, string | undefined>>,
+): string {
+  const paramKey = Object.entries(params)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${String(v)}`)
+    .join("&");
+  const listKey = starters
+    .map((s, i) => `${i}:${s.id ?? ""}|${s.kind}|${s.mode ?? ""}|${s.title ?? ""}`)
+    .join(";");
+  return `${paramKey}#${listKey}`;
 }
 
 export default PanelHost;

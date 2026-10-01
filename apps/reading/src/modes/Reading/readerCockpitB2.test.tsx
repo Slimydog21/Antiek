@@ -181,6 +181,40 @@ describe("B2-5 the reader's contents in a narrow pane", () => {
     expect(toc()!.getAttribute("data-open")).toBe("false");
   });
 
+  it("a TOC inside a hidden pane leaves Escape for the active layer", async () => {
+    const view = await renderReader();
+    fireEvent.click(toggle()!);
+    expect(toc()!.getAttribute("data-open")).toBe("true");
+
+    view.container.hidden = true;
+    let event: KeyboardEvent | undefined;
+    act(() => {
+      event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      document.dispatchEvent(event);
+    });
+    expect(event!.defaultPrevented).toBe(false);
+    expect(toc()!.getAttribute("data-open")).toBe("true");
+  });
+
+  it("a visible TOC close restores toggle focus", async () => {
+    await renderReader();
+    const button = toggle()!;
+    fireEvent.click(button);
+    expect(toc()!.getAttribute("data-open")).toBe("true");
+
+    const outside = document.createElement("button");
+    outside.type = "button";
+    outside.dataset.a1cFocusSentinel = "reader";
+    document.body.append(outside);
+    outside.focus();
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(toc()!.getAttribute("data-open")).toBe("false");
+    expect(document.activeElement).toBe(button);
+    outside.remove();
+  });
+
   it("the keymap's contents action toggles it (the key-sheet row)", async () => {
     const { ACTIONS, KEYMAP } = await import("../../components/hotkeys/keymap");
     expect(Object.keys(ACTIONS)).toContain("reader.tocToggle");

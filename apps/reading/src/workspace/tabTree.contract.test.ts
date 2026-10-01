@@ -140,6 +140,32 @@ describe("signed §2.2 restore and rebase", () => {
     expect(tabs().trees.reading!.nodes.P.pruned_at).toBeUndefined();
   });
 
+  it("retains restore intent and an honest issue after all conflict attempts are refused", async () => {
+    vi.useFakeTimers();
+    const closed = must(closeTab(base(), "P", "prune", "t1")).tree;
+    let calls = 0;
+    const adapter: TabTreeAdapter = {
+      load: async () => toSnapshot(closed),
+      save: async (_p, _m, snapshot) => ++calls <= 3
+        ? { status: "conflict", reason: "version_stale", current: toSnapshot(closed) }
+        : saved(snapshot, 2),
+      allocate: createInMemoryTabTreeAdapter().allocate,
+    };
+    const save = vi.spyOn(adapter, "save");
+    tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
+    tabs().undoLastClose("reading"); await vi.advanceTimersByTimeAsync(101); await drain();
+    expect(save).toHaveBeenCalledTimes(3);
+    expect(tabs().pendingOps.reading).toEqual([{ type: "restore", tab_id: "P", close_id: "P@t1" }]);
+    expect(tabs().trees.reading!.nodes.P.pruned_at).toBe("t1");
+    expect(tabs().persistenceIssue?.reason).toBe("conflict");
+    tabs().activateTab("reading", "R"); await drain();
+    expect(save).toHaveBeenCalledTimes(4);
+    expect(save.mock.calls[3][2].tree.nodes.P.pruned_at).toBe("t1");
+    expect(tabs().pendingOps.reading).toEqual([]);
+    expect(tabs().trees.reading!.nodes.P.pruned_at).toBeUndefined();
+    expect(tabs().persistenceIssue).toBeNull();
+  });
+
   it("a close held across a 409 preserves and reports a remote child", async () => {
     vi.useFakeTimers();
     let respond!: (value: SaveResult) => void;

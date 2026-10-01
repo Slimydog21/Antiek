@@ -7,6 +7,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { positionStorageKey, setReadingPositionOwner, usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { toast } from "../../components/lemon/LemonToast";
 import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
@@ -412,6 +413,64 @@ describe("BookReader", () => {
     getFullTextMock.mockResolvedValue(makeBody());
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
     expect(await screen.findByTestId("book-reader-root")).toBeTruthy();
+  });
+
+  it("does not apply a late retry response after switching the mounted reader to another document", async () => {
+    let resolveOldBody!: (body: FullTextResponse) => void;
+    const oldBody = new Promise<FullTextResponse>((resolve) => { resolveOldBody = resolve; });
+    listBooksMock.mockResolvedValue({ books: [], count: 0 });
+    getBookMock.mockRejectedValueOnce(new Error("network"))
+      .mockImplementation((id: string) => Promise.resolve(makeDetail({ document_id: id, title: id })));
+    getFullTextMock.mockRejectedValueOnce(new Error("network"))
+      .mockImplementation((id: string) => id === "doc-1" ? oldBody : Promise.resolve(makeBody({ document_id: id, full_text: "Current document body." })));
+    const mounted = render(<MemoryRouter><BookReader documentId="doc-1" /></MemoryRouter>);
+    const alert = await screen.findByRole("alert");
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(getFullTextMock).toHaveBeenCalledTimes(2));
+    mounted.rerender(<MemoryRouter><BookReader documentId="doc-2" /></MemoryRouter>);
+    await screen.findByText("Current document body.");
+    await act(async () => {
+      resolveOldBody(makeBody({ full_text: "Obsolete document body." }));
+      await oldBody;
+    });
+    expect(screen.getByText("Current document body.")).toBeTruthy();
+    expect(screen.queryByText("Obsolete document body.")).toBeNull();
+    expect(getFullTextMock.mock.calls.map(([id]) => id)).toEqual(["doc-1", "doc-1", "doc-2"]);
+  });
+
+  it.each([true, false])("manual Pin reports the actual server outcome (accepted=%s)", async (accepted) => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    const warn = vi.spyOn(toast, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(toast, "info").mockImplementation(() => {});
+    const fetchStub = vi.fn((input: unknown, init?: RequestInit) => {
+      if (String(input).endsWith("/anchors") && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(accepted
+          ? { anchor_id: "manual-pin", document_id: "doc-1", anchor: {}, status: "active" }
+          : { detail: "anchor_resolution_not_found" }), { status: accepted ? 201 : 422 }));
+      }
+      return Promise.reject(new TypeError("Unavailable fixture endpoint"));
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      await renderReader();
+      selectTextIn(await screen.findByText("The opening of the book."), "The opening of the book.");
+      const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Pin" }));
+      await waitFor(() => expect(accepted ? info : warn).toHaveBeenCalledTimes(1));
+      expect(fetchStub.mock.calls.filter(([u, i]) => String(u).endsWith("/anchors") && i?.method === "POST")).toHaveLength(1);
+      if (accepted) {
+        expect(info).toHaveBeenCalledWith("Highlight pinned.");
+        expect(warn).not.toHaveBeenCalled();
+      } else {
+        const message = warn.mock.calls[0][0];
+        expect(message).toMatch(/Couldn't pin that passage/);
+        expect(message).not.toMatch(/422|anchor_resolution/);
+        expect(info).not.toHaveBeenCalled();
+      }
+    } finally {
+      warn.mockRestore(); info.mockRestore(); vi.restoreAllMocks();
+    }
   });
 
   it("names what is opening while the book loads", async () => {

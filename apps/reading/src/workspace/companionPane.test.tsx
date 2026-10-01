@@ -449,3 +449,53 @@ describe("the dialogue surface", () => {
     expect(screen.queryByText("a considered reply")).toBeNull();
   });
 });
+
+// ─── CR-F2: Escape ownership under a top modal ──────────────────────────
+
+describe("CR-F2 — the All-agents menu yields Escape to a top modal", () => {
+  function openOverflowMenu() {
+    for (const id of ["inv-live", "inv-done", "inv-fail", "inv-stop"]) openThreadTab(id);
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        comp().openAgentTab({ kind: "research-thread", investigationId: `inv-x${i}`, title: `extra ${i}` });
+      });
+    }
+    mountPane();
+    const list = screen.getByRole("tablist", { name: "Agents" });
+    Object.defineProperty(list, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(list, "scrollWidth", { configurable: true, value: 900 });
+    act(() => {
+      fireEvent.scroll(list);
+    });
+    fireEvent.click(document.querySelector<HTMLElement>("[data-agent-overflow]")!);
+    return screen.getByRole("menu", { name: "All agents" });
+  }
+
+  it("first Escape with a top modal open must NOT close the background menu", () => {
+    const menu = openOverflowMenu();
+    // A top modal (the Project dialog shape: an aria-modal dialog the
+    // escapeOverlay contract treats as owning Escape).
+    const modal = document.createElement("div");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("data-test-top-modal", "");
+    document.body.appendChild(modal);
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(escape);
+    });
+    // The background overlay did not act: menu still open, Escape not
+    // consumed — so LemonModal's window listener can close the modal.
+    expect(screen.getByRole("menu", { name: "All agents" })).toBe(menu);
+    expect(escape.defaultPrevented).toBe(false);
+    modal.remove();
+  });
+
+  it("Escape with no modal still closes the menu (the normal path holds)", () => {
+    openOverflowMenu();
+    act(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu", { name: "All agents" })).toBeNull();
+  });
+});

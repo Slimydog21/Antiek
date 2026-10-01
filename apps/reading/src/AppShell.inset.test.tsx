@@ -118,22 +118,24 @@ describe("C2 — the inset keeps a LEFT toolbar", () => {
     const { container, getByTestId, queryByRole } = mountShell();
     const nav = rail(container);
     expect(nav).toBeTruthy();
-    // Vertical: the rail's own axis is a column, full height, a fixed width.
-    expect(nav.className).toMatch(/\bflex-col\b/);
-    expect(nav.className).toMatch(/\bh-full\b/);
-    expect(nav.className).not.toMatch(/\bw-full\b/);
+    // Orientation and flow come from NavRail's `orientation` prop, stamped as
+    // data-* (one source of truth). A1c low 14: assert the behavior, not the
+    // Tailwind class list — a class-string assertion cannot fail when someone
+    // restyles the rail, only when someone edits the class names.
+    expect(nav.dataset.orientation).toBe("left");
+    expect(nav.dataset.railFlow).toBe("inline");
     // To the LEFT of the working region, in the same row.
     const region = getByTestId("main-region");
     expect(before(nav, region)).toBe(true);
     const row = nav.parentElement!;
     expect(row.contains(region)).toBe(true);
-    expect(row.className).toMatch(/\bflex\b/);
-    expect(row.className).not.toMatch(/\bflex-col\b/);
+    // The row holds rail + region side by side (a column would stack them).
+    expect(before(nav, region) && before(nav, row.lastChild!)).toBe(true);
     // The mascot keeps its reserved station in the rail.
     expect(nav.querySelector("[data-mascot-station]")).toBeTruthy();
-    // In the flow beside the panes, never the phone overlay drawn over the
-    // left pane (the R3 render probe at 900 px caught exactly that).
-    expect(nav.className).not.toMatch(/\babsolute\b/);
+    // Never the phone overlay drawn over the left pane (the R3 render probe at
+    // 900 px caught exactly that) — the flow stamp is the contract.
+    expect(nav.dataset.railFlow).not.toBe("overlay");
     expect(queryByRole("button", { name: "Close navigation" })).toBeNull();
   });
 
@@ -141,7 +143,8 @@ describe("C2 — the inset keeps a LEFT toolbar", () => {
     useWorkspace.getState().setLayoutPreset("docked");
     const { container, getByTestId } = mountShell();
     const nav = rail(container);
-    expect(nav.className).toMatch(/\bw-full\b/);
+    expect(nav.dataset.orientation).toBe("bottom");
+    expect(nav.dataset.railFlow).toBe("inline");
     expect(before(getByTestId("main-region"), nav)).toBe(true);
   });
 
@@ -150,7 +153,8 @@ describe("C2 — the inset keeps a LEFT toolbar", () => {
     useWorkspace.getState().setLayoutPreset("omarchy-inset");
     const { container, getByTestId } = mountShell();
     const nav = rail(container);
-    expect(nav.className).toMatch(/\bw-full\b/);
+    expect(nav.dataset.orientation).toBe("bottom");
+    expect(nav.dataset.railFlow).toBe("inline");
     expect(before(getByTestId("main-region"), nav)).toBe(true);
   });
 });

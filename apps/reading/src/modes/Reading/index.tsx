@@ -50,6 +50,7 @@ import ThreadIsland from "./island/ThreadIsland";
 import { deriveIslandRefs } from "./island/islandModel";
 import { runSpawnFlow } from "./island/spawnFlows";
 import { toast } from "../../components/lemon/LemonToast";
+import { describeFailure } from "../../shared/failure";
 import {
   HIDDEN_ISLANDS_CHANGED,
   readHiddenIslands,
@@ -89,6 +90,9 @@ export interface BookReaderProps {
    * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
    * and changes nothing. */
   origin?: { from: string; id: string } | null;
+  /** A one-shot page landing (the reformat trace jump, SPR-02): applied
+   *  once when the pages resolve, then the bus owns the position. */
+  initialPage?: number | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -100,7 +104,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp, origin = null }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -148,7 +152,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     };
   }, [documentId, reloadToken]);
 
-  const refreshSourceBody = useCallback(() => {
+  const reload = useCallback(() => {
     setReloadToken((token) => token + 1);
   }, []);
 
@@ -192,6 +196,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   );
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // The one-shot page landing (the reformat trace jump): applied ONCE when
+  // the pages resolve; the bus owns the position from then on.
+  const initialPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
+    initialPageAppliedRef.current = true;
+    setPageIndex(initialPage);
+  }, [initialPage, pages.length, setPageIndex]);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
@@ -502,15 +515,24 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
   // needs the anchor id). Auto-pins are best-effort beside their action: a
   // failed pin never breaks the action (it is logged, never surfaced as if
-  // the action failed); the manual Pin is surfaced honestly.
+  // the action failed); the manual Pin is surfaced honestly (D8: the swallowed
+  // 422 anchor_resolution_not_found was the day-one journey blocker — the
+  // operator saw zero marks, zero alerts).
   const onPinAnchor = useCallback(
     (pin: { source: string }, sel: FloatMenuSelection) => {
+      const manual = pin.source === "pin";
       void (async () => {
         try {
           await pinFromSelection(pin.source, sel);
           refetchAnchors();
+          if (manual) toast.info("Highlight pinned.");
         } catch (e) {
-          console.warn(`anchor pin (${pin.source}) failed`, e);
+          // Diagnostics for logs; a plain sentence for the operator.
+          const described = describeFailure(e, { what: "pin that passage" });
+          console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
+          if (manual) {
+            toast.warn(`${described.title} ${described.detail}`);
+          }
         }
       })();
     },
@@ -664,12 +686,18 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     window.addEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
     return () => window.removeEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
   }, [inWindow]);
+  const tocRef = useRef<HTMLElement>(null);
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!tocOpen) return;
     const onKey = (e: KeyboardEvent) => {
+      // One Esc, one layer: a hidden TOC must not eat Escape (A1c low 11),
+      // and closing restores focus to the Contents toggle.
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (tocRef.current?.closest("[hidden]")) return;
       e.preventDefault();
       setTocOpen(false);
+      tocToggleRef.current?.focus();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -801,7 +829,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           title="Couldn't open this book"
           body="Your library and notes are unchanged. Check your connection, then try again."
           detail={error}
-          onRetry={refreshSourceBody}
+          onRetry={reload}
         />
       </CenterNote>
     );
@@ -856,6 +884,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           reader-md it folds away, and the Contents toggle opens it over the
           page, inside the pane (lane A B2-5). */}
       <aside
+        ref={tocRef}
         id={`reader-toc-${documentId}`}
         data-reader-toc
         data-open={tocOpen ? "true" : "false"}
@@ -974,6 +1003,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                 <button
                   type="button"
                   onClick={() => setTocOpen((open) => !open)}
+                  ref={tocToggleRef}
                   aria-expanded={tocOpen}
                   aria-controls={`reader-toc-${documentId}`}
                   aria-label="Contents"
@@ -1209,7 +1239,6 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           documentId={documentId}
           title={book.title}
           readingThreadId={readingThreadId}
-          onSourceBodyChanged={refreshSourceBody}
         />
       </div>
 

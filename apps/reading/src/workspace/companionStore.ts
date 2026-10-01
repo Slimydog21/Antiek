@@ -94,6 +94,11 @@ function agentTabId(input: OpenAgentTabInput): string {
 }
 
 
+// STAGED DEPENDENCY (A1c low 12 / T9): agent-tab retirement below is a global
+// session view. The ratified per-mode agent list (P1-5) is not wired yet, so
+// switching modes can expose or reopen tabs from another mode. Do not mark
+// complete until retirement and `activeTabId` are mode-scoped with a
+// cross-contamination test.
 /** A closed agent tab, kept so it can come back where it was. */
 export interface RetiredAgentTab {
   tab: AgentTabDescriptor;

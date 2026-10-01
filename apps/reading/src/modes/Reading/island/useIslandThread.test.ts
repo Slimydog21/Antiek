@@ -9,7 +9,7 @@
  *   honest terminals) · not_found → gone (never fabricated).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 
 import type { InvestigationState } from "../../../hooks/useInvestigation";
 import type { InvestigationSummary } from "../../../lib/api";
@@ -132,11 +132,22 @@ describe("useIslandThread", () => {
 
   it("completed-with-insights is complete", async () => {
     useInvestigationMock.mockReturnValue(projection({ status: "completed" }));
-    getDistillationMock.mockResolvedValue(distillation(2));
+    let resolveDistillation!: (value: DistillationResponse) => void;
+    const pending = new Promise<DistillationResponse>((resolve) => { resolveDistillation = resolve; });
+    getDistillationMock.mockReturnValue(pending);
     const { result } = renderHook(() => useIslandThread("inv-1"));
     await waitFor(() => expect(result.current.status).toBe("complete"));
-    expect(result.current.outcomeLoading).toBe(false);
-    expect(getDistillationMock).toHaveBeenCalledWith("inv-1");
+    expect(result.current.outcomeLoading).toBe(true);
+    expect(result.current.outcome).toBeNull();
+    expect(getDistillationMock).toHaveBeenCalledExactlyOnceWith("inv-1");
+    const expected = distillation(2);
+    await act(async () => { resolveDistillation(expected); await pending; });
+    await waitFor(() => {
+      expect(result.current.status).toBe("complete");
+      expect(result.current.outcomeLoading).toBe(false);
+      expect(result.current.outcome).toEqual({ insights: expected.insights, questions: expected.questions });
+    });
+    expect(getDistillationMock).toHaveBeenCalledExactlyOnceWith("inv-1");
   });
 
   it("completed-empty is complete_empty — an honest terminal, not an error", async () => {
