@@ -94,6 +94,11 @@ from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
+# Retry-After hint (seconds) served with every 503 mapped from
+# runtime.db_lock.ReadLockTimeout — a cross-process DuckDB read-open
+# conflict. Conservative client backoff hint, not a measured hold time.
+_READ_LOCK_RETRY_AFTER_S = "2"
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
@@ -1633,6 +1638,34 @@ def create_app(
             "See docs/architecture_notes.md §11."
         ),
     )
+
+    # ── Cross-process read-lock honesty (read-open audit, 2026-10-01) ──
+    # runtime.db_lock.connect_read raises ReadLockTimeout whenever another
+    # PROCESS holds the DuckDB file (immediate mode and expired bounded wait
+    # alike). ~128 request paths open the DB through connect_read with no
+    # local handling, so the ONE app-level handler below is what makes the
+    # conflict honest everywhere at once: 503 (retryable) with Retry-After,
+    # never an uncaught 500. Routes that already map the conflict to 503
+    # locally keep working; this handler only sees the ones that would have
+    # leaked the raw exception.
+    from fastapi.responses import JSONResponse
+
+    from runtime.db_lock import ReadLockTimeout
+
+    @app.exception_handler(ReadLockTimeout)
+    async def _read_lock_timeout(
+        _request: Request, _exc: ReadLockTimeout
+    ) -> JSONResponse:
+        # Static body: no db path or holder detail leaks to clients. The
+        # 2s Retry-After is a conservative client backoff hint, not derived
+        # from measured hold times.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "database read is temporarily unavailable; retry shortly"
+            },
+            headers={"Retry-After": _READ_LOCK_RETRY_AFTER_S},
+        )
 
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
     # the operator can override via env for non-default ports or staging
