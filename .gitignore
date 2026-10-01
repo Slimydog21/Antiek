@@ -101,5 +101,12 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 # here: naming the location inside a public repository points readers at a credential that must be
 # rotated rather than merely deleted -- removing a file does not un-publish a secret.
 # Secrets belong in Ansible Vault or an env file on the host, never in git.
-cloudflared-creds.yml
-*cloudflared*creds*
+#
+# `**/` on every pattern, because a gitignore `*` does NOT cross `/`: `*cloudflared*creds*` alone
+# left `cloudflared/creds.json` unignored, which was verified with `git check-ignore` rather than
+# assumed. The first two rules cover the name that actually leaked; the last two cover the shapes
+# cloudflared writes by default -- a `cert.pem` and a `<tunnel-uuid>.json`, both credentials.
+**/cloudflared-creds.yml
+**/*cloudflared*creds*
+**/.cloudflared/
+**/cloudflared/**/*.json
