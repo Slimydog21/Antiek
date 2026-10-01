@@ -25,6 +25,7 @@ from substrate.graph.retrieval_gate import (
 )
 from substrate.graph.schema import init_database
 from substrate.graph.search import search
+from substrate.rights.register import VALID_CONTENT_CLASSES
 
 
 class StubEmbedding:
@@ -57,17 +58,33 @@ def test_default_policy_tag_clause_binds_full_denylist():
     # SR-07 fail-closed flip was rejected for #65 (see retrieval_gate docstring).
     assert "content_class IS NULL" in sql
     assert "content_class NOT IN" in sql
+    assert "content_class IN" in sql
     assert "personal_reading" in params
     assert "restricted_pending_opt_in" in params
-    assert params == sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
+    assert params == [
+        *sorted(VALID_CONTENT_CLASSES),
+        *sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES),
+    ]
 
 
 def test_privileged_policy_tag_retains_owner_boundary():
     for tag in ("private_research", "operator_only"):
-        sql, params = non_privileged_chunk_sql_clause(policy_tag=tag)
+        absent_sql, absent_params = non_privileged_chunk_sql_clause(policy_tag=tag)
+        assert "owner_user_id = ?" not in absent_sql
+        assert absent_params[:len(VALID_CONTENT_CLASSES)] == sorted(VALID_CONTENT_CLASSES)
+        sql, params = non_privileged_chunk_sql_clause(
+            policy_tag=tag, owner_user_id="owner-a"
+        )
         assert "owner_user_id = ?" in sql
-        assert params[-1] == "__operator__"
-        assert set(params[:-1]) == PERSONAL_ONLY_CONTENT_CLASSES
+        expected_policy = (
+            ["research_only"] if tag == "operator_only" else []
+        )
+        assert params == [
+            *sorted(VALID_CONTENT_CLASSES),
+            *expected_policy,
+            *sorted(PERSONAL_ONLY_CONTENT_CLASSES),
+            "owner-a",
+        ]
 
 
 @pytest.fixture

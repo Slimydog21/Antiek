@@ -403,7 +403,7 @@ async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionR
 
 
 @speak_router.get("/projects")
-async def list_projects() -> dict:
+async def list_projects() -> dict[str, Any]:
     """List Speak projects (the operator's project index). Uses a write
     lock only to ensure the Speak schema exists on a fresh DB; the query
     itself is a read."""
@@ -469,7 +469,7 @@ async def get_economics(project_id: str) -> dict[str, Any]:
 
 
 @speak_router.get("/feed")
-async def public_feed() -> dict:
+async def public_feed() -> dict[str, Any]:
     """The browsable PUBLIC feed (M1): projects whose intent is public —
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
@@ -540,7 +540,7 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
 
 
 @speak_router.get("/projects/{project_id}/invites")
-async def list_invites(project_id: str) -> dict:
+async def list_invites(project_id: str) -> dict[str, Any]:
     def _sync() -> list[Any]:
         with _translate(), _write("speak/api:list_invites") as con:
             return invitations.lifecycle(con, project_id)
@@ -572,7 +572,7 @@ async def resolve_invite(token: str) -> InviteResponse:
 
 
 @speak_router.post("/projects/{project_id}/open-public", status_code=200)
-async def open_public(project_id: str) -> dict:
+async def open_public(project_id: str) -> dict[str, Any]:
     # Gated on G7 — refuses (403) unless ANTIEK_SPEAK_PUBLIC_ECOSYSTEM.
     def _sync() -> None:
         with _translate(), _write("speak/api:open_public") as con:
@@ -684,7 +684,7 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
 
 
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
-async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
+async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict[str, Any]:
     def _sync() -> Any:
         with _translate(), _write("speak/api:consent") as con:
             scopes = [ConsentScope(s) for s in req.scopes]
@@ -695,7 +695,7 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
 
 
 @speak_router.get("/interviews/{interview_id}")
-async def get_interview(interview_id: str) -> dict:
+async def get_interview(interview_id: str) -> dict[str, Any]:
     def _sync() -> Any:
         with _translate():
             return resume(
@@ -714,7 +714,7 @@ async def get_interview(interview_id: str) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
-async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
+async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict[str, Any]:
     # Two-hop write: submit_answer opens connect_write itself (three times:
     # consent check, voice-note ingest, answer turn), out of _write's reach
     # and the one-hop lint's, so the bound is passed explicitly.
@@ -734,7 +734,7 @@ async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict
 
 
 @speak_router.post("/interviews/{interview_id}/followups")
-async def interview_followups(interview_id: str) -> dict:
+async def interview_followups(interview_id: str) -> dict[str, Any]:
     # Two-hop write: next_followups opens connect_write itself
     # (purpose="speak/async_interview.followups"); the bound is passed in.
     def _sync() -> list[Any]:
@@ -752,7 +752,7 @@ async def interview_followups(interview_id: str) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/claims", status_code=201)
-async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
+async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict[str, Any]:
     """The answer→claim bridge: record an explicit claim attributed to
     the interviewee (about_subject / third-party tagging is a confirmed
     judgment, not an inference). Feeds corroboration + authoring +
@@ -781,7 +781,7 @@ async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/corroborate")
-async def corroborate(project_id: str) -> dict:
+async def corroborate(project_id: str) -> dict[str, Any]:
     def _sync() -> list[Any]:
         with _translate(), _write("speak/api:corroborate") as con:
             return corroboration.corroborate_project(con, project_id)
@@ -800,7 +800,7 @@ async def corroborate(project_id: str) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/subject-consent", status_code=200)
-async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict:
+async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict[str, Any]:
     def _sync() -> None:
         with _translate(), _write("speak/api:subject_consent") as con:
             subject_consent_mod.record_subject_consent(
@@ -814,7 +814,7 @@ async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> di
 
 
 @speak_router.post("/projects/{project_id}/contributors", status_code=201)
-async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
+async def map_contributor(project_id: str, req: ContributorRequest) -> dict[str, Any]:
     def _sync() -> Any:
         with _translate(), _write("speak/api:contributor") as con:
             return contributor_mod.map_contributor(
@@ -829,7 +829,7 @@ async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/takedowns", status_code=201)
-async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
+async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict[str, Any]:
     def _sync() -> Any:
         with _translate(), _write("speak/api:takedown") as con:
             return takedown_mod.request_takedown(
@@ -842,7 +842,7 @@ async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/draft")
-async def draft(project_id: str, req: DraftRequest) -> dict:
+async def draft(project_id: str, req: DraftRequest) -> dict[str, Any]:
     def _sync() -> tuple[Any, Any]:
         with _translate(), _write("speak/api:draft") as con:
             outline = biography.assemble_outline(con, project_id=project_id)
@@ -862,7 +862,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
-async def publish(project_id: str, req: PublishRequest) -> dict:
+async def publish(project_id: str, req: PublishRequest) -> dict[str, Any]:
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
 
     def _sync() -> Any:
@@ -888,7 +888,7 @@ async def publish(project_id: str, req: PublishRequest) -> dict:
 
 
 @speak_router.post("/interviews/{interview_id}/grade", status_code=201)
-async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict:
+async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict[str, Any]:
     """AI-grade one interview against the requester's information goal
     (SPR-10 M3). The grade is produced by the verifier (here: the honest
     deterministic rubric, since no ``dispatch_fn`` is injected on this
@@ -922,7 +922,7 @@ async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict
 
 
 @speak_router.post("/projects/{project_id}/release-payout", status_code=201)
-async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
+async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict[str, Any]:
     """Release graded payout for a project (SPR-10 M3), routed through §9
     (``accrue_contributions``) into ESCROW — never disbursed. Enforces the
     requester's budget + per-interview cap. With zero ad buyers this
@@ -956,7 +956,7 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
 
 
 @speak_router.post("/projects/{project_id}/book-orders", status_code=201)
-async def order_book(project_id: str, req: BookOrderRequest) -> dict:
+async def order_book(project_id: str, req: BookOrderRequest) -> dict[str, Any]:
     def _sync() -> Any:
         with _translate(), _write("speak/api:book_order") as con:
             return physical_book.order_physical_book(
@@ -991,7 +991,7 @@ class RepingRequest(BaseModel):
 @speak_router.get("/opportunities")
 async def public_opportunities(
     interest: str | None = Query(None, description="Optional interest tokens for title/subject overlap"),
-) -> dict:
+) -> dict[str, Any]:
     """Unauthenticated public contribution opportunities (read-only).
 
     Same multi-signal heuristic as dual-push public list — NOT ML.
@@ -1230,7 +1230,7 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
 
 
 @speak_router.get("/invite/{token}")
-async def invitee_landing(token: str) -> dict:
+async def invitee_landing(token: str) -> dict[str, Any]:
     """One call for the invitee's landing page: the project they've been
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
@@ -1287,7 +1287,7 @@ async def invitee_landing(token: str) -> dict:
 
 
 @speak_router.post("/invite/{token}/consent", status_code=200)
-async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
+async def invitee_consent(token: str, req: InviteConsentRequest) -> dict[str, Any]:
     # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
     # that inline in an `async def` parks the whole uvicorn event loop, and
     # the service runs --workers 1, so one caller stalls the entire API for
@@ -1330,7 +1330,7 @@ async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
 
 
 @speak_router.post("/invite/{token}/answer", status_code=201)
-async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
+async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict[str, Any]:
     # connect_write BLOCKS on an flock with DEFAULT_TIMEOUT_S = 300. Doing
     # that inline in an `async def` parks the whole uvicorn event loop, and
     # the service runs --workers 1, so one caller stalls the entire API for

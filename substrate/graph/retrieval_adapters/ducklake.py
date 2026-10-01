@@ -93,6 +93,7 @@ class DuckLakeSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]:
         if self.skipped:
             return {

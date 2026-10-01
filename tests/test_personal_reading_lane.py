@@ -32,6 +32,7 @@ from substrate.constants import (
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     THIRD_PARTY_DOCUMENT_TYPES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
@@ -109,11 +110,13 @@ def _defaulted_events(events_dir: str) -> list[dict]:
 def test_constants_personal_reading_not_servable():
     assert PERSONAL_READING_CONTENT_CLASS == "personal_reading"
     assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
-    # strict superset by exactly one element
+    # The two owner-readable classes remain outside public serving.
+    assert USER_AUTHORED_PRIVATE_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
     assert (
-        SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
+        SERVABLE_CONTENT_CLASSES
+        | {PERSONAL_READING_CONTENT_CLASS, USER_AUTHORED_PRIVATE_CONTENT_CLASS}
     ) == PERSONAL_READABLE_CONTENT_CLASSES
-    assert len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1
+    assert len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 2
 
 
 def test_constants_third_party_document_types_exact():
@@ -181,7 +184,10 @@ def test_personal_reading_accrues_zero_attribution_share():
 # ---------------------------------------------------------------------------
 
 
-def _seed_chunk(db_path: str, document_id: str, content_class, text: str):
+def _seed_chunk(
+    db_path: str, document_id: str, content_class, text: str,
+    owner_user_id: str = "__operator__",
+):
     con = connect_write(db_path, purpose="seed-chunk")
     try:
         # explicit content_class so the third-party guard does not fire here —
@@ -193,6 +199,7 @@ def _seed_chunk(db_path: str, document_id: str, content_class, text: str):
             document_type="paper",
             title=f"Title {document_id}",
             content_class=content_class,
+            owner_user_id=owner_user_id,
         )
         insert_chunk(
             con,
@@ -222,11 +229,15 @@ def test_search_gate_excludes_personal_reading_on_default_policy(env):
 
 
 def test_search_gate_includes_personal_reading_on_operator_only(env):
-    _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics review")
+    _seed_chunk(
+        env["db_path"], "doc-pr", "personal_reading", "quantum optics review",
+        owner_user_id="owner-a",
+    )
     con = connect_write(env["db_path"], purpose="search")
     try:
         res = search(
-            con, "quantum", model=StubEmbedding(), top_k=10, policy_tag="operator_only"
+            con, "quantum", model=StubEmbedding(), top_k=10,
+            policy_tag="operator_only", owner_user_id="owner-a",
         )
     finally:
         con.close()
@@ -236,7 +247,7 @@ def test_search_gate_includes_personal_reading_on_operator_only(env):
 
 def test_search_gate_personal_only_set_is_separate_from_restricted():
     """The two gate states are kept distinct (opposite economics)."""
-    assert frozenset({"personal_reading"}) == PERSONAL_ONLY_CONTENT_CLASSES
+    assert frozenset({"personal_reading", "user_authored_private"}) == PERSONAL_ONLY_CONTENT_CLASSES
     assert frozenset({"restricted_pending_opt_in"}) == RESTRICTED_CONTENT_CLASSES
     assert PERSONAL_ONLY_CONTENT_CLASSES.isdisjoint(RESTRICTED_CONTENT_CLASSES)
 

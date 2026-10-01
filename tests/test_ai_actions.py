@@ -143,9 +143,8 @@ def _fresh_db(tmp_path):
     return connect_write(str(path), purpose="test_ai_actions:run")
 
 
-def test_undo_restores_notebook_block(tmp_path):
-    """End-to-end: AI changes a block from prose → claim_card; undo
-    sets it back to prose."""
+def test_undo_refuses_notebook_block_without_server_receipt(tmp_path):
+    """A client applied event cannot authorize a notebook inverse."""
     # `with` matters: an unclosed writer holds the PROCESS-GLOBAL in-process
     # write gate (38171a350), so every later connect_write in this pytest
     # process would block to the 300s gate timeout.
@@ -192,7 +191,7 @@ def test_undo_restores_notebook_block(tmp_path):
         )
         assert len(captured) == 1
 
-        # Undo
+        # The event remains telemetry, not a server mutation receipt.
         applied_event = {
             "event_id": applied.event_id,
             "investigation_id": "inv-1",
@@ -208,16 +207,16 @@ def test_undo_restores_notebook_block(tmp_path):
                 },
             },
         }
-        undone_id = undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
-        assert undone_id.startswith("evt-")
-        assert len(captured) == 2
+        with pytest.raises(AIActionError, match="notebook undo requires a server receipt"):
+            undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
+        assert len(captured) == 1
 
-        # Block should be back to prose with no ref_id
+        # The already-applied change remains untouched.
         nb = get_notebook(con, nb_id)
         assert nb is not None
         restored = nb.blocks[0]
-        assert restored.block_type == "prose"
-        assert restored.ref_id is None
+        assert restored.block_type == "claim_card"
+        assert restored.ref_id == "c-1"
 
 
 def test_undo_rejects_unknown_action_type():
@@ -234,28 +233,25 @@ def test_undo_rejects_unknown_action_type():
         )
 
 
-def test_undo_emits_linking_event(tmp_path):
-    """The ai.action.undone event references the applied event by id."""
+def test_non_notebook_undo_emits_linking_event(tmp_path):
+    """The existing UI-layout inverse still emits its linking event."""
     with _fresh_db(tmp_path) as con:
-        from substrate.notebooks import append_block, create_notebook
-
-        nb_id = create_notebook(con, title="T")
-        block_id = append_block(con, notebook_id=nb_id, block_type="prose", content={})
-
         applied_event = {
             "event_id": "evt-applied-123",
             "investigation_id": "inv-1",
             "payload": {
                 "action_type": "ai.action.applied",
-                "target_kind": "notebook_block",
-                "target_id": block_id,
-                "prev_state": {"block_id": block_id, "notebook_id": nb_id, "block_type": "prose", "content_json": {}},
-                "next_state": {"block_id": block_id, "block_type": "claim_card"},
+                "target_kind": "ui_layout",
+                "target_id": "panel-1",
+                "prev_state": {"open": False},
+                "next_state": {"open": True},
             },
         }
         emit, captured = _capture_emitter()
-        undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
+        undone_id = undo_ai_action(con, applied_event=applied_event, emit_event_fn=emit)
     assert len(captured) == 1
     undone = captured[0]
+    assert undone_id == undone.event_id
     assert undone.payload.inverted_event_id == "evt-applied-123"
-    assert undone.payload.target_id == block_id
+    assert undone.payload.target_kind == "ui_layout"
+    assert undone.payload.target_id == "panel-1"

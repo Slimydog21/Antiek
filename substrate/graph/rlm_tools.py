@@ -476,10 +476,17 @@ def search_graph(query: str, top_k: int = 5) -> str:
         return f"search_graph error: connect_read failed — {e!r}"
 
     try:
-        result = _graph_search(
-            con, query, model=embedder, top_k=int(top_k),
-            with_edges=True,
-        )
+        con.execute("BEGIN TRANSACTION")
+        try:
+            result = _graph_search(
+                con, query, model=embedder, top_k=int(top_k),
+                with_edges=True,
+            )
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
     except Exception as e:
         return f"search_graph error: {e!r}"
     finally:

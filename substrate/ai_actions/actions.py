@@ -181,6 +181,9 @@ def undo_ai_action(
             "applied_event payload missing target_kind / target_id / event_id"
         )
 
+    if target_kind in {"notebook", "notebook_block"}:
+        raise AIActionError("notebook undo requires a server receipt")
+
     handler = HANDLERS.get(target_kind)
     if handler is None:
         raise AIActionError(

@@ -11,6 +11,7 @@ from interfaces.research.api.library_catalog import (
     matches_search,
     summary_payload_has_no_body,
 )
+from substrate.books.servability import ServabilityStatus
 
 
 def _sum(
@@ -24,7 +25,11 @@ def _sum(
         document_id=doc_id,
         title=title,
         author=author,
-        servability="servable" if servable else "gated",
+        servability=(
+            ServabilityStatus.PUBLIC_DOMAIN
+            if servable
+            else ServabilityStatus.GATED_METADATA_ONLY
+        ),
         servable_full_text=servable,
         page_count=10,
         cover_uri=None,
@@ -110,7 +115,45 @@ def test_builder_handles_more_than_default_asset_limit() -> None:
     all_page = build_library_page(rows, filt="all", page=1, page_size=50)
     assert all_page.total == 280
 
-def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPatch) -> None:
+def _app_with_primary_cause_observer():
+    """Observe opaque HTTP errors without replacing normal response handling."""
+    from fastapi import FastAPI, HTTPException
+    from fastapi.exception_handlers import http_exception_handler
+
+    app = FastAPI()
+    primary_causes: list[BaseException | None] = []
+
+    @app.exception_handler(HTTPException)
+    async def observe_http_exception(request, exc):
+        primary_causes.append(exc.__cause__)
+        return await http_exception_handler(request, exc)
+
+    return app, primary_causes
+
+
+_CATALOG_TABLE_QUERY = (
+    "SELECT table_name FROM information_schema.tables "
+    "WHERE table_schema='main' ORDER BY table_name"
+)
+
+
+def _initialized_catalog_query(command, transaction_commands, schema_queries):
+    """Model only the real catalog gate's initialized-schema diagnostic."""
+    if command != _CATALOG_TABLE_QUERY:
+        return None
+    assert transaction_commands == ["BEGIN TRANSACTION"]
+    schema_queries.append(command)
+
+    class _Rows:
+        def fetchall(self):
+            return [("book_assets",), ("documents",)]
+
+    return _Rows()
+
+
+def test_register_library_exhausts_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
     """Route totals the complete catalog rather than applying a hidden cap."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -119,12 +162,13 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
 
     calls: list[dict] = []
     transaction_commands: list[str] = []
+    schema_queries: list[str] = []
 
     class _Asset:
         document_id = "d1"
         title = "T"
         author = "A"
-        servability = type("S", (), {"value": "servable"})()
+        servability = ServabilityStatus.PUBLIC_DOMAIN
         servable_full_text = True
         page_count = 1
         cover_uri = None
@@ -134,67 +178,95 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
     def fake_list(
         con,
         *,
-        servable_only=False,
-        include_taken_down=False,
+        owner_user_id,
+        status="all",
         limit=200,
         offset=0,
     ):
+        assert con is connection
         assert transaction_commands == ["BEGIN TRANSACTION"]
+        assert owner_user_id is None
+        assert status == "all"
         calls.append(
-            {"servable_only": servable_only, "limit": limit, "offset": offset}
+            {
+                "owner_user_id": owner_user_id,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+            }
         )
         return [_Asset()] * limit if offset == 0 else [_Asset()]
 
     class _Con:
-        def execute(self, command: str) -> None:
+        def execute(self, command: str):
+            assert self is connection
+            rows = _initialized_catalog_query(
+                command, transaction_commands, schema_queries,
+            )
+            if rows is not None:
+                return rows
             transaction_commands.append(command)
 
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(lib, "list_book_assets", fake_list)
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
-    monkeypatch.setattr(
-        "runtime.db_lock.connect_read",
-        lambda db: _Con(),
-    )
+    monkeypatch.setattr(lib, "list_discoverable_book_assets", fake_list)
+    synthetic_path = str(tmp_path / "synthetic-catalog.duckdb")
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: synthetic_path)
+    connection = _Con()
+
+    def fake_connect(db):
+        assert db == synthetic_path
+        return connection
+
+    monkeypatch.setattr("runtime.db_lock.connect_read", fake_connect)
 
     app = FastAPI()
     lib.register_library_routes(app)
     client = TestClient(app)
     r = client.get("/library", params={"filter": "all"})
     assert r.status_code == 200, r.text
-    assert calls, "list_book_assets not called"
+    assert calls, "list_discoverable_book_assets not called"
     assert calls == [
         {
-            "servable_only": False,
+            "owner_user_id": None,
+            "status": "all",
             "limit": lib._CATALOG_BATCH_SIZE,
             "offset": 0,
         },
         {
-            "servable_only": False,
+            "owner_user_id": None,
+            "status": "all",
             "limit": lib._CATALOG_BATCH_SIZE,
             "offset": lib._CATALOG_BATCH_SIZE,
         },
     ]
     assert r.json()["total"] == lib._CATALOG_BATCH_SIZE + 1
     assert transaction_commands == ["BEGIN TRANSACTION", "COMMIT"]
+    assert schema_queries == [_CATALOG_TABLE_QUERY]
 
 
 def test_register_library_rolls_back_failed_snapshot(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
-    """A failed batch cannot leave the read connection in a transaction."""
-    from fastapi import FastAPI
+    """Opaque batch failure preserves its cause through rollback/close failures."""
     from fastapi.testclient import TestClient
 
     import interfaces.research.api.library as lib
 
     transaction_commands: list[str] = []
+    schema_queries: list[str] = []
     closed = False
 
     class _Con:
-        def execute(self, command: str) -> None:
+        def execute(self, command: str):
+            assert self is connection
+            rows = _initialized_catalog_query(
+                command, transaction_commands, schema_queries,
+            )
+            if rows is not None:
+                return rows
             transaction_commands.append(command)
             if command == "ROLLBACK":
                 raise RuntimeError("rollback failed")
@@ -204,37 +276,64 @@ def test_register_library_rolls_back_failed_snapshot(
             closed = True
             raise RuntimeError("close failed")
 
-    def fail_list(*args, **kwargs):
+    list_calls = []
+
+    def fail_list(con, *, owner_user_id, status="all", limit=200, offset=0):
+        assert con is connection
         assert transaction_commands == ["BEGIN TRANSACTION"]
+        assert owner_user_id is None
+        assert status == "all"
+        assert limit == lib._CATALOG_BATCH_SIZE and offset == 0
+        list_calls.append((owner_user_id, status, limit, offset))
         raise RuntimeError("catalog changed")
 
-    monkeypatch.setattr(lib, "list_book_assets", fail_list)
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
-    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+    monkeypatch.setattr(lib, "list_discoverable_book_assets", fail_list)
+    synthetic_path = str(tmp_path / "synthetic-catalog.duckdb")
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: synthetic_path)
+    connection = _Con()
 
-    app = FastAPI()
+    def fake_connect(db):
+        assert db == synthetic_path
+        return connection
+
+    monkeypatch.setattr("runtime.db_lock.connect_read", fake_connect)
+
+    app, primary_causes = _app_with_primary_cause_observer()
     lib.register_library_routes(app)
-    with pytest.raises(RuntimeError, match="catalog changed"):
-        TestClient(app).get("/library")
+    response = TestClient(app).get("/library")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "read_unavailable"}
+    assert len(primary_causes) == 1
+    assert isinstance(primary_causes[0], RuntimeError)
+    assert str(primary_causes[0]) == "catalog changed"
+    assert len(list_calls) == 1
 
     assert transaction_commands == ["BEGIN TRANSACTION", "ROLLBACK"]
+    assert schema_queries == [_CATALOG_TABLE_QUERY]
     assert closed
 
 
 def test_register_library_closes_when_begin_fails(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
-    """BEGIN failure preserves its error and does not attempt a bogus rollback."""
-    from fastapi import FastAPI
+    """Opaque BEGIN failure preserves its cause, skips rollback, and closes."""
     from fastapi.testclient import TestClient
 
     import interfaces.research.api.library as lib
 
     transaction_commands: list[str] = []
+    schema_queries: list[str] = []
     closed = False
 
     class _Con:
-        def execute(self, command: str) -> None:
+        def execute(self, command: str):
+            assert self is connection
+            rows = _initialized_catalog_query(
+                command, transaction_commands, schema_queries,
+            )
+            if rows is not None:
+                return rows
             transaction_commands.append(command)
             raise RuntimeError("begin failed")
 
@@ -242,32 +341,51 @@ def test_register_library_closes_when_begin_fails(
             nonlocal closed
             closed = True
 
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
-    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+    synthetic_path = str(tmp_path / "synthetic-catalog.duckdb")
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: synthetic_path)
+    connection = _Con()
 
-    app = FastAPI()
+    def fake_connect(db):
+        assert db == synthetic_path
+        return connection
+
+    monkeypatch.setattr("runtime.db_lock.connect_read", fake_connect)
+
+    app, primary_causes = _app_with_primary_cause_observer()
     lib.register_library_routes(app)
-    with pytest.raises(RuntimeError, match="begin failed"):
-        TestClient(app).get("/library")
+    response = TestClient(app).get("/library")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "read_unavailable"}
+    assert len(primary_causes) == 1
+    assert isinstance(primary_causes[0], RuntimeError)
+    assert str(primary_causes[0]) == "begin failed"
 
     assert transaction_commands == ["BEGIN TRANSACTION"]
+    assert schema_queries == []
     assert closed
 
 
 def test_register_library_rolls_back_commit_failure(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
-    """COMMIT failure stays primary while rollback and close still run."""
-    from fastapi import FastAPI
+    """Opaque COMMIT failure preserves its cause through rollback and close."""
     from fastapi.testclient import TestClient
 
     import interfaces.research.api.library as lib
 
     transaction_commands: list[str] = []
+    schema_queries: list[str] = []
     closed = False
 
     class _Con:
-        def execute(self, command: str) -> None:
+        def execute(self, command: str):
+            assert self is connection
+            rows = _initialized_catalog_query(
+                command, transaction_commands, schema_queries,
+            )
+            if rows is not None:
+                return rows
             transaction_commands.append(command)
             if command == "COMMIT":
                 raise RuntimeError("commit failed")
@@ -276,14 +394,38 @@ def test_register_library_rolls_back_commit_failure(
             nonlocal closed
             closed = True
 
-    monkeypatch.setattr(lib, "list_book_assets", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
-    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+    list_calls = []
 
-    app = FastAPI()
+    def empty_list(con, *, owner_user_id, status="all", limit=200, offset=0):
+        assert con is connection
+        assert transaction_commands == ["BEGIN TRANSACTION"]
+        assert owner_user_id is None
+        assert status == "all"
+        assert limit == lib._CATALOG_BATCH_SIZE and offset == 0
+        list_calls.append((owner_user_id, status, limit, offset))
+        return []
+
+    monkeypatch.setattr(lib, "list_discoverable_book_assets", empty_list)
+    synthetic_path = str(tmp_path / "synthetic-catalog.duckdb")
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: synthetic_path)
+    connection = _Con()
+
+    def fake_connect(db):
+        assert db == synthetic_path
+        return connection
+
+    monkeypatch.setattr("runtime.db_lock.connect_read", fake_connect)
+
+    app, primary_causes = _app_with_primary_cause_observer()
     lib.register_library_routes(app)
-    with pytest.raises(RuntimeError, match="commit failed"):
-        TestClient(app).get("/library")
+    response = TestClient(app).get("/library")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "read_unavailable"}
+    assert len(primary_causes) == 1
+    assert isinstance(primary_causes[0], RuntimeError)
+    assert str(primary_causes[0]) == "commit failed"
+    assert len(list_calls) == 1
 
     assert transaction_commands == ["BEGIN TRANSACTION", "COMMIT", "ROLLBACK"]
+    assert schema_queries == [_CATALOG_TABLE_QUERY]
     assert closed

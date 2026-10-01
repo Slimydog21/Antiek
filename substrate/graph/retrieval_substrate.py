@@ -42,14 +42,17 @@ non-default adapters MUST open read-only and change no row count.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import sys
-from collections.abc import Sequence
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 try:
+    from .embedding_meta import assert_embedding_compatible
     from .retrieval_gate import non_privileged_chunk_sql_clause
     from .search import (
         EmbeddingModel,
@@ -59,6 +62,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.graph.embedding_meta import assert_embedding_compatible
     from substrate.graph.retrieval_gate import (
         non_privileged_chunk_sql_clause,
     )
@@ -110,7 +114,152 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]: ...
+
+
+class SnapshotBusyError(RuntimeError):
+    """This adapter's one query handle is already in use."""
+
+
+class SnapshotClosedError(RuntimeError):
+    """This adapter's query handle has been explicitly closed or poisoned."""
+
+
+@dataclass(frozen=True)
+class RetrievalSnapshot:
+    result: dict[str, Any]
+    con: Any
+    query_vector: tuple[float, ...] | None
+
+
+@runtime_checkable
+class SnapshotReadableSubstrate(RetrievalSubstrate, Protocol):
+    def query_snapshot(
+        self,
+        text: str,
+        *,
+        top_k: int = 5,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
+        policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+    ) -> AbstractContextManager[RetrievalSnapshot]: ...
+
+
+class _SnapshotAdapter:
+    _con: Any
+    _model: EmbeddingModel
+
+    def _init_snapshot(self) -> None:
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_closed = False
+
+    def _poison(self, primary: BaseException) -> None:
+        self._snapshot_closed = True
+        try:
+            self._con.close()
+        except BaseException as cleanup:
+            primary.add_note(f"snapshot handle close also failed: {cleanup!r}")
+
+    @contextmanager
+    def _exclusive_query_access(self) -> Iterator[None]:
+        if not self._snapshot_lock.acquire(False):
+            raise SnapshotBusyError("snapshot query handle is busy")
+        try:
+            if self._snapshot_closed:
+                raise SnapshotClosedError("snapshot query handle is closed")
+            yield
+        finally:
+            self._snapshot_lock.release()
+
+    @contextmanager
+    def _owned_read_transaction(self) -> Iterator[None]:
+        """Use only while _exclusive_query_access is held."""
+        # A failed BEGIN did not give us a transaction to roll back.
+        self._con.execute("BEGIN TRANSACTION")
+        try:
+            yield
+        except BaseException as primary:
+            try:
+                self._con.execute("ROLLBACK")
+            except BaseException as cleanup:
+                primary.add_note(f"snapshot rollback also failed: {cleanup!r}")
+                self._poison(primary)
+            raise
+        else:
+            try:
+                self._con.execute("COMMIT")
+            except BaseException as primary:
+                try:
+                    self._con.execute("ROLLBACK")
+                except BaseException as cleanup:
+                    primary.add_note(f"snapshot rollback also failed: {cleanup!r}")
+                self._poison(primary)
+                raise
+
+    @contextmanager
+    def query_snapshot(
+        self,
+        text: str,
+        *,
+        top_k: int = 5,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
+        policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+    ) -> Iterator[RetrievalSnapshot]:
+        with self._exclusive_query_access():
+            if top_k < 1:
+                raise ValueError(f"top_k must be >= 1, got {top_k}")
+            scoped_ids = None if document_ids is None else list(dict.fromkeys(document_ids))
+            query_vector: tuple[float, ...] | None = None
+            if scoped_ids is None or scoped_ids:
+                query_vector = tuple(self._model.encode(text))
+                if len(query_vector) != self._model.dimension:
+                    raise ValueError(
+                        f"EmbeddingModel.encode returned {len(query_vector)} dims; "
+                        f"model.dimension is {self._model.dimension}. Match them."
+                    )
+
+            with self._owned_read_transaction():
+                if query_vector is None:
+                    result = {
+                        "query": text, "top_k": top_k,
+                        "results": [], "node_matches": [],
+                    }
+                else:
+                    result = self._query_prepared(
+                        text, query_vector=query_vector, top_k=top_k,
+                        source_tier_max=source_tier_max,
+                        document_ids=scoped_ids, policy_tag=policy_tag,
+                        owner_user_id=owner_user_id,
+                    )
+                yield RetrievalSnapshot(result, self._con, query_vector)
+
+    def _query_prepared(
+        self,
+        text: str,
+        *,
+        query_vector: tuple[float, ...],
+        top_k: int,
+        source_tier_max: int | None,
+        document_ids: Sequence[str] | None,
+        policy_tag: str,
+        owner_user_id: str | None,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        if not self._snapshot_lock.acquire(False):
+            raise SnapshotBusyError("snapshot query handle is busy")
+        try:
+            if self._snapshot_closed:
+                return
+            self._snapshot_closed = True
+            self._con.close()
+        finally:
+            self._snapshot_lock.release()
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +267,7 @@ class RetrievalSubstrate(Protocol):
 # ---------------------------------------------------------------------------
 
 
-class BruteForceSubstrate:
+class BruteForceSubstrate(_SnapshotAdapter):
     """Reference impl. A thin wrapper over the existing ``search()`` — the
     canonical behaviour (schema + ordering + §9.0 gate) every candidate must
     match. No vector index: a full cosine scan, exactly what main does today.
@@ -132,6 +281,7 @@ class BruteForceSubstrate:
     def __init__(self, con: Any, *, model: EmbeddingModel):
         self._con = con
         self._model = model
+        self._init_snapshot()
 
     @classmethod
     def open(cls, db_path: str, *, model: EmbeddingModel) -> BruteForceSubstrate:
@@ -158,6 +308,19 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any]:
+        with self.query_snapshot(
+            text, top_k=top_k, source_tier_max=source_tier_max,
+            document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+        ) as snapshot:
+            return snapshot.result
+
+    def _query_prepared(
+        self, text: str, *, query_vector: tuple[float, ...], top_k: int,
+        source_tier_max: int | None, document_ids: Sequence[str] | None,
+        policy_tag: str, owner_user_id: str | None,
     ) -> dict[str, Any]:
         return search(
             self._con,
@@ -167,11 +330,9 @@ class BruteForceSubstrate:
             source_tier_max=source_tier_max,
             document_ids=document_ids,
             policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+            _prepared_query_vector=query_vector,
         )
-
-    def close(self) -> None:
-        with contextlib.suppress(Exception):  # pragma: no cover
-            self._con.close()
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +446,7 @@ def _vss_available(con: Any) -> bool:
         return False
 
 
-class DuckDbVssSubstrate:
+class DuckDbVssSubstrate(_SnapshotAdapter):
     """Default winning impl. Builds an HNSW index over ``chunks.embedding``
     using the DuckDB ``vss`` extension, then ranks by ``array_cosine_distance``
     against the index. Returns the SAME ``search()`` shape.
@@ -313,6 +474,7 @@ class DuckDbVssSubstrate:
     def __init__(self, con: Any, *, model: EmbeddingModel, vss_active: bool):
         self._con = con
         self._model = model
+        self._init_snapshot()
         self.vss_active = vss_active
         # Which column to rank against. Sized + indexed on the VSS path; the
         # original unsized column on the fallback path (where _vss_query is not
@@ -424,22 +586,39 @@ class DuckDbVssSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+    ) -> dict[str, Any]:
+        with self.query_snapshot(
+            text, top_k=top_k, source_tier_max=source_tier_max,
+            document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+        ) as snapshot:
+            return snapshot.result
+
+    def _query_prepared(
+        self, text: str, *, query_vector: tuple[float, ...], top_k: int,
+        source_tier_max: int | None, document_ids: Sequence[str] | None,
+        policy_tag: str, owner_user_id: str | None,
     ) -> dict[str, Any]:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
                 self._con, text, model=self._model, top_k=top_k,
                 source_tier_max=source_tier_max, document_ids=document_ids,
-                policy_tag=policy_tag,
+                policy_tag=policy_tag, owner_user_id=owner_user_id,
+                _prepared_query_vector=query_vector,
             )
         return self._vss_query(
             text, top_k=top_k, source_tier_max=source_tier_max,
             document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+            query_vector=query_vector,
         )
 
     def _vss_query(
         self, text: str, *, top_k: int, source_tier_max: int | None,
         document_ids: Sequence[str] | None, policy_tag: str,
+        owner_user_id: str | None, query_vector: tuple[float, ...],
     ) -> dict[str, Any]:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
@@ -451,7 +630,7 @@ class DuckDbVssSubstrate:
             if not scoped_ids:
                 return {"query": text, "top_k": top_k, "results": [], "node_matches": []}
 
-        query_vec = list(self._model.encode(text))
+        query_vec = list(query_vector)
         dim = self._model.dimension
         if len(query_vec) != dim:
             raise ValueError(
@@ -464,12 +643,7 @@ class DuckDbVssSubstrate:
         # Cosine SIMILARITY = 1 - cosine DISTANCE. The HNSW index serves the
         # ORDER BY array_cosine_distance ASC; we report similarity to match
         # search()'s contract exactly.
-        sql = f"""
-            SELECT
-                c.chunk_id, c.section_path, c.text, c.token_count,
-                c.document_id, c.chunk_index,
-                d.title, d.source_tier, d.document_type,
-                (1.0 - array_cosine_distance({emb}, {vec_str})) AS similarity
+        eligible_sql = f"""
             FROM chunks c
             JOIN documents d ON c.document_id = d.document_id
             WHERE {emb} IS NOT NULL
@@ -477,18 +651,32 @@ class DuckDbVssSubstrate:
         params: list[Any] = []
         if scoped_ids is not None:
             placeholders = ",".join("?" for _ in scoped_ids)
-            sql += f" AND c.document_id IN ({placeholders})"
+            eligible_sql += f" AND c.document_id IN ({placeholders})"
             params.extend(scoped_ids)
         if source_tier_max is not None:
-            sql += " AND d.source_tier <= ?"
+            eligible_sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
         # §9.0 gate — composed from retrieval_gate (same helper as search()).
         gate_sql, gate_params = non_privileged_chunk_sql_clause(
             table_alias="d",
             policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
-        sql += gate_sql
+        eligible_sql += gate_sql
         params.extend(gate_params)
+        assert_embedding_compatible(
+            self._con, self._model,
+            candidate_sql="SELECT c.chunk_id " + eligible_sql,
+            candidate_params=params,
+        )
+
+        sql = f"""
+            SELECT
+                c.chunk_id, c.section_path, c.text, c.token_count,
+                c.document_id, c.chunk_index,
+                d.title, d.source_tier, d.document_type,
+                (1.0 - array_cosine_distance({emb}, {vec_str})) AS similarity
+        """ + eligible_sql
         sql += " ORDER BY array_cosine_distance(" + emb + ", " + vec_str + ") ASC LIMIT ?"
         params.append(int(top_k))
 
@@ -516,13 +704,9 @@ class DuckDbVssSubstrate:
             "results": results,
             "node_matches": search_nodes_by_label(
                 self._con, text, limit=10, policy_tag=policy_tag,
+                owner_user_id=owner_user_id,
             ),
         }
-
-    def close(self) -> None:
-        with contextlib.suppress(Exception):  # pragma: no cover
-            self._con.close()
-
 
 def _exists(path: str) -> bool:
     return os.path.exists(path)

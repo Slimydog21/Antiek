@@ -18,6 +18,7 @@ from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 from substrate.rights import T3BodyServeError, body_servable
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
@@ -210,8 +211,24 @@ def _row_envelope(
     (``verify_twin_source_envelopes`` recomputes through the same helper and
     only requires a body for ``eligible`` envelopes).
     """
+    stored_owner = row[3]
+    if not isinstance(stored_owner, str) or not stored_owner.strip():
+        stored_class = con.execute(
+            "SELECT content_class FROM documents WHERE document_id=?", [str(row[0])]
+        ).fetchone()
+        if stored_class is not None and stored_class[0] == USER_AUTHORED_PRIVATE_CONTENT_CLASS:
+            raise TwinSourceEnvelopeError("private document has no usable stored owner")
+    # Stored ownership is declaration context, never a request principal.
+    # The default operator sentinel cannot authorize a new private body.
+    private_owner = (
+        stored_owner if isinstance(stored_owner, str) and stored_owner.strip()
+        and stored_owner == stored_owner.strip()
+        and stored_owner != "__operator__" else None
+    )
     try:
-        served = serve_full_text_guarded(con, str(row[0]), owner=True)
+        served = serve_full_text_guarded(
+            con, str(row[0]), owner=True, owner_user_id=private_owner,
+        )
         raw_text = served.full_text
     except (T3BodyServeError, LinkBackMissingError):
         # Serve gate refuses this body (rights drift / missing link-back).
@@ -353,19 +370,31 @@ def _envelope_from_served_fields(
     document_id = str(row[0])
     title = None if row[1] is None else str(row[1])
     document_type = str(row[2])
-    owner_user_id = str(row[3])
     raw_text = row[4]
     content_class = row[5]
+    if content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS and (
+        not isinstance(row[3], str) or not row[3].strip()
+    ):
+        raise TwinSourceEnvelopeError("private document has no usable stored owner")
+    owner_user_id = str(row[3])
     metadata = row[6]
     taken_down = bool(row[7])
 
     body: str | None = None
     if not taken_down:
         status = servability_of(content_class, taken_down=taken_down)
+        owner_private = (
+            content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS
+            and owner_user_id == owner_user_id.strip()
+            and owner_user_id != "__operator__"
+            and content_class in PERSONAL_READABLE_CONTENT_CLASSES
+        )
         if (
             content_class == PERSONAL_READING_CONTENT_CLASS
             and content_class in PERSONAL_READABLE_CONTENT_CLASSES
-        ) or is_servable_full_text(status) and content_class in SERVABLE_CONTENT_CLASSES:
+        ) or owner_private or (
+            is_servable_full_text(status) and content_class in SERVABLE_CONTENT_CLASSES
+        ):
             body = raw_text if isinstance(raw_text, str) else None
         # gated / denied classes: no body (metadata_only)
         if body is not None:

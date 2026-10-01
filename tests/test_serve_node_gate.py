@@ -47,6 +47,7 @@ from substrate.graph import (  # noqa: E402
 
 _PERSONAL_LABEL = "Zebra Quartet Personal Headline"
 _PUBLIC_LABEL = "Zebra Quartet Public Headline"
+_OWNER = "acct_test_A"
 # A servable class: anything NOT in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES.
 _SERVABLE_CONTENT_CLASS = "user_owned"
 
@@ -79,6 +80,7 @@ def seeded_db(tmp_path) -> str:
                 source_tier=3,
                 document_type="url",
                 content_class=content_class,
+                owner_user_id=_OWNER,
                 investigation_id="seed",
                 on_conflict="ignore",
             )
@@ -108,13 +110,14 @@ def seeded_db(tmp_path) -> str:
     return p
 
 
-def _labels(db_path: str, *, policy_tag: str) -> set[str]:
+def _labels(db_path: str, *, policy_tag: str, owner_user_id: str | None = None) -> set[str]:
     """The actual ``node_matches`` labels the serve payload returns."""
     emb = HashEmbedding()
     con = connect_read(db_path)
     try:
         result = search(
             con, "Zebra Quartet", model=emb, top_k=5, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
     finally:
         con.close()
@@ -148,9 +151,9 @@ def test_forgotten_policy_tag_is_safe_by_default(seeded_db):
 
 def test_owner_path_includes_both(seeded_db):
     # Owner / privileged path returns every labeled node, personal included.
-    labels = _labels(seeded_db, policy_tag="operator_only")
+    labels = _labels(seeded_db, policy_tag="operator_only", owner_user_id=_OWNER)
     assert _PERSONAL_LABEL in labels
     assert _PUBLIC_LABEL in labels
-    labels_pr = _labels(seeded_db, policy_tag="private_research")
+    labels_pr = _labels(seeded_db, policy_tag="private_research", owner_user_id=_OWNER)
     assert _PERSONAL_LABEL in labels_pr
     assert _PUBLIC_LABEL in labels_pr

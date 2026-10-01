@@ -21,13 +21,72 @@ Best-effort: any failure returns None and never raises into the orchestrator.
 
 from __future__ import annotations
 
-import contextlib
+import logging
+import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from runtime.db_lock import ReadConnection
 
 __all__ = ["maybe_reuse_prior_knowledge_at_start"]
+
+
+@dataclass
+class _PendingReuseCleanup:
+    parent: Any
+    child: Any | None
+    registered: bool
+    child_closed: bool = False
+    parent_closed: bool = False
+    terminal: bool = False
+
+
+# Serialize one database's whole read/cleanup attempt. A failed close retains
+# the actual handles, not merely the writer-registration count.
+_REUSE_LOCKS_GUARD = threading.Lock()
+_REUSE_LOCKS: dict[str, threading.Lock] = {}
+_PENDING_REUSE_CLEANUP: dict[str, _PendingReuseCleanup] = {}
+
+
+def _reuse_lock(db_identity: str) -> threading.Lock:
+    with _REUSE_LOCKS_GUARD:
+        return _REUSE_LOCKS.setdefault(db_identity, threading.Lock())
+
+
+def _finish_reuse_cleanup(db_identity: str, state: _PendingReuseCleanup) -> Exception | None:
+    """Called only under this database's lock; busy may be retried next start."""
+    from runtime.db_lock import _unregister_local_writer
+    from substrate.graph.retrieval_substrate import SnapshotBusyError
+
+    if state.terminal:
+        return RuntimeError("previous reuse cleanup is terminal and uncertain")
+    if not state.child_closed:
+        try:
+            if state.child is not None:
+                state.child.close()
+        except Exception as exc:
+            if not isinstance(exc, SnapshotBusyError):
+                state.terminal = True
+            return exc
+        state.child_closed = True
+        state.child = None
+    if not state.parent_closed:
+        try:
+            state.parent.close()
+        except Exception as exc:
+            state.terminal = True
+            return exc
+        state.parent_closed = True
+    if state.registered:
+        try:
+            _unregister_local_writer(db_identity)
+        except Exception as exc:
+            state.terminal = True
+            return exc
+        state.registered = False
+    _PENDING_REUSE_CLEANUP.pop(db_identity, None)
+    return None
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -39,10 +98,9 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 def _supplement_units_from_index(
     con: Any,
-    model: Any,
+    query_vec: tuple[float, ...],
     units: list[Any],
     node_ids: list[str],
-    question_text: str,
 ) -> list[Any]:
     """Companions SPR-01's additive supplement: the evidence index's claim
     refs join the reuse pipeline as RetrievedUnits (the SAME
@@ -54,38 +112,35 @@ def _supplement_units_from_index(
     from substrate.graph.insight_question import knowledge_unit_of
 
     have = {u.unit_id for u in units}
-    query_vec = [float(x) for x in model.encode(question_text)]
     out = list(units)
     for nid in node_ids:
         if nid in have:
             continue
-        try:
-            emb_row = con.execute(
-                "SELECT embedding FROM nodes WHERE node_id = ? LIMIT 1", [nid]
-            ).fetchone()
-            if emb_row is None or emb_row[0] is None:
-                continue
-            unit = knowledge_unit_of(con, nid, score_groundedness=True)
-            cc_row = con.execute(
-                "SELECT d.content_class, COALESCE(b.taken_down, FALSE) "
-                "FROM edges e JOIN documents d ON e.source_document_id = d.document_id "
-                "LEFT JOIN book_assets b ON d.document_id = b.document_id "
-                "WHERE e.source_node_id = ? AND e.relation = 'supported_by' "
-                "AND e.source_document_id IS NOT NULL LIMIT 1",
-                [nid],
-            ).fetchone()
-            out.append(
-                RetrievedUnit(
-                    unit=unit,
-                    similarity=_cosine(query_vec, [float(x) for x in emb_row[0]]),
-                    content_class=None if cc_row is None else cc_row[0],
-                    taken_down=False if cc_row is None else bool(cc_row[1]),
-                )
-            )
-        except Exception:
-            # A node the index refs but the graph can't project is skipped
-            # honestly — the reuse path never crashes a start.
+        emb_row = con.execute(
+            "SELECT embedding FROM nodes WHERE node_id = ? LIMIT 1", [nid]
+        ).fetchone()
+        if emb_row is None or emb_row[0] is None:
             continue
+        try:
+            unit = knowledge_unit_of(con, nid, score_groundedness=True)
+        except ValueError:
+            continue
+        cc_row = con.execute(
+            "SELECT d.content_class, COALESCE(b.taken_down, FALSE) "
+            "FROM edges e JOIN documents d ON e.source_document_id = d.document_id "
+            "LEFT JOIN book_assets b ON d.document_id = b.document_id "
+            "WHERE e.source_node_id = ? AND e.relation = 'supported_by' "
+            "AND e.source_document_id IS NOT NULL LIMIT 1",
+            [nid],
+        ).fetchone()
+        out.append(
+            RetrievedUnit(
+                unit=unit,
+                similarity=_cosine(list(query_vec), [float(x) for x in emb_row[0]]),
+                content_class=None if cc_row is None else cc_row[0],
+                taken_down=False if cc_row is None else bool(cc_row[1]),
+            )
+        )
     return out
 
 
@@ -106,16 +161,23 @@ def maybe_reuse_prior_knowledge_at_start(
     if not investigation_id or not (question_text or "").strip():
         return None
     parent: ReadConnection | None = None
+    substrate: Any | None = None
     registered = False
     resolved_db = ""
+    units: list[Any] = []
+    work_error: Exception | None = None
+    cleanup_error: Exception | None = None
+    db_identity = ""
+    path_lock: threading.Lock | None = None
     try:
         import duckdb
 
         from processing.embedding import default_embedding_provider
-        from runtime.db_lock import _register_local_writer, _unregister_local_writer
+        from runtime.db_lock import _db_identity, _register_local_writer
         from substrate.context_pack.knowledge_reuse import (
-            assemble_context_pack_with_reuse,
-            retrieve_prior_units,
+            DEFAULT_RETRIEVE_LIMIT,
+            _materialize_prior_units_from_snapshot,
+            _usable_reuse_snapshot,
         )
         from substrate.event_log import default_events_dir
         from substrate.graph import default_db_path
@@ -125,13 +187,16 @@ def maybe_reuse_prior_knowledge_at_start(
         )
 
         resolved_db = db_path or default_db_path()
+        db_identity = _db_identity(resolved_db)
+        path_lock = _reuse_lock(db_identity)
+        path_lock.acquire()
+        prior = _PENDING_REUSE_CLEANUP.get(db_identity)
+        if prior is not None:
+            prior_error = _finish_reuse_cleanup(db_identity, prior)
+            if prior_error is not None:
+                raise RuntimeError("previous reuse cleanup remains unresolved") from prior_error
         resolved_events = events_dir or default_events_dir()
         model = embedding_provider or default_embedding_provider()
-
-        # Prefer same-process RW (no flock) so we coexist with note-taker /
-        # LazyRW writers. Cross-process (ops smoke while uvicorn holds the
-        # file) falls back to connect_read — retrieve is read-only; emit only
-        # touches the event log.
         try:
             parent = duckdb.connect(resolved_db)
             _register_local_writer(resolved_db)
@@ -145,46 +210,56 @@ def maybe_reuse_prior_knowledge_at_start(
         substrate = make_substrate_from_con(
             kind, parent, model=model, db_path=resolved_db,
         )
-        # Companions SPR-01 — the evidence base's FIRST agent consumer: the
-        # additive index query BEFORE the trajectory/graph re-walk. An absent
-        # or empty index returns [] and changes NOTHING (the re-walk runs
-        # exactly as today); live claim refs join the SAME gated pipeline as
-        # supplemental candidates (the trust gate still decides downstream).
-        from substrate.companions.evidence_index import query_claim_node_ids
+        query_snapshot = getattr(substrate, "query_snapshot", None)
+        if callable(query_snapshot):
+            from substrate.companions.evidence_index import query_claim_node_ids
 
-        index_node_ids = query_claim_node_ids(
-            parent,
-            # The reuse hook runs substrate-side in the single-operator
-            # deployment — the owner constant the graph schema defaults to.
-            owner_user_id="__operator__",
-            source_document_id=source_document_id,
+            with query_snapshot(
+                question_text.strip(), top_k=DEFAULT_RETRIEVE_LIMIT,
+                policy_tag="attribution_eligible",
+            ) as snapshot:
+                query_vec = snapshot.query_vector
+                if query_vec is not None and _usable_reuse_snapshot(snapshot):
+                    index_node_ids = query_claim_node_ids(
+                        snapshot.con,
+                        owner_user_id="__operator__",
+                        source_document_id=source_document_id,
+                    )
+                    units = _materialize_prior_units_from_snapshot(
+                        snapshot, limit=DEFAULT_RETRIEVE_LIMIT,
+                        source_document_id=source_document_id,
+                    )
+                    if index_node_ids:
+                        units = _supplement_units_from_index(
+                            snapshot.con, query_vec, units, index_node_ids,
+                        )
+    except Exception as exc:
+        work_error = exc
+    finally:
+        try:
+            if parent is not None:
+                state = _PendingReuseCleanup(parent, substrate, registered)
+                _PENDING_REUSE_CLEANUP[db_identity] = state
+                cleanup_error = _finish_reuse_cleanup(db_identity, state)
+        finally:
+            if path_lock is not None:
+                path_lock.release()
+    if work_error is not None or cleanup_error is not None:
+        if work_error is not None and cleanup_error is not None:
+            work_error.add_note(f"reuse cleanup also failed: {cleanup_error!r}")
+        logging.getLogger(__name__).warning(
+            "knowledge reuse read or cleanup failed: work=%r cleanup=%r",
+            work_error, cleanup_error,
         )
-        units = retrieve_prior_units(
-            substrate,
-            question_text=question_text.strip(),
-            source_document_id=source_document_id,
-        )
-        if index_node_ids:
-            units = _supplement_units_from_index(
-                parent, model, units, index_node_ids, question_text.strip()
-            )
+        return None
+    try:
+        from substrate.context_pack.knowledge_reuse import assemble_context_pack_with_reuse
+
         result = assemble_context_pack_with_reuse(
-            role=role,
-            investigation_id=investigation_id,
-            layers=[],
-            units=units,
-            events_dir=resolved_events,
-            owner=True,
+            role=role, investigation_id=investigation_id, layers=[], units=units,
+            events_dir=resolved_events, owner=True,
         )
         return getattr(result, "reuse_event_id", None)
     except Exception:
+        logging.getLogger(__name__).exception("knowledge reuse event assembly failed")
         return None
-    finally:
-        if parent is not None:
-            with contextlib.suppress(Exception):
-                parent.close()
-        if registered and resolved_db:
-            with contextlib.suppress(Exception):
-                from runtime.db_lock import _unregister_local_writer
-
-                _unregister_local_writer(resolved_db)

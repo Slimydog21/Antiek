@@ -11,12 +11,13 @@ Rights filter lives in ``adapt_notebook_for_export``; zero-script gate in-route.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from services.html_projection.adapters.notebook import ResolvedRefData
@@ -27,6 +28,8 @@ from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
 from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
+from .notebook_authority import NotebookAuthority, admit_parent, authority_from_request
+
 _log = logging.getLogger(__name__)
 
 
@@ -35,7 +38,7 @@ class NotebookExportSource:
     content_tiptap: dict[str, Any]
     title: str | None
     document_id: str
-    owner_user_id: str
+    owner_user_id: str | None
     content_class: str = "notebook"
     resolved_refs: dict[str, Any] = field(default_factory=dict)  # ref_id -> ResolvedRefData
 
@@ -49,9 +52,10 @@ def _resolve_db_path() -> str:
 
 
 def resolve_notebook_export(
-    notebook_id: str, *, db_path: str | None = None
+    notebook_id: str, *, authority: NotebookAuthority,
+    mode: Literal["read", "sign"], db_path: str | None = None,
 ) -> NotebookExportSource | None:
-    """Read a notebook into a NotebookExportSource, or None if it does not exist.
+    """Authorize and snapshot one notebook before resolving refs or signing.
 
     The notebook's ref-bearing nodes (claim/insight/question) are resolved
     against the substrate via ``resolve_refs`` — each ref's text + the SOURCE
@@ -62,21 +66,29 @@ def resolve_notebook_export(
     """
     from runtime.db_lock import connect_read
 
+    if mode not in {"read", "sign"}:
+        raise ValueError("unsupported notebook artifact mode")
     db = db_path or _resolve_db_path()
     con = connect_read(db)
     try:
-        row = con.execute(
-            "SELECT notebook_id, title, content_class, owner_user_id, document_id "
-            "FROM notebooks WHERE notebook_id = ?",
-            [notebook_id],
-        ).fetchone()
-        if row is None:
+        con.execute("BEGIN TRANSACTION")
+        parent = admit_parent(
+            con, notebook_id, authority,
+            mode="read" if mode == "read" else "write",
+        )
+        if parent is None or (mode == "sign" and not parent.owner_user_id):
+            con.execute("ROLLBACK")
             return None
         block_rows = con.execute(
             "SELECT content_json FROM notebook_blocks "
             "WHERE notebook_id = ? ORDER BY block_index",
             [notebook_id],
         ).fetchall()
+        con.execute("COMMIT")
+    except BaseException:
+        with contextlib.suppress(Exception):
+            con.execute("ROLLBACK")
+        raise
     finally:
         con.close()
 
@@ -98,9 +110,9 @@ def resolve_notebook_export(
 
     return NotebookExportSource(
         content_tiptap=content_tiptap,
-        title=row[1],
-        document_id=row[4] or notebook_id,
-        owner_user_id=row[3] or "__operator__",
+        title=parent.title,
+        document_id=parent.document_id or notebook_id,
+        owner_user_id=parent.owner_user_id,
         content_class="notebook",
         resolved_refs=resolved_refs,
     )
@@ -135,13 +147,13 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         )
 
     @app.get("/api/notebooks/{notebook_id}/artifact.html", tags=["notebooks"])
-    async def notebook_artifact_html(notebook_id: str) -> Response:
+    async def notebook_artifact_html(notebook_id: str, request: Request) -> Response:
         """Daily-use HTML-native view — inline, script-free (not a download)."""
-        source = resolve_notebook_export(notebook_id)
+        source = resolve_notebook_export(
+            notebook_id, authority=authority_from_request(request), mode="read",
+        )
         if source is None:
-            raise HTTPException(
-                status_code=404, detail=f"notebook {notebook_id!r} not found"
-            )
+            raise HTTPException(status_code=404, detail="notebook not found")
         html = _script_free_html(render(_doc_model(source), RenderContext()))
         return HTMLResponse(
             content=html,
@@ -151,17 +163,20 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         )
 
     @app.get("/api/notebooks/{notebook_id}/artifact", tags=["notebooks"])
-    async def notebook_artifact(notebook_id: str, format: str = "html") -> Response:
-        source = resolve_notebook_export(notebook_id)
-        if source is None:
-            raise HTTPException(
-                status_code=404, detail=f"notebook {notebook_id!r} not found"
-            )
+    async def notebook_artifact(
+        notebook_id: str, request: Request, format: str = "html",
+    ) -> Response:
         if format not in EXPORT_FORMATS:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown format {format!r}; valid: {list(EXPORT_FORMATS)}",
             )
+        mode: Literal["read", "sign"] = "read" if format == "html" else "sign"
+        source = resolve_notebook_export(
+            notebook_id, authority=authority_from_request(request), mode=mode,
+        )
+        if source is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
         # The rights-filtering pre-resolve happens here (the only path).
         doc_model = _doc_model(source)
 
@@ -176,6 +191,8 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
 
         from services.antiek_format.signature import ensure_keypair
 
+        if source.owner_user_id is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
         keypair = ensure_keypair(source.owner_user_id, db_path=_resolve_db_path())
         item = ExportItem(
             content_tiptap={"type": "doc", "content": doc_model.get("content", [])},

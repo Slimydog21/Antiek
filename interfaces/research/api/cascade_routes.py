@@ -262,8 +262,12 @@ class _LazyReuseSubstrate:
         self._model = model
         self._parent: Any | None = None
         self._inner: Any | None = None
+        self._closed = False
+        self._terminal_close_error: BaseException | None = None
 
     def _ensure(self) -> Any:
+        if self._closed or self._terminal_close_error is not None:
+            raise RuntimeError("reuse substrate is closed or cleanup is uncertain")
         if self._inner is None:
             import duckdb
 
@@ -272,21 +276,24 @@ class _LazyReuseSubstrate:
                 resolve_reuse_substrate_kind,
             )
 
-            # Read-write, NO flock — shares the funnel's DuckDB instance.
-            self._parent = duckdb.connect(self._db_path)
-            kind = resolve_reuse_substrate_kind()
-            self._inner = make_substrate_from_con(
-                kind, self._parent, model=self._model, db_path=self._db_path,
-            )
-            self.name = getattr(self._inner, "name", kind) or kind
+            parent = duckdb.connect(self._db_path)
+            try:
+                kind = resolve_reuse_substrate_kind()
+                inner = make_substrate_from_con(
+                    kind, parent, model=self._model, db_path=self._db_path,
+                )
+            except BaseException as primary:
+                try:
+                    parent.close()
+                except BaseException as cleanup:
+                    self._parent = parent
+                    self._terminal_close_error = cleanup
+                    primary.add_note(f"reuse construction cleanup also failed: {cleanup!r}")
+                raise
+            self._parent = parent
+            self._inner = inner
+            self.name = getattr(inner, "name", kind) or kind
         return self._inner
-
-    @property
-    def _con(self) -> Any:
-        # knowledge_reuse reads node-level similarity over the substrate's own
-        # connection via ``getattr(substrate, "_con", None)``; hand it the shared
-        # cursor (opening the handle on first use).
-        return self._ensure()._con
 
     def query(
         self,
@@ -306,16 +313,45 @@ class _LazyReuseSubstrate:
         )
         return result
 
+    def query_snapshot(
+        self,
+        text: str,
+        *,
+        top_k: int = 5,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
+        policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+    ) -> Any:
+        return self._ensure().query_snapshot(
+            text, top_k=top_k, source_tier_max=source_tier_max,
+            document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+        )
+
     def close(self) -> None:
-        inner, parent = self._inner, self._parent
-        self._inner = None
-        self._parent = None
-        if inner is not None and hasattr(inner, "close"):
-            with contextlib.suppress(Exception):
-                inner.close()
-        if parent is not None:
-            with contextlib.suppress(Exception):
-                parent.close()
+        if self._terminal_close_error is not None:
+            raise RuntimeError("reuse substrate cleanup remains uncertain") from self._terminal_close_error
+        if self._closed:
+            return
+        if self._inner is not None:
+            try:
+                self._inner.close()
+            except Exception as exc:
+                from substrate.graph.retrieval_substrate import SnapshotBusyError
+
+                if not isinstance(exc, SnapshotBusyError):
+                    self._terminal_close_error = exc
+                raise
+            self._inner = None
+        if self._parent is not None:
+            try:
+                self._parent.close()
+            except Exception as exc:
+                self._terminal_close_error = exc
+                raise
+            self._parent = None
+        self._closed = True
 
 
 def _reuse_substrate(
@@ -1669,6 +1705,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             if owner_manifest is not None and owner_claimed_broadcast:
                 owner_manifest_token = install_manifest(owner_manifest)
 
+            launch_error: BaseException | None = None
             try:
                 await session.launch(root_id, leaves)
                 if gateway is not None and launch_receipt is not None:
@@ -1676,16 +1713,24 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                         launch_receipt,
                         outcome={"session_id": session_id, "leaf_count": len(leaves)},
                     )
+            except BaseException as exc:
+                launch_error = exc
+                raise
             finally:
-                # The reuse reads happen synchronously during launch(); close the shared
-                # read handle NOW so it never overlaps the connect_read readers that run
-                # during the background/polling phase (a held read-write handle is the
-                # forbidden RO+RW same-file mismatch for every connect_read on the file).
-                # runner.join() will best-effort close it again later — idempotent.
-                if reuse_substrate is not None:
-                    with contextlib.suppress(Exception):
-                        reuse_substrate.close()
-                _HARD_CEILING_LAUNCHING.discard(session_id)
+                # The launched session remains registrable if read-handle cleanup
+                # fails. runner.join() can retry a busy child close later.
+                try:
+                    if reuse_substrate is not None:
+                        try:
+                            reuse_substrate.close()
+                        except Exception as cleanup:
+                            logger.warning("reuse handle cleanup unresolved: %r", cleanup)
+                            if launch_error is not None:
+                                launch_error.add_note(
+                                    f"reuse handle cleanup also failed: {cleanup!r}"
+                                )
+                finally:
+                    _HARD_CEILING_LAUNCHING.discard(session_id)
 
             _SESSIONS[session_id] = session
             _SESSION_SOURCE_POLICIES[session_id] = req.source_policy
