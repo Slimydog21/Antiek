@@ -81,7 +81,7 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
   step: { dot: "bg-shadow-1 dark:bg-moonlight", text: "text-ink dark:text-bright" },
   finding: { dot: "bg-aurora", text: "text-ink dark:text-bright" },
   caution: { dot: "bg-sun-deep dark:bg-sun", text: "text-ink dark:text-bright" },
-  milestone: { dot: "bg-emperor", text: "text-ink dark:text-bright font-semibold" },
+  milestone: { dot: "bg-success", text: "text-ink dark:text-bright font-semibold" },
 };
 
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {

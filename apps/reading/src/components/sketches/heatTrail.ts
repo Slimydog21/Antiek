@@ -104,7 +104,7 @@ export const renderHeatTrail: SketchRender<HeatTrailParams> = (
   const palette = surface[mode];
   const bg = palette[2];
   const trailColor = mode === "night" ? sunLight.base : sun.deep.day;
-  const hotColor = mode === "night" ? sun.base : accent.emperor.day;
+  const hotColor = sun.base;
   const coolColor = mode === "night" ? accent.aurora.night : accent.aurora.day;
   const ink = palette[8];
   const minDim = Math.min(width, height);
