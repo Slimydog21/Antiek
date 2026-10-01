@@ -314,11 +314,21 @@ def test_connect_read_stops_retrying_persistent_mode_conflict(
     monkeypatch.setattr(time, "sleep", sleep)
     monkeypatch.setattr(duckdb, "connect", conflict)
 
-    with pytest.raises(duckdb.ConnectionException) as raised:
+    # An expired mode window exhausts into the TYPED timeout, not the raw
+    # ConnectionException: both bounded waits in ``connect_read`` (the
+    # external-writer wait and this mode window) look for the same thing --
+    # another handle that will not yield -- so both must reach the caller as
+    # ``ReadLockTimeout``. The app-level handler for it
+    # (``interfaces/research/api/app.py``) is what turns the conflict into a
+    # retryable 503 for ~128 request paths that open the DB through
+    # ``connect_read`` with no local handling; a bare ``raise`` here bypassed
+    # that handler and escaped as a 500. The raw DuckDB error is still
+    # reachable, and still the same object, through ``__cause__``.
+    with pytest.raises(db_lock.ReadLockTimeout) as raised:
         db_lock.connect_read("persistent-conflict.duckdb")
 
-    assert raised.value is conflicts[-1]
-    assert db_lock._SAME_FILE_DIFFERENT_CONFIG in str(raised.value)
+    assert raised.value.__cause__ is conflicts[-1]
+    assert db_lock._SAME_FILE_DIFFERENT_CONFIG in str(raised.value.__cause__)
     assert len(calls) > 2
     assert len(calls) <= 54
     assert calls == [mode for _ in range(len(calls) // 2) for mode in (True, False)]
