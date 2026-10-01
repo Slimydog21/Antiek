@@ -10,22 +10,30 @@ import type { OutlineBlockView } from "./writeApi";
 /**
  * Outline.subAgentReturn — F7: an accepted sub-agent spawn returns to its writer.
  *
- * `SubAgentProposal` PRODUCES the spawned child's id
- * (`onAccept(child.investigation_id)`). The host used to discard it
- * (`onAccept={() => setProposal(null)}`), so a writer who accepted a proposal
- * had paid for a child investigation and had no way back to it. The id is now
- * retained and rendered as a link to `/inv/<id>`, mirroring the Reading
- * companion's child-investigation row.
+ * The REAL SubAgentProposal is mounted here, not a stub. An independent critic
+ * rejected an earlier revision of this file for mocking the component: with
+ * `vi.mock("./SubAgentProposal")` the suite stayed 3/3 green after the real
+ * component's `onAccept(child.investigation_id)` call was deleted, so it proved
+ * the host keeps an id it is handed and nothing about the component handing it
+ * over. The fix is to exercise the chain the defect actually lives in:
  *
- * The FloatMenu and SubAgentProposal components are stubbed: this test is about
- * the HOST's handling of the id the child component reports, not about either
- * component's internals (both have their own coverage).
+ *   SubAgentProposal.accept() -> startInvestigation() -> onAccept(child id)
+ *     -> Outline.spawnedChild -> <Link to={`/inv/${id}`}>
+ *
+ * Only the two edges that leave the process are stubbed: the repository search
+ * and the spawn API. Everything between them is the shipped code.
+ *
+ * VERIFIED RED ON THE DEFECT: deleting `onAccept(child.investigation_id)` from
+ * SubAgentProposal.tsx:77 fails every case below.
  */
 
-const { getSectionBlocksMock, updateSectionProseMock } = vi.hoisted(() => ({
-  getSectionBlocksMock: vi.fn(),
-  updateSectionProseMock: vi.fn(),
-}));
+const { getSectionBlocksMock, updateSectionProseMock, searchRepositoryMock, startInvestigationMock } =
+  vi.hoisted(() => ({
+    getSectionBlocksMock: vi.fn(),
+    updateSectionProseMock: vi.fn(),
+    searchRepositoryMock: vi.fn(),
+    startInvestigationMock: vi.fn(),
+  }));
 
 vi.mock("./writeApi", async (orig) => ({
   ...(await orig<typeof import("./writeApi")>()),
@@ -33,6 +41,7 @@ vi.mock("./writeApi", async (orig) => ({
   generateSection: vi.fn(),
   placeBlock: vi.fn(),
   moveBlock: vi.fn(),
+  searchRepository: searchRepositoryMock,
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -40,27 +49,19 @@ vi.mock("../../lib/api", async (orig) => ({
   createSection: vi.fn().mockResolvedValue({}),
   updateSectionProse: updateSectionProseMock,
   postTypedEvent: vi.fn().mockResolvedValue({}),
+  startInvestigation: startInvestigationMock,
 }));
 
 vi.mock("../shared/FloatMenu/useFloatMenuSelection", () => ({
   useFloatMenuSelection: () => null,
 }));
 
-// The menu offers the rewrite intent; firing onDeepResearch is the shipped path
-// that opens the proposal (Outline.tsx `onDeepResearch` → `setProposal`).
+// Only the MENU is stubbed (jsdom cannot drive its DOM selection). Firing
+// onDeepResearch is the shipped path that opens the proposal.
 vi.mock("../shared/FloatMenu/FloatMenu", () => ({
   default: (props: { onDeepResearch?: (t: string | null) => void }) => (
     <button type="button" onClick={() => props.onDeepResearch?.("Capital intensity rises")}>
       deep research
-    </button>
-  ),
-}));
-
-// The proposal reports the spawned id exactly as the real component does.
-vi.mock("./SubAgentProposal", () => ({
-  default: (props: { onAccept: (id: string) => void }) => (
-    <button type="button" data-testid="accept-proposal" onClick={() => props.onAccept("inv-child-123")}>
-      accept proposal
     </button>
   ),
 }));
@@ -71,6 +72,8 @@ vi.mock("@tiptap/react", async (orig) => ({
 }));
 
 import Outline from "./Outline";
+
+const CHILD_ID = "inv-child-123";
 
 function section(prose: string): SectionResponse {
   return {
@@ -107,6 +110,8 @@ beforeEach(() => {
     claim_node_id: null,
     claim_event_id: null,
   });
+  searchRepositoryMock.mockReset().mockResolvedValue([]);
+  startInvestigationMock.mockReset().mockResolvedValue({ investigation_id: CHILD_ID });
 });
 afterEach(() => {
   cleanup();
@@ -121,34 +126,43 @@ function renderOutline() {
   );
 }
 
-describe("Outline — F7: the accepted sub-agent spawn returns", () => {
-  it("retains the child id and links to it instead of discarding it", async () => {
-    renderOutline();
+/** Open the proposal, then accept it through the REAL component's button. */
+async function spawnViaRealProposal() {
+  await userEvent.click(screen.getByRole("button", { name: "deep research" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: /accept/i }),
+  );
+}
 
-    // No proposal, no return row: nothing has been spawned yet.
+describe("Outline — F7: the accepted sub-agent spawn returns", () => {
+  it("the real proposal reports its child id and the host links to it", async () => {
+    renderOutline();
     expect(screen.queryByTestId("write-sub-agent-spawned")).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "deep research" }));
-    await userEvent.click(await screen.findByTestId("accept-proposal"));
+    await spawnViaRealProposal();
+
+    // The real component must have gone through the shipped spawn path.
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalled());
+    const req = startInvestigationMock.mock.calls.at(-1)?.[0] as { question: string };
+    expect(req.question).toContain("Capital intensity rises");
 
     const row = await screen.findByTestId("write-sub-agent-spawned");
     const link = row.querySelector("a");
-    expect(link).toBeTruthy();
-    expect(link?.getAttribute("href")).toBe("/inv/inv-child-123");
+    expect(link?.getAttribute("href")).toBe(`/inv/${CHILD_ID}`);
     expect(link?.textContent).toContain("open research");
   });
 
   it("the proposal closes on accept, so the writer sees the outcome not the form", async () => {
     renderOutline();
-    await userEvent.click(screen.getByRole("button", { name: "deep research" }));
-    await userEvent.click(await screen.findByTestId("accept-proposal"));
-    await waitFor(() => expect(screen.queryByTestId("accept-proposal")).toBeNull());
+    await spawnViaRealProposal();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /accept/i })).toBeNull(),
+    );
   });
 
   it("the return row is dismissible", async () => {
     renderOutline();
-    await userEvent.click(screen.getByRole("button", { name: "deep research" }));
-    await userEvent.click(await screen.findByTestId("accept-proposal"));
+    await spawnViaRealProposal();
     await screen.findByTestId("write-sub-agent-spawned");
     await userEvent.click(screen.getByRole("button", { name: "dismiss" }));
     expect(screen.queryByTestId("write-sub-agent-spawned")).toBeNull();
