@@ -246,6 +246,20 @@ role_tiers:
   # knowledge_extractor / thought_partner / creative_writer / autocomplete.
   # Tier=pro (conversational question generation, precedent-matched).
   interviewer: pro
+  # REFORMAT-R12 (2026-10-01): the sixth instance of this class, and the first
+  # that shipped without the entry. ``substrate/reformat/pipeline.py`` dispatches
+  # role="reformat" to generate the derived bites of a reformulated document;
+  # with no role_tiers entry the router raised KeyError (uncaught —
+  # ``reformat_routes.py`` catches only ReformatError) and every real
+  # POST /books/{document_id}/reformats returned 500. Same one-line-routing
+  # precedent as knowledge_extractor / thought_partner / creative_writer /
+  # autocomplete / interviewer above. Tier=pro, precedent-matched to
+  # creative_writer: both are structured generation over operator material, and
+  # the pipeline already validates the output shape and rejects unparseable JSON.
+  # The gate that stops a seventh instance is
+  # tests/test_dispatch_role_coverage.py, which enumerates every literal role at
+  # every dispatch() call site and asserts it is routable.
+  reformat: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are
