@@ -201,25 +201,17 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
 
   const appliedNavigation = useRef<{ documentId: string; pageIndex: number; version: number | null } | null>(null);
-  const [unavailableNavigation, setUnavailableNavigation] = useState<{
-    documentId: string;
-    pageIndex: number;
-    version: number | null;
-  } | null>(null);
   const requestedPage = pageNavigation?.pageIndex ?? initialPage;
   const navigationVersion = pageNavigation?.version ?? null;
+  const sourcePageUnavailable = !loading && loadedDocumentId === documentId &&
+    requestedPage !== null && Number.isSafeInteger(requestedPage) && requestedPage >= pages.length;
   useEffect(() => {
     if (loading || loadedDocumentId !== documentId || pages.length === 0 ||
       requestedPage === null || !Number.isSafeInteger(requestedPage) || requestedPage < 0) return;
     const prior = appliedNavigation.current;
     if (prior?.documentId === documentId && prior.pageIndex === requestedPage && prior.version === navigationVersion) return;
-    const request = { documentId, pageIndex: requestedPage, version: navigationVersion };
-    appliedNavigation.current = request;
-    if (requestedPage >= pages.length) {
-      setUnavailableNavigation(request);
-      return;
-    }
-    setUnavailableNavigation(null);
+    appliedNavigation.current = { documentId, pageIndex: requestedPage, version: navigationVersion };
+    if (requestedPage >= pages.length) return;
     setPageIndex(requestedPage);
   }, [loading, loadedDocumentId, documentId, requestedPage, navigationVersion, pages.length, setPageIndex]);
 
@@ -1013,9 +1005,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
           bookmark stays reachable mid-read (cockpit R3); only the reading
           body scrolls. */}
       <main className="flex-1 min-w-0 min-h-0 flex flex-col">
-        {unavailableNavigation?.documentId === documentId &&
-          unavailableNavigation.pageIndex === requestedPage &&
-          unavailableNavigation.version === navigationVersion && (
+        {sourcePageUnavailable && (
           <p role="status" className="shrink-0 px-6 pt-3 text-xs text-shadow-1 dark:text-moonlight">
             That source page isn't available in this document.
           </p>

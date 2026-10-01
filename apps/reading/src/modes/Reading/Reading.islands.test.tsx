@@ -482,7 +482,7 @@ describe("drifted and orphaned inheritance (the parent's rule)", () => {
     await renderReader();
     const mark = await screen.findByText("The ope");
     expect(mark.getAttribute("data-anchor-treatment")).toBe("drifted");
-    const glyphButton = document.querySelector('[data-island-id="a-island"]')!;
+    const glyphButton = await awaitIsland("a-island");
     expect(glyphButton).toBeTruthy();
     fireEvent.click(glyphButton);
     await screen.findByText("Open research →");
