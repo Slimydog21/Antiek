@@ -289,3 +289,39 @@ def test_published_release_is_receipt_gated_and_write_frozen() -> None:
     )
     freeze = next(task for task in tasks if task.get("name") == "freeze release permissions after all writes")
     assert freeze["ansible.builtin.command"]["argv"] == ["chmod", "-R", "a-w", "{{ antiek_release_dir }}"]
+
+
+def test_duckdb_pre_migration_snapshots_are_pruned_with_the_three_live_ones_protected() -> None:
+    """Prod 2026-10-01: the playbook wrote one ~940 MB
+    ``antiek.duckdb.pre-atomic-<sha>`` per deploy and NOTHING pruned them —
+    46 copies / 40.6 GB in six days (17 in one day) on a 150 GB disk with
+    72 GB free, while release directories WERE pruned to a retention count.
+    A deploy must not be a net drain on the operator's disk."""
+    play = _load()[1]
+    tasks = _walk(play["tasks"])
+    retention = play["vars"]["antiek_duckdb_snapshot_retention_count"]
+    assert isinstance(retention, int) and retention >= 2, retention
+
+    prune = next(
+        task for task in tasks
+        if "prune DuckDB pre-migration snapshots" in task.get("name", "")
+    )
+    script = prune["ansible.builtin.shell"]
+    # Only the one file family, this filesystem, never a directory.
+    assert "-name 'antiek.duckdb.pre-atomic-*'" in script
+    assert "-type f" in script
+    assert "--one-file-system" in script
+    # The three SHAs the playbook can still need, named explicitly.
+    for protected in ('"$keep"', '"$previous"', '"$current"'):
+        assert protected in script, protected
+    assert 'keep="{{ antiek_target_sha }}"' in script
+    assert 'previous="{{ antiek_previous_sha }}"' in script
+    assert 'current=$(basename "$(readlink -f "{{ antiek_public_dir }}")")' in script
+    # Newest-first, same discipline as the release prune beside it.
+    assert "sort -nr" in script
+    assert 'count" -gt "{{ antiek_duckdb_snapshot_retention_count }}"' in script
+    # It runs only on a SUCCESSFUL deploy: it is a sibling task after the
+    # block, not an always/rescue task, so a failed deploy never deletes the
+    # snapshot an operator may be about to restore from.
+    assert "always" not in prune and "rescue" not in prune
+    assert "always" not in play["tasks"][-1]
