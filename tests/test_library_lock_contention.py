@@ -135,7 +135,11 @@ def test_contended_library_read_is_retryable_not_a_500(isolated_db, monkeypatch)
     SPA could not distinguish "busy" from "broken".
     """
     _seed_servable(isolated_db)
-    monkeypatch.setattr(library_routes, "_LOCK_WAIT_S", 1.0)
+    # raising=False so this test still runs against the UNMODIFIED route, where the
+    # constant does not exist: that is the red side, and it must fail on the HTTP
+    # status (500 vs 503), not on the patch. An earlier revision raised
+    # AttributeError here, which made the quoted red unreproducible.
+    monkeypatch.setattr(library_routes, "_LOCK_WAIT_S", 1.0, raising=False)
     proc = _hold_writer(isolated_db)
     try:
         with TestClient(
@@ -158,7 +162,11 @@ def test_contended_library_read_is_retryable_not_a_500(isolated_db, monkeypatch)
 def test_library_recovers_once_the_writer_releases(isolated_db, monkeypatch):
     """The lock is transient; the route must serve again without a restart."""
     _seed_servable(isolated_db)
-    monkeypatch.setattr(library_routes, "_LOCK_WAIT_S", 1.0)
+    # raising=False so this test still runs against the UNMODIFIED route, where the
+    # constant does not exist: that is the red side, and it must fail on the HTTP
+    # status (500 vs 503), not on the patch. An earlier revision raised
+    # AttributeError here, which made the quoted red unreproducible.
+    monkeypatch.setattr(library_routes, "_LOCK_WAIT_S", 1.0, raising=False)
     proc = _hold_writer(isolated_db)
     try:
         with TestClient(

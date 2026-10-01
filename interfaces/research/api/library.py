@@ -34,9 +34,11 @@ _CATALOG_BATCH_SIZE = 1_000
 # handoff token (runtime/db_lock.py:376); see PR #3589's review thread.
 _LOCK_WAIT_S = 8.0
 
-# Clients already retry this route; 503 + Retry-After is the contract they can
-# act on, and unlike a raw 500 it leaves through the app's error handler, so the
-# CORS middleware decorates it and the browser can read the status.
+# A retryable status the client can act on: unlike a raw 500 it leaves through
+# the app's error handler, so the CORS middleware decorates it and the browser
+# can read the status at all. The client currently keys off the status alone
+# (modes/Library/index.tsx) and does not yet read Retry-After - the header is
+# published for the next client, not consumed by this one.
 _RETRY_AFTER_S = 1
 
 __all__ = ["LibraryPage", "build_library_page", "register_library_routes"]
