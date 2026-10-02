@@ -184,7 +184,8 @@ def persist_oai_records_batched(
 ) -> tuple[int, int]:
     """UPSERT a batch of LIVE OAI records with ONE insert and ONE update
     statement, preserving the per-record branch semantics of
-    ``persist_oai_record``. Returns ``(inserted, updated)``.
+    ``persist_oai_record``. Returns logical per-record ``(inserted, updated)``
+    counts, including every repeated ID, rather than SQL map cardinalities.
 
     The per-record sibling pays DuckDB's plan-time foreign-key constraint
     binding once per statement: on the production catalog every plan re-binds
@@ -204,6 +205,7 @@ def persist_oai_records_batched(
     inserts: dict[str, list[object]] = {}
     updates: dict[str, list[object]] = {}
     resolutions: list[tuple[str, str]] = []
+    inserted = updated = 0
     for record in records:
         if record.deleted:
             raise ValueError(
@@ -222,8 +224,10 @@ def persist_oai_records_batched(
             is not None
         )
         if exists:
+            updated += 1
             updates[document_id] = [record.title, source_uri, metadata_json]
         else:
+            inserted += 1
             inserts[document_id] = [
                 document_id,
                 source_uri,
@@ -262,7 +266,7 @@ def persist_oai_records_batched(
     # row exists, on both branches, in record order.
     for document_id, source_uri in resolutions:
         resolve_and_apply(con, document_id=document_id, source_uri=source_uri)
-    return len(inserts), len(updates)
+    return inserted, updated
 
 
 def persist_oai_records(
