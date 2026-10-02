@@ -1332,7 +1332,21 @@ def connect_read(
                     retry_deadline = time.monotonic() + _READ_MODE_RETRY_WINDOW_S
                 remaining = retry_deadline - time.monotonic()
                 if remaining <= 0:
-                    raise
+                    # Both this window and the external-writer wait are
+                    # bounded waits for the SAME thing — another handle that
+                    # will not yield — so both must exhaust into the typed
+                    # timeout. This branch used to bare-`raise` the raw
+                    # `duckdb.ConnectionException`, and the app-level handler
+                    # catches `ReadLockTimeout` only, so an expired mode
+                    # window escaped as a 500 while the comment on that
+                    # handler promised "immediate mode and expired bounded
+                    # wait alike". ~128 request paths rely on that single
+                    # handler; this was the one path that bypassed it.
+                    raise ReadLockTimeout(
+                        f"Could not open {db_path} for read within "
+                        f"{_READ_MODE_RETRY_WINDOW_S}s; a local handle kept "
+                        f"the database in a conflicting configuration."
+                    ) from fallback_exc
                 time.sleep(min(_READ_MODE_RETRY_INTERVAL_S, remaining))
 
 
