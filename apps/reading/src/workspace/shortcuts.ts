@@ -68,6 +68,8 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
+import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneZoom,
+  togglePaneArrangementAt } from "./PaneFlowLayout";
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -457,6 +459,42 @@ export function toggleProjectPicker(): void {
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
 }
 
+let executingPrefixEvent: KeyboardEvent | null = null;
+
+function modernPaneAt(event: KeyboardEvent): boolean {
+  const root = event.target instanceof Element ? event.target.closest("[data-pane-flow-root]") : null;
+  return Boolean(root && root.getAttribute("data-pane-arrangement") !== "legacy");
+}
+
+function paneFocusKey(event: KeyboardEvent, side: "left" | "right"): boolean | void {
+  if (modernPaneAt(event)) return focusAdjacentPane(event, side === "left" ? -1 : 1, executingPrefixEvent === event);
+  // Retained h/l aliases keep the old named-pane behavior. New arrows need
+  // the actual shared host arrangement, never a z/focusedId fallback.
+  if (event.code === "ArrowLeft" || event.code === "ArrowRight") return false;
+  if (!legacyPaneEventTarget(event, executingPrefixEvent === event)) return false;
+  const before = document.activeElement;
+  focusPane(side);
+  return document.activeElement !== before;
+}
+
+function paneFullscreenKey(event: KeyboardEvent): boolean | void {
+  if (modernPaneAt(event)) return toggleActivePaneZoom(event, executingPrefixEvent === event);
+  const target = legacyPaneEventTarget(event, executingPrefixEvent === event);
+  if (target?.kind === "window") {
+    if (!Object.hasOwn(useWindows.getState().windows, target.id)) return false;
+    useWindows.getState().toggleMode(target.id);
+    return true;
+  }
+  if (target) {
+    const state = useWorkspace.getState();
+    if (state.layoutPreset === "docked" && state.dockLeftIds.length + state.dockRightIds.length + state.dockBottomIds.length === 0) return false;
+    const side = target.kind === "companion" ? "right" : "left";
+    state.setFullscreenPane(state.fullscreenPane === side ? null : side);
+    return true;
+  }
+  return false;
+}
+
 /**
  * One handler per keymap action. keymap.test.ts fails if a table row names
  * an action missing here; the Record type makes tsc fail first.
@@ -492,10 +530,17 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "panel.focusPrev": (event) => cycleAtFocus(event, -1),
     "panel.focusNext": (event) => cycleAtFocus(event, 1),
     "panel.closeFloating": () => closeFocusedFloat(),
-    "pane.focusLeft": () => focusPane("left"),
-    "pane.focusRight": () => focusPane("right"),
-    "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
-    "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "pane.focusLeft": (event) => paneFocusKey(event, "left"),
+    "pane.focusRight": (event) => paneFocusKey(event, "right"),
+    "pane.reorderLeft": (event) => reorderActivePane(event, -1, executingPrefixEvent === event),
+    "pane.reorderRight": (event) => reorderActivePane(event, 1, executingPrefixEvent === event),
+    "pane.fullscreen": (event) => paneFullscreenKey(event),
+    "layout.togglePreset": (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-pane-flow-root]")) {
+        return togglePaneArrangementAt(event, executingPrefixEvent === event);
+      }
+      return false;
+    },
     "tab.next": () => cycleTab(1),
     "tab.prev": () => cycleTab(-1),
     "tab.new": () => toggleNewTabPicker(),
@@ -570,13 +615,18 @@ export function installShortcuts(
       // Focus moved into a field or a dialog since the prefix armed (a
       // click): the key is theirs, and the prefix just lapses.
       if (focusContext(e.target).kind !== "default") return prefixState.disarm();
+      const claimedBeforePrefix = e.defaultPrevented;
       consume(e);
       // A held prefix auto-repeats; it stays armed and the repeats go nowhere.
       if (isPrefix && e.repeat) return;
       prefixState.disarm();
       if (e.key === "Escape" || isPrefix) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
-      if (row && row.status !== "unimplemented") run(row, e);
+      if (row && row.status !== "unimplemented") {
+        executingPrefixEvent = claimedBeforePrefix ? null : e;
+        try { run(row, e); }
+        finally { executingPrefixEvent = null; }
+      }
       return;
     }
     // Never steal the prefix from text (ctrl+b moves the caret on macOS) or

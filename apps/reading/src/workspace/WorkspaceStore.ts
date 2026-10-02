@@ -46,11 +46,17 @@ import type {
   PanelDescriptor,
   PanelKind,
   PanelMode,
+  PaneArrangement,
+  PanePresentation,
   PaneSide,
+  PaneTarget,
   WorkspaceSnapshot,
 } from "./panel.types";
-import { project, readLayoutPreset, writeLayoutPreset, writeScope } from "./persistence";
+import { project, readPanePreferences, writeLayoutPreset, writePaneArrangement, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
+import { CORE_PANE, COMPANION_PANE, adjacentPane, reconcilePaneOrder, reconcilePaneTiles,
+  samePane, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+import { registerWindowPresentationObserver, useWindows } from "./windowsStore";
 
 export type OpenOptions = {
   mode?: PanelMode;
@@ -87,7 +93,44 @@ export type WorkspaceActions = {
   reset: () => void;
 };
 
-type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions & { panelCycleOrder: string[] };
+type PaneActions = {
+  setPaneFocus: (target: PaneTarget | null) => boolean;
+  reorderPane: (target: PaneTarget, direction: -1 | 1) => boolean;
+  setPaneArrangement: (arrangement: PaneArrangement) => boolean;
+  togglePaneArrangement: () => boolean;
+  togglePaneZoom: (target: PaneTarget) => boolean;
+  restorePaneZoom: () => boolean;
+};
+
+type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions & PanePresentation & PaneActions
+  & { panelCycleOrder: string[] };
+
+const initialPanePreferences = readPanePreferences();
+
+function rightPaneAdmitted(state: Pick<Store, "layoutPreset" | "dockRightIds" | "panels">): boolean {
+  return state.layoutPreset === "omarchy-inset" || state.dockRightIds.some((id) =>
+    Object.hasOwn(state.panels, id) && state.panels[id].mode !== "popout");
+}
+
+/** The right compound host exists exactly where the original tree mounts it.
+ * Its panels remain inside that host; no panel becomes a product window. */
+export function admittedPaneTargets(state: Pick<Store, "layoutPreset" | "dockRightIds" | "panels">): PaneTarget[] {
+  const windows = useWindows.getState();
+  return [CORE_PANE,
+    ...(rightPaneAdmitted(state) ? [COMPANION_PANE] : []),
+    ...windows.cycleOrder.filter((id) => Object.hasOwn(windows.windows, id))
+      .map((id): PaneTarget => ({ kind: "window", id }))];
+}
+
+function reconcilePresentation(state: Store): Pick<PanePresentation, "paneOrder" | "paneTiles" | "paneFocus" | "paneZoom"> {
+  const order = reconcilePaneOrder(state.paneOrder, admittedPaneTargets(state));
+  const present = (target: PaneTarget | null): PaneTarget | null =>
+    target && order.some((member) => samePane(member, target)) ? target : null;
+  return { paneOrder: order, paneTiles: reconcilePaneTiles(state.paneTiles, order),
+    paneFocus: present(state.paneFocus), paneZoom: present(state.paneZoom) };
+}
+
+const initialPaneOrder = admittedPaneTargets({ layoutPreset: initialPanePreferences.layoutPreset, dockRightIds: [], panels: {} });
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -141,17 +184,66 @@ function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
   return s.fullscreenPane === "left" ? mode === "docked-right" : mode !== "docked-right";
 }
 
-const initialLayoutPreset = readLayoutPreset();
-writeLayoutPreset(initialLayoutPreset);
+// Landing: main persists the resolved preset on startup (a fresh workspace's
+// default included); the packet derives it from the migrated pane preferences.
+// One source — the migrated value is what gets persisted.
+writeLayoutPreset(initialPanePreferences.layoutPreset);
 
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
   panelCycleOrder: [],
-  // Persist the resolved preset on startup, including a fresh workspace's
-  // default. Pane focus and fullscreen remain transient.
-  layoutPreset: initialLayoutPreset,
+  // Explicit desktop preference migration preserves each valid old preset.
+  // Pane order, tile splits, focus and zoom are transient client view state.
+  layoutPreset: initialPanePreferences.layoutPreset,
   fullscreenPane: null,
   focusedPane: null,
+  paneArrangement: initialPanePreferences.paneArrangement,
+  paneOrder: initialPaneOrder,
+  paneTiles: reconcilePaneTiles(null, initialPaneOrder),
+  paneFocus: null,
+  paneZoom: null,
+
+  setPaneFocus: (target) => {
+    const s = get();
+    if (samePane(s.paneFocus, target)) return false;
+    if (target && !admittedPaneTargets(s).some((member) => samePane(member, target))) return false;
+    set({ paneFocus: target });
+    return true;
+  },
+
+  reorderPane: (target, direction) => {
+    const s = get();
+    if (s.paneArrangement === "legacy" || s.paneZoom) return false;
+    const order = reconcilePaneOrder(s.paneOrder, admittedPaneTargets(s));
+    const neighbor = adjacentPane(order, target, direction);
+    if (!neighbor) return false;
+    set({ paneOrder: swapAdjacentPane(order, target, direction),
+      paneTiles: swapPaneTiles(reconcilePaneTiles(s.paneTiles, order), target, neighbor) });
+    return true;
+  },
+
+  setPaneArrangement: (arrangement) => {
+    const s = get();
+    if (arrangement === s.paneArrangement) return false;
+    writePaneArrangement(arrangement);
+    set({ paneArrangement: arrangement, paneZoom: null, fullscreenPane: null });
+    return true;
+  },
+
+  togglePaneArrangement: () => get().setPaneArrangement(get().paneArrangement === "horizontal" ? "tiled" : "horizontal"),
+
+  togglePaneZoom: (target) => {
+    const s = get();
+    if (s.paneArrangement === "legacy" || !admittedPaneTargets(s).some((member) => samePane(member, target))) return false;
+    set({ paneZoom: samePane(s.paneZoom, target) ? null : target });
+    return true;
+  },
+
+  restorePaneZoom: () => {
+    if (!get().paneZoom) return false;
+    set({ paneZoom: null });
+    return true;
+  },
 
   open: (kind, props = {}, opts = {}) => {
     const id = opts.id ?? uniqueId(kind);
@@ -364,9 +456,19 @@ export const useWorkspace = create<Store>()((set, get) => ({
       pendingWrite = null;
     }
     suppressPersistAfterReset = true;
-    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null });
+    const order = admittedPaneTargets({ ...get(), dockRightIds: [] });
+    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null,
+      paneOrder: order, paneTiles: reconcilePaneTiles(null, order), paneFocus: null, paneZoom: null });
   },
 }));
+
+registerWindowPresentationObserver((event) => {
+  const current = useWorkspace.getState();
+  const presentation = reconcilePresentation(current);
+  useWorkspace.setState(event.kind === "open"
+    ? { ...presentation, paneFocus: { kind: "window", id: event.id }, paneZoom: null }
+    : presentation);
+});
 
 /**
  * Subscribe persistence: every time the workspace changes, write a
@@ -463,4 +565,12 @@ useWorkspace.subscribe((state, prev) => {
     pendingWrite = null;
     if (isWorkspaceOwnerSession(owner)) writeScope(scope, snapshot);
   }, 250);
+});
+
+// Run after the retained persistence subscriber so reset suppression is
+// consumed by the actual reset, not by this nested presentation update.
+useWorkspace.subscribe((state, previous) => {
+  if (rightPaneAdmitted(state) !== rightPaneAdmitted(previous)) {
+    useWorkspace.setState(reconcilePresentation(state));
+  }
 });

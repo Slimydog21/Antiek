@@ -26,6 +26,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "panel.closeFloating": "panels",
   "pane.focusLeft": "panels",
   "pane.focusRight": "panels",
+  "pane.reorderLeft": "panels",
+  "pane.reorderRight": "panels",
   "pane.fullscreen": "panels",
   "layout.togglePreset": "panels",
   "tab.next": "panels",
@@ -67,13 +69,12 @@ export function layoutPresetHelp(defaultPreset: LayoutPreset): string {
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
-  "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
-  "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",
-  "pane.fullscreen": "Esc or the same key restores both panes.",
-  // The shipped copy said the cockpit was already the default while the reader
-  // returned "docked". This is now the template applied to the real default, so
-  // the note cannot describe a preset the code does not start on.
-  "layout.togglePreset": layoutPresetHelp(LAYOUT_PRESET_DEFAULT),
+  "pane.focusLeft": "Previous pane in horizontal order; spatial left neighbor when tiled. The edge is a no-op. Text fields keep their keys.",
+  "pane.focusRight": "Next pane in horizontal order; spatial right neighbor when tiled. Focus reveals the pane without reordering it.",
+  "pane.reorderLeft": "Swap the focused pane with its previous logical neighbor. Content, focus and tile splits stay attached to the same hosts.",
+  "pane.reorderRight": "Swap with the next logical neighbor. No operation at the edge, during a drag, or while a pane is zoomed.",
+  "pane.fullscreen": "Zoom the actual focused host. The same key or an unclaimed Esc restores its arrangement; child overlays and editors keep priority.",
+  "layout.togglePreset": "Switch the same desktop hosts between horizontal flow and tiles. A valid old preset stays in legacy mode until this command is used.",
   "tab.next":
     "Acts on the focused pane: document tabs on the left, agent tabs (block tabs when writing) on the right. With neither pane focused, the left. Wraps.",
   "tab.prev": "The same pane rule as the next tab.",

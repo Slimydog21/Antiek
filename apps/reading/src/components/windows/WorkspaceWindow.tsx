@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { surfaceSpring } from "../../design/motion";
@@ -7,11 +7,12 @@ import { escOverlayOpen } from "../../workspace/escapeOverlay";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
+import { focusConnectedPaneHost, paneEventTarget, toggleActivePaneZoom, togglePaneHostZoom, usePaneFlowFrame } from "../../workspace/PaneFlowLayout";
 import type { AdFillView } from "../../modes/Reading/AdBorder";
 import { WindowHostProvider } from "./windowHostContext";
 import { WindowAdBorder } from "./WindowAdBorder";
 import type { WindowAdEdge } from "./WindowAdBorder";
-import { WINDOW_KEYBOARD_HELP, WINDOW_KEYBOARD_SHORTCUTS, windowCommand } from "./windowKeyboard";
+import { windowKeyboardHints, windowCommand } from "./windowKeyboard";
 
 /** A product window with stable store identity, local frame keys and parent-supplied ads. */
 
@@ -57,6 +58,12 @@ export function WorkspaceWindow({
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const paneFrame = usePaneFlowFrame({ kind: "window", id });
+  const keyboardHints = useMemo(() => windowKeyboardHints(paneFrame.active), [paneFrame.active]);
+  const frameRef = useCallback((node: HTMLDivElement | null) => {
+    rootRef.current = node;
+    paneFrame.ref(node);
+  }, [paneFrame.ref]);
 
   // M8 focus management — when a window mounts, remember what had focus and
   // move focus into the window; restore it on unmount (close).
@@ -64,7 +71,13 @@ export function WorkspaceWindow({
     const active = document.activeElement;
     restoreFocusRef.current = active instanceof HTMLElement ? active : null;
     // Defer so the element exists + framer-motion's initial frame has run.
-    const t = window.setTimeout(() => rootRef.current?.focus(), 0);
+    const t = window.setTimeout(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      if (root.closest("[data-pane-flow-root]")?.getAttribute("data-pane-arrangement") !== "legacy"
+          && root.hasAttribute("data-pane-host")) focusConnectedPaneHost(root, { kind: "window", id });
+      else root.focus();
+    }, 0);
     return () => {
       window.clearTimeout(t);
       // Landing (pane-flow packet → main, S04 "resolve the actual focused host
@@ -81,7 +94,7 @@ export function WorkspaceWindow({
       if (owner !== null && owner !== id) return;
       const prev = restoreFocusRef.current;
       if (prev && typeof prev.focus === "function" && document.contains(prev)) {
-        prev.focus();
+        if (!prev.closest("[data-pane-flow-root]") || (!prev.closest("[hidden], [inert]") && !escOverlayOpen())) prev.focus();
       }
     };
   }, []);
@@ -92,9 +105,10 @@ export function WorkspaceWindow({
   useEffect(() => {
     const root = rootRef.current;
     if (isFocused && root && !root.contains(document.activeElement)) {
-      root.focus();
+      if (paneFrame.active) focusConnectedPaneHost(root, { kind: "window", id });
+      else root.focus();
     }
-  }, [isFocused, win?.z]);
+  }, [isFocused, win?.z, paneFrame.active, paneFrame.focused]);
 
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
@@ -173,14 +187,31 @@ export function WorkspaceWindow({
   }, [id]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (paneFrame.active && paneFrame.zoomed && event.key === "Escape"
+        && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+        && toggleActivePaneZoom(event.nativeEvent)) {
+      event.preventDefault();
+      return;
+    }
     const target = event.target;
     if (target !== document.activeElement ||
-        (target !== rootRef.current && target !== titleRef.current) || escOverlayOpen()) return;
+        (target !== rootRef.current && target !== titleRef.current) || !(target instanceof Element) || escOverlayOpen()) return;
     const command = windowCommand(event.nativeEvent);
     if (!command) return;
     const current = useWindows.getState();
     const currentWindow = current.windows[id];
     if (!currentWindow) return;
+    if (paneFrame.active && command.kind === "close" && !paneEventTarget(event.nativeEvent)) return;
+    if (paneFrame.active && event.repeat && command.kind === "close") return;
+    if (paneFrame.active && (command.kind === "move" || command.kind === "resize")) return;
+    if (paneFrame.active && command.kind === "toggle") {
+      if (!event.repeat && togglePaneHostZoom({ kind: "window", id }, target)) event.preventDefault();
+      return;
+    }
+    if (paneFrame.active && paneFrame.zoomed && command.kind === "close") {
+      if (!event.repeat && togglePaneHostZoom({ kind: "window", id }, target)) event.preventDefault();
+      return;
+    }
     if ((command.kind === "move" || command.kind === "resize") && currentWindow.mode !== "floating") return;
     event.preventDefault();
     if (command.kind === "close") {
@@ -206,14 +237,17 @@ export function WorkspaceWindow({
       );
       current.setRect(id, { x: clamped.x, y: clamped.y });
     }
-  }, [id]);
+  }, [id, paneFrame.active, paneFrame.zoomed]);
 
   if (!win) return null;
 
-  const isFull = win.mode === "full";
+  const isFull = paneFrame.active ? paneFrame.zoomed : win.mode === "full";
+  const visibleFocused = paneFrame.active ? paneFrame.focused : isFocused;
 
   // Geometry. Full = fill the working region (inset-0); floating = the rect.
-  const geometry: React.CSSProperties = isFull
+  const geometry: React.CSSProperties = paneFrame.active
+    ? { ...paneFrame.style, zIndex: WINDOW_Z_BASE, display: paneFrame.hidden ? "none" : undefined }
+    : isFull
     ? { position: "absolute", inset: 0, zIndex: WINDOW_Z_BASE + win.z }
     : {
         position: "absolute",
@@ -226,14 +260,16 @@ export function WorkspaceWindow({
 
   return (
     <motion.div
-      ref={rootRef}
+      ref={frameRef}
       data-workspace-window={id}
+      data-pane-host={paneFrame.hostKey}
+      hidden={paneFrame.hidden || undefined}
       data-window-mode={win.mode}
-      data-window-focused={isFocused ? "true" : "false"}
+      data-window-focused={visibleFocused ? "true" : "false"}
       role="dialog"
       aria-label={win.title}
       aria-describedby={keyboardHelpId}
-      aria-keyshortcuts={WINDOW_KEYBOARD_SHORTCUTS}
+      aria-keyshortcuts={keyboardHints.shortcuts}
       tabIndex={-1}
       initial={reduceMotion ? false : { scale: 0.97, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -242,7 +278,7 @@ export function WorkspaceWindow({
       style={geometry}
       className={
         "bg-glass-solid border-2 rounded-none flex flex-col overflow-hidden " +
-        (isFocused ? "border-sun" : "border-glass")
+        (visibleFocused ? "border-sun" : "border-glass")
       }
       onFocusCapture={onFocusCapture}
       onMouseDownCapture={() => focus(id)}
@@ -255,17 +291,17 @@ export function WorkspaceWindow({
         tabIndex={0}
         aria-label={`${win.title} — window controls`}
         aria-describedby={keyboardHelpId}
-        aria-keyshortcuts={WINDOW_KEYBOARD_SHORTCUTS}
+        aria-keyshortcuts={keyboardHints.shortcuts}
         className={
           "h-[26px] shrink-0 flex items-center gap-2 px-2 select-none text-xs " +
           "border-b border-glass bg-glass-solid " +
-          (isFull ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
+          (isFull || paneFrame.active ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
           " focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-sun"
         }
-        onPointerDown={onDragDown}
-        onPointerMove={onDragMove}
-        onPointerUp={onDragUp}
-        onPointerCancel={onDragUp}
+        onPointerDown={paneFrame.active ? undefined : onDragDown}
+        onPointerMove={paneFrame.active ? undefined : onDragMove}
+        onPointerUp={paneFrame.active ? undefined : onDragUp}
+        onPointerCancel={paneFrame.active ? undefined : onDragUp}
       >
         <span aria-hidden="true" className="font-mono text-shadow-1 dark:text-moonlight leading-none">
           ⋮⋮
@@ -277,8 +313,9 @@ export function WorkspaceWindow({
           type="button"
           data-window-action="toggle"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => toggleMode(id)}
-          aria-label={isFull ? "Restore window to floating" : "Expand window to full"}
+          onClick={(event) => paneFrame.active ? togglePaneHostZoom({ kind: "window", id }, event.currentTarget) : toggleMode(id)}
+          aria-label={paneFrame.active ? (isFull ? "Restore pane layout" : "Zoom pane")
+            : isFull ? "Restore window to floating" : "Expand window to full"}
           className="px-1.5 leading-none text-xs text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
         >
           {isFull ? "❐" : "▢"}
@@ -296,7 +333,7 @@ export function WorkspaceWindow({
       </div>
 
       <p id={keyboardHelpId} className="shrink-0 m-0 px-2 py-1 font-mono text-xs leading-4 text-shadow-1 dark:text-moonlight">
-        {WINDOW_KEYBOARD_HELP}
+        {keyboardHints.help}
       </p>
 
       {/* Ad insets keep the mounted product clear of the border rails. */}
@@ -320,7 +357,7 @@ export function WorkspaceWindow({
       </div>
 
       {/* RESIZE GRIP — floating only (bottom-right). */}
-      {!isFull && (
+      {!isFull && !paneFrame.active && (
         <div
           title="Resize window"
           data-window-action="resize"

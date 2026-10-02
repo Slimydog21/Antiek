@@ -13,6 +13,7 @@ import { PrefixChip } from "./components/hotkeys/PrefixChip";
 import { NewTabPicker } from "./workspace/NewTabPicker";
 import { ProjectPicker } from "./workspace/ProjectPicker";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { PaneFlowLayout } from "./workspace/PaneFlowLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { useViewportTier } from "./workspace/useViewportTier";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
@@ -170,6 +171,7 @@ export function AppShell({ children }: Props) {
                 above the surface, while the Zustand panel workspace
                 continues to dock left/right/bottom + float around it.
                 The mode still mounts as a panel exactly as before. */}
+            <PaneFlowLayout>
             <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
             {/* SPR-09 — transparent workspace windows float over the working
                 region + scene (this container is `relative` so the layer's
@@ -178,6 +180,7 @@ export function AppShell({ children }: Props) {
                 SPR-09's one-line wiring,
                 deferred to the AppShell owner so SPR-09 kept this file untouched. */}
             <WindowsLayer />
+            </PaneFlowLayout>
           </div>
         </div>
 

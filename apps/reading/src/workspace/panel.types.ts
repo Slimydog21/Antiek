@@ -152,3 +152,23 @@ export const EMPTY_SNAPSHOT: WorkspaceSnapshot = {
   dockBottomHeight: 220,
   schemaVersion: 1,
 };
+
+/** Client presentation only. Descriptors and payloads stay in their owners. */
+export type PaneTarget =
+  | { kind: "core" }
+  | { kind: "companion" }
+  | { kind: "window"; id: string };
+
+export type PaneArrangement = "legacy" | "horizontal" | "tiled";
+
+export type PaneTile =
+  | { kind: "leaf"; target: PaneTarget }
+  | { kind: "split"; axis: "x" | "y"; ratio: number; first: PaneTile; second: PaneTile };
+
+export type PanePresentation = {
+  paneArrangement: PaneArrangement;
+  paneOrder: PaneTarget[];
+  paneTiles: PaneTile | null;
+  paneFocus: PaneTarget | null;
+  paneZoom: PaneTarget | null;
+};

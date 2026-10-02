@@ -174,6 +174,14 @@ function cascadeRect(n: number): WindowRect {
   };
 }
 
+type WindowAdmission = { kind: "open" | "close"; id: string } | { kind: "reset" };
+let presentationObserver: ((event: WindowAdmission) => void) | null = null;
+
+/** One view owner; descriptor authority never imports the presentation store. */
+export function registerWindowPresentationObserver(observer: (event: WindowAdmission) => void): void {
+  presentationObserver = observer;
+}
+
 export const useWindows = create<Store>()((set, get) => ({
   ...EMPTY,
 
@@ -183,6 +191,7 @@ export const useWindows = create<Store>()((set, get) => ({
     // per-instance windows, e.g. one window per documentId).
     if (get().windows[id]) {
       get().focus(id);
+      presentationObserver?.({ kind: "open", id });
       return id;
     }
     set((s) => {
@@ -204,10 +213,12 @@ export const useWindows = create<Store>()((set, get) => ({
         zCounter: z,
       };
     });
+    presentationObserver?.({ kind: "open", id });
     return id;
   },
 
-  close: (id) =>
+  close: (id) => {
+    const existed = Object.hasOwn(get().windows, id);
     set((s) => {
       if (!s.windows[id]) return s;
       const { [id]: _gone, ...rest } = s.windows;
@@ -216,7 +227,9 @@ export const useWindows = create<Store>()((set, get) => ({
       // SPR-09 M8 focus management.
       const focusedId = s.focusedId === id ? (order[order.length - 1] ?? null) : s.focusedId;
       return { ...s, windows: rest, order, cycleOrder: s.cycleOrder.filter((x) => x !== id), focusedId };
-    }),
+    });
+    if (existed) presentationObserver?.({ kind: "close", id });
+  },
 
   focus: (id) =>
     set((s) => {
@@ -271,5 +284,8 @@ export const useWindows = create<Store>()((set, get) => ({
     else get().restore(id);
   },
 
-  reset: () => set({ ...EMPTY }),
+  reset: () => {
+    set({ ...EMPTY });
+    presentationObserver?.({ kind: "reset" });
+  },
 }));

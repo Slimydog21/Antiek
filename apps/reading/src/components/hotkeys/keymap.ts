@@ -77,10 +77,12 @@ export const ACTIONS = {
   "panel.focusPrev": { label: "Focus the previous panel or product window" },
   "panel.focusNext": { label: "Focus the next panel or product window" },
   "panel.closeFloating": { label: "Close the focused floating panel" },
-  "pane.focusLeft": { label: "Pane: focus the left pane" },
-  "pane.focusRight": { label: "Pane: focus the right pane" },
+  "pane.focusLeft": { label: "Pane: focus the previous pane" },
+  "pane.focusRight": { label: "Pane: focus the next pane" },
+  "pane.reorderLeft": { label: "Pane: move the focused pane left" },
+  "pane.reorderRight": { label: "Pane: move the focused pane right" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
-  "layout.togglePreset": { label: "Layout: cockpit inset ⇄ docked" },
+  "layout.togglePreset": { label: "Layout: horizontal ⇄ tiled" },
   "tab.next": { label: "Tab: next tab in the focused pane" },
   "tab.prev": { label: "Tab: previous tab in the focused pane" },
   "tab.new": { label: "Tab: new tab (picker)" },
@@ -135,6 +137,7 @@ export type KeymapRow = KeymapBinding & (
 );
 
 const D = KEYMAP_DECISION;
+const FLOW_DECISION = D + "; specs/codex-design-takeover-20260927/horizontal-pane-flow-20261002/contract.md (U1 cb8f0dd8)";
 
 export const KEYMAP: readonly KeymapRow[] = [
   // ── legacy-SPR-08: the ⌘ scheme, unchanged keys ─────────────────────
@@ -171,14 +174,20 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-pane-right", action: "pane.focusRight", status: "implemented", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
+  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-left-arrow", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-left-arrow", action: "pane.focusLeft", status: "implemented", prefixKey: "arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-right-arrow", action: "pane.focusRight", status: "implemented", prefixKey: "arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", chord: "ctrl+alt+shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-reorder-right", action: "pane.reorderRight", status: "implemented", chord: "ctrl+alt+shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", prefixKey: "shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "implemented", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   { id: "prefix-pane-full", action: "pane.fullscreen", status: "implemented", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-full", action: "pane.fullscreen", status: "implemented", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
-  // The stored preset defaults to DOCKED -- "a stored preset never surprises an
-  // operator who never chose one" (workspace/persistence.ts) -- so this is not a
-  // rarely-needed toggle but the key that brings the cockpit in. It sits behind
-  // prefix+shift+i with no chord, and i stays the inbox's.
+  // L switches the connected hosts between horizontal flow and tiles.
+  // Retain prefix+shift+i; i stays the inbox's.
   { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-layout-preset", action: "layout.togglePreset", status: "implemented", chord: "ctrl+alt+l", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
 
   // ── D2 tab keys (lane-A cockpit decision, 2026-09-26) ─────────────────
   // n/p + ctrl+alt+]/[ are herdr's next/previous tab, and herdr's tabs
@@ -366,6 +375,8 @@ const CODE_KEYS: Record<string, string> = {
   Minus: "-",
   Equal: "=",
   Quote: "'",
+  ArrowLeft: "arrowleft",
+  ArrowRight: "arrowright",
 };
 
 /** The unshifted key printed on the physical key `code` (US layout), or "". */
@@ -430,6 +441,7 @@ export function eventMatchesCombo(e: KeyboardEvent, spec: string): boolean {
   if (e.altKey !== c.alt) return false;
   const code = codeToKey(e.code ?? "");
   if (c.alt) return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
+  if (c.key === "arrowleft" || c.key === "arrowright") return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
   if (!c.mod && !c.ctrl && !c.meta && !/^[a-z]$/.test(c.key)) return e.key === c.key;
   return e.shiftKey === c.shift && (logicalKey(e) === c.key || (c.ctrl && code === c.key));
 }
