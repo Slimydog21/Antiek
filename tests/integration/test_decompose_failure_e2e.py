@@ -25,6 +25,7 @@ import interfaces.research.api.cascade_routes as cr
 from interfaces.research.api.cascade_routes import cascade_router
 from substrate.dispatch.base import ProviderError
 
+
 class _StubEmbedding:
     dimension = 8
 
