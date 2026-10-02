@@ -499,6 +499,8 @@ def test_style_input_text_is_bounded(api_env):
 def test_version_publish_failure_leaves_metadata_unchanged(api_env, monkeypatch):
     client = _client()
     assert client.post("/research/inv-fault/artifact/export").status_code == 200
+    record = ResearchArtifactStore(api_env["db"]).get("inv-fault")
+    assert record is not None and record.source_hash is not None
     import substrate.research_artifact.store as store_module
 
     monkeypatch.setattr(
@@ -508,7 +510,8 @@ def test_version_publish_failure_leaves_metadata_unchanged(api_env, monkeypatch)
     )
     with pytest.raises(OSError, match="disk fault"):
         ResearchArtifactStore(api_env["db"]).add_version(
-            "inv-fault", "__operator__", "blog", "<html></html>", "0" * 64
+            "inv-fault", "__operator__", "blog", "<html></html>", "0" * 64,
+            source_hash=record.source_hash,
         )
     record = ResearchArtifactStore(api_env["db"]).get("inv-fault")
     assert record is not None and record.latest_version == 0
@@ -528,6 +531,8 @@ def test_orphan_next_version_is_recovered(api_env):
 def test_metadata_failure_removes_published_version(api_env, monkeypatch):
     client = _client()
     assert client.post("/research/inv-db-fault/artifact/export").status_code == 200
+    record = ResearchArtifactStore(api_env["db"]).get("inv-db-fault")
+    assert record is not None and record.source_hash is not None
     from runtime.db_lock import LockedConnection
 
     original_execute = LockedConnection.execute
@@ -540,7 +545,8 @@ def test_metadata_failure_removes_published_version(api_env, monkeypatch):
     monkeypatch.setattr(LockedConnection, "execute", fail_version_insert)
     with pytest.raises(RuntimeError, match="metadata fault"):
         ResearchArtifactStore(api_env["db"]).add_version(
-            "inv-db-fault", "__operator__", "blog", "<html></html>", "1" * 64
+            "inv-db-fault", "__operator__", "blog", "<html></html>", "1" * 64,
+            source_hash=record.source_hash,
         )
     version = artifact_path_for("inv-db-fault").parent / "versions" / "inv-db-fault" / "v1.html"
     assert not version.exists()
