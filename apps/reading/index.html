@@ -3,15 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Browser chrome follows the page ground (--bg-page); the boot script
+         below sets the value for the resolved theme. -->
+    <meta name="theme-color" content="#F3EBDD" />
+    <!-- Theme + motion before first paint. Preference keys: 'antiek.theme'
+         (light | dark | system, default system) and 'antiek.motion'
+         (system | reduce | full). src/design/theme.ts is the React side of the
+         same contract; theme.boot.test.ts runs this exact script. -->
+    <script src="/appearance-boot.js?v=library-20261001"></script>
     <!-- Browser-tab mark: the cute Krea brain. PNG is the
          primary icon; the geometric brain favicon.svg stays as a fallback for
          any client that prefers SVG. apple-touch-icon uses the 180px mark. -->
     <link rel="icon" href="/mark-32.png" type="image/png" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/mark-180.png" />
+    <!-- The interface face, fetched in parallel with the CSS that names it. -->
+    <link rel="preload" href="/src/assets/fonts/inter-latin-var.woff2" as="font" type="font/woff2" crossorigin />
     <title>Antiek — reading</title>
   </head>
-  <body class="bg-stone-50 text-stone-900 antialiased">
+  <body class="bg-page text-1 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

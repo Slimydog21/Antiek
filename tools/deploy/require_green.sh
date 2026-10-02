@@ -66,10 +66,11 @@ case "$on_main" in
     ;;
 esac
 
-# The eight contexts main's ruleset requires, plus the deploy-only `pytest`
+# The nine contexts main's ruleset requires, plus the deploy-only `pytest`
 # rollup. Kept as a LITERAL list so a ruleset change that silently drops a
 # context does not silently widen what may deploy.
 REQUIRED=(
+  'dependency lock'
   'tsc'
   'vitest'
   'keystone'

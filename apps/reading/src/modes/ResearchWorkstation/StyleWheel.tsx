@@ -10,7 +10,8 @@ import {
   type RenderedArtifact,
   type StyleDraft,
 } from "../../api/styles";
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTag from "../../components/lemon/LemonTag";
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
@@ -25,10 +26,6 @@ export interface StyleWheelProps {
 
 /** Session-local provenance: which wheel entry a fork was seeded from. */
 type ForkProvenance = Record<string, string>;
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "The style service is unavailable.";
-}
 
 function slugifyLabel(label: string): string {
   return label
@@ -89,7 +86,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const [styles, setStyles] = useState<ProjectionStyle[]>([]);
   const [selected, setSelected] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -130,7 +127,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         if (!loaded.length) {
           setSelected("");
           setStatus("empty");
-          setError("No compatible styles are available for this artifact.");
+          setError({
+            title: "No compatible styles are available for this artifact.",
+            detail: "",
+            retryable: false,
+            kind: "not_found",
+          });
           return;
         }
         let restored = loaded[0]?.name ?? "";
@@ -148,7 +150,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
             }
           } catch (cause) {
             if (controller.signal.aborted) return;
-            setError(messageOf(cause));
+            setError(describeFailure(cause, { what: "load the current style" }));
           }
         }
         setSelected(restored);
@@ -156,7 +158,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       } catch (cause) {
         if (controller.signal.aborted) return;
         setStatus("unavailable");
-        setError(messageOf(cause));
+        setError(describeFailure(cause, { what: "load the styles" }));
       }
     })();
     return () => controller.abort();
@@ -195,7 +197,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       .catch((cause) => {
         if (!controller.signal.aborted && run === previewRun.current) {
           setPreviewUrl(null);
-          setError(messageOf(cause));
+          setError(describeFailure(cause, { what: "preview this style" }));
         }
       })
       .finally(() => {
@@ -246,7 +248,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       setStatus("ready");
       setShowFork(false);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "save the style" }));
     } finally {
       setSavingFork(false);
     }
@@ -275,7 +277,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       setConfirmDelete(false);
       setShowFork(false);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "delete the style" }));
       setConfirmDelete(false);
     } finally {
       setDeleting(false);
@@ -299,7 +301,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         setReceipt(next);
       }
     } catch (cause) {
-      if (run === applyRun.current && !controller.signal.aborted) setError(messageOf(cause));
+      if (run === applyRun.current && !controller.signal.aborted) setError(describeFailure(cause, { what: "apply the style" }));
     } finally {
       if (run === applyRun.current) setApplying(false);
     }
@@ -312,7 +314,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const downloadVersion = async (version?: string) => {
     try {
       const response = await apiFetch(artifactVersionUrl(artifactId, version));
-      if (!response.ok) throw new Error(`Download unavailable (HTTP ${response.status}).`);
+      if (!response.ok) throw new ApiError(`Download unavailable (HTTP ${response.status}).`, response.status, "");
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -320,7 +322,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "download the version" }));
     }
   };
 
@@ -335,7 +337,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   if (status === "unavailable") {
     return (
       <p className="style-wheel__state style-wheel__state--error" role="alert">
-        Styles unavailable · {error}
+        Styles unavailable{error ? ` · ${error.title} ${error.detail}` : ""}
       </p>
     );
   }
@@ -556,7 +558,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
 
       {error ? (
         <p className="style-wheel__error" role="alert">
-          {error}
+          {error.title} {error.detail}
         </p>
       ) : null}
 

@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import textwrap
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -21,6 +21,7 @@ from substrate.write.event_outbox import (
     EventOutboxError,
     build_typed_envelope,
     dispatch_pending,
+    dispatch_pending_best_effort,
     enqueue_event,
     recover_pending_events,
 )
@@ -428,7 +429,7 @@ def test_startup_recovery_drains_multiple_batches(outbox):
                     outline_block_id=f"oblk-{index}", section_id="sec-1"
                 ),
                 event_id=f"evt-{index}",
-                emitted_at=datetime(2026, 7, 15, 0, 0, index, tzinfo=UTC),
+                emitted_at=datetime(2026, 7, 15, tzinfo=UTC) + timedelta(seconds=index),
             )
             enqueue_event(
                 con,
@@ -439,3 +440,34 @@ def test_startup_recovery_drains_multiple_batches(outbox):
             )
     recovered = recover_pending_events(db, events_dir=str(events), batch_size=2)
     assert recovered == {"inv-1": [f"evt-{index}" for index in range(5)]}
+
+
+def test_best_effort_dispatch_drains_past_the_default_batch(outbox):
+    db, events = outbox
+    expected = [f"evt-{index}" for index in range(101)]
+    with connect_write(db, purpose="test/outbox-best-effort") as con:
+        for index in range(101):
+            event = build_typed_envelope(
+                "inv-1",
+                OutlineBlockRemovedPayload(
+                    outline_block_id=f"oblk-{index}", section_id="sec-1"
+                ),
+                event_id=f"evt-{index}",
+                emitted_at=datetime(2026, 7, 15, tzinfo=UTC) + timedelta(seconds=index),
+            )
+            enqueue_event(
+                con,
+                operation_id=f"remove-{index}",
+                aggregate_kind="outline_block",
+                aggregate_id=f"oblk-{index}",
+                event=event,
+            )
+
+        assert dispatch_pending_best_effort(
+            con, "inv-1", events_dir=str(events)
+        ) == expected
+        pending = con.execute(
+            "SELECT COUNT(*) FROM write_event_outbox WHERE state='pending'"
+        ).fetchone()[0]
+        assert pending == 0
+    assert len((events / "inv-1.jsonl").read_text().splitlines()) == 101

@@ -241,7 +241,7 @@ class MultiEdgeFillResponse(BaseModel):
 
 
 def _resolve_asset_gate(
-    con: ReadConnection, asset_ids: set[str]
+    con: ReadConnection | LockedConnection, asset_ids: set[str]
 ) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
@@ -414,48 +414,24 @@ def register_ad_routes(app: FastAPI) -> None:
 
         db = _resolve_db_path()
 
-        # (c) Resolve the authoritative per-asset gate values server-side. The
+        # (c) The authoritative per-asset gate values are resolved on the
+        # ACCRUAL connection, below — never on a handle of their own. The
         # client's content_class hint is discarded; the documents table is the
-        # single source of truth (the same column the §9.0 retrieval gate reads,
-        # so the earn gate cannot drift from the read gate).
+        # single source of truth (the same column the §9.0 retrieval gate
+        # reads, so the earn gate cannot drift from the read gate).
+        #
+        # WHY ONE CONNECTION AND NOT TWO (prod 2026-10-01). The gate read used
+        # to open a connection of its own BEFORE the accrual, with no
+        # external-lock tolerance. Whenever another process held the DuckDB
+        # file for a batch window — the nightly ``arxiv_oai_sync --bulk`` holds
+        # it for ~15s of every 15.5s — that open raised and the route answered
+        # 500 (measured on the live box: 130x in 3h, 6,793x in 24h). Reading the
+        # gate in a different snapshot than the accrual ALSO re-opened the drift
+        # this read-gate/earn-gate coupling exists to close. One connection
+        # answers both.
         asset_ids = {
             s.asset_id for sec in batch_in.seconds for s in sec.samples
         }
-        from runtime.db_lock import connect_read
-
-        con_r = connect_read(db)
-        try:
-            gate = _resolve_asset_gate(con_r, asset_ids)
-        finally:
-            con_r.close()
-        asset_to_ip_holder: dict[str, str | None] = {
-            aid: gate.get(aid, (None, None))[1] for aid in asset_ids
-        }
-
-        # (b) Deserialize into the frozen contract with the SERVER-resolved
-        # content_class (never the client hint). The dataclass __post_init__
-        # ranges validate every sample → ValueError → 422.
-        try:
-            seconds = tuple(
-                FrameSecond(
-                    second_index=sec.second_index,
-                    lens=sec.lens,
-                    samples=tuple(
-                        FrameAttentionSample(
-                            asset_id=s.asset_id,
-                            viewport_area_fraction=s.viewport_area_fraction,
-                            prominence=s.prominence,
-                            focused_dwell_ms=s.focused_dwell_ms,
-                            content_class=gate.get(s.asset_id, (None, None))[0],
-                            chunk_id=s.chunk_id,
-                        )
-                        for s in sec.samples
-                    ),
-                )
-                for sec in batch_in.seconds
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         owner_user_id = str(
             getattr(request.state, "user_id", None) or "__operator__"
@@ -474,6 +450,36 @@ def register_ad_routes(app: FastAPI) -> None:
                 timeout_s=_FRAME_WRITE_TIMEOUT_S,
             ) as con_w:
                 fill_decisions.ensure_table(con_w)
+                gate = _resolve_asset_gate(con_w, asset_ids)
+                asset_to_ip_holder: dict[str, str | None] = {
+                    aid: gate.get(aid, (None, None))[1] for aid in asset_ids
+                }
+
+                # (b) Deserialize into the frozen contract with the
+                # SERVER-resolved content_class (never the client hint). The
+                # dataclass __post_init__ ranges validate every sample →
+                # ValueError → 422.
+                try:
+                    seconds = tuple(
+                        FrameSecond(
+                            second_index=sec.second_index,
+                            lens=sec.lens,
+                            samples=tuple(
+                                FrameAttentionSample(
+                                    asset_id=s.asset_id,
+                                    viewport_area_fraction=s.viewport_area_fraction,
+                                    prominence=s.prominence,
+                                    focused_dwell_ms=s.focused_dwell_ms,
+                                    content_class=gate.get(s.asset_id, (None, None))[0],
+                                    chunk_id=s.chunk_id,
+                                )
+                                for s in sec.samples
+                            ),
+                        )
+                        for sec in batch_in.seconds
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
                 try:
                     batch = WindowFrameBatch(
                         window_id=batch_in.window_id,
@@ -539,9 +545,13 @@ def register_ad_routes(app: FastAPI) -> None:
         try:
             return await asyncio.to_thread(_accrue_sync)
         except WriteLockTimeout as exc:
+            # Retry-After is the contract, not decoration: the emitter must
+            # re-send the SAME window_id batch (idempotent by window), and a
+            # bare 503 gives it nothing to schedule on.
             raise HTTPException(
                 status_code=503,
                 detail="ad_frame_writer_busy",
+                headers={"Retry-After": "1"},
             ) from exc
 
     @app.get("/api/ad/fill", response_model=AdFillResponse, tags=["ad"])

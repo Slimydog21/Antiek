@@ -179,7 +179,8 @@ function isFailureDetailObject(
   return typeof o.code === "string";
 }
 
-function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+/** The full envelope, including the server's own `message`, for classifyClientError only. */
+function readFailureEnvelope(err: ApiError): ClientFailureClassification | null {
   try {
     const parsed = JSON.parse(err.body) as { detail?: unknown };
     const detail = parsed.detail;
@@ -198,10 +199,28 @@ function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
   } catch {
     // unparseable body
   }
-  return {
-    code: "unknown",
-    retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
-  };
+  return null;
+}
+
+/**
+ * The closed-set failure envelope in an ApiError body, or null when the body
+ * does not carry one. Unlike classifyClientError, this tells a recognized
+ * `unknown` envelope apart from an unparseable body. It deliberately returns
+ * no `message`: the server's own text is never rendered. Show
+ * FAILURE_HEADLINES[code], as describeFailure does.
+ */
+export function parseFailureEnvelope(err: ApiError): { code: FailureCode; retryable: boolean } | null {
+  const envelope = readFailureEnvelope(err);
+  return envelope ? { code: envelope.code, retryable: envelope.retryable } : null;
+}
+
+function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+  return (
+    readFailureEnvelope(err) ?? {
+      code: "unknown",
+      retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
+    }
+  );
 }
 
 /** Classify a thrown value from apiFetch / research client calls. */
@@ -377,6 +396,11 @@ export interface InvestigationSummary {
    * server-side). The surface badges it "found by the loop"; the raw
    * policy_id is never sent. Optional for back-compat with older responses. */
   spawned_by_daemon?: boolean;
+  /** THREAD-CONTRACT §1.2 ThreadSummary `document_id?`: the document this
+   * thread was born from, taken from the event envelope. Lane B's W1 wire
+   * carries it; until that ships the server omits it. Absent = unknown (not
+   * "no document"), so clients must stay correct without it. */
+  document_id?: string | null;
 }
 
 /** GET /investigations — list past investigations for the sidebar. */
@@ -1047,6 +1071,13 @@ export async function reorderBlock(req: {
 
 export interface UpdateSectionProseRequest {
   prose_text: string;
+  /**
+   * Additive compare-and-set guard (CR-F1's surviving half). The prose this
+   * edit was made against. The server refuses a stale write with 409
+   * `prose_revision_conflict` instead of overwriting a newer draft from
+   * another tab. Absent keeps the long-standing blind write.
+   */
+  based_on_prose_text?: string;
   original_text?: string;
   promote_to_graph?: boolean;
   cited_chunk_ids?: string[];
@@ -1381,7 +1412,6 @@ export async function getAnchorMap(
   return resp.json() as Promise<AnchorMapResponse>;
 }
 
-
 // ── SPR-03: distill surface (insights / open questions / living notes) ──
 //
 // Mirrors interfaces/research/api/distill_routes.py. The node_id is an
@@ -1450,94 +1480,6 @@ export interface ResearchArtifactComposeResponse {
   hash_conflicts: string[][];
 }
 
-export interface SourceMergeReviewPacket {
-  kind: "antiek.reader.source_merge_review_packet";
-  document_id: string;
-  title: string | null;
-  parent_reading_thread_id: string;
-  draft_merge_path: string;
-  compose_index_path: string;
-  member_investigation_ids: string[];
-  requested_investigation_ids: string[];
-  hash_conflict_count: number;
-  hash_conflicts: string[][];
-  source_book_mutated: boolean;
-  twin_document_mutated: boolean;
-  no_spend: boolean;
-}
-
-export interface SourceMergeApplyRequest {
-  reviewed_packet: SourceMergeReviewPacket;
-  expected_content_hashes: Record<string, string>;
-  acknowledge_reviewed_draft: boolean;
-  acknowledge_source_book_mutation: boolean;
-  acknowledge_twin_document_mutation: boolean;
-  acknowledge_hash_conflicts?: boolean;
-  operator_reviewer?: string | null;
-}
-
-export interface SourceMergeApplyResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  event_id: string;
-  member_investigation_ids: string[];
-  hash_conflicts_acknowledged: boolean;
-}
-
-export interface SourceMergePreviewResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  member_investigation_ids: string[];
-  before_source_hash: string;
-  after_source_hash: string;
-  before_twin_hash: string;
-  after_twin_hash: string;
-  source_bytes_before: number;
-  source_bytes_after: number;
-  twin_bytes_after: number;
-  writes_performed: boolean;
-}
-
-export interface SourceMergeCommitRequest extends SourceMergeApplyRequest {
-  expected_source_revision_id: string;
-  expected_twin_revision_id: string;
-  expected_before_source_hash: string;
-  expected_after_source_hash: string;
-  expected_before_twin_hash: string;
-  expected_after_twin_hash: string;
-  acknowledge_body_rewrite: boolean;
-}
-
-export interface SourceMergeCommitResponse extends SourceMergePreviewResponse {
-  event_id: string;
-}
-
-export interface SourceMergeRestoreRequest {
-  document_id: string;
-  parent_reading_thread_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  expected_after_source_hash: string;
-  expected_before_source_hash: string;
-  acknowledge_restore: boolean;
-  operator_reviewer?: string | null;
-}
-
-export interface SourceMergeRestoreResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  event_id: string;
-  before_source_hash: string;
-  restored_source_hash: string;
-  writes_performed: boolean;
-}
-
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,
@@ -1596,82 +1538,6 @@ export async function composeResearchArtifacts(
   return resp.json();
 }
 
-/** POST /research/artifacts/source-merge/apply — preflight reviewed source/twin apply. */
-export async function applySourceMerge(
-  request: SourceMergeApplyRequest,
-): Promise<SourceMergeApplyResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/apply`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/apply failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/preview — no-write source/twin revision evidence. */
-export async function previewSourceMerge(
-  request: SourceMergeApplyRequest,
-): Promise<SourceMergePreviewResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/preview`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/preview failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/commit — rewrite source/twin from a bound preview. */
-export async function commitSourceMerge(
-  request: SourceMergeCommitRequest,
-): Promise<SourceMergeCommitResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/commit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/commit failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/restore — restore source body from a committed merge. */
-export async function restoreSourceMerge(
-  request: SourceMergeRestoreRequest,
-): Promise<SourceMergeRestoreResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/restore`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/restore failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
 /** GET /research/{id}/distill — the durable product of a research:
  *  its insights + open questions, read off the graph. */
 export async function getDistillation(
@@ -1702,7 +1568,6 @@ export interface ChallengeNoteResponse {
   /** The reserved (un-launched) child research id, when escalated. */
   reserved_child_investigation_id?: string | null;
 }
-
 
 /** Prompt / question telemetry from the investigation trajectory (event-log SoT).
  *  Full prompt bodies are not stored on dispatch.call — only prompt_hash +

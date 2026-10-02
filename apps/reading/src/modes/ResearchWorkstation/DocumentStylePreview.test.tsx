@@ -102,9 +102,10 @@ describe("DocumentStylePreview", () => {
       return Promise.resolve(projected(styleOf(url), "doc-other"));
     });
     render(<DocumentStylePreview documentId="doc-9" />);
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "invalid or mismatched document receipt",
-    );
+    const refusalAlert = await screen.findByRole("alert");
+    // The mismatched-receipt construction is diagnostics: a person gets plain words.
+    expect(refusalAlert.textContent).toContain("Couldn't preview this document.");
+    expect(refusalAlert.textContent).not.toMatch(/invalid or mismatched|HTTP|502/);
     expect(screen.queryByTitle("Antiek document preview")).toBeNull();
   });
 
@@ -121,10 +122,18 @@ describe("DocumentStylePreview", () => {
     await waitFor(() => expect(screen.getByText("Preview unavailable for this document.")).toBeTruthy());
   });
 
-  it("shows an honest unavailable state when the wheel cannot load", async () => {
-    apiFetchMock.mockRejectedValueOnce(new Error("backend offline"));
+  it("shows an honest unavailable state in plain words, never the raw request failure", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/styles") {
+        return Promise.resolve(json({ detail: "GET /books failed: HTTP 503" }, 503));
+      }
+      return Promise.resolve(projected(styleOf(String(input))));
+    });
     render(<DocumentStylePreview documentId="doc-9" />);
-    expect((await screen.findByRole("alert")).textContent).toContain("Styles unavailable · backend offline");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Styles unavailable");
+    expect(alert.textContent).toContain("Couldn't load the styles.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books/);
   });
 
   it("starts on the requested style when the wheel has it", async () => {

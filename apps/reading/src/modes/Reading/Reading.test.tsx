@@ -262,9 +262,15 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
   };
 }
 
+// Imported statically, after the hoisted mocks: a dynamic import inside the
+// render helpers made the FIRST test pay the reader's whole module load
+// inside its 5 s timeout, and under the full suite it timed out, then the
+// next test found the timed-out test's leftover root (cockpit R2-L1, the
+// same class as readerCockpitB2).
+import BookReader from "./index";
+
 async function renderReader(initialEntry = "/read/doc-1") {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
-  const { default: BookReader } = await import("./index");
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
@@ -276,7 +282,6 @@ async function renderReader(initialEntry = "/read/doc-1") {
 
 async function renderWindowReader(documentId: string) {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
-  const { default: BookReader } = await import("./index");
   return render(
     <MemoryRouter initialEntries={["/research"]}>
       <WindowHostProvider value={true}>
@@ -390,6 +395,30 @@ describe("BookReader", () => {
     getFullTextMock.mockRejectedValue(new Error("book_not_found"));
     await renderReader();
     await waitFor(() => expect(screen.getByText(/in the library/)).toBeTruthy());
+    // Not-found is a neutral note with a way back, not an alarm.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("link", { name: "Go to the library" }).getAttribute("href")).toBe("/library");
+  });
+
+  it("names a failed load in plain words, keeps the raw error off screen, and retries (design wave 3)", async () => {
+    // Before: a bare red "Failed to fetch" in the middle of the page, no retry.
+    getBookMock.mockRejectedValueOnce(new Error("Failed to fetch"));
+    getFullTextMock.mockRejectedValueOnce(new Error("Failed to fetch"));
+    await renderReader();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Couldn.t open this book/);
+    expect(alert.textContent).not.toContain("Failed to fetch");
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("book-reader-root")).toBeTruthy();
+  });
+
+  it("names what is opening while the book loads", async () => {
+    getBookMock.mockReturnValue(new Promise(() => {}));
+    getFullTextMock.mockReturnValue(new Promise(() => {}));
+    await renderReader();
+    expect(screen.getByRole("status").textContent).toContain("Opening the book");
   });
 
   it("spins a research from the current page and hands off to it", async () => {
@@ -653,6 +682,7 @@ describe("BookReader", () => {
     });
     expect(frame.getAttribute("data-canonical-url")).toBe("https://arxiv.org/abs/2402.00002");
     expect(within(frame).getByText(/Read on arXiv/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reading type" })).toBeNull();
     // NO ad rails — body-serving + ads are {T1}-only.
     expect(adRails(container).length).toBe(0);
     // No hosted body reached the DOM (the gate served none, and we host none).
@@ -901,5 +931,83 @@ describe("BookReader", () => {
       expect(screen.getByText(/includes a restricted source/)).toBeTruthy(),
     );
     expect(searchBlocksMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Cockpit repair round 1 ─────────────────────────────────────────────
+// H1: in the inset preset the reader lives in a ~666 px pane at a 1024 px
+// viewport, but its TOC (md:) and notes (lg:) columns answered to the
+// VIEWPORT, leaving the text ~42 px. They now answer to the reader's own
+// width (a CSS container on the reader root).
+// ResearchThis retains explicit branch navigation; highlighted research
+// keeps the anchor-first island behavior proved above.
+describe("BookReader in the cockpit (repair round 1)", () => {
+  beforeEach(() => {
+    getBookMock.mockReset();
+    getFullTextMock.mockReset();
+    spinResearchMock.mockReset();
+    navigateMock.mockReset();
+    listBooksMock.mockReset();
+    window.sessionStorage.clear();
+    useWorkspace.getState().reset();
+    resetReadingStateBus();
+    useInvestigationMock.mockReset();
+    useInvestigationMock.mockReturnValue({
+      id: "read-doc-1",
+      status: "not_found",
+      events: [],
+      question: null,
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      reconnects: 0,
+    });
+  });
+  afterEach(async () => {
+    const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
+    tabTreeHandle.store = null;
+  });
+
+  it("its side columns answer to the reader's own width, not the viewport", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const root = await screen.findByTestId("book-reader-root");
+    await screen.findByText("The opening of the book.");
+    expect(root.className.split(/\s+/)).toContain("container-reader");
+    const toc = root.querySelector("aside")!;
+    const toks = toc.className.split(/\s+/);
+    expect(toks).toContain("reader-md:block");
+    expect(toks.some((t) => /^(sm|md|lg|xl):/.test(t))).toBe(false);
+    const notes = screen.getByRole("complementary", { name: /Reading companion/ });
+    const ntoks = notes.className.split(/\s+/);
+    expect(ntoks).toContain("reader-lg:flex");
+    expect(ntoks.some((t) => /^(sm|md|lg|xl):/.test(t))).toBe(false);
+  });
+
+  it("'Research this page' branches from the reader's tab too", async () => {
+    const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
+    tabTreeHandle.store = {
+      getState: () => ({ trees: { reading: { active_tab_id: "root:reader:doc-1" } } }),
+    } as never;
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    spinResearchMock.mockResolvedValue({
+      investigation_id: "inv-child-xyz",
+      document_id: "doc-1",
+      page_index: 0,
+      gated: false,
+      servability: "public_domain",
+      seed_preview: "From the book…",
+    });
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Research this page/ }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled());
+    const [to, options] = navigateMock.mock.calls.at(-1)!;
+    expect(to).toBe("/inv/inv-child-xyz?m=reading");
+    expect((options as { state: { tabBranch: { parentTabId: string } } }).state.tabBranch.parentTabId).toBe(
+      "root:reader:doc-1",
+    );
   });
 });

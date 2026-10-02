@@ -1,4 +1,6 @@
 import { forwardRef } from "react";
+import { readingTypographyStyle, useReadingTypography } from "../../lib/readingTypography";
+import "../../design/readingTypography.css";
 
 /**
  * ReadingColumn — the calm, centered reading body that renders a servable
@@ -39,7 +41,7 @@ import { forwardRef } from "react";
 /** One painted highlight range (page-relative [start, end)), from
  *  anchorRanges.rangesForPage. `treatment` is the closed vocabulary the
  *  highlight-anchor augmentation declares; the classes below are the ONLY
- *  mapping from it to tokens (sun wash + underline; dashed when drifted). */
+ *  mapping from it to tokens (highlighter + underline; dashed when drifted). */
 export interface AnchorMark {
   anchorId: string;
   start: number;
@@ -77,15 +79,18 @@ export interface ReadingColumnProps {
  * Render a page's markdown body as readable prose: `#`/`##`/`###` lines become
  * headings, blank-line-separated runs become paragraphs. Deliberately light —
  * the served body is already cleaned text, not rich markup.
+ *
+ * Heading level n renders as h(n+1): the reader's own title is the page's h1,
+ * so a book's `#` is the next level down. (It used to collapse all three
+ * levels into one h2.) Sizes, weights and rhythm come from the prose layer.
  */
 /** The ONLY treatment→classes mapping (the closed vocabulary, tokens only):
- *  active = a sun wash + 2px underline at reduced emphasis — part of the
+ *  active = the highlighter pigment + 2px underline — part of the
  *  text, no card/border/shadow/motion; drifted = the same mark dashed at
  *  lower opacity, with the honest "moved" affordance on the title. */
 const MARK_CLASSES: Record<AnchorMark["treatment"], string> = {
-  active: "bg-sun/20 underline decoration-2 decoration-sun/60 underline-offset-2",
-  drifted:
-    "bg-sun/10 underline decoration-2 decoration-dashed decoration-sun/50 underline-offset-2 opacity-70",
+  active: "antiek-highlight underline decoration-2 underline-offset-2",
+  drifted: "antiek-highlight underline decoration-2 decoration-dashed underline-offset-2 opacity-70",
 };
 
 /** Split one block's text at mark boundaries and wrap marked segments.
@@ -146,17 +151,11 @@ function renderBlocks(text: string, marks: AnchorMark[]) {
     cursor = offset + block.length;
     const heading = block.match(/^(#{1,3})\s+(.*)$/);
     if (heading) {
-      return (
-        <h2
-          key={i}
-          className="font-serif font-semibold text-lg mt-4 mb-2 text-ink dark:text-bright"
-        >
-          {heading[2]}
-        </h2>
-      );
+      const Tag = `h${heading[1].length + 1}` as "h2" | "h3" | "h4";
+      return <Tag key={i}>{heading[2]}</Tag>;
     }
     return (
-      <p key={i} className="mb-3 whitespace-pre-wrap">
+      <p key={i} className="whitespace-pre-wrap">
         {marks.length > 0 ? renderMarkedText(block, offset, marks) : block}
       </p>
     );
@@ -171,6 +170,7 @@ function renderBlocks(text: string, marks: AnchorMark[]) {
  */
 export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
   function ReadingColumn({ assetId, text, chunkId, contentFormat = "text", marks = [] }, ref) {
+    const typography = useReadingTypography();
     return (
       <article
         ref={ref}
@@ -183,16 +183,15 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // chunk stays asset-level (the contract's cover/title-card case).
         {...(assetId ? { "data-akb-asset-id": assetId } : {})}
         {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
-        className="flex-1 font-serif text-base leading-[1.7] text-ink dark:text-bright"
+        className="prose-antiek reading-page reading-prose flex-1"
+        style={readingTypographyStyle(typography)}
       >
         {text.trim() ? (
           contentFormat === "html" ? (
             <div data-antiek-html-body dangerouslySetInnerHTML={{ __html: text }} />
           ) : renderBlocks(text, marks)
         ) : (
-          <p className="text-shadow-1 dark:text-moonlight italic">
-            This book has no readable pages.
-          </p>
+          <p className="text-2">This book has no readable pages.</p>
         )}
       </article>
     );

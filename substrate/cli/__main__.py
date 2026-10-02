@@ -40,21 +40,55 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
 SUBCOMMANDS = ("burn", "branch", "hooks", "harness", "compact", "queue", "lint")
 
 
+_DESCRIPTIONS = {
+    "burn": "Per-call burn telemetry",
+    "branch": "Conversation checkpoint + branch",
+    "hooks": "Inspect / manage substrate hooks",
+    "harness": "Per-project harness fork / apply / diff / status",
+    "compact": "Manual compaction",
+    "queue": "Bounded-queue inspection",
+    "lint": "Context-injection static analysis",
+}
+
+
+def _load_failure(name: str) -> str | None:
+    """Why ``name`` cannot run, or None when it can.
+
+    This exists because the help text used to list all seven verbs as available
+    while every one of them failed at import: six raised ModuleNotFoundError for
+    modules that ship with an unmerged branch, and ``lint`` pointed at a script
+    that is not in the tree. A help screen that cannot be true is the same defect
+    as a gate that cannot fail -- detection that never reaches a decision, on the
+    user's side of the boundary. So the list is probed, not asserted.
+    """
+    try:
+        _import_subcommand(name)
+    except (ImportError, FileNotFoundError, OSError) as exc:
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
 def _print_usage() -> None:
-    sys.stdout.write(
-        "usage: antiek <subcommand> [args...]\n"
-        "\n"
-        "Available subcommands:\n"
-        "  burn      Per-call burn telemetry\n"
-        "  branch    Conversation checkpoint + branch\n"
-        "  hooks     Inspect / manage substrate hooks\n"
-        "  harness   Per-project harness fork / apply / diff / status\n"
-        "  compact   Manual compaction\n"
-        "  queue     Bounded-queue inspection\n"
-        "  lint      Context-injection static analysis\n"
-        "\n"
-        "Run `antiek <subcommand> --help` for subcommand-specific flags.\n"
-    )
+    lines = ["usage: antiek <subcommand> [args...]", "", "Subcommands:"]
+    unavailable = 0
+    for name in SUBCOMMANDS:
+        description = _DESCRIPTIONS.get(name, "")
+        failure = _load_failure(name)
+        if failure is None:
+            lines.append(f"  {name:<9} {description}")
+        else:
+            unavailable += 1
+            lines.append(f"  {name:<9} {description}")
+            lines.append(f"  {'':<9} UNAVAILABLE -- {failure}")
+    if unavailable:
+        lines += [
+            "",
+            f"{unavailable} of {len(SUBCOMMANDS)} subcommands cannot load on this "
+            "installation. Their modules ship with a branch that is not merged here; "
+            "see docs/engineering_deferrals.md.",
+        ]
+    lines += ["", "Run `antiek <subcommand> --help` for subcommand-specific flags.", ""]
+    sys.stdout.write("\n".join(lines))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +101,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"error: unknown subcommand {sub!r}\n")
         _print_usage()
         return 2
+    failure = _load_failure(sub)
+    if failure is not None:
+        sys.stderr.write(
+            f"error: subcommand {sub!r} is unavailable on this installation.\n"
+            f"       {failure}\n"
+            "       Its module ships with a branch that is not merged here; see "
+            "docs/engineering_deferrals.md.\n"
+        )
+        return 3
     handler = _import_subcommand(sub)
     return handler(args[1:])
 

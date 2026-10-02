@@ -20,10 +20,13 @@ import { ProductsLauncher } from "./ProductsLauncher";
 import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
+  ariaKeyshortcutsFor,
   bindingForProduct,
   emitProductActivate,
+  formatBinding,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
+import type { ActionId } from "../components/hotkeys/keymap";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -102,7 +105,8 @@ import {
 /** Rail axis. `bottom` (default) is the SPR-06 shell layout — a horizontal
  *  rail along the window bottom so the working region above it is full-width
  *  and symmetric (the four edges SPR-07's border needs). `left` is the
- *  original vertical rail, kept for stories + a rollback path. */
+ *  vertical rail: the Omarchy inset preset's left toolbar at lg/xl
+ *  (DECISIONS C2; AppShell picks it), and stories. */
 export type Orientation = "left" | "bottom";
 
 function I({ d, size = 18 }: { d: string; size?: number }) {
@@ -157,6 +161,7 @@ function RailButton({
   orientation = "bottom",
   productId,
   binding,
+  action,
   badge,
 }: {
   icon: ReactNode;
@@ -174,6 +179,10 @@ function RailButton({
    *  combo from the shared map (e.g. "mod+e" for Read). Post-SPR-08 there are
    *  NO vim g-chords; the prop is always fed a real `mod+` spec. */
   binding?: string;
+  /** MS-01: the keymap action this button runs. The button's
+   *  aria-keyshortcuts is generated from the keymap table for it, and the
+   *  keycap chip becomes decorative (the button is the announcer). */
+  action?: ActionId;
   /** herdr transfer P0-2: attention count chip (blocked + unseen-done).
    *  Rendered only when > 0 — an absent badge is the calm state. */
   badge?: number;
@@ -205,6 +214,7 @@ function RailButton({
       title={title}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
+      aria-keyshortcuts={action ? ariaKeyshortcutsFor(action) : undefined}
       data-product-id={productId}
       className={
         (orientation === "left" ? "mx-1.5 " : "mx-0.5 ") +
@@ -237,13 +247,13 @@ function RailButton({
       </span>
       {/* SPR-08 — the on-bar hotkey chip. A tiny, unobtrusive indicator under
           the door label so the shortcut is "shown on-screen" (the operator's
-          headline ask). The chip is the announcer (it carries its own
-          aria-keyshortcuts); the button has none, so there's no double-
-          announce. */}
+          headline ask). MS-01: the button carries aria-keyshortcuts, generated
+          from the keymap, so the chip is decorative (no double announce). */}
       {binding && (
         <KeyChip
           binding={binding}
           label={label}
+          decorative={action !== undefined}
           className="mt-0.5 scale-90 opacity-80"
         />
       )}
@@ -265,9 +275,18 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
-  const isMobile = tier === "sm" || tier === "md";
+  // The left rail is the phone overlay (absolute, behind a toggle) only at
+  // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
+  // panes (C2; R3-M4). The bottom dock never collapses, so this only
+  // decides the left rail.
+  const isMobile = tier === "sm";
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
+  // Phone width: the bottom dock reduces to five equal keys (the four doors
+  // + More) with no keycap chips, and stays in the page flow. Home is the
+  // mascot's double-tap and Search is More's filter at this width.
+  const compact = isBottom && tier === "sm";
+  const onHome = pathname === "/home";
 
   // herdr transfer P0-2 — the rail badge: how many research FAMILIES need
   // the operator right now. Counted per family root (countSummoningGroups):
@@ -308,7 +327,9 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     // path emits (source differs only). This is the click≡hotkey parity the
     // mascot (SPR-10) depends on. Navigation is AUGMENTED, not replaced.
     emitProductActivate({ productId: wf, route, source: "click" });
-    if (isMobile) setCollapsed(true);
+    // Only the legacy left rail collapses behind a toggle; the bottom dock
+    // is always in the flow.
+    if (isMobile && !isBottom) setCollapsed(true);
   };
 
   if (isMobile && collapsed) {
@@ -350,16 +371,18 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       type="button"
       title="Antiek · home"
       aria-label="Antiek home"
+      aria-keyshortcuts={ariaKeyshortcutsFor("door.home")}
       data-product-id="home"
       onClick={() => {
         navigate("/home");
         // SPR-08/SPR-10 click≡hotkey parity (the ⌘O home binding).
         emitProductActivate({ productId: "home", route: "/home", source: "click" });
       }}
+      aria-current={onHome ? "page" : undefined}
       className={
-        "shrink-0 flex flex-col items-center justify-center gap-0.5 bg-sun/95 hover:bg-sun text-ink " +
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
-        (isBottom ? "w-16 h-full border-r-edge border-sun" : "h-16 w-full border-b-edge border-sun")
+        "shrink-0 flex flex-col items-center justify-center gap-0.5 " +
+        (onHome ? "bg-sun text-ink " : "text-ice-2/80 hover:bg-white/10 ") +
+        (isBottom ? "w-16 h-full" : "h-16 w-full")
       }
     >
       <BrainMark size={24} />
@@ -380,11 +403,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     </button>
   );
 
+  const paletteSpec = BUILTIN_BINDINGS.find((b) => b.id === "palette")!.spec;
   const searchButton = (
     <RailButton
       icon={<I d={UTIL_ICONS.search} size={15} />}
       label="Search"
-      title="Search · ⌘K"
+      title={`Search · ${formatBinding(paletteSpec)}`}
       onClick={openSearch}
       variant="utility"
       orientation={orientation}
@@ -392,7 +416,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       // is the SPR-08 built-in `palette` (⌘K / mod+k). We read it from the
       // shared built-in table by id rather than re-typing "mod+k", so the chip
       // can never drift from shortcuts.ts.
-      binding={BUILTIN_BINDINGS.find((b) => b.id === "palette")?.spec}
+      binding={paletteSpec}
+      action="palette.toggle"
     />
   );
 
@@ -403,7 +428,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const workflowGroup = (
     <nav
       className={
-        "flex gap-1 " + (isBottom ? "flex-row items-stretch" : "flex-1 flex-col")
+        compact ? "grid flex-1 grid-cols-4" : "flex gap-1 " + (isBottom ? "flex-row items-stretch" : "flex-1 flex-col")
       }
       aria-label="Workflows"
       data-testid="navrail-workflows"
@@ -414,12 +439,15 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           icon={<I d={WF_ICONS[wf]} />}
           label={WORKFLOWS[wf].label}
           title={`${WORKFLOWS[wf].label} - ${WORKFLOWS[wf].tagline}`}
-          active={activeWorkflow === wf}
+          // /home belongs to the research workflow, but there the Home key is
+          // the active one: one lit key, never two.
+          active={!onHome && activeWorkflow === wf}
           onClick={() => selectWorkflow(wf)}
           variant="workflow"
           orientation={orientation}
           productId={wf}
-          binding={bindingForProduct(wf)?.spec}
+          binding={compact ? undefined : bindingForProduct(wf)?.spec}
+          action={compact ? undefined : (`door.${wf}` as ActionId)}
           badge={wf === "research" ? researchSummons : undefined}
         />
       ))}
@@ -441,7 +469,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       variant="more"
       orientation={orientation}
       productId="more"
-      binding={bindingForProduct("more")?.spec}
+      binding={compact ? undefined : bindingForProduct("more")?.spec}
+      action={compact ? undefined : "door.more"}
     />
   );
 
@@ -450,33 +479,37 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   // eye lands on them; Search + More cluster on the trailing edge as
   // overflow. The accent border is on TOP (its inner edge, toward the
   // working region) — symmetric with the left rail's right border.
+  // The dock is a dark island in both themes, drawn without a sun edge (the
+  // sun marks only the active key). It stays in the page flow at every width,
+  // and its focus ring is the sun (the ink ring would vanish on ink). The
+  // trailing 64px slot is the mascot's station: MascotStation seats itself
+  // there, so Brain sits in reserved chrome and never over the working area.
   if (isBottom) {
     return (
       <>
         <aside
-          className={
-            "h-14 w-full shrink-0 flex items-stretch bg-ink dark:bg-void border-t-edge border-sun " +
-            (isMobile ? "absolute bottom-0 left-0 shadow-z3" : "") +
-            (showRail ? "" : " hidden")
-          }
-          // Mobile-only overlay elevation (was a z-40 literal): the named
-          // `mobileRail` rung, at the window-band base. Desktop stays in-flow
-          // with no z, exactly as before.
-          style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
+          data-orientation="bottom"
+          data-rail-flow="inline"
+          className="h-16 w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"
           aria-label="Primary navigation"
         >
-          {homeButton}
-          <nav className="flex items-center px-1.5" aria-label="Utilities">
-            {searchButton}
-          </nav>
-          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
-          <div className="flex-1 flex items-center justify-center">
+          {!compact && (
+            <>
+              {homeButton}
+              <nav className="flex items-center px-1.5" aria-label="Utilities">
+                {searchButton}
+              </nav>
+              <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
+            </>
+          )}
+          <div className={compact ? "flex flex-[4]" : "flex-1 flex items-center justify-center"}>
             {workflowGroup}
           </div>
-          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
-          <nav className="flex items-center px-1.5" aria-label="More">
+          {!compact && <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />}
+          <nav className={compact ? "grid flex-1" : "flex items-center px-1.5"} aria-label="More">
             {moreButton}
           </nav>
+          <span data-mascot-station aria-hidden="true" className="w-16 shrink-0" />
         </aside>
 
         <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
@@ -489,13 +522,15 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     <>
       <aside
         className={
-          "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
+          "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void " +
           (isMobile ? "absolute top-0 left-0 shadow-z3" : "") +
           (showRail ? "" : " hidden")
         }
         // Mobile-only overlay elevation (was a z-40 literal): the named
         // `mobileRail` rung. Desktop stays in-flow with no z, as before.
         style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
+        data-orientation="left"
+        data-rail-flow={isMobile ? "overlay" : "inline"}
         aria-label="Primary navigation"
       >
         {isMobile && (
@@ -528,6 +563,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         >
           {moreButton}
         </nav>
+
+        {/* The mascot's station (the bottom dock's trailing slot, here at
+            the rail's foot): Brain sits in reserved chrome, never over the
+            working area. mt-auto keeps it at the bottom however tall the
+            rail is. */}
+        <span data-mascot-station aria-hidden="true" className="mt-auto mx-auto h-16 w-16 shrink-0" />
       </aside>
 
       <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />

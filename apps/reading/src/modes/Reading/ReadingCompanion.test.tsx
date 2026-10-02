@@ -32,18 +32,10 @@ const {
   useInvestigationMock,
   listState,
   composeResearchArtifactsMock,
-  applySourceMergeMock,
-  previewSourceMergeMock,
-  commitSourceMergeMock,
-  restoreSourceMergeMock,
 } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
   listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
   composeResearchArtifactsMock: vi.fn(),
-  applySourceMergeMock: vi.fn(),
-  previewSourceMergeMock: vi.fn(),
-  commitSourceMergeMock: vi.fn(),
-  restoreSourceMergeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -57,11 +49,7 @@ vi.mock("../../lib/api", async (orig) => {
   return {
     ...actual,
     API_BASE: "",
-    applySourceMerge: applySourceMergeMock,
-    commitSourceMerge: commitSourceMergeMock,
     composeResearchArtifacts: composeResearchArtifactsMock,
-    previewSourceMerge: previewSourceMergeMock,
-    restoreSourceMerge: restoreSourceMergeMock,
   };
 });
 
@@ -96,10 +84,6 @@ beforeEach(() => {
   useInvestigationMock.mockReset();
   listState.investigations = [];
   composeResearchArtifactsMock.mockReset();
-  applySourceMergeMock.mockReset();
-  previewSourceMergeMock.mockReset();
-  commitSourceMergeMock.mockReset();
-  restoreSourceMergeMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -223,6 +207,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
       no_spend: true,
     });
     expect(payload.next_step).toMatch(/draft a merge/);
+    expect(payload.next_step).toMatch(/the book itself is never changed/);
     expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
   });
 
@@ -311,575 +296,14 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(await screen.findByText(/Draft written/)).toBeTruthy();
     expect(screen.getByText("/tmp/draft-merge.html")).toBeTruthy();
     expect(screen.getByText("2 artifacts · 2 notes twins")).toBeTruthy();
-    expect(screen.getByText("Review only · book not changed")).toBeTruthy();
+    expect(screen.getByText("Review only · the book is never changed")).toBeTruthy();
     expect(screen.getByText("No hash conflicts")).toBeTruthy();
     expect(screen.getByRole("link", { name: "open" }).getAttribute("href")).toBe(
       "/research/artifacts/compose/draft-merge.html?investigation_ids=inv-ready-b&investigation_ids=inv-ready-a",
     );
   });
 
-  it("keeps source apply disabled until the draft is explicitly reviewed", async () => {
-    for (const childInvestigationId of ["inv-apply-a", "inv-apply-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-apply-a", status: "completed" }),
-      summary({ investigation_id: "inv-apply-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/apply-compose.html",
-      draft_merge_path: "/tmp/apply-draft.html",
-      members: [
-        {
-          investigation_id: "inv-apply-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-apply-b.html",
-          twin_notes_path: "/tmp/inv-apply-b.notes.html",
-        },
-        {
-          investigation_id: "inv-apply-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-apply-a.html",
-          twin_notes_path: "/tmp/inv-apply-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-
-    renderCompanion();
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-
-    expect((screen.getByRole("button", { name: /apply receipt/i }) as HTMLButtonElement).disabled).toBe(true);
-    expect(applySourceMergeMock).not.toHaveBeenCalled();
-  });
-
-  it("records a source merge receipt after review acknowledgement", async () => {
-    for (const childInvestigationId of ["inv-apply-ready-a", "inv-apply-ready-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-apply-ready-a", status: "completed" }),
-      summary({ investigation_id: "inv-apply-ready-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/apply-ready-compose.html",
-      draft_merge_path: "/tmp/apply-ready-draft.html",
-      members: [
-        {
-          investigation_id: "inv-apply-ready-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-apply-ready-b.html",
-          twin_notes_path: "/tmp/inv-apply-ready-b.notes.html",
-        },
-        {
-          investigation_id: "inv-apply-ready-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-apply-ready-a.html",
-          twin_notes_path: "/tmp/inv-apply-ready-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    applySourceMergeMock.mockResolvedValue({
-      status: "applied",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-abc123",
-      twin_revision_id: "twinmerge-doc-1-abc123",
-      event_id: "evt-apply",
-      member_investigation_ids: ["inv-apply-ready-b", "inv-apply-ready-a"],
-      hash_conflicts_acknowledged: false,
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-
-    renderCompanion();
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
-    fireEvent.click(screen.getByRole("button", { name: /apply receipt/i }));
-
-    await waitFor(() => expect(applySourceMergeMock).toHaveBeenCalledTimes(1));
-    expect(applySourceMergeMock).toHaveBeenCalledWith({
-      reviewed_packet: {
-        kind: "antiek.reader.source_merge_review_packet",
-        document_id: "doc-1",
-        title: "Meditations",
-        parent_reading_thread_id: "read-doc-1",
-        draft_merge_path: "/tmp/apply-ready-draft.html",
-        compose_index_path: "/tmp/apply-ready-compose.html",
-        member_investigation_ids: ["inv-apply-ready-b", "inv-apply-ready-a"],
-        requested_investigation_ids: ["inv-apply-ready-b", "inv-apply-ready-a"],
-        hash_conflict_count: 0,
-        hash_conflicts: [],
-        source_book_mutated: false,
-        twin_document_mutated: false,
-        no_spend: true,
-      },
-      expected_content_hashes: {
-        "inv-apply-ready-b": "hash-b",
-        "inv-apply-ready-a": "hash-a",
-      },
-      acknowledge_reviewed_draft: true,
-      acknowledge_source_book_mutation: true,
-      acknowledge_twin_document_mutation: true,
-      acknowledge_hash_conflicts: false,
-      operator_reviewer: "reader-companion",
-    });
-    expect(await screen.findByRole("region", { name: /Source merge receipt/i })).toBeTruthy();
-    expect(screen.getByText("srcmerge-doc-1-abc123")).toBeTruthy();
-    expect(screen.getByText("twinmerge-doc-1-abc123")).toBeTruthy();
-    expect(screen.getByText("Book body not rewritten")).toBeTruthy();
-  });
-
-  it("previews source merge revision evidence without applying the receipt", async () => {
-    for (const childInvestigationId of ["inv-preview-ready-a", "inv-preview-ready-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-preview-ready-a", status: "completed" }),
-      summary({ investigation_id: "inv-preview-ready-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/preview-ready-compose.html",
-      draft_merge_path: "/tmp/preview-ready-draft.html",
-      members: [
-        {
-          investigation_id: "inv-preview-ready-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-preview-ready-b.html",
-          twin_notes_path: "/tmp/inv-preview-ready-b.notes.html",
-        },
-        {
-          investigation_id: "inv-preview-ready-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-preview-ready-a.html",
-          twin_notes_path: "/tmp/inv-preview-ready-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    previewSourceMergeMock.mockResolvedValue({
-      status: "previewed",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-preview",
-      twin_revision_id: "twinmerge-doc-1-preview",
-      member_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
-      before_source_hash: "before-hash",
-      after_source_hash: "after-hash",
-      before_twin_hash: "before-twin",
-      after_twin_hash: "after-twin",
-      source_bytes_before: 22,
-      source_bytes_after: 88,
-      twin_bytes_after: 44,
-      writes_performed: false,
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-
-    renderCompanion();
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
-    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
-
-    await waitFor(() => expect(previewSourceMergeMock).toHaveBeenCalledTimes(1));
-    expect(applySourceMergeMock).not.toHaveBeenCalled();
-    expect(previewSourceMergeMock).toHaveBeenCalledWith({
-      reviewed_packet: {
-        kind: "antiek.reader.source_merge_review_packet",
-        document_id: "doc-1",
-        title: "Meditations",
-        parent_reading_thread_id: "read-doc-1",
-        draft_merge_path: "/tmp/preview-ready-draft.html",
-        compose_index_path: "/tmp/preview-ready-compose.html",
-        member_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
-        requested_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
-        hash_conflict_count: 0,
-        hash_conflicts: [],
-        source_book_mutated: false,
-        twin_document_mutated: false,
-        no_spend: true,
-      },
-      expected_content_hashes: {
-        "inv-preview-ready-b": "hash-b",
-        "inv-preview-ready-a": "hash-a",
-      },
-      acknowledge_reviewed_draft: true,
-      acknowledge_source_book_mutation: true,
-      acknowledge_twin_document_mutation: true,
-      acknowledge_hash_conflicts: false,
-      operator_reviewer: "reader-companion",
-    });
-    expect(await screen.findByRole("region", { name: /Source merge preview/i })).toBeTruthy();
-    expect(screen.getByText("22 → 88 bytes")).toBeTruthy();
-    expect(screen.getByText("before before-hash")).toBeTruthy();
-    expect(screen.getByText("after after-hash")).toBeTruthy();
-    expect(screen.getByText("writes performed false")).toBeTruthy();
-  });
-
-  it("commits source merge only after preview acknowledgement", async () => {
-    for (const childInvestigationId of ["inv-commit-ready-a", "inv-commit-ready-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-commit-ready-a", status: "completed" }),
-      summary({ investigation_id: "inv-commit-ready-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/commit-ready-compose.html",
-      draft_merge_path: "/tmp/commit-ready-draft.html",
-      members: [
-        {
-          investigation_id: "inv-commit-ready-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-commit-ready-b.html",
-          twin_notes_path: "/tmp/inv-commit-ready-b.notes.html",
-        },
-        {
-          investigation_id: "inv-commit-ready-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-commit-ready-a.html",
-          twin_notes_path: "/tmp/inv-commit-ready-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    previewSourceMergeMock.mockResolvedValue({
-      status: "previewed",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-commit",
-      twin_revision_id: "twinmerge-doc-1-commit",
-      member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
-      before_source_hash: "before-hash",
-      after_source_hash: "after-hash",
-      before_twin_hash: "before-twin",
-      after_twin_hash: "after-twin",
-      source_bytes_before: 22,
-      source_bytes_after: 88,
-      twin_bytes_after: 44,
-      writes_performed: false,
-    });
-    commitSourceMergeMock.mockResolvedValue({
-      status: "committed",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-commit",
-      twin_revision_id: "twinmerge-doc-1-commit",
-      member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
-      before_source_hash: "before-hash",
-      after_source_hash: "after-hash",
-      before_twin_hash: "before-twin",
-      after_twin_hash: "after-twin",
-      source_bytes_before: 22,
-      source_bytes_after: 88,
-      twin_bytes_after: 44,
-      writes_performed: true,
-      event_id: "evt-commit",
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-    const onSourceBodyChanged = vi.fn();
-
-    renderCompanion({ onSourceBodyChanged });
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
-    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
-    await screen.findByRole("region", { name: /Source merge preview/i });
-
-    expect((screen.getByRole("button", { name: /rewrite source/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText(/Rewrite source from preview/i));
-    fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
-
-    await waitFor(() => expect(commitSourceMergeMock).toHaveBeenCalledTimes(1));
-    expect(onSourceBodyChanged).toHaveBeenCalledTimes(1);
-    expect(commitSourceMergeMock).toHaveBeenCalledWith({
-      reviewed_packet: {
-        kind: "antiek.reader.source_merge_review_packet",
-        document_id: "doc-1",
-        title: "Meditations",
-        parent_reading_thread_id: "read-doc-1",
-        draft_merge_path: "/tmp/commit-ready-draft.html",
-        compose_index_path: "/tmp/commit-ready-compose.html",
-        member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
-        requested_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
-        hash_conflict_count: 0,
-        hash_conflicts: [],
-        source_book_mutated: false,
-        twin_document_mutated: false,
-        no_spend: true,
-      },
-      expected_content_hashes: {
-        "inv-commit-ready-b": "hash-b",
-        "inv-commit-ready-a": "hash-a",
-      },
-      acknowledge_reviewed_draft: true,
-      acknowledge_source_book_mutation: true,
-      acknowledge_twin_document_mutation: true,
-      acknowledge_hash_conflicts: false,
-      operator_reviewer: "reader-companion",
-      expected_source_revision_id: "srcmerge-doc-1-commit",
-      expected_twin_revision_id: "twinmerge-doc-1-commit",
-      expected_before_source_hash: "before-hash",
-      expected_after_source_hash: "after-hash",
-      expected_before_twin_hash: "before-twin",
-      expected_after_twin_hash: "after-twin",
-      acknowledge_body_rewrite: true,
-    });
-    expect(await screen.findByRole("region", { name: /Source merge commit/i })).toBeTruthy();
-    expect(screen.getByText("Commit committed")).toBeTruthy();
-    expect(screen.getByText("evt-commit")).toBeTruthy();
-    expect(screen.getByText("writes performed true")).toBeTruthy();
-  });
-
-  it("restores source merge only after restore acknowledgement", async () => {
-    for (const childInvestigationId of ["inv-restore-ready-a", "inv-restore-ready-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-restore-ready-a", status: "completed" }),
-      summary({ investigation_id: "inv-restore-ready-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/restore-ready-compose.html",
-      draft_merge_path: "/tmp/restore-ready-draft.html",
-      members: [
-        {
-          investigation_id: "inv-restore-ready-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-restore-ready-b.html",
-          twin_notes_path: "/tmp/inv-restore-ready-b.notes.html",
-        },
-        {
-          investigation_id: "inv-restore-ready-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-restore-ready-a.html",
-          twin_notes_path: "/tmp/inv-restore-ready-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    previewSourceMergeMock.mockResolvedValue({
-      status: "previewed",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-restore",
-      twin_revision_id: "twinmerge-doc-1-restore",
-      member_investigation_ids: ["inv-restore-ready-b", "inv-restore-ready-a"],
-      before_source_hash: "before-hash",
-      after_source_hash: "after-hash",
-      before_twin_hash: "before-twin",
-      after_twin_hash: "after-twin",
-      source_bytes_before: 22,
-      source_bytes_after: 88,
-      twin_bytes_after: 44,
-      writes_performed: false,
-    });
-    commitSourceMergeMock.mockResolvedValue({
-      status: "committed",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-restore",
-      twin_revision_id: "twinmerge-doc-1-restore",
-      member_investigation_ids: ["inv-restore-ready-b", "inv-restore-ready-a"],
-      before_source_hash: "before-hash",
-      after_source_hash: "after-hash",
-      before_twin_hash: "before-twin",
-      after_twin_hash: "after-twin",
-      source_bytes_before: 22,
-      source_bytes_after: 88,
-      twin_bytes_after: 44,
-      writes_performed: true,
-      event_id: "evt-commit",
-    });
-    restoreSourceMergeMock.mockResolvedValue({
-      status: "restored",
-      document_id: "doc-1",
-      source_revision_id: "srcmerge-doc-1-restore",
-      twin_revision_id: "twinmerge-doc-1-restore",
-      event_id: "evt-restore",
-      before_source_hash: "before-hash",
-      restored_source_hash: "before-hash",
-      writes_performed: true,
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-    const onSourceBodyChanged = vi.fn();
-
-    renderCompanion({ onSourceBodyChanged });
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
-    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
-    await screen.findByRole("region", { name: /Source merge preview/i });
-    fireEvent.click(screen.getByLabelText(/Rewrite source from preview/i));
-    fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
-    await screen.findByRole("region", { name: /Source merge commit/i });
-    expect(onSourceBodyChanged).toHaveBeenCalledTimes(1);
-
-    expect((screen.getByRole("button", { name: /^restore$/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText(/Restore previous source body/i));
-    fireEvent.click(screen.getByRole("button", { name: /^restore$/i }));
-
-    await waitFor(() => expect(restoreSourceMergeMock).toHaveBeenCalledTimes(1));
-    expect(onSourceBodyChanged).toHaveBeenCalledTimes(2);
-    expect(restoreSourceMergeMock).toHaveBeenCalledWith({
-      document_id: "doc-1",
-      parent_reading_thread_id: "read-doc-1",
-      source_revision_id: "srcmerge-doc-1-restore",
-      twin_revision_id: "twinmerge-doc-1-restore",
-      expected_after_source_hash: "after-hash",
-      expected_before_source_hash: "before-hash",
-      acknowledge_restore: true,
-      operator_reviewer: "reader-companion",
-    });
-    expect(await screen.findByRole("region", { name: /Source merge restore/i })).toBeTruthy();
-    expect(screen.getByText("Restore restored")).toBeTruthy();
-    expect(screen.getByText("evt-restore")).toBeTruthy();
-  });
-
-  it("requires conflict acknowledgement before applying a conflicted draft", async () => {
-    for (const childInvestigationId of ["inv-apply-conflict-a", "inv-apply-conflict-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-apply-conflict-a", status: "completed" }),
-      summary({ investigation_id: "inv-apply-conflict-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/apply-conflict-compose.html",
-      draft_merge_path: "/tmp/apply-conflict-draft.html",
-      members: [
-        {
-          investigation_id: "inv-apply-conflict-b",
-          content_hash: "same-hash",
-          artifact_path: "/tmp/inv-apply-conflict-b.html",
-          twin_notes_path: "/tmp/inv-apply-conflict-b.notes.html",
-        },
-        {
-          investigation_id: "inv-apply-conflict-a",
-          content_hash: "same-hash",
-          artifact_path: "/tmp/inv-apply-conflict-a.html",
-          twin_notes_path: "/tmp/inv-apply-conflict-a.notes.html",
-        },
-      ],
-      hash_conflicts: [["inv-apply-conflict-b", "inv-apply-conflict-a"]],
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-
-    renderCompanion();
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
-
-    expect((screen.getByRole("button", { name: /apply receipt/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText(/Conflict reviewed/i));
-    expect((screen.getByRole("button", { name: /apply receipt/i }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("copies a source-merge review packet without mutating the book or notes twin", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    for (const childInvestigationId of ["inv-review-a", "inv-review-b"]) {
-      recordChaseDraftHandoff(
-        buildChaseDraftHandoff({
-          childInvestigationId,
-          parentInvestigationId: "read-doc-1",
-          sourcePassage: `Completed chase ${childInvestigationId}.`,
-        }),
-      );
-    }
-    listState.investigations = [
-      summary({ investigation_id: "inv-review-a", status: "completed" }),
-      summary({ investigation_id: "inv-review-b", status: "completed" }),
-    ];
-    composeResearchArtifactsMock.mockResolvedValue({
-      path: "/tmp/review-compose.html",
-      draft_merge_path: "/tmp/review-draft.html",
-      members: [
-        {
-          investigation_id: "inv-review-b",
-          content_hash: "hash-b",
-          artifact_path: "/tmp/inv-review-b.html",
-          twin_notes_path: "/tmp/inv-review-b.notes.html",
-        },
-        {
-          investigation_id: "inv-review-a",
-          content_hash: "hash-a",
-          artifact_path: "/tmp/inv-review-a.html",
-          twin_notes_path: "/tmp/inv-review-a.notes.html",
-        },
-      ],
-      hash_conflicts: [],
-    });
-    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
-
-    renderCompanion();
-    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
-    await screen.findByRole("region", { name: /Draft merge receipt/i });
-    fireEvent.click(screen.getByRole("button", { name: /copy review/i }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const payload = JSON.parse(writeText.mock.calls[0][0]);
-    expect(payload).toMatchObject({
-      kind: "antiek.reader.source_merge_review_packet",
-      document_id: "doc-1",
-      title: "Meditations",
-      parent_reading_thread_id: "read-doc-1",
-      draft_merge_path: "/tmp/review-draft.html",
-      compose_index_path: "/tmp/review-compose.html",
-      member_investigation_ids: ["inv-review-b", "inv-review-a"],
-      requested_investigation_ids: ["inv-review-b", "inv-review-a"],
-      hash_conflict_count: 0,
-      hash_conflicts: [],
-      source_book_mutated: false,
-      twin_document_mutated: false,
-      no_spend: true,
-    });
-    expect(payload.next_step).toMatch(/before any source book or twin-document mutation/);
-    expect(screen.getByRole("button", { name: /copied review/i })).toBeTruthy();
-  });
-
-  it("surfaces draft-merge hash conflicts in the Reader receipt and review packet", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
+  it("surfaces draft-merge hash conflicts in the Reader receipt", async () => {
     for (const childInvestigationId of ["inv-conflict-a", "inv-conflict-b"]) {
       recordChaseDraftHandoff(
         buildChaseDraftHandoff({
@@ -917,15 +341,46 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     renderCompanion();
     fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
 
-    expect(await screen.findByText("1 hash conflict need review")).toBeTruthy();
+    expect(await screen.findByText("1 hash conflict needs review")).toBeTruthy();
     expect(screen.getByRole("region", { name: /Draft merge receipt/i })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /copy review/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const payload = JSON.parse(writeText.mock.calls[0][0]);
-    expect(payload.hash_conflict_count).toBe(1);
-    expect(payload.hash_conflicts).toEqual([["inv-conflict-b", "inv-conflict-a"]]);
-    expect(payload.source_book_mutated).toBe(false);
-    expect(payload.twin_document_mutated).toBe(false);
+  });
+
+  it("offers no control that changes the book (T6: nothing writes into a source)", async () => {
+    for (const childInvestigationId of ["inv-t6-a", "inv-t6-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-t6-a", status: "completed" }),
+      summary({ investigation_id: "inv-t6-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/t6-compose.html",
+      draft_merge_path: "/tmp/t6-draft.html",
+      members: [
+        { investigation_id: "inv-t6-b", content_hash: "hash-b", artifact_path: "/tmp/b.html", twin_notes_path: null },
+        { investigation_id: "inv-t6-a", content_hash: "hash-a", artifact_path: "/tmp/a.html", twin_notes_path: null },
+      ],
+      hash_conflicts: [["inv-t6-b", "inv-t6-a"]],
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+
+    const receipt = await screen.findByRole("region", { name: /Draft merge receipt/i });
+    for (const name of [/^preview$/i, /apply receipt/i, /rewrite source/i, /^restore$/i, /copy review/i]) {
+      expect(screen.queryByRole("button", { name }), String(name)).toBeNull();
+    }
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(receipt.textContent).toMatch(/Review only · the book is never changed/);
+    // The conflict is still surfaced, so review stays honest.
+    expect(screen.getByText("1 hash conflict needs review")).toBeTruthy();
   });
 
   it("keeps draft merge disabled until two chases are ready", () => {

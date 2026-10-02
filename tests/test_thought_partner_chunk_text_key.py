@@ -51,6 +51,8 @@ def test_production_mapper_surfaces_chunk_text_as_note_text(monkeypatch):
     """The load-bearing assertion: the REAL production mapper must thread
     search()'s ``chunk_text`` into ``note_text``. Fails on the buggy
     ``hit.get("text")`` (which maps to ""), passes on ``hit.get("chunk_text")``."""
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_SERVABLE", raising=False)
 
     class _StubEmbedding:
         pass

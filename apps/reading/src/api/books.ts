@@ -18,17 +18,33 @@ import {
   stashCapacityWarning,
 } from "../lib/capacityWarn";
 
-export type Servability =
-  | "public_domain"
-  | "platform_authored"
-  | "publisher_opted_in"
+/** Every servability status the backend can emit. Mirrors the
+ * `ServabilityStatus` enum in substrate/books/servability.py and the
+ * `BOOK_SERVABILITY_STATUSES` tuple in substrate/constants.py;
+ * books.servability.test.ts reads both files and fails when they drift. */
+export const SERVABILITY_VALUES = [
+  "public_domain",
+  "platform_authored",
+  "publisher_opted_in",
   // A source-declared open license (CC-BY / CC-BY-SA): servable, but NOT a
-  // §9.10 publisher opt-in. Mirrors the backend ServabilityStatus enum, which
-  // defines this member (substrate/books/servability.py) — the union was
-  // missing it (drift fix).
-  | "source_declared_open"
-  | "gated_metadata_only"
-  | "taken_down";
+  // §9.10 publisher opt-in.
+  "source_declared_open",
+  "gated_metadata_only",
+  "taken_down",
+  // Owner reads in full, never publicly servable (content_class
+  // personal_reading, the Sources upload default). Missing here was A-01:
+  // the reader crashed on every "Personal reading" upload.
+  "personal_readable",
+] as const;
+
+export type Servability = (typeof SERVABILITY_VALUES)[number];
+
+const SERVABILITY_SET: ReadonlySet<string> = new Set(SERVABILITY_VALUES);
+
+/** Runtime guard for a servability value received over the wire. */
+export function isServability(value: unknown): value is Servability {
+  return typeof value === "string" && SERVABILITY_SET.has(value);
+}
 
 export interface BookSummary {
   document_id: string;
@@ -1072,7 +1088,16 @@ export async function getSavedMetaReading(assetId: string): Promise<SavedMetaRea
 }
 
 /** Human-readable label + Lemon tag colour for a servability status. One
- * source so Library cards and the reader badge never disagree. */
+ * source so Library cards and the reader badge never disagree.
+ *
+ * Total by construction: a union member without a case is a compile error
+ * (the `never` assignment in `default`), and a value outside the union at
+ * runtime (a backend that is ahead of this build) renders "Unknown rights"
+ * instead of returning undefined. A rights badge must never take the reader
+ * down (A-01). */
+/** The fallback badge for a servability value this build does not know. */
+export const UNKNOWN_RIGHTS_LABEL = "Unknown rights";
+
 export function servabilityLabel(s: Servability): { label: string; colour: "success" | "sun" | "muted" | "danger" } {
   switch (s) {
     case "public_domain":
@@ -1087,5 +1112,14 @@ export function servabilityLabel(s: Servability): { label: string; colour: "succ
       return { label: "Preview only", colour: "sun" };
     case "taken_down":
       return { label: "Removed", colour: "danger" };
+    case "personal_readable":
+      // The owner's own copy, never publicly served. Not "Antiek original"
+      // and not "library": it is neither (A-06 copy half).
+      return { label: "Personal reading", colour: "muted" };
+    default: {
+      const _exhaustive: never = s;
+      void _exhaustive;
+      return { label: UNKNOWN_RIGHTS_LABEL, colour: "muted" };
+    }
   }
 }
