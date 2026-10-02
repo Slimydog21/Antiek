@@ -2497,6 +2497,18 @@ def create_app(
                 role=envelope.role,
                 policy_id=envelope.policy_id,
                 document_id=envelope.document_id,
+                # strict_write makes the except clause below reachable. It says
+                # "Pydantic ValidationError or write error", and with the emitter's
+                # default (False) a write error could never arrive here: `_safe`
+                # swallows it, prints to stderr, and emit_typed still returns a
+                # non-None event_id -- so the `event_id is None` check below, whose
+                # own comment promises to tell the client "nothing was persisted",
+                # could not fire either. A caller therefore received 201 and an
+                # event id for an event that was never written. Measured:
+                # substrate/event_log/events.py:424-428 returns event_id on both
+                # branches. This is a POST whose whole purpose is durability, and
+                # its sibling 503 already distinguishes that case by design.
+                strict_write=True,
             )
         except Exception as exc:  # Pydantic ValidationError or write error
             raise HTTPException(status_code=422, detail=str(exc)) from exc
