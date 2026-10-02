@@ -70,7 +70,8 @@ def test_open_failure_preserves_body_and_typed_header(
     client, retry_after = discovery
     calls = []
 
-    def fail_open(db_path):
+    def fail_open(db_path, *, external_lock_timeout_s=0.0):
+        assert external_lock_timeout_s == (2.0 if path == "/books" else 0.0)
         calls.append(db_path)
         raise failure_type("synthetic open failure")
 

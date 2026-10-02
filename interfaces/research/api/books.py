@@ -38,6 +38,7 @@ from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from substrate.books.model import (
     BookAsset,
@@ -61,6 +62,7 @@ from .settings_models_admin import UserModelChoice
 
 logger = logging.getLogger("antiek.interfaces.books")
 _BOOK_JUDGMENT_LOCK = threading.Lock()
+_BOOK_READ_LOCK_WAIT_S = 2.0
 
 # §9.0 owner-read policy tags. The owner's OWN-corpus read path (talk-to-book +
 # corpus search) passes the PRIVILEGED ``operator_only`` tag so the retrieval
@@ -175,7 +177,10 @@ def _reader_owner_id(request: Request) -> str:
     raise HTTPException(status_code=401, detail="authenticated_owner_required")
 
 
-def _private_owner_id(request: Request) -> str | None:
+def _private_owner_id(
+    request: Request, *, refresh: bool = False,
+    expected_owner_user_id: str | None = None,
+) -> str | None:
     """Return owner authority only from the subject-backed auth middleware."""
     state = getattr(request, "state", None)
     user_id = getattr(state, "user_id", None)
@@ -196,13 +201,43 @@ def _private_owner_id(request: Request) -> str | None:
         or user_id != owner_id
     ):
         return None
-    return owner_id
+    if not refresh:
+        return owner_id
+    from runtime.db_lock import ReadLockTimeout
+    from substrate.auth.magic_link import InvalidSessionCookie
+    from substrate.multi_user.auth import (
+        AuthError, AuthSchemaMigrationError, AuthSubjectConflict,
+        resolve_authenticated_principal,
+    )
+
+    try:
+        fresh = resolve_authenticated_principal(request)
+    except Exception as exc:
+        if isinstance(exc, (AuthSchemaMigrationError, AuthSubjectConflict)):
+            raise HTTPException(503, detail="canonical_authority_unavailable") from exc
+        cause = exc.__cause__
+        if (type(exc) is AuthError and cause is None) or (
+            type(exc) is AuthError and isinstance(cause, InvalidSessionCookie)
+        ):
+            raise HTTPException(401, detail="authenticated_principal_required") from exc
+        retryable = isinstance(exc, ReadLockTimeout) or (
+            type(exc) is AuthError and isinstance(cause, ReadLockTimeout)
+        )
+        raise HTTPException(
+            503, detail="canonical_authority_unavailable",
+            headers={"Retry-After": "2"} if retryable else None,
+        ) from exc
+    expected_owner = owner_id if expected_owner_user_id is None else expected_owner_user_id
+    if fresh.owner_user_id != expected_owner:
+        raise HTTPException(409, detail="account_context_changed")
+    return fresh.owner_user_id
 
 
 def _admit_private_document(
     con: Any, document_id: str, request: Request, *, owner_route: bool = True,
     row: tuple[Any, ...] | None = None,
     missing_ok: bool = False,
+    fresh_owner_user_id: str | None = None,
 ) -> str | None:
     """Hide a private document before detail, body, anchor, or ask work."""
     if row is None:
@@ -222,7 +257,7 @@ def _admit_private_document(
         and row[2] == USER_AUTHORED_PRIVATE_CONTENT_CLASS
     )
     if private_authored:
-        owner_id = _private_owner_id(request)
+        owner_id = fresh_owner_user_id if fresh_owner_user_id is not None else _private_owner_id(request)
         stored_owner = row[1]
         if (
             not owner_route or owner_id is None
@@ -1426,24 +1461,64 @@ def register_book_routes(app: FastAPI) -> None:
         request: Request,
         status: Literal["servable", "gated", "all"] = "servable",
     ) -> BookListResponse:
-        from runtime.db_lock import ReadLockTimeout, connect_read
-        from substrate.graph import default_db_path
+        expected_owner = _private_owner_id(request)
 
-        try:
-            with connect_read(default_db_path()) as con:
-                assets = (
-                    [] if catalog_is_uninitialized(con) else
-                    list_discoverable_book_assets(
-                        con, owner_user_id=_private_owner_id(request), status=status,
-                    )
+        def _read() -> BookListResponse:
+            from runtime.db_lock import ReadLockTimeout, connect_read
+            from substrate.graph import default_db_path
+
+            try:
+                con = connect_read(
+                    default_db_path(), external_lock_timeout_s=_BOOK_READ_LOCK_WAIT_S,
                 )
-            summaries = [BookSummary.from_asset(a) for a in assets]
-            return BookListResponse(books=summaries, count=len(summaries))
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503, detail="read_unavailable",
-                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
-            ) from exc
+                try:
+                    con.execute("BEGIN TRANSACTION")
+                    owner_id = _private_owner_id(
+                        request, refresh=True, expected_owner_user_id=expected_owner,
+                    )
+                    assets = (
+                        [] if catalog_is_uninitialized(con) else
+                        list_discoverable_book_assets(
+                            con, owner_user_id=owner_id, status=status,
+                        )
+                    )
+                    summaries = [BookSummary.from_asset(a) for a in assets]
+                    response = BookListResponse(books=summaries, count=len(summaries))
+                    con.execute("COMMIT")
+                except BaseException:
+                    con.execute("ROLLBACK")
+                    raise
+                finally:
+                    con.close()
+                _private_owner_id(
+                    request, refresh=True, expected_owner_user_id=expected_owner,
+                )
+                return response
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503, detail="read_unavailable",
+                    headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
+                ) from exc
+
+        work = asyncio.create_task(run_in_threadpool(_read))
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            # Keep the worker owned until its transaction and connection close.
+            # Cancellation discards its result; it cannot terminate native work.
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not work.cancelled():
+                with suppress(Exception):
+                    work.result()
+            raise
 
     # Registered BEFORE /books/{document_id} so "curate" is not matched as
     # a document id.
@@ -2239,25 +2314,61 @@ def register_book_routes(app: FastAPI) -> None:
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
     async def get_book(document_id: str, request: Request) -> BookDetail:
-        from runtime.db_lock import connect_read
+        expected_owner = _private_owner_id(request)
 
-        db = _resolve_db_path()
-        con = connect_read(db)
+        def _read() -> BookDetail:
+            from runtime.db_lock import connect_read
+            from substrate.graph import default_db_path
+
+            con = connect_read(
+                default_db_path(), external_lock_timeout_s=_BOOK_READ_LOCK_WAIT_S,
+            )
+            try:
+                con.execute("BEGIN TRANSACTION")
+                owner_id = _private_owner_id(
+                    request, refresh=True, expected_owner_user_id=expected_owner,
+                )
+                document_row = con.execute(
+                    "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
+                    "COALESCE(b.taken_down,FALSE) FROM documents d "
+                    "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+                    "WHERE d.document_id = ?",
+                    [document_id],
+                ).fetchone()
+                _admit_private_document(
+                    con, document_id, request, row=document_row,
+                    fresh_owner_user_id=owner_id,
+                )
+                asset = get_book_asset(con, document_id)
+                if asset is None:
+                    raise HTTPException(status_code=404, detail="book_not_found")
+                response = BookDetail.from_asset(asset)
+                con.execute("COMMIT")
+            except BaseException:
+                con.execute("ROLLBACK")
+                raise
+            finally:
+                con.close()
+            _private_owner_id(
+                request, refresh=True, expected_owner_user_id=expected_owner,
+            )
+            return response
+
+        work = asyncio.create_task(run_in_threadpool(_read))
         try:
-            document_row = con.execute(
-                "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
-                "COALESCE(b.taken_down,FALSE) FROM documents d "
-                "LEFT JOIN book_assets b ON d.document_id=b.document_id "
-                "WHERE d.document_id = ?",
-                [document_id],
-            ).fetchone()
-            _admit_private_document(con, document_id, request, row=document_row)
-            asset = get_book_asset(con, document_id)
-        finally:
-            con.close()
-        if asset is None:
-            raise HTTPException(status_code=404, detail="book_not_found")
-        return BookDetail.from_asset(asset)
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not work.cancelled():
+                with suppress(Exception):
+                    work.result()
+            raise
 
     @app.get(
         "/books/{document_id}/full-text",
@@ -2266,17 +2377,31 @@ def register_book_routes(app: FastAPI) -> None:
     )
     def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
 
-        db = _resolve_db_path()
-        con = connect_read(db)
+        expected_owner = _private_owner_id(request)
+        db = default_db_path()
+        con = connect_read(db, external_lock_timeout_s=_BOOK_READ_LOCK_WAIT_S)
         try:
-            _admit_private_document(con, document_id, request, owner_route=False)
+            con.execute("BEGIN TRANSACTION")
+            owner_id = _private_owner_id(
+                request, refresh=True, expected_owner_user_id=expected_owner,
+            )
+            _admit_private_document(
+                con, document_id, request, owner_route=False,
+                fresh_owner_user_id=owner_id,
+            )
             result = serve_full_text_guarded(con, document_id)
             result = _prefer_reader_html_body(con, document_id, result, owner=False)
+            if not result.found:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            response = _full_text_response(result)
+            con.execute("COMMIT")
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
-        if not result.found:
-            raise HTTPException(status_code=404, detail="book_not_found")
         # SPR-09 M4 — record the SERVE leg into the arXiv fetch→serve→accrue
         # compliance trace. Hooked at the ENDPOINT (not inside serve_guard.py,
         # which a parallel builder owns), AFTER the guard returns. Only an arXiv
@@ -2286,7 +2411,10 @@ def register_book_routes(app: FastAPI) -> None:
         # Defensively isolated: a failure in the audit layer must never break the
         # serve (wrap + log), and the audit write takes its own write lock.
         _record_arxiv_serve_audit(db, document_id, result)
-        return _full_text_response(result)
+        _private_owner_id(
+            request, refresh=True, expected_owner_user_id=expected_owner,
+        )
+        return response
 
     @app.get(
         "/books/{document_id}/owner-full-text",
@@ -2304,12 +2432,19 @@ def register_book_routes(app: FastAPI) -> None:
         ad-eligible.
         """
         from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
 
-        db = _resolve_db_path()
-        con = connect_read(db)
+        expected_owner = _private_owner_id(request)
+        db = default_db_path()
+        con = connect_read(db, external_lock_timeout_s=_BOOK_READ_LOCK_WAIT_S)
         try:
             con.execute("BEGIN TRANSACTION")
-            admitted_owner = _admit_private_document(con, document_id, request)
+            owner_id = _private_owner_id(
+                request, refresh=True, expected_owner_user_id=expected_owner,
+            )
+            admitted_owner = _admit_private_document(
+                con, document_id, request, fresh_owner_user_id=owner_id,
+            )
             if admitted_owner is None and _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
                 raise HTTPException(status_code=403, detail="owner_read_required")
             result = serve_full_text_guarded(
@@ -2322,12 +2457,14 @@ def register_book_routes(app: FastAPI) -> None:
             response = _full_text_response(result)
             con.execute("COMMIT")
         except BaseException:
-            with suppress(Exception):
-                con.execute("ROLLBACK")
+            con.execute("ROLLBACK")
             raise
         finally:
             con.close()
         _record_arxiv_serve_audit(db, document_id, result)
+        _private_owner_id(
+            request, refresh=True, expected_owner_user_id=expected_owner,
+        )
         return response
 
     @app.post(

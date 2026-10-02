@@ -290,10 +290,15 @@ def test_owner_anchor_map_failure_rolls_back_and_closes(monkeypatch, tmp_path):
         def __getattr__(self, name):
             return getattr(self.con, name)
 
-    monkeypatch.setattr(
-        runtime.db_lock, "connect_read",
-        lambda path: Tracked(original_connect(path)),
-    )
+    def tracked_read(db_path, *, external_lock_timeout_s=0.0):
+        assert external_lock_timeout_s == (
+            2.0 if path == "/books/private-a/owner-full-text" else 0.0
+        )
+        return Tracked(original_connect(
+            db_path, external_lock_timeout_s=external_lock_timeout_s,
+        ))
+
+    monkeypatch.setattr(runtime.db_lock, "connect_read", tracked_read)
 
     def fail(*_args, **_kwargs):
         raise RuntimeError("synthetic map failure")
