@@ -57,3 +57,34 @@ RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
+
+# ── cgroup resource isolation ─────────────────────────────────────────────
+# This unit was the ONE long-running production worker left uncapped:
+# measured 2026-10-01, `systemctl show -p MemoryMax -p CPUQuotaPerSecUSec`
+# returned `infinity` for both, while antiek.service is capped at 12G/300%
+# and antiek-continuous-research.service at 6G/200% (the two templates
+# beside this one). An uncapped nightly job that walks a 4.5 GB metadata
+# file shares a 15 GB / 4 vCPU box with the API, and the API is the DuckDB
+# writer: a runaway here does not fail this job, it starves or OOMs the
+# service that answers requests.
+#
+# Values are derived from the measurement, not chosen for looks:
+#   memory.peak for this cgroup after a full bulk pass was 1,107,795,968 B
+#   (~1.03 GiB) -- streaming parser, 200-record persist batches. MemoryMax=3G
+#   is ~3x that peak, so a legitimate pass cannot be OOM-killed mid-crawl
+#   (a mid-crawl kill loses the run but not the cursor), while a leak or a
+#   pathological batch is bounded well below the API's 12G.
+#   CPUQuota=150% covers the observed single-core parse plus the DuckDB write
+#   bursts, and leaves the other two cores to the API.
+#
+# These caps do NOT sum to the host's RAM on purpose: 12G + 6G + 3G = 21G on
+# a 15 GB box. They are ceilings enforced only under pressure, not
+# reservations, and the three units do not peak together -- the timer runs at
+# 04:20 UTC, the backup at 03:00, and the API's own measured peak is 791 MB.
+CPUQuota=150%
+CPUWeight=50
+MemoryMax=3G
+MemoryHigh=2.5G
+MemorySwapMax=0
+TasksMax=256
+LimitNOFILE=65536

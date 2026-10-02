@@ -151,10 +151,18 @@ describe("StyleWheel", () => {
     expect(screen.queryByLabelText("Research feedback docket")).toBeNull();
   });
 
-  it("shows an honest unavailable state", async () => {
-    apiFetchMock.mockRejectedValueOnce(new Error("backend offline"));
+  it("shows an honest unavailable state in plain words, never the raw request failure", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/styles") {
+        return Promise.resolve(json({ detail: "GET /books failed: HTTP 503" }, 503));
+      }
+      return Promise.resolve(html());
+    });
     render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
-    expect((await screen.findByRole("alert")).textContent).toContain("Styles unavailable · backend offline");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Styles unavailable");
+    expect(alert.textContent).toContain("Couldn't load the styles.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books/);
   });
 
   it("shows an honest empty wheel when no styles load", async () => {
@@ -270,7 +278,10 @@ describe("StyleWheel", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Field notes/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Delete fork Field notes/ }));
     fireEvent.click(screen.getByRole("button", { name: /Confirm delete Field notes/ }));
-    expect((await screen.findByRole("alert")).textContent).toContain("cannot remove builtin");
+    const deleteAlert = await screen.findByRole("alert");
+    // A 409 is described, not quoted: the server's own words never render.
+    expect(deleteAlert.textContent).toContain("Couldn't delete the style.");
+    expect(deleteAlert.textContent).not.toMatch(/cannot remove builtin|HTTP|409/);
     expect(screen.getByRole("option", { name: /Field notes/ })).toBeTruthy();
   });
 

@@ -1,0 +1,5 @@
+
+> antiek-reading@0.1.0 lint:type
+> tsx scripts/lint_type_scale.ts
+
+type-scale lint OK — no new off-scale font-size (0 grandfathered; baseline has 0).
