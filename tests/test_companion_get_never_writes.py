@@ -56,6 +56,7 @@ BUILT_KEYS = {
     "claims",
     "anchors",
     "processes",
+    "bites",
     "state",
 }
 
@@ -178,6 +179,21 @@ def _identity_app() -> FastAPI:
 
 def _client() -> TestClient:
     return TestClient(_identity_app(), raise_server_exceptions=False)
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Keep this suite hermetic on the operator's Mac, where ambient
+    operator-auth environment variables would otherwise turn the mounted-app
+    proof into an authentication test."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 def _as(owner: str) -> dict[str, str]:

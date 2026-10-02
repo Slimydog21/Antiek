@@ -91,6 +91,18 @@ class ProcessRead:
 
 
 @dataclass(frozen=True, slots=True)
+class BiteRead:
+    """One derived bite's calm ledger entry (unit 8, SPR-03): class,
+    byte-verification, and whether it traces — never the bite's text here
+    (the text lives in the derived document's own body)."""
+    ordinal: int
+    contribution_class: str
+    byte_verified: bool
+    traced: bool  # has source spans
+    evidence_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class DocumentView:
     document_id: str
     exists: bool
@@ -99,6 +111,8 @@ class DocumentView:
     claims: tuple[ClaimRead, ...]
     anchors: tuple[AnchorRead, ...]
     processes: tuple[ProcessRead, ...]
+    """The unit-8 bite ledger — present only for a DERIVED document."""
+    bites: tuple[BiteRead, ...]
     rebuilt_at: str
 
 
@@ -273,53 +287,6 @@ def project_document(
         if anchor.investigation_id:
             investigation_ids.add(anchor.investigation_id)
 
-    # ── Evidence: the derived bites' provenance refs ────────────────────
-    # The reformat pipeline mints BiteRow accounts (unit 6 stable-id
-    # discipline). Each bite projects ONE evidence row carrying its
-    # content-derived id — the ref IS the identity, never the text.
-    try:
-        from substrate.provenance.store import ProvenanceStore, provenance_tables_exist
-
-        if provenance_tables_exist(con):
-            gen_row = con.execute(
-                "SELECT generation_id FROM generation_records "
-                "WHERE derived_document_id = ? LIMIT 1",
-                [document_id],
-            ).fetchone()
-            if gen_row is not None:
-                gen_id = str(gen_row[0])
-                for bite in ProvenanceStore().bites_for_generation(con, gen_id):
-                    refs = [
-                        f"bite:{bite.bite_id}",
-                        f"generation:{gen_id}",
-                        f"class:{bite.contribution_class}",
-                        f"doc:{document_id}",
-                    ]
-                    if bite.investigation_id:
-                        refs.append(f"investigation:{bite.investigation_id}")
-                    if bite.source_refs:
-                        refs.extend(bite.source_refs)
-                    eid = make_evidence_id(
-                        "evidence",
-                        f"bite:{bite.bite_id}",
-                        refs,
-                    )
-                    rows.append(
-                        EvidenceRow(
-                            evidence_id=eid,
-                            owner_user_id=owner_user_id,
-                            scope="document",
-                            scope_id=document_id,
-                            kind="evidence",
-                            refs=tuple(refs),
-                            tombstone=False,
-                            rebuilt_at=_EPOCH,
-                        )
-                    )
-                    stamps.append(_EPOCH)
-    except Exception:
-        pass  # an absent provenance store degrades honestly
-
     # ── Process: the linked threads + the reading thread ───────────────
     thread_ids = sorted(investigation_ids | {f"read-{document_id}"})
     for iid in thread_ids:
@@ -428,6 +395,70 @@ def project_document(
         )
         stamps.append(_iso(reading.updated_at))
 
+    # ── Claims (unit 8): a DERIVED document's bites project with their
+    # provenance refs — CONSUMED through the provenance store, never
+    # duplicated. Refs namespace the generation, the class, the
+    # investigation, and the core spans. ──
+    from substrate.provenance.schema import provenance_tables_exist
+    from substrate.provenance.store import ProvenanceStore
+
+    bites: list[BiteRead] = []
+    if provenance_tables_exist(con):
+        gen_row = con.execute(
+            "SELECT generation_id, source_document_id FROM generation_records "
+            "WHERE derived_document_id = ? LIMIT 1",
+            [document_id],
+        ).fetchone()
+        if gen_row is not None:
+            store = ProvenanceStore()
+            record = store.get_generation(con, str(gen_row[0]))
+            if record is None:  # the FK guarantees it — refuse loudly if not
+                raise RuntimeError(
+                    f"generation record {gen_row[0]} vanished between read "
+                    "and projection"
+                )
+            for bite in store.bites_for_generation(con, record.generation_id):
+                refs = [
+                    f"bite:{bite.bite_id}",
+                    f"generation:{record.generation_id}",
+                    f"doc:{document_id}",
+                    f"class:{bite.contribution_class}",
+                ]
+                if bite.investigation_id:
+                    refs.append(f"investigation:{bite.investigation_id}")
+                # Main's provenance store already persists canonical
+                # `corespan:<source-document>:<node>:<start>:<end>` strings.
+                refs.extend(bite.source_refs or ())
+                eid = make_evidence_id(
+                    "claim", f"bite:{bite.bite_id}", refs
+                )
+                rows.append(
+                    EvidenceRow(
+                        evidence_id=eid,
+                        owner_user_id=owner_user_id,
+                        scope="document",
+                        scope_id=document_id,
+                        kind="claim",
+                        refs=tuple(sorted(refs)),
+                        tombstone=False,
+                        rebuilt_at=_iso(record.created_at) or _EPOCH,
+                    )
+                )
+                bites.append(
+                    BiteRead(
+                        ordinal=bite.ordinal,
+                        contribution_class=bite.contribution_class,
+                        byte_verified=(
+                            bite.contribution_class == "author_verbatim"
+                            and bite.source_span_sha256 is not None
+                            and bite.derived_text_sha256 == bite.source_span_sha256
+                        ),
+                        traced=bite.source_refs is not None,
+                        evidence_id=eid,
+                    )
+                )
+            stamps.append(_iso(record.created_at))
+
     # The snapshot stamp: SOURCE-DERIVED (the max source timestamp), never a
     # wall clock — unchanged sources rebuild byte-identically. Each ROW
     # carries its own sources' stamp, so one source event changes exactly
@@ -443,6 +474,7 @@ def project_document(
         claims=tuple(claims),
         anchors=tuple(anchors),
         processes=tuple(processes),
+        bites=tuple(bites),
         rebuilt_at=stamp,
     )
     return rows, view
@@ -584,6 +616,16 @@ def document_companion_payload(view: DocumentView) -> dict[str, Any]:
                 "status_line": p.status_line,
             }
             for p in view.processes
+        ],
+        "bites": [
+            {
+                "evidence_id": b.evidence_id,
+                "ordinal": b.ordinal,
+                "contribution_class": b.contribution_class,
+                "byte_verified": b.byte_verified,
+                "traced": b.traced,
+            }
+            for b in view.bites
         ],
     }
 

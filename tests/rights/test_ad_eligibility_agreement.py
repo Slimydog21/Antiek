@@ -107,6 +107,13 @@ SHAPES: dict[SourceKind, list[Shape]] = {
         Shape("web_default_gated", None, None, "Example Web", False),
         Shape("declared_open_page", "source_declared_open", None, "Example Web", True),
     ],
+    # A derivation inherits its core document's class and holder (THREAD-
+    # CONTRACT §1.11a), so it is ad/escrow-eligible exactly when they are.
+    SourceKind.DERIVED: [
+        Shape("derived_public_domain", "public_domain", None, None, True),
+        Shape("derived_personal_reading", "personal_reading", None, None, False),
+        Shape("derived_gated_holder", None, None, "Derivation Holder", False),
+    ],
 }
 
 

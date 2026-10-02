@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from runtime.db_lock import connect_write
+from substrate.event_log import log_event
 from substrate.graph.ops import insert_document
 from substrate.graph.schema import init_database_at_path
 from tests.test_reformat_pipeline import BODY, CHUNKS
@@ -32,6 +33,12 @@ def api_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(arts))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     init_database_at_path(str(db))
+    log_event(
+        "inv-dil-1",
+        "investigation.start_requested",
+        payload={"question": "the diligence behind the research-added bite"},
+        events_dir=str(events),
+    )
     return {"db": str(db), "events": str(events), "arts": str(arts)}
 
 

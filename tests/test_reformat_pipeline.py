@@ -66,6 +66,17 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     init_database_at_path(str(db))
+
+    # A research_supplemented bite must cite a real investigation (LB-4a):
+    # the fixture generator's citation is a real start event here.
+    from substrate.event_log import log_event
+
+    log_event(
+        "inv-diligence-1",
+        "investigation.start_requested",
+        payload={"question": "the diligence behind the research-added bite"},
+        events_dir=str(events),
+    )
     return {"db": str(db), "events": str(events)}
 
 
@@ -201,7 +212,7 @@ def test_reformat_classes_and_traces_every_bite_source_byte_identical(env) -> No
     finally:
         con.close()
     assert derived is not None
-    assert derived[0] == "public_domain"  # the parent's posture, inherited
+    assert derived[0] == "public_domain"  # the parent's class, inherited (§1.11a)
     metadata = json.loads(str(derived[1]))
     assert metadata["derived_from_document_id"] == "doc-1"
     assert metadata["provisional"] is True  # born provisional, never blessed
