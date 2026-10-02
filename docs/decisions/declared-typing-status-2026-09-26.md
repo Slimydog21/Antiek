@@ -93,6 +93,19 @@ violations in files outside that walk — `violating - all_py` — mostly root-l
 scripts). The earlier "745" figure matches none of these and has no reproduction
 command behind it.
 
+**Update 2026-10-02 — use the tool, not the snippet.** The walk above collects its own
+root set, which is not the target list the gate consumes, so the two drift apart with
+nothing to notice. Re-running the snippet now yields 1254 files where the gate-derived
+census yields 1056:
+
+    python -m tools.typing_census      1056 files in scope (764 empty, 292 non-empty)
+    the snippet in this document       1254 (970/284)
+
+`tools/typing_census.py` imports `DECLARED_MYPY_TARGETS` from `tools/lints/declared_bar.py`
+— the same definition the gate uses — so its scope cannot separate from the gate's again.
+The figures in this section are retained unchanged as the record of 2026-09-26; they were
+correct for the walk that produced them.
+
 Note the honest caveat: "zero baselined violations" is **not** the same as
 "mypy --strict clean with an empty baseline". It means those files currently
 report nothing the baseline needs to suppress. They could still fail a stricter
