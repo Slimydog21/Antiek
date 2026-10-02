@@ -1,0 +1,11 @@
+Command: NODE_OPTIONS=--no-experimental-webstorage npm exec vitest run src/components/reader/ReadingTypography.test.tsx src/components/ad/frameTelemetryClient.retry.test.ts
+Working directory: apps/reading
+Captured completion output follows; initial RUN banner was returned separately by the execution tool.
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  20:01:14
+   Duration  1.20s (transform 226ms, setup 0ms, import 369ms, tests 188ms, environment 1.33s)
+
+
+Exit code: 0

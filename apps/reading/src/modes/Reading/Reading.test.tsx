@@ -682,6 +682,7 @@ describe("BookReader", () => {
     });
     expect(frame.getAttribute("data-canonical-url")).toBe("https://arxiv.org/abs/2402.00002");
     expect(within(frame).getByText(/Read on arXiv/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reading type" })).toBeNull();
     // NO ad rails — body-serving + ads are {T1}-only.
     expect(adRails(container).length).toBe(0);
     // No hosted body reached the DOM (the gate served none, and we host none).

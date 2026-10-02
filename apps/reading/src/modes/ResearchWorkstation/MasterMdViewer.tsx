@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { readingTypographyStyle, useReadingTypography } from "../../lib/readingTypography";
+import ReadingTypography from "../../components/reader/ReadingTypography";
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
@@ -195,6 +197,7 @@ export default function MasterMdViewer({
 }: {
   synthesis: ParsedSynthesis;
 }) {
+  const typography = useReadingTypography();
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
   // HPRJ SPR-05 M5 — the artifact-export affordance lives in the shared
@@ -230,10 +233,10 @@ export default function MasterMdViewer({
   // scroll listener — re-measuring on scroll would be both MISDIRECTED (this
   // surface scrolls inside an inner `overflow-y-auto` ancestor in index.tsx, so a
   // `window` scroll listener never even fires on real reading scroll) AND
-  // UNNECESSARY (the map cannot change). The only things that move geometry are
-  // LAYOUT-SIZE changes — viewport resize, font load, async content reflow — so the
-  // recompute trigger is a ResizeObserver on the article (it fires on exactly those,
-  // uniformly, untied to `window`), debounced for the resize/reflow BURST case.
+  // UNNECESSARY (the map cannot change). ResizeObserver covers changes to the
+  // article's dimensions. Typography preferences and completed font loads also
+  // trigger measurement because glyphs can move inside an unchanged root box.
+  // Resize and font-loading bursts share the trailing-edge debounce.
   //
   // We mount the UNSCOPED buildLayoutMap (NOT the viewport-scoped variant): on this
   // surface scoping would prune NOTHING — the transform pipeline is empty (SPR-05's
@@ -270,26 +273,32 @@ export default function MasterMdViewer({
     // timer coalesces a resize/reflow BURST into one rebuild after it settles. The
     // observer is disconnected in cleanup so it does not outlive the mount.
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver(() => {
+    const schedule = () => {
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(recompute, GEOMETRY_RECOMPUTE_DEBOUNCE_MS);
-    });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(root);
+    // Glyph positions can move while the root box stays the same size.
+    document.fonts?.addEventListener("loadingdone", schedule);
     return () => {
       if (timer !== null) clearTimeout(timer);
       observer.disconnect();
+      document.fonts?.removeEventListener("loadingdone", schedule);
     };
     // Re-run when the rendered synthesis changes (new claims ⇒ new anchors to
     // measure). The streamed-mutation case re-renders on its own and re-runs this.
-  }, [synthesis]);
+  }, [synthesis, typography]);
 
   return (
     <div className="reading-page">
       <article
         ref={articleRef}
-        className="max-w-3xl mx-auto px-6 py-10 font-serif">
+        className="reading-prose mx-auto px-4 sm:px-6 py-10"
+        style={readingTypographyStyle(typography)}>
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
+          <div className="flex justify-end mb-3"><ReadingTypography /></div>
           {synthesis.question && (
             <h1 className="text-2xl leading-tight mb-3">
               {synthesis.question}
@@ -358,7 +367,7 @@ export default function MasterMdViewer({
             <h2 className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-3">
               Thesis
             </h2>
-            <p className="text-base leading-relaxed">
+            <p>
               {synthesis.thesisSummary}
             </p>
           </section>
@@ -490,7 +499,7 @@ export function ClaimBlock({
     ? REVIEW_DUE_CLASS
     : undefined;
   return (
-    <div className="text-base leading-relaxed">
+    <div>
       <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
         {claim.index}.
       </span>
@@ -502,7 +511,7 @@ export function ClaimBlock({
         {claim.claim}
       </span>
       {claim.rationale && (
-        <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
+        <p className="text-ink-soft dark:text-starlight mt-2 pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
           {claim.rationale}
         </p>
       )}
@@ -836,9 +845,9 @@ function ConfidenceChip({
 }) {
   const colorClass =
     confidence === "high"
-      ? "bg-success/15 text-success"
+      ? "bg-success/15 text-1"
       : confidence === "moderate"
-        ? "bg-sun/20 text-sun-deep dark:text-sun"
+        ? "bg-sun/20 text-1"
         : confidence === "low"
           ? "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
@@ -855,11 +864,11 @@ function ConfidenceChip({
 function RecommendationBadge({ rec }: { rec: Recommendation }) {
   const color =
     rec === "proceed"
-      ? "bg-success/15 text-success"
+      ? "bg-success/15 text-1"
       : rec === "pass"
-        ? "bg-danger/10 text-danger"
+        ? "bg-danger/10 text-1"
         : rec === "conditional"
-          ? "bg-sun/20 text-sun-deep dark:text-sun"
+          ? "bg-sun/20 text-1"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
@@ -949,7 +958,7 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
       <summary className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight cursor-pointer hover:text-ink dark:text-bright transition-colors">
         Appendix — falsification, risks, constraints
       </summary>
-      <div className="mt-4 space-y-6 text-sm">
+      <div className="mt-4 space-y-6">
         {synthesis.falsificationConditions.length > 0 && (
           <section>
             <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
