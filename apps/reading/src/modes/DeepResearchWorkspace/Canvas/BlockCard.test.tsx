@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+import userEvent from "@testing-library/user-event";
 import BlockCard from "./BlockCard";
 import type { DistilledNode } from "../../../lib/api";
 
@@ -109,5 +110,22 @@ describe("BlockCard — escalation marker", () => {
   it("badges an escalated question 'needs more research'", () => {
     render(<BlockCard node={question({ escalated: true })} />);
     expect(screen.getByText("needs more research")).toBeTruthy();
+  });
+});
+
+
+describe("optional Canvas title control", () => {
+  it("keeps standalone header markup unfocusable and without movement hints", () => {
+    render(<BlockCard node={insight()} />); const header = screen.getByText("insight").parentElement;
+    expect(header?.getAttribute("tabindex")).toBeNull(); expect(header?.getAttribute("role")).toBeNull();
+    expect(screen.queryByText("Arrow keys move 24 pixels.")).toBeNull();
+  });
+  it("makes the actual kind header named/reachable and forwards the actual event to Canvas", async () => {
+    const onTitleKeyDown = vi.fn(); render(<BlockCard node={insight()} onTitleKeyDown={onTitleKeyDown} onOpenDetail={vi.fn()} />);
+    const title = screen.getByRole("group", { name: "Move insight block" }); await userEvent.setup().tab(); expect(document.activeElement).toBe(title);
+    fireEvent.keyDown(title, { key: "ArrowRight" }); expect(onTitleKeyDown).toHaveBeenCalledTimes(1); expect(onTitleKeyDown.mock.calls[0][0].target).toBe(title);
+    expect(title.getAttribute("aria-keyshortcuts")).toBe("ArrowLeft ArrowRight ArrowUp ArrowDown");
+    expect(screen.getByText("Arrow keys move 24 pixels.")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Open block detail" }), { key: "ArrowRight" }); expect(onTitleKeyDown).toHaveBeenCalledTimes(1);
   });
 });

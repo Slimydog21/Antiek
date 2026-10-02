@@ -17,9 +17,10 @@
  * not reach for Daytona.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
+import { escOverlayOpen } from "../../workspace/escapeOverlay";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
@@ -380,6 +381,26 @@ function ComposeBar({
   );
 }
 
+type CanvasResource = { investigationId: string };
+type CanvasDetail = {
+  resource: CanvasResource;
+  node: DistilledNode;
+  key: number;
+  opener: HTMLElement | null;
+  focusOnOpen: boolean;
+};
+type CanvasView = { resource: CanvasResource; detail: CanvasDetail | null };
+
+function canFocusCanvasControl(target: HTMLElement, host: HTMLElement | null): boolean {
+  if (!target.isConnected || target.closest('[hidden], [aria-hidden="true"], [inert], [disabled]')) return false;
+  const details = target.closest("details");
+  if (details && !details.open) return false;
+  const region = host?.closest('[role="region"]') ?? null;
+  const title = region?.querySelector('[data-panel-title]');
+  const persistentPanel = title?.closest('[role="region"]') === region ? region : null;
+  return !escOverlayOpen(document, persistentPanel);
+}
+
 export function Monitor({ sessionId, sessionGeneration, busy }: {
   sessionId: string;
   sessionGeneration: number;
@@ -399,13 +420,67 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // block-canvas view of that research's insight/question graph. Null = the
   // default live-card monitor (non-breaking: the existing shell is unchanged
   // until the operator opts into the canvas).
-  const [canvasFor, setCanvasFor] = useState<string | null>(null);
-  // SPR-04: the block whose detail (the SECOND FloatMenu host) is open, or null.
-  // Clicking a BlockCard on the canvas opens its detail as an overlay panel —
-  // a highlight inside it mounts the SAME shared FloatMenu the synthesis host
-  // uses. Non-breaking: the canvas keeps rendering underneath; the detail is an
-  // overlay, dismissed back to the canvas.
-  const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
+  const [canvas, setCanvas] = useState<CanvasView | null>(null);
+  const canvasFor = canvas?.resource.investigationId ?? null;
+  const activeDetail = canvas?.detail?.resource === canvas?.resource ? canvas?.detail ?? null : null;
+  const liveCanvas = useRef<{ view: CanvasView | null } | null>({ view: null });
+  const detailSequence = useRef(0);
+  const canvasHostRef = useRef<HTMLDivElement>(null);
+  const detailHostRef = useRef<HTMLDivElement>(null);
+  const returnDetail = useRef<CanvasDetail | null>(null);
+
+  useLayoutEffect(() => {
+    liveCanvas.current = { view: canvas };
+    return () => { liveCanvas.current = null; };
+  }, [canvas]);
+  useLayoutEffect(() => {
+    if (activeDetail) {
+      const close = detailHostRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close block detail"]');
+      const focused = document.activeElement;
+      const ownsFocus = focused === document.body || focused === activeDetail.opener || (focused && detailHostRef.current?.contains(focused));
+      if (activeDetail.focusOnOpen && ownsFocus && close && canFocusCanvasControl(close, canvasHostRef.current)) close.focus();
+      return;
+    }
+    const returning = returnDetail.current;
+    returnDetail.current = null;
+    if (returning?.resource !== canvas?.resource || liveCanvas.current?.view?.detail || !returning?.opener) return;
+    if (document.activeElement !== document.body) return;
+    if (canFocusCanvasControl(returning.opener, canvasHostRef.current)) returning.opener.focus();
+  }, [activeDetail, canvas?.resource]);
+
+  const selectCanvas = (investigationId: string | null) => {
+    if (!liveCanvas.current || liveCanvas.current.view !== canvas) return;
+    const next = investigationId === null ? null : { resource: { investigationId }, detail: null };
+    returnDetail.current = null;
+    liveCanvas.current.view = next;
+    setCanvas(next);
+  };
+  const openDetail = (node: DistilledNode) => {
+    const live = liveCanvas.current;
+    const current = live?.view;
+    if (!live || !canvas || current?.resource !== canvas.resource || current.detail) return;
+    const focused = document.activeElement;
+    const opener = focused instanceof HTMLElement && canvasHostRef.current?.contains(focused) ? focused : null;
+    const detail: CanvasDetail = {
+      resource: canvas.resource, node, key: ++detailSequence.current, opener,
+      focusOnOpen: focused === document.body || opener !== null,
+    };
+    const next = { resource: canvas.resource, detail };
+    returnDetail.current = null;
+    live.view = next;
+    setCanvas(next);
+  };
+  const closeDetail = () => {
+    const live = liveCanvas.current;
+    const current = live?.view;
+    if (!live || !activeDetail || current?.resource !== activeDetail.resource || current.detail !== activeDetail) return;
+    const focused = document.activeElement;
+    const ownsFocus = focused === document.body || (focused instanceof HTMLElement && detailHostRef.current?.contains(focused));
+    returnDetail.current = ownsFocus && focused instanceof HTMLElement && canFocusCanvasControl(focused, canvasHostRef.current) ? activeDetail : null;
+    const next = { resource: current.resource, detail: null };
+    live.view = next;
+    setCanvas(next);
+  };
   const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const openEvidenceSource = useCallback((node: DistilledNode, anchor: SourceAnchorRect) => {
     const documentId = node.source_document_id;
@@ -481,29 +556,34 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     return (
       <div className="flex h-full flex-col gap-2">
         <div className="flex items-center gap-3">
-          <LemonButton variant="tertiary" size="sm" onClick={() => setCanvasFor(null)}>
+          <LemonButton variant="tertiary" size="sm" onClick={() => selectCanvas(null)}>
             ← back to monitor
           </LemonButton>
           <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
             organism canvas
           </span>
         </div>
-        <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
+        <div ref={canvasHostRef} className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
           <Canvas
             investigationId={canvasFor}
-            onOpenDetail={setOpenNode}
-            onCiteSource={openEvidenceSource}
+            interactionEnabled={activeDetail === null}
+            onOpenDetail={openDetail}
+            onCiteSource={(node, anchor) => {
+              const current = liveCanvas.current?.view;
+              if (canvas && current?.resource === canvas.resource && !current.detail) openEvidenceSource(node, anchor);
+            }}
           />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses
               back to it. A text selection inside it mounts the SAME FloatMenu. */}
-          {openNode && (
-            <div className="absolute inset-0 z-10 overflow-auto bg-ice-0 dark:bg-charcoal-1">
+          {activeDetail && (
+            <div ref={detailHostRef} className="absolute inset-0 z-10 overflow-auto bg-ice-0 dark:bg-charcoal-1">
               <BlockDetail
-                node={openNode}
-                investigationId={canvasFor}
-                onClose={() => setOpenNode(null)}
+                key={activeDetail.key}
+                node={activeDetail.node}
+                investigationId={activeDetail.resource.investigationId}
+                onClose={closeDetail}
               />
             </div>
           )}
@@ -540,7 +620,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
                 const done = session.researches.find((r) => r.state === "done");
                 if (done) {
                   track("deep_research_canvas_opened", { investigation_id: done.investigation_id });
-                  setCanvasFor(done.investigation_id);
+                  selectCanvas(done.investigation_id);
                 }
               }}
             >

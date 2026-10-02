@@ -31,7 +31,7 @@
  * dropped (and React local state alone would hold position for the session).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -39,6 +39,8 @@ import {
   getTrajectory,
   postTypedEvent,
 } from "../../../lib/api";
+import type { RefObject } from "react";
+import { escOverlayOpen, topModal } from "../../../workspace/escapeOverlay";
 import type { DistilledNode } from "../../../lib/api";
 import type { Event } from "../../../generated/types";
 import AIActionFailure from "../../../shared/AIActionFailure";
@@ -58,6 +60,7 @@ import {
 
 export interface CanvasProps {
   investigationId: string;
+  interactionEnabled?: boolean;
   /** Click-to-detail seam for SPR-04 (anchors the float-menu in block detail).
    *  Optional. */
   onOpenDetail?: (node: DistilledNode) => void;
@@ -65,78 +68,62 @@ export interface CanvasProps {
   onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }
 
-type LoadState =
+type Resource = { investigationId: string; attempt: object | null };
+type LoadState = { resource: Resource; attempt: object | null } & (
   | { kind: "loading" }
   | { kind: "error"; reason: string | null }
-  | {
-      kind: "loaded";
-      insights: DistilledNode[];
-      questions: DistilledNode[];
-      positions: Map<string, BlockPosition>;
-    };
+  | { kind: "loaded"; insights: DistilledNode[]; questions: DistilledNode[]; positions: Map<string, BlockPosition> }
+);
 
-export default function Canvas({ investigationId, onOpenDetail, onCiteSource }: CanvasProps) {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+export default function Canvas({ investigationId, onOpenDetail, onCiteSource, interactionEnabled = true }: CanvasProps) {
+  const resource = useMemo<Resource>(() => ({ investigationId, attempt: null }), [investigationId]);
+  const current = useRef<({ resource: Resource } & CanvasProps) | null>(null);
+  const [state, setState] = useState<LoadState>({ kind: "loading", resource, attempt: null });
+  useLayoutEffect(() => {
+    current.current = { resource, investigationId, onOpenDetail, onCiteSource, interactionEnabled };
+    return () => { current.current = null; };
+  }, [resource, investigationId, onOpenDetail, onCiteSource, interactionEnabled]);
 
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
+  const load = useCallback(async (previousAttempt: object | null) => {
+    if (current.current?.resource !== resource || resource.attempt !== previousAttempt ||
+        (previousAttempt !== null && !current.current.interactionEnabled)) return;
+    const attempt = {};
+    resource.attempt = attempt;
+    setState({ kind: "loading", resource, attempt });
+    const accepted = () => current.current?.resource === resource && resource.attempt === attempt;
     try {
-      // Two reads: the graph nodes (distill) + the position events (trajectory).
-      // Positions are re-derived from the event log — NOT a side store.
       const [distill, trajectory] = await Promise.all([
-        getDistillation(investigationId),
-        getTrajectory(investigationId),
+        getDistillation(resource.investigationId), getTrajectory(resource.investigationId),
       ]);
-      const nodes = [...distill.insights, ...distill.questions];
-      const nodeIds = nodes.map((n) => n.node_id);
-      const persisted = replayPositions(trajectory.events as Event[]);
-      const positions = resolvePositions(nodeIds, persisted);
-      setState({
-        kind: "loaded",
-        insights: distill.insights,
-        questions: distill.questions,
-        positions,
-      });
-    } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
-      setState({ kind: "error", reason });
+      if (!accepted()) return;
+      const nodeIds = [...distill.insights, ...distill.questions].map((node) => node.node_id);
+      const positions = resolvePositions(nodeIds, replayPositions(trajectory.events as Event[]));
+      setState({ kind: "loaded", resource, attempt, insights: distill.insights, questions: distill.questions, positions });
+    } catch (error) {
+      if (!accepted()) return;
+      setState({ kind: "error", resource, attempt, reason: error instanceof ApiError ? error.body || null : null });
     }
-  }, [investigationId]);
+  }, [resource]);
+  useEffect(() => { void load(null); }, [load]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (state.kind === "loading") {
-    return (
-      <div className="flex items-center gap-2 px-4 py-8" role="status" aria-live="polite">
-        <Thinking size={28} label="Laying out the organism" status="reading the graph…" />
-      </div>
-    );
+  if (state.resource !== resource || state.attempt !== resource.attempt || state.kind === "loading") {
+    return <div {...(!interactionEnabled ? { inert: "" } : {})} className="flex items-center gap-2 px-4 py-8" role="status" aria-live="polite">
+      <Thinking size={28} label="Laying out the organism" status="reading the graph…" />
+    </div>;
   }
-
   if (state.kind === "error") {
-    return (
-      <div className="px-4 py-8">
-        <AIActionFailure
-          title="Couldn’t load the canvas"
-          reason={state.reason}
-          onRetry={() => void load()}
-        />
-      </div>
-    );
+    return <div className="px-4 py-8" {...(!interactionEnabled ? { inert: "" } : {})}>
+      <AIActionFailure title="Couldn’t load the canvas" reason={state.reason} onRetry={() => void load(state.attempt)} />
+    </div>;
   }
-
-  return (
-    <LoadedCanvas
-      investigationId={investigationId}
-      insights={state.insights}
-      questions={state.questions}
-      initialPositions={state.positions}
-      onOpenDetail={onOpenDetail}
-      onCiteSource={onCiteSource}
-    />
-  );
+  const admitted = () => current.current?.resource === resource && resource.attempt === state.attempt &&
+    current.current.interactionEnabled === true;
+  return <LoadedCanvas key={investigationId} investigationId={investigationId}
+    insights={state.insights} questions={state.questions} initialPositions={state.positions}
+    interactionEnabled={interactionEnabled} admitted={admitted}
+    onOpenDetail={onOpenDetail ? (node) => { if (admitted()) current.current?.onOpenDetail?.(node); } : undefined}
+    onCiteSource={onCiteSource ? (node, anchor) => { if (admitted()) current.current?.onCiteSource?.(node, anchor); } : undefined}
+  />;
 }
 
 function LoadedCanvas({
@@ -144,6 +131,8 @@ function LoadedCanvas({
   insights,
   questions,
   initialPositions,
+  interactionEnabled,
+  admitted,
   onOpenDetail,
   onCiteSource,
 }: {
@@ -151,30 +140,18 @@ function LoadedCanvas({
   insights: DistilledNode[];
   questions: DistilledNode[];
   initialPositions: Map<string, BlockPosition>;
+  interactionEnabled: boolean;
+  admitted: () => boolean;
   onOpenDetail?: (node: DistilledNode) => void;
   onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }) {
+  const scrollport = useRef<HTMLDivElement>(null);
   const nodes = useMemo(() => [...insights, ...questions], [insights, questions]);
   // Position state seeds from the replayed events, then tracks live drags.
   // This React state is NOT a persistence store — it's transient view state
   // for the in-flight drag; the durable truth is the event log. Every
   // drag-END re-appends an event so a reload re-derives the same coordinates.
   const [positions, setPositions] = useState<Map<string, BlockPosition>>(initialPositions);
-
-  // Empty graph → honest empty state, never a blank void (rigor #3).
-  if (nodes.length === 0) {
-    return (
-      <div className="px-4 py-10 text-center" data-testid="canvas-empty">
-        <p className="font-serif text-sm text-ink dark:text-bright">
-          Nothing to lay out yet.
-        </p>
-        <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight">
-          This research distilled no insights or open questions — when it does,
-          they’ll appear here as blocks.
-        </p>
-      </div>
-    );
-  }
 
   // Canvas extent: large enough to hold the furthest block + margin so edges
   // have room and a deep branch doesn't clip (rigor #3).
@@ -188,8 +165,26 @@ function LoadedCanvas({
     return { width: maxX, height: maxY };
   }, [positions]);
 
+  // Empty graph → honest empty state, never a blank void (rigor #3).
+  if (nodes.length === 0) {
+    return (
+      <div {...(!interactionEnabled ? { inert: "" } : {})} className="px-4 py-10 text-center" data-testid="canvas-empty">
+        <p className="font-serif text-sm text-ink dark:text-bright">
+          Nothing to lay out yet.
+        </p>
+        <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight">
+          This research distilled no insights or open questions — when it does,
+          they’ll appear here as blocks.
+        </p>
+      </div>
+    );
+  }
+
+
   return (
     <div
+      ref={scrollport}
+      {...(!interactionEnabled ? { inert: "" } : {})}
       data-testid="block-canvas"
       className="relative h-full w-full overflow-auto bg-ice-1 dark:bg-charcoal-1"
     >
@@ -212,10 +207,13 @@ function LoadedCanvas({
               node={node}
               pos={p}
               investigationId={investigationId}
+              scrollport={scrollport}
+              interactionEnabled={interactionEnabled}
+              admitted={admitted}
               onOpenDetail={onOpenDetail}
               onCiteSource={onCiteSource}
               onCommit={(next) =>
-                setPositions((prev) => {
+                admitted() && setPositions((prev) => {
                   const m = new Map(prev);
                   m.set(node.node_id, next);
                   return m;
@@ -238,118 +236,110 @@ function LoadedCanvas({
  * we persist the final position as a typed event (the single-writer funnel),
  * NOT a side store.
  */
-function DraggableBlock({
-  node,
-  pos,
-  investigationId,
-  onOpenDetail,
-  onCiteSource,
-  onCommit,
-}: {
+function DraggableBlock({ node, pos, investigationId, scrollport, interactionEnabled, admitted, onOpenDetail, onCiteSource, onCommit }: {
   node: DistilledNode;
   pos: BlockPosition;
   investigationId: string;
+  scrollport: RefObject<HTMLDivElement>;
+  interactionEnabled: boolean;
+  admitted: () => boolean;
   onOpenDetail?: (node: DistilledNode) => void;
   onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
   onCommit: (next: BlockPosition) => void;
 }) {
-  // Live drag state lives in refs (no re-render churn mid-drag) + a local
-  // state mirror for the rendered transform.
-  const dragOrigin = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const committed = useRef(pos);
+  const live = useRef({ x: pos.x, y: pos.y });
+  const [rendered, setRendered] = useState(live.current);
+  const origin = useRef<{ pointerX: number; pointerY: number; x: number; y: number; pointerId: number; target: Element } | null>(null);
   const moved = useRef(false);
-  const [live, setLive] = useState<{ x: number; y: number }>({ x: pos.x, y: pos.y });
+  const update = (next: { x: number; y: number }) => { live.current = next; setRendered(next); };
+  const cancel = (restore: boolean) => {
+    const drag = origin.current; origin.current = null; moved.current = false;
+    if (drag) { try { drag.target.releasePointerCapture(drag.pointerId); } catch { /* Capture may already be lost. */ } }
+    if (restore) update({ x: committed.current.x, y: committed.current.y });
+  };
+  useLayoutEffect(() => {
+    committed.current = pos;
+    if (!origin.current) update({ x: pos.x, y: pos.y });
+  }, [pos]);
+  useLayoutEffect(() => { if (!interactionEnabled) cancel(true); }, [interactionEnabled]);
+  useLayoutEffect(() => () => cancel(false), []);
 
-  // Keep the rendered position in sync when the resolved position changes
-  // (e.g. a reload re-derives from events).
-  useEffect(() => {
-    setLive({ x: pos.x, y: pos.y });
-  }, [pos.x, pos.y]);
-
-  const viewport = () => ({
-    width: typeof window !== "undefined" ? window.innerWidth : 1440,
-    height: typeof window !== "undefined" ? window.innerHeight : 900,
-  });
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    // Don't start a drag from an interactive control inside the card.
-    const target = e.target as HTMLElement;
-    if (target.closest("button")) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragOrigin.current = { pointerX: e.clientX, pointerY: e.clientY, x: live.x, y: live.y };
-    moved.current = false;
-  }, [live.x, live.y]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const o = dragOrigin.current;
-    if (!o) return;
-    const dx = e.clientX - o.pointerX;
-    const dy = e.clientY - o.pointerY;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved.current = true;
-    const clamped = clampBlockToViewport({ x: o.x + dx, y: o.y + dy }, viewport());
-    setLive(clamped);
-  }, []);
-
-  const onPointerUp = useCallback((e: React.PointerEvent) => {
-    const o = dragOrigin.current;
-    dragOrigin.current = null;
-    if (!o) return;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // jsdom / no-capture environments — harmless.
+  const available = () => {
+    const block = root.current;
+    if (!admitted() || !block?.isConnected || block.closest('[hidden], [aria-hidden="true"], [inert]') || topModal()) return false;
+    const ancestorOverlay = block.parentElement?.closest('[data-esc-overlay], [aria-modal="true"]');
+    const region = block.closest('[role="region"]');
+    const panelTitle = region?.querySelector('[data-panel-title]');
+    const persistentPanel = region && panelTitle?.closest('[role="region"]') === region;
+    return (!ancestorOverlay || (ancestorOverlay === region && persistentPanel)) && !escOverlayOpen(block);
+  };
+  const clamp = (point: { x: number; y: number }) => {
+    const port = scrollport.current;
+    if (!port?.isConnected || port.clientWidth <= 0 || port.clientHeight <= 0) return null;
+    const next = clampBlockToViewport({ x: point.x - port.scrollLeft, y: point.y - port.scrollTop },
+      { width: port.clientWidth, height: port.clientHeight });
+    return { x: next.x + port.scrollLeft, y: next.y + port.scrollTop };
+  };
+  const commit = (point: { x: number; y: number }) => {
+    if (!available()) return false;
+    const bounded = clamp(point);
+    if (!bounded) return false;
+    const next: BlockPosition = { ...committed.current, ...bounded, persisted: true };
+    committed.current = next; update(bounded); onCommit(next);
+    void postTypedEvent({ investigation_id: investigationId, payload: {
+      action_type: "block.positioned", node_id: node.node_id, x: bounded.x, y: bounded.y,
+      region_id: next.regionId, region_label: next.regionLabel,
+    } }).catch(() => {});
+    return true;
+  };
+  const onTitleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (origin.current || event.target !== event.currentTarget || document.activeElement !== event.currentTarget ||
+        !event.currentTarget.isConnected || !available() || event.defaultPrevented || event.nativeEvent.isComposing ||
+        event.getModifierState("AltGraph") || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    let dx = 0, dy = 0;
+    switch (event.key) {
+      case "ArrowLeft": dx = -24; break;
+      case "ArrowRight": dx = 24; break;
+      case "ArrowUp": dy = -24; break;
+      case "ArrowDown": dy = 24; break;
+      default: return;
     }
-    // No real movement → not a drag; leave persistence untouched (a click
-    // is handled by BlockCard's detail button instead).
-    if (!moved.current) return;
-
-    const next: BlockPosition = {
-      x: live.x,
-      y: live.y,
-      // M4 (theme grouping) is DEFERRED — no region-assign gesture shipped, so
-      // region is always null. The fields stay as a reserved forward-compatible
-      // seam (see the file header + the decision note).
-      regionId: null,
-      regionLabel: null,
-      persisted: true,
-    };
-    onCommit(next);
-
-    // Persist via the single-writer typed-event funnel (NOT a side store).
-    // Fire-and-forget: the next reload re-derives from the event log, so a
-    // failed POST simply means the drag didn't stick — no optimistic lie that
-    // survives a refresh, and no second source of truth to reconcile.
-    void postTypedEvent({
-      investigation_id: investigationId,
-      payload: {
-        action_type: "block.positioned",
-        node_id: node.node_id,
-        x: live.x,
-        y: live.y,
-        // Reserved-but-always-null until an M4 region-assign gesture exists.
-        region_id: null,
-        region_label: null,
-      },
-    }).catch(() => {
-      // Swallow — authoritative state is the event log on next load.
-    });
-  }, [investigationId, live.x, live.y, node.node_id, onCommit]);
-
-  return (
-    <div
-      data-draggable-block={node.node_id}
-      className="absolute cursor-grab touch-none select-none active:cursor-grabbing"
-      style={{ left: live.x, top: live.y, width: BLOCK_WIDTH, zIndex: 1 }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
-      <BlockCard
-        node={node}
-        onOpenDetail={onOpenDetail}
-        onCiteSource={onCiteSource}
-        sourceInvestigationId={investigationId}
-      />
-    </div>
-  );
+    const next = clamp({ x: live.current.x + dx, y: live.current.y + dy });
+    if (!next) return;
+    if (next.x === live.current.x && next.y === live.current.y) return;
+    event.preventDefault();
+    commit(next);
+  };
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!available() || !(event.target instanceof Element) ||
+        event.target.closest('button, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    origin.current = { pointerX: event.clientX, pointerY: event.clientY, ...live.current, pointerId: event.pointerId, target: event.currentTarget };
+    moved.current = false;
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = origin.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!available()) { cancel(true); return; }
+    const dx = event.clientX - drag.pointerX, dy = event.clientY - drag.pointerY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved.current = true;
+    const next = clamp({ x: drag.x + dx, y: drag.y + dy });
+    if (next) update(next);
+  };
+  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const changed = moved.current, drag = origin.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!available()) { cancel(true); return; }
+    cancel(false);
+    if (changed && !commit(live.current)) update({ x: committed.current.x, y: committed.current.y });
+  };
+  return <div ref={root} data-draggable-block={node.node_id}
+    className="absolute cursor-grab touch-none select-none active:cursor-grabbing"
+    style={{ left: rendered.x, top: rendered.y, width: BLOCK_WIDTH, zIndex: 1 }}
+    onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+    <BlockCard node={node} onTitleKeyDown={onTitleKeyDown} onOpenDetail={onOpenDetail}
+      onCiteSource={onCiteSource} sourceInvestigationId={investigationId} />
+  </div>;
 }

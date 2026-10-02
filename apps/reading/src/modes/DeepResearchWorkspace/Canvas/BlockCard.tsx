@@ -30,12 +30,15 @@
  * of scope — SPR-04 owns {Note·Dialogue·Search·Deep-research}).
  */
 
+import { useId, type HTMLAttributes, type KeyboardEventHandler } from "react";
 import type { DistilledNode } from "../../../lib/api";
 import FlagForDiligence from "../../../shared/FlagForDiligence";
 import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 
 export interface BlockCardProps {
   node: DistilledNode;
+  /** Canvas-owned movement control; absent preserves the standalone header. */
+  onTitleKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   /** Click-to-detail seam for SPR-04. Optional — when absent the card is
    *  inert (renders, but opens nothing). */
   onOpenDetail?: (node: DistilledNode) => void;
@@ -72,7 +75,22 @@ function styleFor(kind: string) {
   return kind === "insight" ? KIND_STYLE.insight : KIND_STYLE.question;
 }
 
-export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInvestigationId }: BlockCardProps) {
+function titleProps(kind: string, helpId: string, onKeyDown?: KeyboardEventHandler<HTMLDivElement>): HTMLAttributes<HTMLDivElement> {
+  const className = "flex items-center justify-between gap-2";
+  if (!onKeyDown) return { className };
+  return {
+    role: "group",
+    tabIndex: 0,
+    "aria-label": `Move ${kind} block`,
+    "aria-describedby": helpId,
+    "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown",
+    onKeyDown,
+    className: className + " focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun",
+  };
+}
+
+export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInvestigationId, onTitleKeyDown }: BlockCardProps) {
+  const helpId = useId();
   const s = styleFor(node.kind);
   const hasSource = Boolean(node.source_document_id?.trim());
   const clickable = Boolean(onOpenDetail);
@@ -86,7 +104,8 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInve
         "py-2 pl-3 pr-3 shadow-z1 dark:shadow-z1-night"
       }
     >
-      <div className="flex items-center justify-between gap-2">
+      <div {...titleProps(node.kind, helpId, onTitleKeyDown)}>
+        {onTitleKeyDown && <span id={helpId} className="sr-only">Arrow keys move 24 pixels.</span>}
         <span className={`font-mono text-xxs uppercase tracking-wider ${s.label}`}>
           {/* Show the real kind so an unexpected graph kind is visible, not
               silently relabeled. */}

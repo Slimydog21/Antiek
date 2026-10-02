@@ -130,6 +130,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
   return (
     <>
       <div
+        data-panel-title={id}
         className={
           "shrink-0 flex items-center gap-2 px-2.5 py-1.5 " +
           "border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 " +
