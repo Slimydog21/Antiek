@@ -1,7 +1,14 @@
 # Anti-stranding gate — merge-age budget N + reachability burn-down
 
 **Decision date:** 2026-05-31
-**Status:** ✅ Active (blocking on `pull_request:[main]`; each rule carries a reconsider-if below)
+**Status:** ✅ Active on `pull_request:[main]` — REDS THE CHECK, DOES NOT BLOCK THE MERGE.
+The gates run as steps inside ci.yml's `pytest` aggregator job, and `pytest` is listed under
+`emitted_but_not_required` in `.github/required-checks.yml` — only the four `pytest shard N of 4`
+contexts are required. Measured 2026-09-22: #3279, #3277 and #3274 all merged with `pytest` red
+on their merged head sha. (The gates' own logic IS covered by required contexts —
+`tests/test_anti_stranding_gate.py` runs inside the required shards.) To make this record's
+original wording true, add the `pytest` context to the `main-gate-integrity` ruleset.
+Each rule carries a reconsider-if below.
 **Owner:** operator + SPR-01 (Antiek Flywheel Foundation)
 
 SPR-01 designs out the two failure modes that killed the prior foundation. That

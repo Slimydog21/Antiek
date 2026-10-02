@@ -16,6 +16,7 @@ from substrate.book_acquisition import (
     AuthorizationDecision,
     DesiredFormat,
     authorize_purchase_intent,
+    check_store_procurement,
     create_purchase_intent,
     ensure_schema,
 )
@@ -44,7 +45,15 @@ _AUTHENTICATED_METHODS = frozenset(
 class PurchaseIntentRequest(BaseModel):
     title: str = Field(min_length=1, max_length=512)
     author: str = Field(min_length=1, max_length=512)
-    store: str = Field(min_length=1, max_length=512)
+    store: str = Field(
+        min_length=1,
+        max_length=512,
+        description=(
+            "Procurement source (store name or URL). Checked against the "
+            "legal-gate registry before any intent is recorded; a banned "
+            "host is refused with 422."
+        ),
+    )
     max_price_usd_cents: int = Field(ge=0, le=MAX_USD_CENTS, strict=True)
     desired_format: Literal["epub"] = "epub"
 
@@ -240,6 +249,10 @@ def create_book_acquisition_router(
     def create_intent(request: Request, body: PurchaseIntentRequest) -> PurchaseIntentResponse:
         operator_id = _operator_id(request)
         try:
+            # Procurement gate BEFORE the writer lock and before
+            # create_purchase_intent: a banned store is refused with 422
+            # naming the host, and no intent row is ever written for it.
+            check_store_procurement(body.store)
             with connect_write(db_path, purpose="book-acquisition/create-intent") as con:
                 ensure_schema(con)
                 return _intent_response(

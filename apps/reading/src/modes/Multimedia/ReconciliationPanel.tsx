@@ -12,7 +12,7 @@ import type {
   NarrationRunReconciliation,
   TtsReconciliationAction,
 } from "../../api/multimedia";
-import { LemonButton, LemonTag } from "../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../components/lemon";
 
 const ACTION_LABELS: Record<TtsReconciliationAction, string> = {
   quarantine_send: "Quarantine stale send",
@@ -138,19 +138,19 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
       data-testid="multimedia-reconciliation"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Recovery</p>
+        <p className="font-mono text-xs text-shadow-2 dark:text-moonlight">Recovery</p>
         {chapter && <LemonTag colour={chapter.action_eligible ? "danger" : "muted"}>{chapter.attempt_status}</LemonTag>}
       </div>
 
-      {!assetId && <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">Select an asset to inspect recovery.</p>}
-      {assetId && pending && !links && <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">Loading recovery state...</p>}
+      {!assetId && <p className="mt-3 text-xs text-shadow-1 dark:text-moonlight">Select an asset to inspect recovery.</p>}
+      {assetId && pending && !links && <p className="mt-3 text-xs text-shadow-1 dark:text-moonlight">Loading recovery state...</p>}
       {links && links.executions.length === 0 && links.narration_runs.length === 0 && (
-        <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">No provider execution has started.</p>
+        <p className="mt-3 text-xs text-shadow-1 dark:text-moonlight">No provider execution has started.</p>
       )}
 
       {links && links.executions.length > 0 && (
         <div className="mt-3">
-          <p className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">Chapter executions</p>
+          <p className="font-mono text-xs text-shadow-2 dark:text-moonlight">Chapter executions</p>
           <div className="mt-1 space-y-1">
             {links.executions.map((item) => (
               <LemonButton
@@ -171,7 +171,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
       )}
 
       {chapter && (
-        <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[12px]" data-testid="chapter-reconciliation-status">
+        <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs" data-testid="chapter-reconciliation-status">
           <dt className="text-shadow-1 dark:text-moonlight">Provider</dt>
           <dd className="text-right text-ink dark:text-bright">{chapter.provider_status}</dd>
           <dt className="text-shadow-1 dark:text-moonlight">Charged</dt>
@@ -194,7 +194,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
 
       {links && links.narration_runs.length > 0 && (
         <div className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1">
-          <p className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">Narration runs</p>
+          <p className="font-mono text-xs text-shadow-2 dark:text-moonlight">Narration runs</p>
           <div className="mt-1 space-y-1">
             {links.narration_runs.map((item) => (
               <LemonButton key={item.run_id} type="button" size="sm" variant="tertiary" className="w-full justify-between" aria-label={`Inspect narration run ${item.status}`} disabled={pending} onClick={() => inspectRun(item.run_id)}>
@@ -206,13 +206,13 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
       )}
       {run && (
         <div className="mt-3" data-testid="run-reconciliation-status">
-          <div className="flex items-center justify-between gap-2 text-[12px]">
+          <div className="flex items-center justify-between gap-2 text-xs">
             <span className="text-shadow-1 dark:text-moonlight">Blocked chapters</span>
             <LemonTag colour={run.blocked_chapter_count ? "danger" : "default"}>{run.blocked_chapter_count}</LemonTag>
           </div>
           <ol className="mt-2 space-y-1">
             {run.children.map((child) => (
-              <li key={child.execution_id} className="flex items-center justify-between gap-2 text-[12px]">
+              <li key={child.execution_id} className="flex items-center justify-between gap-2 text-xs">
                 <span className="truncate text-ink dark:text-bright">{child.chapter_id}</span>
                 <span className="text-shadow-2 dark:text-moonlight">{child.state}</span>
               </li>
@@ -220,7 +220,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
           </ol>
         </div>
       )}
-      {error && <p className="mt-3 text-[12px] text-danger" role="alert">{error}</p>}
+      {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
     </section>
   );
 }

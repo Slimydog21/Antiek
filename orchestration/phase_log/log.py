@@ -30,23 +30,15 @@ import hashlib
 import json
 import os
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
+from typing import Any
 
-try:
-    from ...constants import (
-        ANTIEK_PARAM_VERSION,
-        AUTONOMOUS_RESEARCH_PHASES,
-        AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        ANTIEK_PARAM_VERSION,
-        AUTONOMOUS_RESEARCH_PHASES,
-        AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
-    )
+from substrate.constants import (
+    ANTIEK_PARAM_VERSION,
+    AUTONOMOUS_RESEARCH_PHASES,
+    AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
+)
 
 from .events import emit_phase_enter, emit_phase_exit, emit_phase_verify
 from .types import PhaseAssertionError
@@ -87,7 +79,7 @@ def hash_paths(paths: Iterable[str]) -> str:
     return h.hexdigest()
 
 
-def _safe_emit(fn, **kwargs) -> None:
+def _safe_emit(fn: Callable[..., Any], **kwargs: Any) -> None:
     """Best-effort trajectory mirror. Errors are swallowed — telemetry
     must never break a real synthesis. Mirrors the ``_phase_log_safe``
     pattern in upstream orchestrate.py."""
@@ -108,7 +100,7 @@ class PhaseLog:
     never instantiate ``PhaseLog`` directly with raw data.
     """
 
-    def __init__(self, path: str, data: dict):
+    def __init__(self, path: str, data: dict[str, Any]):
         self.path = path
         self.data = data
 
@@ -138,7 +130,8 @@ class PhaseLog:
 
     @property
     def investigation_id(self) -> str:
-        return self.data["investigation_id"]
+        investigation_id: str = self.data["investigation_id"]
+        return investigation_id
 
     def _save(self) -> None:
         """Atomic write — temp file + os.replace so a crash mid-write
@@ -284,7 +277,8 @@ class PhaseLog:
                 + "\n".join(f"  - {m}" for m in missing)
             )
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         """Deep copy of the JSON state — safe to hand to archive code
         without worrying about subsequent mutation."""
-        return json.loads(json.dumps(self.data))
+        snapshot: dict[str, Any] = json.loads(json.dumps(self.data))
+        return snapshot

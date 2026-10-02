@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from ...constants import (
+    from substrate.constants import (
         KEYWORDS_MAX,
         KEYWORDS_MIN,
         SUB_QUESTIONS_MAX,
@@ -33,7 +33,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
+    from substrate.constants import (
         KEYWORDS_MAX,
         KEYWORDS_MIN,
         SUB_QUESTIONS_MAX,
@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
 
@@ -102,7 +102,7 @@ class DecompositionResult:
     investigation_id: str
     decomposition: tuple[ParsedSubQuestion, ...]
     keywords: tuple[ParsedKeyword, ...]
-    raw: dict
+    raw: dict[str, Any]
 
 
 def _require_str(obj: Any, field_name: str, ctx: str) -> str:

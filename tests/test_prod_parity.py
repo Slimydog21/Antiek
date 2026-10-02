@@ -264,6 +264,9 @@ def test_main_defaults_expected_sha_to_origin_main(monkeypatch):
         auth_probe=False,
         auth_origin="https://antiek.ai",
         require_flywheel=False,
+        # Tolerate kwargs the real run() grows; this test asserts only that
+        # expected_sha defaults to origin/main, not run()'s full signature.
+        **_kw,
     ):
         seen["url"] = url
         seen["expected_sha"] = expected_sha
@@ -383,3 +386,89 @@ def test_run_against_live_route_providers_present_greens(_app_client, monkeypatc
     monkeypatch.setattr(parity, "fetch_health", _health_with_providers)
     rc = parity.run("http://testserver", expected_sha=_GOOD_SHA)
     assert rc == 0, "live-route in-parity (SHA match + providers present) must green"
+
+
+# ── scheduled drift-alarm mode (staleness, not exact equality) ──────────────
+#
+# `assert_parity` demands build_sha == expected_sha. That is the right
+# contract straight after a deploy — you shipped X, prod must report X — and
+# these tests do not change it. It is the wrong contract for the DAILY probe,
+# where `expected_sha` defaults to main's tip: with automatic deploys main
+# advances while a deploy is in flight, so equality is false for a window
+# after every merge. Measured 2026-09-21: the scheduled job had failed 30 of
+# its last 100 runs and 13 of its last 15, with production provably healthy
+# and converging (prod an ancestor of main, oldest unshipped commit 0.6h old).
+# An alarm that reds on correct operation stops being read.
+
+
+def _commits(repo_shas):
+    """Fake `git` so these tests never depend on real repo history."""
+    return repo_shas
+
+
+def test_staleness_exact_match_is_clean():
+    from tools.prod_parity.check import staleness_failures
+
+    assert staleness_failures("abc", "abc", max_lag_hours=6) == []
+
+
+def test_staleness_missing_build_sha_fails():
+    from tools.prod_parity.check import staleness_failures
+
+    out = staleness_failures("", "abc", max_lag_hours=6)
+    assert out and "no build_sha" in out[0]
+
+
+def test_staleness_non_ancestor_fails_regardless_of_budget(monkeypatch):
+    """A fork or rollback is never correct, however generous the budget.
+
+    This is the assertion that keeps the alarm honest: relaxing the TIME
+    budget must not make prod-on-a-different-history acceptable.
+    """
+    import subprocess as sp
+
+    from tools.prod_parity import check as mod
+
+    def fake_run(args, **kw):
+        if args[:2] == ["git", "cat-file"]:
+            return sp.CompletedProcess(args, 0, "commit", "")
+        if args[:2] == ["git", "merge-base"]:
+            return sp.CompletedProcess(args, 1, "", "")  # NOT an ancestor
+        return sp.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    out = mod.staleness_failures("dead", "beef", max_lag_hours=10**9)
+    assert out and "NOT an ancestor" in out[0]
+
+
+def test_staleness_recent_lag_passes_but_old_lag_fails(monkeypatch):
+    """The budget must actually bite: same ancestry, only the age differs."""
+    import subprocess as sp
+
+    from tools.prod_parity import check as mod
+
+    now = 1_700_000_000.0
+    monkeypatch.setattr(mod.time, "time", lambda: now)
+
+    def make(age_hours):
+        ts = int(now - age_hours * 3600)
+
+        def fake_run(args, **kw):
+            if args[:2] == ["git", "cat-file"]:
+                return sp.CompletedProcess(args, 0, "commit", "")
+            if args[:2] == ["git", "merge-base"]:
+                return sp.CompletedProcess(args, 0, "", "")  # IS an ancestor
+            if args[1] == "log":
+                return sp.CompletedProcess(args, 0, f"{ts}\n", "")
+            if args[1] == "rev-list":
+                return sp.CompletedProcess(args, 0, "2\n", "")
+            return sp.CompletedProcess(args, 0, "", "")
+
+        return fake_run
+
+    monkeypatch.setattr(mod.subprocess, "run", make(0.5))
+    assert mod.staleness_failures("a", "b", max_lag_hours=6) == []
+
+    monkeypatch.setattr(mod.subprocess, "run", make(48))
+    out = mod.staleness_failures("a", "b", max_lag_hours=6)
+    assert out and "stale deploy" in out[0]

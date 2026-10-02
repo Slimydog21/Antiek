@@ -149,7 +149,7 @@ export function isSolidColor(
 
 /**
  * Mean RGB across a region — the average colour of a sampled band. Used by the
- * penguin white-box gate (SPR-06 M2): the corners AROUND the mascot, after the
+ * mascot white-box gate (SPR-06 M2): the corners AROUND the mascot, after the
  * transparent-PNG fix, must read as the STORY BACKGROUND (ice / space) bleeding
  * through, NOT an opaque near-white box. A regression that re-bakes a white
  * backdrop into a pose pulls this mean toward (255,253,253)-class white.
@@ -184,8 +184,8 @@ export function regionMeanColor(img: DecodedImage, region?: PixelRegion): Rgb {
  * (255,253,253 / #FBFCFD)-class backdrop the v1 emote poses baked in. A pixel
  * counts as white-box if all channels are >= `floor` AND neutral (small channel
  * spread), so the brand sun-yellow bill (saturated) is NOT counted. The callers
- * (penguin.spec.ts M2 + ams-shell.spec.ts anchor[penguin]) pass the WHOLE mascot
- * square as the region: most of it is penguin + the now-transparent surround
+ * (mascot.spec.ts M2 + ams-shell.spec.ts anchor[mascot]) pass the WHOLE mascot
+ * square as the region: most of it is mascot + the now-transparent surround
  * (which composites to the story bg), so after the SPR-06 M2 alpha-cut + rewire
  * this fraction is well under 0.25 on BOTH themes (measured 0.00% — the box is
  * gone, not merely small), while a re-baked white BOX would push it toward ~1.
@@ -223,7 +223,7 @@ export function whiteBoxFraction(
 /**
  * Per-pixel mean absolute difference between two SAME-SIZE decoded frames,
  * averaged over R,G,B and all pixels (0..255). The M1 walk-cycle gate
- * (penguin.spec.ts) screenshots the mascot FEET region at two mid-stroll
+ * (mascot.spec.ts) screenshots the mascot FEET region at two mid-stroll
  * moments and asserts this diff clears a threshold — proving the feet pixels
  * actually changed (the limbs stepped) rather than the whole sprite sliding as
  * one static frame. Two byte-identical frames → 0 (a frozen rig → RED).

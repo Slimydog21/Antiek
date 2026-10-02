@@ -9,7 +9,11 @@ import {
   clearScope,
   project,
 } from "../workspace/persistence";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
+import {
+  investigationIdForPath,
+  routeKey,
+} from "../workspace/useWorkspaceHydration";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -30,6 +34,9 @@ import {
   type ResearchState,
 } from "../shared/researchState";
 import { lastSeenAt } from "../workspace/seen";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
+import { THOUGHT_PARTNER_SEED_EVENT, type ThoughtPartnerSeedDetail } from "./ai/thoughtPartnerSeed";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -366,6 +373,21 @@ export default function CommandPalette() {
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
+  // SPR-03 Task 3 — the driver dropdown on the palette. The palette runs no
+  // AI call of its own; the choice is broadcast on the thought-partner seed
+  // bus so the AI sidecar (the palette's "Toggle AI sidecar" target) adopts
+  // it, and the trigger here mirrors what was chosen.
+  const driver = useOwnerModelChoice("palette");
+  const chooseDriver = useCallback(
+    (rowId: string, modelId?: string) => {
+      driver.select(rowId, modelId);
+      const detail: ThoughtPartnerSeedDetail = {
+        owner_model: { row_id: rowId, ...(modelId ? { model_id: modelId } : {}) },
+      };
+      window.dispatchEvent(new CustomEvent(THOUGHT_PARTNER_SEED_EVENT, { detail }));
+    },
+    [driver],
+  );
 
   const loadIndex = useCallback(async () => {
     try {
@@ -387,7 +409,13 @@ export default function CommandPalette() {
         ).flatMap(
           (inv: {
             investigation_id: string;
-            topic?: string;
+            // GET /investigations returns InvestigationSummary, whose title
+            // field is `question` (app.py:419). This was declared and read as
+            // `topic`, a key that schema has never had, so the value was
+            // always undefined and every row fell through to the raw UUID.
+            // lib/api.ts:359 already declared `question`; this file was the
+            // only outlier.
+            question?: string;
             status?: string;
             completed_at?: string | null;
           }) => {
@@ -414,7 +442,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `inv:${inv.investigation_id}`,
-                title: inv.topic ?? inv.investigation_id,
+                title: inv.question ?? inv.investigation_id,
                 subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/inv/${inv.investigation_id}`,
                 state,
@@ -423,7 +451,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `replay:${inv.investigation_id}`,
-                title: `Replay: ${inv.topic ?? inv.investigation_id}`,
+                title: `Replay: ${inv.question ?? inv.investigation_id}`,
                 subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/replay/${inv.investigation_id}`,
                 state,
@@ -465,7 +493,11 @@ export default function CommandPalette() {
 
       if (pResp?.ok) {
         const data = await pResp.json();
-        const items: PaletteParkedQuestion[] = (data.parked ?? []).map(
+        // GET /watch-for-later returns WatchForLaterResponse, which is
+        // {count, questions} (app.py:4589). This read a `parked` key the
+        // backend has never emitted, so the `?? []` silently produced an
+        // empty section on every open.
+        const items: PaletteParkedQuestion[] = (data.questions ?? []).map(
           (q: { question_id: string; question_text: string }) => ({
             kind: "parked_question" as const,
             id: `pq:${q.question_id}`,
@@ -482,26 +514,21 @@ export default function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    // S8: the workspace shortcuts module (src/workspace/shortcuts.ts)
-    // owns the ⌘K binding now and dispatches "antiek:palette:toggle"
-    // so the NavRail Search button click + the keyboard handler both
-    // reach the same code path. We also keep an in-component ⌘K
-    // fallback so the palette still works when AppShell isn't the
-    // ancestor (e.g. in Storybook stories rendered without AppShell).
+    // The shell's keymap dispatcher (workspace/shortcuts.ts, table in
+    // components/hotkeys/keymap.ts) is the ONE owner of ⌘K / ⌘⇧P / prefix+g:
+    // it dispatches "antiek:palette:toggle", as the NavRail Search button
+    // does. The palette used to toggle on ⌘K itself as well, so ⌘K from the
+    // page body flipped it twice and nothing opened (MS-01 F1). Stories
+    // rendered without AppShell open it by dispatching the same event.
     const onToggle = () => setOpen((v) => !v);
     window.addEventListener(
       "antiek:palette:toggle" as keyof WindowEventMap,
       onToggle as EventListener,
     );
 
+    // Escape closes the open palette. Scoped to the open overlay; it claims
+    // no global combo.
     const handler = (e: KeyboardEvent) => {
-      const isToggle =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (isToggle) {
-        e.preventDefault();
-        setOpen((v) => !v);
-        return;
-      }
       if (e.key === "Escape" && open) {
         e.preventDefault();
         setOpen(false);
@@ -563,10 +590,10 @@ export default function CommandPalette() {
         id: "ws:toggle-aisidecar",
         title: "Toggle AI sidecar",
         subtitle: "Workspace · ⌘/",
+        // Same workspace-store toggle as ⌘/ — the bare AISIDECAR_TOGGLE
+        // event this used to dispatch has no production listener.
         run: () => {
-          window.dispatchEvent(
-            new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE),
-          );
+          toggleAISidecar();
         },
       },
       {
@@ -590,11 +617,13 @@ export default function CommandPalette() {
         title: "Reset workspace layout (this route)",
         subtitle: "Workspace · clears the per-route saved layout",
         run: () => {
-          // Compute the route key the same way useWorkspaceHydration does;
-          // we conservatively use the current pathname.
+          // The SAME collapsed route key useWorkspaceHydration writes under
+          // (a raw pathname cleared a key that never existed on dynamic
+          // routes like /wrestle/:id — G-X2). reset() itself suppresses the
+          // debounced write-back of the emptied layout.
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          clearScope({ kind: "route", route: path });
+          clearScope({ kind: "route", route: routeKey(path) });
           useWorkspace.getState().reset();
           toast.ok("Layout reset for this route.");
         },
@@ -610,14 +639,14 @@ export default function CommandPalette() {
         run: () => {
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          const m = path.match(/\/inv\/([^/]+)/);
-          if (!m) {
+          const investigationId = investigationIdForPath(path);
+          if (!investigationId) {
             toast.warn("No investigation in URL — nothing to reset.");
             return;
           }
-          clearScope({ kind: "investigation", id: m[1] });
+          clearScope({ kind: "investigation", id: investigationId });
           useWorkspace.getState().reset();
-          toast.ok(`Layout reset for investigation ${m[1].slice(0, 8)}.`);
+          toast.ok(`Layout reset for investigation ${investigationId.slice(0, 8)}.`);
         },
       },
       {
@@ -748,6 +777,7 @@ export default function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      data-keymap-owner="palette.toggle"
     >
       <div
         className="w-[640px] max-w-[90vw] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden"
@@ -785,7 +815,7 @@ export default function CommandPalette() {
                     return base ? `state:${f} ${base}` : `state:${f}`;
                   })
                 }
-                className={`text-[11px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                className={`text-xs font-mono px-2 py-0.5 rounded-full border transition-colors ${
                   active
                     ? "bg-sun text-ink border-sun"
                     : "border-rule dark:border-charcoal-1 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
@@ -799,7 +829,7 @@ export default function CommandPalette() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="text-[11px] font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
+              className="text-xs font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
             >
               ✕ clear
             </button>
@@ -842,12 +872,12 @@ export default function CommandPalette() {
                   {(() => {
                     const wf = entryWorkflow(e);
                     return wf && wf !== "shared" ? (
-                      <span className="text-[10px] uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/80 px-1.5 py-0.5 rounded">
                         {WORKFLOWS[wf].label}
                       </span>
                     ) : null;
                   })()}
-                  <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+                  <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
                     {e.kind.replace("_", " ")}
                   </span>
                 </div>
@@ -855,9 +885,23 @@ export default function CommandPalette() {
             ))
           )}
         </ul>
-        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
+        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between gap-2">
           <span>↑↓ navigate · Enter select · Esc close</span>
-          <span>⌘K toggle</span>
+          <span className="flex items-center gap-2">
+            <span className="uppercase tracking-wide">Driver</span>
+            <ModelUsagePicker
+              models={driver.models}
+              value={driver.selectedRowId}
+              valueModelId={driver.selectedModelId}
+              onChange={chooseDriver}
+              includeDefault
+              defaultLabel="Default (house route)"
+              triggerLabel={driver.triggerLabel}
+              triggerAriaLabel="Driver model for the AI sidecar"
+              size="sm"
+            />
+            <span>⌘K toggle</span>
+          </span>
         </footer>
       </div>
 

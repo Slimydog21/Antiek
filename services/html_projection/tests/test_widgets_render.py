@@ -1,6 +1,6 @@
 """Widget behavior gates (HPRJ SPR-03 M2): no-crash, determinism, script-free.
 
-These run over the 21 golden size-shapes (no frozen bytes needed) plus the
+These run over the 24 golden size-shapes (no frozen bytes needed) plus the
 adversarial set. They are the contract every widget implementation must meet
 regardless of its internal SVG choices: render without crashing at every
 shape, produce byte-identical output for identical input, and emit nothing the
@@ -27,7 +27,7 @@ SHAPES = ("empty", "typical", "degenerate")
 def _render(kind: str, data: dict) -> str:
     """Import the widget module by kind and call its ``render``. Using
     importlib (not a package attribute) makes this robust to however the
-    package ``__init__`` re-exports the seven renderers."""
+    package ``__init__`` re-exports the eight renderers."""
     mod = importlib.import_module(f"services.html_projection.widgets.{kind}")
     return mod.render(data)
 
@@ -109,6 +109,47 @@ def test_cite_block_url_scheme_guard(url: str, should_link: bool) -> None:
     assert ("<a href=" in out) is should_link, (
         f"cite_block link presence wrong for {url!r}"
     )
+
+
+def test_sketch_is_the_agent_skill_rendered_deterministically() -> None:
+    # The sketch widget is a thin renderer over the research agents'
+    # ``sketch_svg`` kernel skill (the first product importer of
+    # substrate/agent_skills). Golden-output determinism: the typical fixture
+    # renders byte-identically, and those bytes ARE the skill's own output
+    # for the same inputs under the widget's LEMON palette — so a widget that
+    # drew its own SVG, or let the skill's off-palette default through,
+    # goes red here (and in the palette lint).
+    from services.html_projection import tokens
+    from substrate.agent_skills import sketch_svg
+
+    # importlib, not ``from widgets import sketch``: the package binds the
+    # render FUNCTION over the submodule name (same trap as agent_skills).
+    sketch = importlib.import_module("services.html_projection.widgets.sketch")
+    typical = FIXTURES["sketch"]["typical"]
+    out = _render("sketch", typical)
+    assert out == _render("sketch", typical)
+    assert out.startswith("<svg")
+    assert out == sketch_svg(
+        seed=typical["seed"],
+        title=typical["title"],
+        data=typical["data"],
+        palette=sketch.PALETTE,
+        ink=tokens.LEMON_INK,
+    )
+    gate.assert_script_free(out)
+    # No series -> the generative composition, and the seed is what varies it.
+    assert _render("sketch", {"seed": 1}) != _render("sketch", {"seed": 2})
+    # Beyond the skill's 500-value cap the widget truncates instead of raising.
+    assert _render("sketch", {"data": list(range(600))}).startswith("<svg")
+
+
+def test_sketch_never_raises_on_a_gate_rejected_title() -> None:
+    # The skill's live zero-script gate raises on a flagged byte sequence in
+    # the title (failing at generation beats failing at ingest). The widget
+    # contract is a visible deterministic placeholder, never a crash.
+    out = _render("sketch", {"title": "src=javascript:alert(1)", "data": [1, 2]})
+    assert "no sketch" in out
+    gate.assert_script_free(out)
 
 
 def test_plotting_widgets_drop_non_finite() -> None:

@@ -30,6 +30,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .assembler import TokenCounter
 
 from .note_retrieval import RetrievedNote
 
@@ -58,7 +62,7 @@ class _Counter:
         return max(1, (len(text) + 3) // 4)
 
 
-def _recency_norm(notes: Sequence[RetrievedNote]) -> dict:
+def _recency_norm(notes: Sequence[RetrievedNote]) -> dict[str, float]:
     """Rank-based recency in [0,1]: newest → 1.0, oldest → 0.0. Rank-based
     (not wall-clock decay) keeps the selection deterministic and free of a
     'now' dependency for the test, while still preferring the latest state."""
@@ -85,7 +89,7 @@ def select_within_budget(
     notes: Sequence[RetrievedNote],
     *,
     token_budget: int,
-    counter: object | None = None,
+    counter: TokenCounter | None = None,
     header_text: str = "",
 ) -> tuple[list[RetrievedNote], NoteCoverage]:
     """Select the highest-scored notes that fit ``token_budget`` tokens.

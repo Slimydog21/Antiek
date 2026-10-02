@@ -357,7 +357,7 @@ export function ActiveListeningPlayer({
     <section className="w-full rounded-md border border-rule bg-ice-0 p-3 text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright" aria-label={`Active listening for ${title}`}>
       {/* Resume / completion banner */}
       {(resumedFrom !== null || previouslyCompleted) && (
-        <div className="mb-3 rounded border border-sun/40 bg-sun/10 px-3 py-2 text-[12px]" role="status">
+        <div className="mb-3 rounded border border-sun/40 bg-sun/10 px-3 py-2 text-xs" role="status">
           {previouslyCompleted ? (
             <span>Previously completed — replaying from the beginning.</span>
           ) : (
@@ -387,13 +387,13 @@ export function ActiveListeningPlayer({
 
       {/* Progress status indicator */}
       {progressStatus === "error" && (
-        <p className="mt-1 text-[10px] text-shadow-2" role="status">Progress sync unavailable</p>
+        <p className="mt-1 text-xxs text-shadow-2" role="status">Progress sync unavailable</p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
         <Control label="Previous chapter" icon={<ListRestart size={18} />} onClick={() => seekChapter(currentIndex - 1)} disabled={currentIndex === 0} />
         <Control label="Back 15 seconds" icon={<RotateCcw size={18} />} onClick={() => seek(currentTime - 15)} />
-        <span className="min-w-[92px] text-center font-mono text-[11px] tabular-nums text-shadow-1 dark:text-moonlight">
+        <span className="min-w-[92px] text-center font-mono text-xs tabular-nums text-shadow-1 dark:text-moonlight">
           {formatTime(currentTime)} / {formatTime(playback.duration_seconds)}
         </span>
         <Control label="Forward 15 seconds" icon={<RotateCw size={18} />} onClick={() => seek(currentTime + 15)} />
@@ -401,7 +401,7 @@ export function ActiveListeningPlayer({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-y border-rule py-3 dark:border-charcoal-1">
-        <p className="min-w-0 text-[13px] font-semibold" aria-live="polite">{currentChapter.title}</p>
+        <p className="min-w-0 text-sm font-semibold" aria-live="polite">{currentChapter.title}</p>
         <div className="flex shrink-0 items-center gap-2">
           {resumedFrom !== null && !previouslyCompleted && (
             <LemonButton size="sm" variant="secondary" onClick={handleStartOver} aria-label="Start over">
@@ -442,9 +442,9 @@ export function ActiveListeningPlayer({
             onClick={() => seekChapter(index)}
             className="grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-2 text-left hover:bg-ice-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:hover:bg-charcoal-1"
           >
-            <span className="font-mono text-[10px] text-shadow-2">{String(index + 1).padStart(2, "0")}</span>
-            <span className="truncate text-[12px] font-semibold">{chapter.title}</span>
-            <span className="font-mono text-[10px] tabular-nums text-shadow-2 dark:text-moonlight">{formatTime(chapter.start_offset_seconds)}–{formatTime(chapter.end_offset_seconds)}</span>
+            <span className="font-mono text-xxs text-shadow-2">{String(index + 1).padStart(2, "0")}</span>
+            <span className="truncate text-xs font-semibold">{chapter.title}</span>
+            <span className="font-mono text-xxs tabular-nums text-shadow-2 dark:text-moonlight">{formatTime(chapter.start_offset_seconds)}–{formatTime(chapter.end_offset_seconds)}</span>
           </button>
         ))}
       </div>
@@ -457,8 +457,8 @@ export function ActiveListeningPlayer({
           const claims = playback.learned_claims.filter((claim) => claim.chapter_id === chapter.chapter_id);
           if (!claims.length) return null;
           return <section key={chapter.chapter_id} className="mt-3 border-t border-rule pt-3 dark:border-charcoal-1">
-            <h4 className="font-mono text-[11px] font-semibold">{chapter.title}</h4>
-            {claims.map((claim) => <div key={claim.line_id} className="mt-2 text-[12px]">
+            <h4 className="font-mono text-xs font-semibold">{chapter.title}</h4>
+            {claims.map((claim) => <div key={claim.line_id} className="mt-2 text-xs">
               <p>{claim.claim_text}</p>
               <p className="mt-1 text-shadow-1 dark:text-moonlight">{claim.follow_up_prompt} · {claim.source_count} {claim.source_count === 1 ? "source" : "sources"}</p>
               {claim.evidence_status === "verified_exact" ? <LemonButton
@@ -471,8 +471,8 @@ export function ActiveListeningPlayer({
                 {evidenceLineId === claim.line_id ? "Close evidence" : "Inspect evidence"}
               </LemonButton> : (
                 <div className="mt-2 border-y border-rule py-2 dark:border-charcoal-1">
-                  <p className="text-[11px] text-shadow-1 dark:text-moonlight">Legacy receipt · exact excerpt unavailable</p>
-                  <p className="mt-1 font-mono text-[10px] text-shadow-2">Evidence records: {claim.source_chunk_ids.join(", ")}</p>
+                  <p className="text-xs text-shadow-1 dark:text-moonlight">Legacy receipt · exact excerpt unavailable</p>
+                  <p className="mt-1 font-mono text-xxs text-shadow-2">Evidence records: {claim.source_chunk_ids.join(", ")}</p>
                 </div>
               )}
               {claim.evidence_status === "verified_exact" && <LemonButton
@@ -495,12 +495,12 @@ export function ActiveListeningPlayer({
                 <div className="mt-2 border-y border-rule py-3 dark:border-charcoal-1" aria-label={`Prepare research for ${claim.claim_text}`}>
                   <p className="font-semibold">{claim.claim_text}</p>
                   {claim.evidence_sources.map((source) => (
-                    <blockquote key={source.chunk_id} className="mt-2 border-l-2 border-sun pl-3 text-[12px]">{source.exact_text}</blockquote>
+                    <blockquote key={source.chunk_id} className="mt-2 border-l-2 border-sun pl-3 text-xs">{source.exact_text}</blockquote>
                   ))}
-                  <label className="mt-3 block text-[11px] font-semibold" htmlFor={`research-${claim.line_id}`}>Research question</label>
+                  <label className="mt-3 block text-xs font-semibold" htmlFor={`research-${claim.line_id}`}>Research question</label>
                   <LemonTextarea
                     id={`research-${claim.line_id}`}
-                    className="mt-1 text-[12px]"
+                    className="mt-1 text-xs"
                     minRows={3}
                     maxRows={8}
                     value={researchQuestion}
@@ -542,8 +542,8 @@ export function ActiveListeningPlayer({
                       });
                     }}
                   >{researchStatus === "submitting" ? "Preparing…" : "Prepare research"}</LemonButton>
-                  {researchStatus === "prepared" && <p className="mt-2 text-[11px]">Research prepared. Plan review is the next step and is currently unavailable.</p>}
-                  {researchStatus === "error" && <p className="mt-2 text-[11px]" role="alert">Could not prepare research. Try again.</p>}
+                  {researchStatus === "prepared" && <p className="mt-2 text-xs">Research prepared. Plan review is the next step and is currently unavailable.</p>}
+                  {researchStatus === "error" && <p className="mt-2 text-xs" role="alert">Could not prepare research. Try again.</p>}
                 </div>
               )}
               {evidenceLineId === claim.line_id && (
@@ -551,14 +551,14 @@ export function ActiveListeningPlayer({
                   {claim.evidence_sources.map((source) => (
                     <article key={source.chunk_id} className="py-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-mono text-[10px] font-semibold uppercase text-shadow-1 dark:text-moonlight">
+                        <p className="font-mono text-xxs font-semibold uppercase text-shadow-1 dark:text-moonlight">
                           {source.authority_kind === "canonical_graph" ? "Canonical graph" : "Operator excerpt"}
                         </p>
-                        <p className="font-mono text-[10px] text-shadow-2">{source.document_id}</p>
+                        <p className="font-mono text-xxs text-shadow-2">{source.document_id}</p>
                       </div>
-                      {source.locator && <p className="mt-1 font-mono text-[10px] text-shadow-2">{source.locator}</p>}
-                      <blockquote className="mt-2 border-l-2 border-sun pl-3 text-[12px] leading-5">{source.exact_text}</blockquote>
-                      <details className="mt-2 text-[10px] text-shadow-2">
+                      {source.locator && <p className="mt-1 font-mono text-xxs text-shadow-2">{source.locator}</p>}
+                      <blockquote className="mt-2 border-l-2 border-sun pl-3 text-xs leading-5">{source.exact_text}</blockquote>
+                      <details className="mt-2 text-xxs text-shadow-2">
                         <summary className="cursor-pointer font-mono">Authority details</summary>
                         <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono">
                           <dt>Chunk</dt><dd className="truncate">{source.chunk_id}</dd>
@@ -601,7 +601,7 @@ function Control({ label, icon, ...props }: { label: string; icon: ReactNode } &
 }
 
 function speedClass(active: boolean) {
-  return `h-7 min-w-10 rounded-hog border px-2 font-mono text-[11px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${active ? "border-sun bg-sun text-ink" : "border-rule bg-transparent dark:border-charcoal-1"}`;
+  return `h-7 min-w-10 rounded-hog border px-2 font-mono text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${active ? "border-sun bg-sun text-ink" : "border-rule bg-transparent dark:border-charcoal-1"}`;
 }
 
 function formatTime(seconds: number) {

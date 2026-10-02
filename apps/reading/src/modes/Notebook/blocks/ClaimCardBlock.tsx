@@ -32,7 +32,7 @@ function ClaimCardNodeView({ node, deleteNode }: NodeViewProps) {
                     openClaimInspector({ claimId, investigationId });
                   }
                 }}
-                className="text-[11px] font-bold text-ink dark:text-sun hover:underline"
+                className="text-xs font-bold text-ink dark:text-sun hover:underline"
               >
                 Inspect
               </button>
@@ -40,7 +40,7 @@ function ClaimCardNodeView({ node, deleteNode }: NodeViewProps) {
                 type="button"
                 onClick={() => deleteNode()}
                 aria-label="Remove block"
-                className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+                className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
               >
                 ✕
               </button>
@@ -48,7 +48,7 @@ function ClaimCardNodeView({ node, deleteNode }: NodeViewProps) {
           </span>
         }
       >
-        <p className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+        <p className="font-mono text-xs text-ink-soft dark:text-starlight">
           (claim content fetched at render in the full notebook backend;
           this is the substrate-ref shape per architecture_notes §13)
         </p>

@@ -1,13 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type CSSProperties,
-  type KeyboardEvent,
-  type WheelEvent,
-} from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import {
   artifactVersionUrl,
@@ -19,10 +10,12 @@ import {
   type RenderedArtifact,
   type StyleDraft,
 } from "../../api/styles";
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTag from "../../components/lemon/LemonTag";
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
+import StyleRail from "./StyleRail";
 import "./StyleWheel.css";
 
 export interface StyleWheelProps {
@@ -33,10 +26,6 @@ export interface StyleWheelProps {
 
 /** Session-local provenance: which wheel entry a fork was seeded from. */
 type ForkProvenance = Record<string, string>;
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "The style service is unavailable.";
-}
 
 function slugifyLabel(label: string): string {
   return label
@@ -55,6 +44,7 @@ function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): St
       description: "",
       theme_css: "",
       source_fidelity: false,
+      parent: null,
     };
   }
   const seedName = nameHint || `${base.name}-fork`;
@@ -64,7 +54,29 @@ function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): St
     description: base.description,
     theme_css: base.theme_css,
     source_fidelity: base.source_fidelity,
+    // The wheel entry the draft was seeded from IS its provenance. Resolved
+    // against the self-reference rule at save time, not here, because the slug
+    // is still editable.
+    parent: base.name,
   };
+}
+
+/**
+ * The `parent` to persist for a fork saved under `name`, seeded from `seed`.
+ *
+ * Re-posting a fork under its own slug is an edit, not a re-fork. The API
+ * refuses `parent === name` with 422, and sending `null` instead would erase
+ * lineage the backend already holds, so an in-place edit carries the style's
+ * own stored parent forward.
+ */
+function resolveParent(
+  seed: string | null | undefined,
+  name: string,
+  styles: ProjectionStyle[],
+): string | null {
+  if (!seed) return null;
+  if (seed !== name) return seed;
+  return styles.find((style) => style.name === name)?.parent ?? null;
 }
 
 export default function StyleWheel({ artifactId, investigationId, initialStyle }: StyleWheelProps) {
@@ -74,7 +86,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const [styles, setStyles] = useState<ProjectionStyle[]>([]);
   const [selected, setSelected] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -83,18 +95,21 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const [savingFork, setSavingFork] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [railActive, setRailActive] = useState(false);
   const [draft, setDraft] = useState<StyleDraft>({
     name: "",
     label: "",
     description: "",
     theme_css: "",
     source_fidelity: false,
+    parent: null,
   });
-  /** name → parent style name (session-local; backend has no parent field) */
+  /**
+   * name → parent style name, session-local. The API persists `parent` and is
+   * the source of truth; this is only a fallback for a style whose stored
+   * provenance did not come back on the wire (an older backend, or a fork
+   * saved before the column existed).
+   */
   const [provenance, setProvenance] = useState<ForkProvenance>({});
-  const [forkParent, setForkParent] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const previewRun = useRef(0);
   const applyRun = useRef(0);
   const applyController = useRef<AbortController | null>(null);
@@ -112,7 +127,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         if (!loaded.length) {
           setSelected("");
           setStatus("empty");
-          setError("No compatible styles are available for this artifact.");
+          setError({
+            title: "No compatible styles are available for this artifact.",
+            detail: "",
+            retryable: false,
+            kind: "not_found",
+          });
           return;
         }
         let restored = loaded[0]?.name ?? "";
@@ -130,7 +150,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
             }
           } catch (cause) {
             if (controller.signal.aborted) return;
-            setError(messageOf(cause));
+            setError(describeFailure(cause, { what: "load the current style" }));
           }
         }
         setSelected(restored);
@@ -138,7 +158,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       } catch (cause) {
         if (controller.signal.aborted) return;
         setStatus("unavailable");
-        setError(messageOf(cause));
+        setError(describeFailure(cause, { what: "load the styles" }));
       }
     })();
     return () => controller.abort();
@@ -177,7 +197,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       .catch((cause) => {
         if (!controller.signal.aborted && run === previewRun.current) {
           setPreviewUrl(null);
-          setError(messageOf(cause));
+          setError(describeFailure(cause, { what: "preview this style" }));
         }
       })
       .finally(() => {
@@ -186,33 +206,11 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
     return () => controller.abort();
   }, [artifactId, selected, status]);
 
-  const chooseAt = (index: number) => {
-    const style = styles[(index + styles.length) % styles.length];
-    if (!style) return;
-    setSelected(style.name);
-    requestAnimationFrame(() => document.getElementById(`style-${style.name}`)?.focus());
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    if (event.key === "Home") chooseAt(0);
-    else if (event.key === "End") chooseAt(styles.length - 1);
-    else chooseAt(index + (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1));
-  };
-
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!railActive || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.preventDefault();
-    event.currentTarget.scrollLeft += event.deltaY;
-  };
-
   const openForkEditor = (fromName?: string) => {
     const baseName = fromName ?? selected;
     const base = styles.find((s) => s.name === baseName);
     const hint = base ? `${base.name}-fork` : "my-style";
     setDraft(draftFromStyle(base, hint));
-    setForkParent(base?.name ?? null);
     setShowFork(true);
     setError(null);
     setConfirmDelete(false);
@@ -220,7 +218,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
 
   const closeForkEditor = () => {
     setShowFork(false);
-    setForkParent(null);
   };
 
   const onSaveFork = async (event: FormEvent) => {
@@ -228,12 +225,15 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
     setSavingFork(true);
     setError(null);
     try {
+      const name = draft.name.trim();
+      const parent = resolveParent(draft.parent, name, styles);
       const payload: StyleDraft = {
-        name: draft.name.trim(),
+        name,
         label: draft.label.trim(),
         description: draft.description,
         theme_css: draft.theme_css,
         source_fidelity: draft.source_fidelity,
+        parent,
       };
       const saved = await saveStyle(payload);
       setStyles((current) => {
@@ -241,15 +241,14 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         if (at < 0) return [...current, saved];
         return current.map((style, index) => (index === at ? saved : style));
       });
-      if (forkParent && forkParent !== saved.name) {
-        setProvenance((prev) => ({ ...prev, [saved.name]: forkParent }));
+      if (parent && parent !== saved.name) {
+        setProvenance((prev) => ({ ...prev, [saved.name]: parent }));
       }
       setSelected(saved.name);
       setStatus("ready");
       setShowFork(false);
-      setForkParent(null);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "save the style" }));
     } finally {
       setSavingFork(false);
     }
@@ -278,7 +277,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       setConfirmDelete(false);
       setShowFork(false);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "delete the style" }));
       setConfirmDelete(false);
     } finally {
       setDeleting(false);
@@ -302,7 +301,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         setReceipt(next);
       }
     } catch (cause) {
-      if (run === applyRun.current && !controller.signal.aborted) setError(messageOf(cause));
+      if (run === applyRun.current && !controller.signal.aborted) setError(describeFailure(cause, { what: "apply the style" }));
     } finally {
       if (run === applyRun.current) setApplying(false);
     }
@@ -315,7 +314,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const downloadVersion = async (version?: string) => {
     try {
       const response = await apiFetch(artifactVersionUrl(artifactId, version));
-      if (!response.ok) throw new Error(`Download unavailable (HTTP ${response.status}).`);
+      if (!response.ok) throw new ApiError(`Download unavailable (HTTP ${response.status}).`, response.status, "");
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -323,7 +322,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(describeFailure(cause, { what: "download the version" }));
     }
   };
 
@@ -338,15 +337,19 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   if (status === "unavailable") {
     return (
       <p className="style-wheel__state style-wheel__state--error" role="alert">
-        Styles unavailable · {error}
+        Styles unavailable{error ? ` · ${error.title} ${error.detail}` : ""}
       </p>
     );
   }
 
   const active = styles.find((style) => style.name === selected);
-  const parentName = active ? provenance[active.name] : undefined;
+  // Persisted provenance first; the session map only answers for a style the
+  // server did not send a `parent` for.
+  const parentName = active ? active.parent ?? provenance[active.name] : undefined;
   const parentStyle = parentName ? styles.find((s) => s.name === parentName) : undefined;
-  const forkParentStyle = forkParent ? styles.find((s) => s.name === forkParent) : undefined;
+  const forkParentStyle = draft.parent
+    ? styles.find((s) => s.name === draft.parent)
+    : undefined;
 
   return (
     <section className="style-wheel" aria-labelledby={headingId}>
@@ -381,58 +384,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
           </LemonButton>
         </div>
       ) : (
-        <div
-          className="style-wheel__rail"
-          ref={listRef}
-          role="listbox"
-          aria-label="Artifact styles"
-          aria-orientation="horizontal"
-          onWheel={onWheel}
-          onMouseEnter={() => setRailActive(true)}
-          onMouseLeave={() => setRailActive(false)}
-          onFocusCapture={() => setRailActive(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setRailActive(false);
-          }}
-        >
-          {styles.map((style, index) => {
-            const derivedFrom = provenance[style.name];
-            const derivedLabel = derivedFrom
-              ? styles.find((s) => s.name === derivedFrom)?.label ?? derivedFrom
-              : null;
-            return (
-              <button
-                id={`style-${style.name}`}
-                key={style.name}
-                type="button"
-                role="option"
-                aria-selected={style.name === selected}
-                tabIndex={style.name === selected ? 0 : -1}
-                className="style-wheel__option"
-                onClick={() => setSelected(style.name)}
-                onKeyDown={(event) => onKeyDown(event, index)}
-              >
-                <span
-                  className="style-wheel__swatch"
-                  style={
-                    {
-                      "--style-theme": style.source_fidelity
-                        ? "var(--ocean)"
-                        : "var(--sun-deep)",
-                    } as CSSProperties
-                  }
-                  aria-hidden="true"
-                />
-                <strong>{style.label}</strong>
-                <span className="style-wheel__option-meta">
-                  {style.builtin ? "Built in" : "Your fork"}
-                  {style.source_fidelity ? " · source-first" : ""}
-                  {derivedLabel ? ` · from ${derivedLabel}` : ""}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <StyleRail
+          styles={styles}
+          selected={selected}
+          onSelect={setSelected}
+          provenance={provenance}
+        />
       )}
 
       {active ? (
@@ -442,7 +399,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
             {active.description || "No description provided."}
           </p>
           <div className="style-wheel__chips" aria-label="Style provenance">
-            <LemonTag colour={active.builtin ? "sun" : "aurora"} dot>
+            <LemonTag colour={active.builtin ? "sun" : "default"} dot>
               {active.builtin ? "builtin" : "fork"}
             </LemonTag>
             {active.source_fidelity ? (
@@ -570,7 +527,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
               rows={6}
               value={draft.theme_css}
               onChange={(e) => setDraft({ ...draft, theme_css: e.target.value })}
-              placeholder=":root { --antiek-accent: var(--ocean); }"
+              placeholder=":root { --antiek-accent: var(--sun-deep); }"
               spellCheck={false}
             />
           </label>
@@ -601,7 +558,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
 
       {error ? (
         <p className="style-wheel__error" role="alert">
-          {error}
+          {error.title} {error.detail}
         </p>
       ) : null}
 

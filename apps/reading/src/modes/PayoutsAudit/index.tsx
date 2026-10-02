@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { LemonButton } from "../../components/lemon";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Payout transfers audit (master-spec §13.7 + §9.10).
@@ -35,8 +37,11 @@ const STATUS_FILTERS = [
 ] as const;
 
 export default function PayoutsAudit() {
-  const [rows, setRows] = useState<PayoutRow[]>([]);
+  // null until the log answers, and again after a failed load: the totals
+  // and the list are unknown then, never zero or empty.
+  const [rows, setRows] = useState<PayoutRow[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  // Raw failure detail; shown only as a title, never as the sentence.
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [recipientFilter, setRecipientFilter] = useState<string>("");
@@ -58,6 +63,7 @@ export default function PayoutsAudit() {
       const data = await resp.json();
       setRows(data.transfers ?? []);
     } catch (e: unknown) {
+      setRows(null);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -69,6 +75,7 @@ export default function PayoutsAudit() {
   }, [reload]);
 
   const totals = useMemo(() => {
+    if (rows === null) return null;
     const acc: Record<string, { count: number; amount_cents: number }> = {};
     for (const r of rows) {
       const k = r.status;
@@ -80,7 +87,7 @@ export default function PayoutsAudit() {
   }, [rows]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -131,35 +138,40 @@ export default function PayoutsAudit() {
                 className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2"
               >
                 <p className="text-base font-serif text-ink dark:text-bright">
-                  {totals[s]?.count ?? 0}
+                  {totals ? (totals[s]?.count ?? 0) : loading ? "…" : "—"}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {s.replace(/_/g, " ")}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-                  ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
-                </p>
+                {totals && (
+                  <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
+                    ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
+                  </p>
+                )}
               </div>
             ))}
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
+            <ErrorBanner className="flex flex-wrap items-center justify-between gap-3">
+              <span title={error}>Transfers didn't load.</span>
+              <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                Try again
+              </LemonButton>
+            </ErrorBanner>
           )}
 
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
-          {!loading && rows.length === 0 && !error && (
+          {!loading && rows !== null && rows.length === 0 && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No transfers match this filter.
             </p>
           )}
 
-          {rows.length > 0 && (
+          {rows !== null && rows.length > 0 && (
             <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
               {rows.map((r) => (
                 <article
@@ -167,11 +179,11 @@ export default function PayoutsAudit() {
                   className="px-4 py-3 grid grid-cols-12 gap-3 items-center"
                 >
                   <span
-                    className={`col-span-2 text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded text-center ${
+                    className={`col-span-2 text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded text-center ${
                       r.status === "transferred"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-success/10 text-success"
                         : r.status === "failed"
-                          ? "bg-red-50 text-emperor"
+                          ? "bg-danger/10 text-danger"
                           : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
                     }`}
                   >
@@ -181,12 +193,12 @@ export default function PayoutsAudit() {
                     <p className="text-sm font-mono text-ink dark:text-bright truncate">
                       {r.recipient_account_id ?? "—"}
                     </p>
-                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                    <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                       decision={r.decision_id}
                       {r.stripe_transfer_id ? ` · stripe=${r.stripe_transfer_id}` : ""}
                     </p>
                     {r.note && (
-                      <p className="text-[11px] text-shadow-1 dark:text-moonlight italic truncate">
+                      <p className="text-xs text-shadow-1 dark:text-moonlight italic truncate">
                         {r.note}
                       </p>
                     )}
@@ -195,7 +207,7 @@ export default function PayoutsAudit() {
                     <p className="text-sm font-mono text-ink dark:text-bright">
                       ${(r.amount_usd_cents / 100).toFixed(2)}
                     </p>
-                    <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+                    <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
                       {r.initiated_at ?? "—"}
                     </p>
                   </div>

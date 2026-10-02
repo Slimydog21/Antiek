@@ -20,8 +20,11 @@ import {
 } from "../../hooks/useThoughtPartnerThread";
 
 import { apiFetch, composeContext } from "../../lib/api";
-import { WernerThinking } from "../../brand/werner/animated";
+import { BrainThinking } from "../../brand/mascot/animated";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
+import { LemonButton } from "../../components/lemon/LemonButton";
 import ContextPicker from "../../components/ai/ContextPicker";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import {
   parseAssistantReply,
   dispatchAiAction,
@@ -55,6 +58,10 @@ export default function ThoughtPartnerPanel() {
   const [error, setError] = useState<string | null>(null);
   const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // SPR-03 Task 3 — the same driver dropdown every AI surface mounts; the
+  // choice rides on the request as model_choice + operation_id.
+  const model = useOwnerModelChoice("brainstorm");
+  const { select: selectModel, launchFields } = model;
 
   useEffect(() => {
     const onSeed = (ev: Event) => {
@@ -67,6 +74,10 @@ export default function ThoughtPartnerPanel() {
       if (typeof detail.system_context === "string") {
         setComposedContext(detail.system_context);
       }
+      // A driver chosen on the CommandPalette applies here too.
+      if (detail.owner_model && typeof detail.owner_model.row_id === "string") {
+        selectModel(detail.owner_model.row_id, detail.owner_model.model_id);
+      }
       setSeedLabel(
         typeof detail.source_label === "string" && detail.source_label.trim()
           ? detail.source_label.trim()
@@ -76,7 +87,7 @@ export default function ThoughtPartnerPanel() {
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
-  }, []);
+  }, [selectModel]);
 
   const addSlot = useCallback((payload: PaletteDragPayload) => {
     setSlotted((prev) => slotInsight(prev, payload));
@@ -140,6 +151,10 @@ export default function ThoughtPartnerPanel() {
           system_context: composeThoughtPartnerSystemContext(
             merged.trim() ? merged : null,
           ),
+          // Both fields or neither. ThoughtPartnerRequest (app.py) does not
+          // read model_choice yet, so this is reach, not function, until the
+          // route does — see the same note in AISidecar.
+          ...launchFields(prompt),
         }),
       });
       if (!resp.ok) {
@@ -183,7 +198,7 @@ export default function ThoughtPartnerPanel() {
         <h3 className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Thought partner
         </h3>
-        <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight leading-relaxed">
+        <p className="text-xs font-serif text-ink-mute dark:text-moonlight leading-relaxed">
           Slot insights like Legos into focus, then challenge / synthesize /
           extend — same role as ⌘/ sidecar and in-book Dialogue.
         </p>
@@ -191,7 +206,7 @@ export default function ThoughtPartnerPanel() {
 
       {seedLabel ? (
         <p
-          className="text-[10px] font-mono text-shadow-1 dark:text-moonlight"
+          className="text-xxs font-mono text-shadow-1 dark:text-moonlight"
           data-testid="thought-partner-seed-label"
         >
           Seeded from {seedLabel}
@@ -208,16 +223,16 @@ export default function ThoughtPartnerPanel() {
         className={
           "min-h-[3.5rem] border border-dashed rounded p-2 space-y-1.5 transition-colors " +
           (dropActive
-            ? "border-ocean bg-ocean/10"
-            : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-3")
+            ? "border-sun-deep bg-sun-deep/10"
+            : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2")
         }
       >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
           Focus tray
           {slotted.length ? ` · ${slotted.length}` : ""}
         </p>
         {slotted.length === 0 ? (
-          <p className="text-[11px] text-ink-mute dark:text-moonlight italic">
+          <p className="text-xs text-ink-mute dark:text-moonlight italic">
             Drop insight Legos here (or tap + on the shelf).
           </p>
         ) : (
@@ -225,7 +240,7 @@ export default function ThoughtPartnerPanel() {
             {slotted.map((s) => (
               <li
                 key={s.block_id}
-                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-ocean/40 bg-ocean/10 text-[10px] font-serif text-ink dark:text-bright"
+                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-sun-deep/40 bg-sun-deep/10 text-xxs font-serif text-ink dark:text-bright"
                 data-testid="slotted-insight-chip"
               >
                 <span className="truncate" title={s.label}>
@@ -249,6 +264,23 @@ export default function ThoughtPartnerPanel() {
 
       <ContextPicker onContextChange={setComposedContext} />
 
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Driver
+        </span>
+        <ModelUsagePicker
+          models={model.models}
+          value={model.selectedRowId}
+          valueModelId={model.selectedModelId}
+          onChange={model.select}
+          includeDefault
+          defaultLabel="Default (house route)"
+          triggerLabel={model.triggerLabel}
+          triggerAriaLabel="Model for this brainstorm"
+          size="sm"
+        />
+      </div>
+
       <textarea
         ref={inputRef}
         value={draft}
@@ -256,27 +288,28 @@ export default function ThoughtPartnerPanel() {
         placeholder="Talk to your notes — what should we challenge or extend?"
         rows={4}
         aria-label="Thought partner prompt"
-        className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y bg-ice-0 dark:bg-charcoal-3"
+        className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y bg-ice-0 dark:bg-charcoal-2"
       />
 
-      <button
-        type="button"
+      <LemonButton
+        variant="primary"
+        size="sm"
+        fullWidth
         onClick={() => void send()}
         disabled={pending || !draft.trim()}
-        className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {pending ? (
           <>
-            <WernerThinking size={20} label="" />
+            <BrainThinking size={20} label="" />
             <span>Thinking…</span>
           </>
         ) : (
           "Send"
         )}
-      </button>
+      </LemonButton>
 
       {error ? (
-        <p className="text-[11px] text-red-700 dark:text-red-300" role="alert">
+        <p className="text-xs text-danger" role="alert">
           {error}
         </p>
       ) : null}
@@ -284,12 +317,12 @@ export default function ThoughtPartnerPanel() {
       {thread.messages.length > 0 ? (
         <div className="space-y-2" data-testid="thought-partner-thread">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               Thread · {thread.messages.length}
             </p>
             <button
               type="button"
-              className="text-[10px] font-mono underline text-ink-mute"
+              className="text-xxs font-mono underline text-ink-mute"
               onClick={() => thread.clear()}
               data-testid="thought-partner-clear-thread"
             >
@@ -300,19 +333,19 @@ export default function ThoughtPartnerPanel() {
             {thread.messages.map((m) => (
               <li
                 key={m.id}
-                className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-0 dark:bg-charcoal-3"
+                className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-0 dark:bg-charcoal-2"
                 data-testid="thought-partner-turn"
               >
-                <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+                <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
                   You: {m.question}
                 </p>
                 {m.answer == null ? (
-                  <p className="text-[11px] italic text-ink-mute" data-testid="thought-partner-pending">
+                  <p className="text-xs italic text-ink-mute" data-testid="thought-partner-pending">
                     Thinking…
                   </p>
                 ) : (
                   <div data-testid="thought-partner-reply">
-                    <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                    <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                       {m.shape ?? "SYNTHESIS"}
                     </p>
                     <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap font-serif leading-relaxed">
@@ -331,7 +364,7 @@ export default function ThoughtPartnerPanel() {
           {aiLog.map((rec, idx) => (
             <li
               key={`${rec.at}-${idx}`}
-              className="text-[11px] border border-rule dark:border-charcoal-1 rounded px-2 py-1"
+              className="text-xs border border-rule dark:border-charcoal-1 rounded px-2 py-1"
             >
               {rec.label}
             </li>

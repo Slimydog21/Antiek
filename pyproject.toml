@@ -82,7 +82,7 @@ dependencies = [
 
 [project.optional-dependencies]
 turbopuffer_shadow = [
-  "turbopuffer==2.9.0",
+  "turbopuffer==2.10.1",
 ]
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
@@ -149,6 +149,7 @@ dev = [
   "mypy>=1.11",
   "types-PyYAML",
   "types-python-dateutil",
+  "types-requests",
 ]
 # NOTE on export extras: xhtml2pdf pulls reportlab → pycairo which needs
 # system libcairo2-dev. We deliberately do NOT include xhtml2pdf or
@@ -161,10 +162,7 @@ dev = [
 
 [project.scripts]
 herdr-bridge = "infrastructure.connectors.herdr_bridge.cli:main"
-# Entry point lives at `antiek.cli:main` once we wire it. For now this is
-# a placeholder so `pip install -e .` doesn't fail; the real launcher
-# fires up Hermes with the right profile (see spec, "Compute and runtime").
-antiek = "antiek.cli:main"
+# The supported console launcher is `herdr-bridge` above.
 
 [tool.hatch.build.targets.wheel]
 # Each top-level directory in the spec is a separate Python package. We
@@ -229,6 +227,23 @@ warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 
+# The unified-CLI dispatchers (substrate/cli/{queue,hooks,compact}.py +
+# substrate/cli/__main__.py) depend on the pi-execution primitives
+# (substrate.queue / substrate.hooks / substrate.conversation / substrate.harness)
+# that are NOT merged on this branch — those package dirs are empty stubs here.
+# Per the same merge-or-kill ruling as the harness.fork test skips (commit
+# 5fa504590), exclude them from the gate; they re-enter it when pi-execution
+# merges. `[[tool.mypy.overrides]]` with ignore_errors keeps the rest of the
+# strict floor intact.
+[[tool.mypy.overrides]]
+module = [
+    "substrate.cli.__main__",
+    "substrate.cli.queue",
+    "substrate.cli.hooks",
+    "substrate.cli.compact",
+]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "compounding/benchmark/tests"]
 asyncio_mode = "auto"
@@ -238,4 +253,7 @@ markers = [
     "slow: slow tests (full multi-arm benchmark runs); excluded from the fast CI suite via -m 'not slow'",
     "real_store_read: opt-out from the SPR-04 store-isolation guard for a legitimate read-only real-store test (DOGFOOD SPR-04)",
     "store_isolation_contract: opt-out for tests that probe ANTIEK_DUCKDB_PATH fallback contracts (DOGFOOD SPR-04)",
+    "live_provider: test genuinely needs REAL provider credentials; opts out of the _isolate_provider_keys autouse fixture. A unit test almost never wants this — a registered real provider outranks the test's own stubs, bills a live key and egresses data.",
+    "arxiv_state_contract: opt-out from the _isolate_arxiv_governor autouse fixture for a test that deliberately probes the ANTIEK_ARXIV_THROTTLE_PATH / ANTIEK_ARXIV_GOVERNOR_LOCK_PATH default-path fallback (SPR-05 arXiv task 1). It grants nothing else: an unmarked test that resolves either path to the real ~/.antiek file fails at fixture setup or teardown.",
+    "prime_real: opt-in check against a GENUINE prime-agent install named by ANTIEK_PRIME_AGENT_BIN (SPR-01 Task 7). Runs the capability probe and the bundle-hashing staging path against the real Node bundle; skips when the env var is unset. MANDATORY local pre-ratification check: run `ANTIEK_PRIME_AGENT_BIN=<install> pytest tests/test_prime_agent_real_binary.py -m prime_real -s` before flipping ANTIEK_PRIME_AGENT_RLM_ENABLED or ANTIEK_RLM_RATIFIED anywhere. Not a CI job: the backend runners install no Node and the pinned tarball is not on public npm.",
 ]

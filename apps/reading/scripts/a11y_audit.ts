@@ -8,7 +8,7 @@
  * The Storybook addon-a11y surfaces violations inline at story-author
  * time. This script runs the same rule set in CI / locally + writes
  * a Markdown audit report so the operator can audit every primitive
- * + every panel + every Werner asset in one pass — automated proxy
+ * + every panel + every Brain asset in one pass — automated proxy
  * for the spec's "VoiceOver pass" gate.
  *
  *   npm run a11y:audit
@@ -80,14 +80,14 @@ const STORIES: string[] = [
   // S0 — design tokens
   "design-moodboard--palette-day-off-whites-glacials",
   "design-moodboard--palette-night-majestic-night-sky",
-  "design-moodboard--werner-bill-feet-brand-sun",
+  "design-moodboard--mascot-bill-feet-brand-sun",
   "design-moodboard--shadows",
   "design-moodboard--typography",
   "design-moodboard--outlined-card",
-  // Werner brand
-  "brand-werner-animations--all-poses",
+  // Antiek brand
+  "brand-mascot-animations--all-poses",
   // SPR-06 — the igloo home mark (the M4 home control's mark).
-  "brand-werner-igloomark-spr-06--on-rail-button",
+  "brand-mascot-igloomark-spr-06--on-rail-button",
   // SPR-06 — the restructured shell (bottom nav) + the bottom rail itself.
   "navigation-appshell--empty",
   "shell-navrail-spr-04--bottom-rail",

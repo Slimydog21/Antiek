@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { List as ListIcon } from "lucide-react";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -11,6 +12,16 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import ReadingAppearance from "../../components/reader/ReadingAppearance";
+import ReadingTypography from "../../components/reader/ReadingTypography";
+import { useReadingTypography } from "../../lib/readingTypography";
+import { EmptyState, ErrorState, LoadingState } from "../../components/states";
+import { useInWindow } from "../../components/windows/windowHostContext";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
+import { useViewportTier } from "../../workspace/useViewportTier";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
+import { READER_TOC_TOGGLE_EVENT } from "../../workspace/readerEvents";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -21,7 +32,41 @@ import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
-import { usePosition } from "./usePosition";
+import { useReadingState } from "../../hooks/useReadingState";
+import { useAnchors } from "../../hooks/useAnchors";
+import {
+  createAnchor,
+  getAnchorMap,
+  linkAnchorInvestigation,
+  type AnchorMapChunk,
+  type BookAnchor,
+} from "../../lib/api";
+import { buildPinBody } from "./pinBody";
+import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
+import { enactWidgetLayout } from "../../reading-physics/facets/anchored-widgets";
+import { anchorKey } from "../../reading-physics/facets/decorations";
+import { baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
+import type { Rect as PhysicsRect, RenderContext } from "../../reading-physics/types";
+import { makeIslandAugmentation } from "../../reading-physics/augmentations/thread-island";
+import ThreadIsland from "./island/ThreadIsland";
+import { deriveIslandRefs } from "./island/islandModel";
+import { runSpawnFlow } from "./island/spawnFlows";
+import { toast } from "../../components/lemon/LemonToast";
+import { describeFailure } from "../../shared/failure";
+import {
+  HIDDEN_ISLANDS_CHANGED,
+  readHiddenIslands,
+  unhideIsland,
+} from "./island/hiddenIslands";
+import type { ReadingContext } from "../../reading-physics/types";
+import { makeHighlightAnchorAugmentation } from "../../reading-physics/augmentations/highlight-anchor";
+import {
+  anchorBodyRange,
+  chunkIdAtOffset,
+  normalizeNodeText,
+  orphanedForList,
+  rangesForPage,
+} from "./anchorRanges";
 import { clearReadingFocus, setReadingFocus } from "../../lib/readingFocus";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
@@ -38,9 +83,36 @@ import { emitSourceRead, isRead } from "./sourceRead";
  * does, and this surface honestly reflects it.
  */
 
-export default function BookReader() {
-  const { documentId = "" } = useParams<{ documentId: string }>();
-  const navigate = useNavigate();
+export interface BookReaderProps {
+  /** Window hosts inject the document identity directly; route mounts keep
+   * resolving `/read/:documentId` exactly as before. */
+  documentId?: string;
+  /** The reader window's origin context (reading-global SPR-02) — arrives
+   * as window payload (the host spreads it into props). Metadata only: the
+   * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
+   * and changes nothing. */
+  origin?: { from: string; id: string } | null;
+  /** A one-shot page landing (the reformat trace jump, SPR-02): applied
+   *  once when the pages resolve, then the bus owns the position. */
+  initialPage?: number | null;
+}
+
+/** The decorations registry needs a ReadingContext; the highlight
+ *  augmentation closes over its spec and never reads it (same stub the
+ *  reading-physics tests use). */
+const ANCHOR_STUB_CTX: ReadingContext = {
+  synthesis: { question: null, claims: [] },
+  layout: { resolve: () => null },
+  substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
+};
+
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
+  const typography = useReadingTypography();
+  const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
+  const documentId = documentIdProp ?? routeDocumentId;
+  const inWindow = useInWindow();
+  const [searchParams] = useSearchParams();
+  const openTalkOnLoad = searchParams.get("talk") === "1";
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -48,42 +120,222 @@ export default function BookReader() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadBook = useCallback(async (isCancelled: () => boolean) => {
     setLoading(true);
     setError(null);
-    (async () => {
+    try {
+      const [detail, full] = await Promise.all([
+        getBook(documentId),
+        getBookFullText(documentId),
+      ]);
+      if (isCancelled()) return;
+      setBook(detail);
+      setBody(full);
+      // House-state candidates for the zero-buyer ad border.
       try {
-        const [detail, full] = await Promise.all([
-          getBook(documentId),
-          getBookFullText(documentId),
-        ]);
-        if (cancelled) return;
-        setBook(detail);
-        setBody(full);
-        // House-state candidates for the zero-buyer ad border.
-        try {
-          const servable = await listBooks("servable");
-          if (!cancelled) setHousePool(servable.books);
-        } catch {
-          /* house pool is best-effort; a neutral house card is fine */
-        }
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
+        const servable = await listBooks("servable");
+        if (!isCancelled()) setHousePool(servable.books);
+      } catch {
+        /* house pool is best-effort; a neutral house card is fine */
+      }
+    } catch (e: unknown) {
+      if (!isCancelled()) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  }, [documentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadBook(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [loadBook]);
+
+  const reload = useCallback(() => {
+    void loadBook(() => false);
+  }, [loadBook]);
+
+  useEffect(() => {
+    // The anchor-map is only meaningful with a readable body (the reader
+    // renders only gate-served text — a gated snippet carries no anchorable
+    // passages). ownerReadable is the same flag the FloatMenu outbound guard
+    // uses; the owner manifest path mirrors owner-full-text.
+    const readable = body?.servable || body?.reason === "owner_personal_reading";
+    if (!documentId || !readable) {
+      setAnchorMapChunks([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const map = await getAnchorMap(documentId, {
+          owner: body?.reason === "owner_personal_reading",
+        });
+        if (!cancelled) setAnchorMapChunks(map.chunks);
+      } catch {
+        // The map is best-effort beside the body (a 403 on a just-gated book
+        // must not break reading); decorations simply don't paint.
+        if (!cancelled) setAnchorMapChunks([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, body]);
 
-  const pages = useMemo(
-    () => paginate(body?.full_text ?? body?.snippet ?? ""),
+  // The ONE scalar space: the anchor-map's offsets and the anchor schema
+  // both pin to unicode-nfc-v1 normalized text, so the body the reader
+  // paginates is normalized the same way (anchorRanges.normalizeNodeText
+  // mirrors substrate/feedback/domain.py:18-20).
+  const normalizedBody = useMemo(
+    () => normalizeNodeText(body?.full_text ?? body?.snippet ?? ""),
     [body],
   );
-  const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+  const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
+  const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // The one-shot page landing (the reformat trace jump): applied ONCE when
+  // the pages resolve; the bus owns the position from then on.
+  const initialPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
+    initialPageAppliedRef.current = true;
+    setPageIndex(initialPage);
+  }, [initialPage, pages.length, setPageIndex]);
+
+  // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
+  // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
+  // endpoint that finally exposes per-chunk identity for the served body,
+  // closing the HONEST GAP below (was: representativeChunkId = null because
+  // the books read path exposed no per-chunk id). The owner path serves the
+  // manifest for personal-reading books; the public path for servable ones.
+  const {
+    anchors,
+    refetch: refetchAnchors,
+    remove: removeAnchor,
+  } = useAnchors(documentId);
+  const [anchorMapChunks, setAnchorMapChunks] = useState<AnchorMapChunk[]>([]);
+  const anchorChunksById = useMemo(() => {
+    const byId = new Map<string, AnchorMapChunk>();
+    for (const chunk of anchorMapChunks) byId.set(chunk.chunk_id, chunk);
+    return byId;
+  }, [anchorMapChunks]);
+
+  // ── Research-thread islands (island SPR-02) ───────────────────────────
+  // Islands are the thread-linked anchors (SPR-01's deriveIslandRefs). An
+  // island SUPERSEDES a plain highlight mark: the unit-1 wash + underline
+  // already paints its anchor; this widget adds the live status glyph and
+  // the pinned overlay card. Orphaned islands follow the parent's rule
+  // (nothing in the body, one honest list row).
+  const islands = useMemo(() => deriveIslandRefs(anchors), [anchors]);
+
+  // The per-device "hide" preference (client-side only; never deletes
+  // anything). Re-read on the module's change event so Hide/Unhide both
+  // reflect immediately.
+  const [hiddenIslands, setHiddenIslands] = useState<Set<string>>(() =>
+    readHiddenIslands(),
+  );
+  useEffect(() => {
+    function sync() {
+      setHiddenIslands(readHiddenIslands());
+    }
+    window.addEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+    return () => window.removeEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+  }, []);
+
+  const visibleIslands = useMemo(
+    () => islands.filter((i) => !hiddenIslands.has(i.anchorId)),
+    [islands, hiddenIslands],
+  );
+
+  // The widget surface: pin each visible island through the reading-physics
+  // plan (declare), resolve geometry from the island's mark span (the ONE
+  // place pixels are measured — the surface owns the read, PR-4), and enact
+  // the widgets over the reading column. An island whose anchor isn't laid
+  // out (off-page, orphaned) resolves null and renders nothing — the
+  // LayoutMap contract, never a fabricated position.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [islandRects, setIslandRects] = useState<ReadonlyMap<string, PhysicsRect>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main || visibleIslands.length === 0) {
+      setIslandRects(new Map());
+      return;
+    }
+    function measure() {
+      const mainRect = main!.getBoundingClientRect();
+      const next = new Map<string, PhysicsRect>();
+      for (const island of visibleIslands) {
+        const key = anchorKey({
+          kind: "passage",
+          chunkId: island.passageAnchor.chunkId as never,
+          start: island.passageAnchor.start,
+          end: island.passageAnchor.end,
+        });
+        const span = main!.querySelector(`[data-anchor-id="${island.anchorId}"]`);
+        if (span) {
+          const r = span.getBoundingClientRect();
+          next.set(key, {
+            top: r.top - mainRect.top,
+            left: r.left - mainRect.left,
+            width: r.width,
+            height: r.height,
+          });
+        }
+      }
+      setIslandRects(next);
+    }
+    measure();
+    // Glyph positions can move while the root box stays the same size.
+    document.fonts?.addEventListener("loadingdone", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(main);
+    return () => {
+      observer?.disconnect();
+      document.fonts?.removeEventListener("loadingdone", measure);
+    };
+  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks, typography]);
+
+  const islandLayoutMap = useMemo(
+    () => createLayoutMap(baseGeometryFromMap(islandRects)),
+    [islandRects],
+  );
+
+  const enactedIslands = useMemo(() => {
+    if (visibleIslands.length === 0) return [];
+    const augmentations = visibleIslands.map((island) =>
+      makeIslandAugmentation({
+        anchorId: island.anchorId,
+        documentId: island.documentId,
+        chunkId: island.passageAnchor.chunkId,
+        start: island.passageAnchor.start,
+        end: island.passageAnchor.end,
+        investigationId: island.investigationId,
+        servable: island.servable,
+        passageQuote: island.servable
+          ? anchors.find((a) => a.anchor_id === island.anchorId)?.anchor.quote || null
+          : null,
+        pageIndexHint:
+          anchors.find((a) => a.anchor_id === island.anchorId)?.page_index_hint ?? null,
+        origin,
+      }),
+    );
+    const plan = collectAnchoredWidgets(augmentations, ANCHOR_STUB_CTX);
+    return enactWidgetLayout(plan, islandLayoutMap);
+  }, [visibleIslands, anchors, islandLayoutMap, origin]);
+
+  const islandRenderCtx: RenderContext = useMemo(
+    () => ({
+      pass: "main",
+      layout: islandLayoutMap,
+      components: { ThreadIsland },
+    }),
+    [islandLayoutMap],
+  );
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
@@ -115,23 +367,13 @@ export default function BookReader() {
 
   // §9.0 — the chunk the read/note is attributed to.
   //
-  // HONEST GAP (Read SPR-07 M4, tightened): the reader client has NO chunk id
-  // to attribute to this sprint. BookDetail / FullTextResponse expose
-  // title/toc/full_text/servability — never per-chunk ids — and surfacing them
-  // is a backend change (a /books endpoint that returns chunk ids) deliberately
-  // OUT OF SCOPE here. So we attribute to null HONESTLY rather than invent a
-  // chunk id. Consequence, stated plainly so the M4 claim is not overstated:
-  //   • source.read EVENT + the SiteSee resolver are LIVE (sourceRead.ts);
-  //   • the SiteSee "read" tint keys on chunk_id, so it PAINTS only once a
-  //     real chunk anchor is resolved — a documented follow-up (a books
-  //     endpoint exposing chunk ids), NOT something this sprint claims paints
-  //     end-to-end.
-  // For the in-book NOTE: document_id still completes the claim→chunk→document
-  // chain (the note's per-book insight node is grounded on its document via
-  // node metadata, so block_search returns it per-book even with a null chunk —
-  // see substrate/graph/insight_question.promote_from_marginalia_event). The
-  // chunk anchor on the note is the SAME documented follow-up.
-  const representativeChunkId: string | null = null;
+  // THE HONEST GAP, CLOSED (anchor-first SPR-02): this used to record null
+  // because the books read path exposed no per-chunk id for the linear body.
+  // The SPR-03 anchor-map now serves exactly that (chunk_id → body offsets),
+  // so a selection's chunk resolves for real — by locating the selected text
+  // in the current page and mapping the offset through the manifest. A
+  // selection that doesn't locate uniquely still records null HONESTLY
+  // (never a fabricated coverage claim).
   const ownerReadable =
     book?.servable_full_text === true || body?.reason === "owner_personal_reading";
 
@@ -140,6 +382,9 @@ export default function BookReader() {
   // tracker already runs. A per-session guard (ref) coalesces it: never per-page
   // spam, never refired. §9.0: the event carries no body (sourceRead.ts).
   const readEmittedRef = useRef(false);
+  // The current page's chunk for the source.read event — resolved live from
+  // the anchor-map (the HONEST GAP closure), never the old null placeholder.
+  const pageChunkRef = useRef<string | null>(null);
   const onDwell = useCallback(
     (dwell: { totalDwellMs: number; pagesSeen: number }) => {
       if (readEmittedRef.current) return;
@@ -148,7 +393,7 @@ export default function BookReader() {
       void emitSourceRead({
         documentId,
         readingThreadId,
-        chunkId: representativeChunkId,
+        chunkId: pageChunkRef.current,
         dwellMs: dwell.totalDwellMs,
         pageCount: dwell.pagesSeen,
       });
@@ -167,6 +412,7 @@ export default function BookReader() {
   // (the old inline "Go deeper" affordance) is GENERALIZED through this menu:
   // Deep-research (highlight) used to open ChaseThread without book provenance;
   // that path never hit spin-research / notebook distill. Wire to spin-research.
+
   const articleRef = useRef<HTMLElement>(null);
 
   // §9.0 servability of the open book — the in-book selection's servability.
@@ -181,12 +427,13 @@ export default function BookReader() {
   // servable for FloatMenu outbound so highlight → Deep-research works in
   // dogfood without weakening the public /full-text contract.
   const resolveProvenance = useCallback(
-    (_range: Range, _text: string): SelectionProvenance => ({
-      documentId,
-      chunkId: representativeChunkId,
-      servable: ownerReadable,
-    }),
-    [documentId, ownerReadable],
+    (_range: Range, text: string): SelectionProvenance => {
+      const chunkId = resolveSelectionChunk(text);
+      return { documentId, chunkId, servable: ownerReadable };
+    },
+    // resolveSelectionChunk is defined below (after the page locator helpers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documentId, ownerReadable, anchorMapChunks, normalizedBody, pageIndex, pages],
   );
 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
@@ -219,24 +466,177 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research (highlight) -> spin-research + /inv/:id. Book-bound provenance
-  // via POST /books/{id}/spin-research. ChaseThread stays the in-investigation
-  // chase path on the Research workstation. Section 9.0: null safeSpawnText = refuse.
-  const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
-      if (safeSpawnText === null) return;
-      window.getSelection()?.removeAllRanges();
+  // ── Pin machinery (anchor-first SPR-02) ───────────────────────────────
+  // Locate the selected text UNIQUELY in the current page, then map the page
+  // offset through the anchor-map to a chunk + chunk-relative offsets. A
+  // non-unique or cross-chunk match resolves null — never a guessed anchor.
+  const locateSelection = useCallback(
+    (
+      text: string,
+    ): { chunkId: string; start: number; end: number; bodyOffset: number } | null => {
+      const page = pages[pageIndex];
+      if (!page || !text) return null;
+      const first = page.text.indexOf(text);
+      if (first < 0 || page.text.indexOf(text, first + 1) >= 0) return null;
+      const bodyOffset = page.bodyStart + first;
+      const end = bodyOffset + text.length;
+      const chunkId = chunkIdAtOffset(bodyOffset, anchorMapChunks);
+      if (!chunkId) return null;
+      const chunk = anchorChunksById.get(chunkId);
+      if (!chunk || end > chunk.body_end) return null; // cross-chunk selection
+      return { chunkId, start: bodyOffset - chunk.body_start, end: end - chunk.body_start, bodyOffset };
+    },
+    [pages, pageIndex, anchorMapChunks, anchorChunksById],
+  );
+
+  const resolveSelectionChunk = useCallback(
+    (text: string): string | null => locateSelection(text)?.chunkId ?? null,
+    [locateSelection],
+  );
+
+  // Persist one anchor from a selection. Returns the stored row (null on an
+  // honest no-location). The §9.0 rule at the pin boundary: a WITHHELD
+  // selection's text never leaves the client — it resolves LOCALLY via the
+  // anchor-map and posts ids+numbers only (the explicit metadata-only form);
+  // a servable selection posts the quote and the server resolves canonically.
+  const pinFromSelection = useCallback(
+    async (source: string, sel: FloatMenuSelection): Promise<BookAnchor | null> => {
+      const loc = locateSelection(sel.text);
+      const body = buildPinBody(source, sel, loc, normalizedBody, pageIndex);
+      if (!body) return null;
+      return createAnchor(documentId, body);
+    },
+    [documentId, pageIndex, locateSelection, normalizedBody],
+  );
+
+  // The FloatMenu's pin seam: Note/Dialogue/Search + the Pin button fire here
+  // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
+  // needs the anchor id). Auto-pins are best-effort beside their action: a
+  // failed pin never breaks the action (it is logged, never surfaced as if
+  // the action failed); the manual Pin is surfaced honestly (D8: the swallowed
+  // 422 anchor_resolution_not_found was the day-one journey blocker — the
+  // operator saw zero marks, zero alerts).
+  const onPinAnchor = useCallback(
+    (pin: { source: string }, sel: FloatMenuSelection) => {
+      const manual = pin.source === "pin";
       void (async () => {
         try {
-          const res = await spinResearch(documentId, pageIndex, safeSpawnText);
-          navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
-        } catch (err: unknown) {
-          console.error("spin-research from highlight failed", err);
+          await pinFromSelection(pin.source, sel);
+          refetchAnchors();
+          if (manual) toast.info("Highlight pinned.");
+        } catch (e) {
+          // Diagnostics for logs; a plain sentence for the operator.
+          const described = describeFailure(e, { what: "pin that passage" });
+          console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
+          if (manual) {
+            toast.warn(`${described.title} ${described.detail}`);
+          }
         }
       })();
     },
-    [documentId, pageIndex, navigate],
+    [pinFromSelection, refetchAnchors],
   );
+
+  // Deep-research (highlight) -> pin -> spin-research -> write-back, and the
+  // ISLAND emerges collapsed at the passage (island SPR-03) — the reader does
+  // NOT navigate away; "Open research" on the island is the explicit jump.
+  // Book-bound provenance via POST /books/{id}/spin-research. ChaseThread
+  // stays the in-investigation chase path on the Research workstation.
+  // Section 9.0: null safeSpawnText = refuse. First link wins — a second
+  // spawn never overwrites. The failure matrix (pin / spawn / link) surfaces
+  // honestly, never an anchorless island.
+  const onDeepResearch = useCallback(
+    (safeSpawnText: string | null, sel: FloatMenuSelection) => {
+      if (safeSpawnText === null) return;
+      window.getSelection()?.removeAllRanges();
+      const loc = locateSelection(sel.text);
+      void (async () => {
+        const result = await runSpawnFlow({
+          anchors,
+          locate: () => loc,
+          pin: async () => {
+            const pinned = await pinFromSelection("floatmenu_deep_research", sel);
+            if (!pinned) throw new Error("the passage could not be anchored");
+            return pinned;
+          },
+          spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+          link: (anchorId, investigationId) =>
+            linkAnchorInvestigation(documentId, anchorId, investigationId),
+          passageText: safeSpawnText,
+        });
+        if (result.ok) {
+          refetchAnchors();
+          toast.info("Research started — the island is on your passage.");
+        } else {
+          toast.warn(result.message ?? "Couldn't start the research.");
+          refetchAnchors(); // a lawful pinned highlight may remain
+        }
+      })();
+    },
+    [documentId, pageIndex, anchors, locateSelection, pinFromSelection, refetchAnchors],
+  );
+
+  // Free-inquiry (island SPR-03): pin the current page's LEAD passage first
+  // (source=pin), then spin with the pinned passage, then the island. The
+  // same dedupe + failure matrix as the highlight path; a gated book's
+  // passage can't anchor (no manifest) and refuses honestly with no withheld
+  // text anywhere.
+  const spawnFreeInquiry = useCallback(() => {
+    const page = pages[pageIndex];
+    if (!page) return;
+    const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
+    if (!lead) return;
+    const startInPage = page.text.indexOf(lead);
+    const bodyOffset = page.bodyStart + startInPage;
+    const chunkId = chunkIdAtOffset(bodyOffset, anchorMapChunks);
+    const chunk = chunkId ? anchorChunksById.get(chunkId) : undefined;
+    const loc = chunk
+      ? {
+          chunkId: chunk.chunk_id,
+          start: bodyOffset - chunk.body_start,
+          end: bodyOffset + lead.length - chunk.body_start,
+        }
+      : null;
+    void (async () => {
+      const servableForOutbound = ownerReadable;
+      const result = await runSpawnFlow({
+        anchors,
+        locate: () => loc,
+        pin: async () => {
+          if (!loc || !chunkId) throw new Error("the passage could not be anchored");
+          if (servableForOutbound) {
+            return createAnchor(documentId, {
+              quote: lead,
+              prefix: normalizedBody.slice(Math.max(0, bodyOffset - 32), bodyOffset),
+              suffix: normalizedBody.slice(bodyOffset + lead.length, bodyOffset + lead.length + 32),
+              page_index_hint: pageIndex,
+              source: "pin",
+            });
+          }
+          // Metadata-only (owner-readable withheld book): ids/numbers only —
+          // the passage text never leaves the client in the pin.
+          return createAnchor(documentId, {
+            node_id: chunkId,
+            start_scalar: loc.start,
+            end_scalar: loc.end,
+            page_index_hint: pageIndex,
+            source: "pin",
+          });
+        },
+        spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+        link: (anchorId, investigationId) =>
+          linkAnchorInvestigation(documentId, anchorId, investigationId),
+        passageText: lead,
+      });
+      if (result.ok) {
+        refetchAnchors();
+        toast.info("Research started — the island is on your passage.");
+      } else {
+        toast.warn(result.message ?? "Couldn't start the research.");
+        refetchAnchors();
+      }
+    })();
+  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors]);
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
   // anchored menu would otherwise float over the wrong page. A chase already in
@@ -260,10 +660,111 @@ export default function BookReader() {
     };
   }, [housePool, documentId]);
 
+  // The house slot is a promotion, not provenance: the book it promotes was
+  // never referenced by this one, so it opens as a ROOT tab in the tree the
+  // reader is in (a plain navigation keeps `?m`), never as a branch of kind
+  // "reference" (lane A B2-7).
+  const modeNavigate = useModeNavigate();
   const openHouse = useCallback(
-    (docId: string) => navigate(`/read/${encodeURIComponent(docId)}`),
-    [navigate],
+    (docId: string) => modeNavigate(`/read/${encodeURIComponent(docId)}`),
+    [modeNavigate],
   );
+
+  // The contents in a narrow pane (lane A B2-5). The TOC column answers to
+  // the reader's own width (container-reader); below reader-md it folds
+  // away, and this opens it over the page, in the pane: from the Contents
+  // button, or from the keymap (prefix shift+c) via the reader event.
+  const [tocOpen, setTocOpen] = useState(false);
+  useEffect(() => {
+    if (inWindow) return;
+    const onToggle = (e: Event) => {
+      e.preventDefault();
+      setTocOpen((open) => !open);
+    };
+    window.addEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+  }, [inWindow]);
+  const tocRef = useRef<HTMLElement>(null);
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!tocOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      // One Esc, one layer: a hidden TOC must not eat Escape (A1c low 11),
+      // and closing restores focus to the Contents toggle.
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (tocRef.current?.closest("[hidden]")) return;
+      e.preventDefault();
+      setTocOpen(false);
+      tocToggleRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tocOpen]);
+  const jumpFromToc = useCallback(
+    (index: number) => {
+      setPageIndex(index);
+      setTocOpen(false);
+    },
+    [setPageIndex],
+  );
+
+  // The reader's own companion column duplicates the cockpit's right pane
+  // (the companion), so it steps aside while that pane is on screen: the
+  // inset preset from tier md up. It stays in the docked preset, on a phone
+  // and in a window. Hidden, not unmounted, so a preset toggle keeps it.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
+  const cockpitCompanion = !inWindow && layoutPreset === "omarchy-inset" && tier !== "sm";
+
+  // The decorations pipeline (anchor-first SPR-02): each persisted anchor
+  // declares a decoration through the highlight augmentation (declare), the
+  // registry combines (dedup/union on the same range), and the surface maps
+  // the resolved decorations to inline painted marks (enact). Orphaned
+  // anchors never paint — they list honestly below instead.
+  const pageMarks = useMemo(() => {
+    const current = pages[pageIndex];
+    if (!current || anchors.length === 0 || anchorMapChunks.length === 0) return [];
+    const paintable = anchors.filter(
+      (a) => a.status !== "orphaned" && anchorBodyRange(a, anchorChunksById),
+    );
+    if (paintable.length === 0) return [];
+    // DECLARE: each anchor declares its decoration through the highlight
+    // augmentation (the spec's declaration layer); the registry COMBINES
+    // (same-range union, order-independent). The combine output is the paint
+    // set — the tuples to mark.
+    const augmentations = paintable.map((a) =>
+      makeHighlightAnchorAugmentation({
+        anchorId: a.anchor_id,
+        chunkId: a.anchor.node_id,
+        start: a.anchor.start_scalar,
+        end: a.anchor.end_scalar,
+        treatment: a.status === "drifted" ? "drifted" : "active",
+        title:
+          a.status === "drifted"
+            ? "Moved — re-anchored here after the text changed"
+            : "Anchored highlight",
+      }),
+    );
+    const resolved = collectDecorations(augmentations, ANCHOR_STUB_CTX);
+    const paintKeys = new Set(
+      resolved.flatMap((d) =>
+        d.anchor.kind === "passage"
+          ? [`${d.anchor.chunkId}:${d.anchor.start}:${d.anchor.end}`]
+          : [],
+      ),
+    );
+    // ENACT: the registry-selected tuples, mapped through the anchor-map's
+    // body geometry (chunk-relative → body → page-relative — rangesForPage's
+    // tested math), painted inline.
+    const matched = paintable.filter((a) =>
+      paintKeys.has(
+        `${a.anchor.node_id}:${a.anchor.start_scalar}:${a.anchor.end_scalar}`,
+      ),
+    );
+    return rangesForPage(current, matched, anchorChunksById);
+  }, [anchors, anchorMapChunks, anchorChunksById, pages, pageIndex]);
+
+  const orphanedAnchors = useMemo(() => orphanedForList(anchors), [anchors]);
 
   // Tell the impression tracker which slots are showing on this page. It
   // flushes the previous page's impressions (with focused dwell) when the
@@ -297,18 +798,46 @@ export default function BookReader() {
   }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
-    return <CenterNote>Opening the book…</CenterNote>;
+    return (
+      <CenterNote inWindow={inWindow}>
+        <LoadingState label="Opening the book" shape="page" />
+      </CenterNote>
+    );
+  }
+  if (error === "book_not_found") {
+    return (
+      <CenterNote inWindow={inWindow}>
+        <EmptyState
+          title="That book isn't in the library."
+          action={
+            <Link to="/library" className="text-sm text-teal underline underline-offset-2">
+              Go to the library
+            </Link>
+          }
+        />
+      </CenterNote>
+    );
   }
   if (error || !book || !body) {
+    // What failed and what is safe; the raw message ("Failed to fetch") is
+    // for "Copy error details", never the page.
     return (
-      <CenterNote tone="error">
-        {error === "book_not_found" ? "That book isn't in the library." : error}
+      <CenterNote inWindow={inWindow}>
+        <ErrorState
+          title="Couldn't open this book"
+          body="Your library and notes are unchanged. Check your connection, then try again."
+          detail={error}
+          onRetry={reload}
+        />
       </CenterNote>
     );
   }
 
   const { label, colour } = servabilityLabel(book.servability);
   const page = pages[pageIndex];
+  pageChunkRef.current = page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null;
+
+
 
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
@@ -342,16 +871,98 @@ export default function BookReader() {
   const adEligible = body.ad_eligible && pages.length > 0;
 
   return (
-    <div className="flex h-screen bg-ice-0 dark:bg-charcoal-2">
-      {/* TOC sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden md:block">
+    <div
+      data-testid="book-reader-root"
+      className={`container-reader relative flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
+    >
+      {/* TOC sidebar. It (and the notes column) answers to the READER's width
+          (container-reader, tailwind.config.js), not the viewport: in the
+          cockpit the reader lives in a pane, and the text column must keep
+          its measure when the pane is narrower than the window. Below
+          reader-md it folds away, and the Contents toggle opens it over the
+          page, inside the pane (lane A B2-5). */}
+      <aside
+        ref={tocRef}
+        id={`reader-toc-${documentId}`}
+        data-reader-toc
+        data-open={tocOpen ? "true" : "false"}
+        aria-label="Contents"
+        {...(tocOpen ? ESC_OVERLAY_PROPS : {})}
+        className={
+          "w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 " +
+          (tocOpen
+            ? "absolute inset-y-0 left-0 z-20 block bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night reader-md:static reader-md:shadow-none"
+            : "hidden reader-md:block")
+        }
+      >
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
           {book.title ?? documentId}
         </p>
-        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
-        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
+        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={jumpFromToc} />
+        {(orphanedAnchors.length > 0 || hiddenIslands.size > 0) && (
+          <div
+            className="mt-3 border-t border-rule dark:border-charcoal-1 pt-2"
+            data-anchor-list
+          >
+            <p className="text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+              Anchors
+            </p>
+            {orphanedAnchors.map((a) => (
+              <div
+                key={a.anchor_id}
+                data-orphaned-anchor={a.anchor_id}
+                className="flex items-center gap-1 py-0.5 text-xs text-shadow-1 dark:text-moonlight"
+              >
+                <span className="min-w-0 truncate">
+                  {a.page_index_hint !== null ? `Page ${a.page_index_hint + 1} · ` : ""}
+                  text no longer found
+                </span>
+                {a.investigation_id ? (
+                  <Link
+                    to={`/inv/${encodeURIComponent(a.investigation_id)}`}
+                    className="shrink-0 text-sun-deep hover:underline"
+                    title="Open the research thread (the anchor's text is gone; the thread is untouched)"
+                    data-orphaned-island-open
+                  >
+                    →
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={`Delete orphaned anchor on page ${
+                    a.page_index_hint !== null ? a.page_index_hint + 1 : "?"
+                  }`}
+                  className="shrink-0 px-0.5 text-shadow-1 hover:text-ink dark:hover:text-bright"
+                  onClick={() => void removeAnchor(a.anchor_id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {islands
+              .filter((i) => hiddenIslands.has(i.anchorId))
+              .map((i) => (
+                <div
+                  key={i.anchorId}
+                  data-hidden-island={i.anchorId}
+                  className="flex items-center gap-1 py-0.5 text-xs text-shadow-1 dark:text-moonlight"
+                >
+                  <span className="min-w-0 truncate italic">hidden island</span>
+                  <button
+                    type="button"
+                    aria-label="Show this island again on this device"
+                    className="shrink-0 text-sun-deep hover:underline"
+                    onClick={() => unhideIsland(i.anchorId)}
+                  >
+                    show again
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
       </aside>
 
       {/* In-book SPR-04 float-menu (SPR-07 M2). Highlighting any passage in the
@@ -367,199 +978,284 @@ export default function BookReader() {
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
           a model-emerged insight. Deep-research spins book-bound research and
-          navigates to /inv/:id. §9.0: the outbound chokepoint refuses Search/Deep-research
+          the island emerges on the passage (island SPR-03 — no navigate-away).
+          §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
         selection={selection}
         investigationId={readingThreadId}
         onDeepResearch={onDeepResearch}
+        onPinAnchor={onPinAnchor}
       />
 
+
       {/* Reading column */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
-          <header className="flex items-center justify-between gap-3">
-            <h1 className="text-xl font-serif text-ink dark:text-bright truncate">
-              {book.title ?? documentId}
-            </h1>
-            <LemonTag colour={colour} dot>
-              {label}
-            </LemonTag>
-          </header>
-
-          {isArxivLinkBack ? (
-            /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
-               body and serves NO ads here (body-serving + ad-eligibility are
-               {T1}-only, per the binding rights law). The reader renders the
-               link-back ArxivFrame (pointing at the gate-served canonical_url)
-               + the Attribution chrome, and nothing else: no ReadingColumn body,
-               no AdBorder slots, no in-book page actions. The iframe inside the
-               frame, if it loads at all, loads browser→arXiv — Antiek never
-               proxies arXiv bytes. The only thing that differs between T2 and T3
-               is the attribution label (handled inside ArxivFrame/Attribution). */
-            <ArxivFrame
-              canonicalUrl={body.canonical_url as string}
-              title={book.title}
-              author={book.author}
-              tier={body.tier as "T2" | "T3"}
-            />
-          ) : isArxivLinkUnavailable ? (
-            /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
-               unreachable from the OAI persist path). Antiek hosts NO body for
-               these tiers and has no link to offer — so we render an HONEST
-               notice and nothing else: no empty ReadingColumn, no AdBorder
-               rails. This degrades the M3 contract gracefully rather than
-               falling through to an empty hosted-body view. */
-            <div
-              data-arxiv-link-unavailable
-              className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
-            >
-              This paper is read on arXiv, but its arXiv link isn’t available
-              right now. Try again later or search arXiv for the title above.
-            </div>
-          ) : (
-            <>
-              {!ownerReadable && (
-                <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
-                  {book.servability === "taken_down"
-                    ? "This title has been removed and is no longer available to read."
-                    : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
-                </div>
-              )}
-
-              {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
-                  The backend computes ad-eligibility regression-safely: arXiv →
-                  {T1}-only; non-arXiv → == servable (today's behaviour). So a
-                  non-arXiv servable book keeps its rails (unchanged), an arXiv T1
-                  gets rails, and any non-ad-eligible body shows NO rails. The fill
-                  is still the zero-buyer house PLACEHOLDER (no live ad serving /
-                  revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
-              )}
-
-              {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
-                  attribution markers (SPR-09 M3). The shared useFloatMenuSelection
-                  hook listens on `selectionchange` and opens the menu only for
-                  selections inside this <article>; ReadingColumn forwards the ref so
-                  that scope is preserved verbatim. The load-bearing addition: when
-                  the gate served full text (a SERVABLE asset), the column carries
-                  `data-akb-asset-id={documentId}` so SPR-07's shell-level
-                  useFrameAttention — which scans the working region for
-                  [data-akb-asset-id] — finally detects an in-frame IP asset and the
-                  per-second telemetry stops being all-house-seconds. §9.0: a gated /
-                  taken-down work never reaches here with a body (the snippet path
-                  below renders the notice), so a tagged column is only ever a
-                  servable asset; attribution can never accrue to withheld text. We
-                  pass no chunkId — the books read path exposes no per-chunk id for
-                  the linear body, and we never fabricate one (asset-level is
-                  correct, per the contract's cover/title-card case). For an arXiv
-                  T1 the gate served extracted hosted TEXT (no PDF blob exists —
-                  see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
-                  through this SAME markdown column, no PDF.js. */}
-              <ReadingColumn
-                ref={articleRef}
-                assetId={ownerReadable ? documentId : null}
-                text={page?.text ?? ""}
-                contentFormat={body.content_format ?? "text"}
-              />
-
-              {/* Per-page actions: voice note + spin a deep research. */}
-              {page && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-end gap-2">
-                    <LemonButton
-                      type="button"
-                      variant="tertiary"
-                      size="sm"
-                      aria-pressed={showVoice}
-                      onClick={() => setShowVoice((v) => !v)}
+      {/* The title row sits above the scroller, so the Thought partner
+          bookmark stays reachable mid-read (cockpit R3); only the reading
+          body scrolls. */}
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
+          <div className="pb-2 border-b border-hairline">
+            <header className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 basis-48 items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setTocOpen((open) => !open)}
+                  ref={tocToggleRef}
+                  aria-expanded={tocOpen}
+                  aria-controls={`reader-toc-${documentId}`}
+                  aria-label="Contents"
+                  title="Contents (prefix ⇧C)"
+                  className="reader-md:hidden shrink-0 rounded px-1.5 py-1 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+                >
+                  <ListIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+                <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
+                  {book.title ?? documentId}
+                </h1>
+              </div>
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <ReadingAppearance />
+                {!isArxivT2T3 && <ReadingTypography />}
+                <LemonTag colour={colour} dot>
+                  {label}
+                </LemonTag>
+                {/* M2 — the bookmark: a book-level MULTI-TURN talk-to-book
+                    conversation that persists across page navigation (session
+                    state, the usePosition precedent). Answers cite pages →
+                    jumpToPage moves the SPR-07 reader. The SPR-04 selection
+                    FloatMenu Dialogue stays one-shot; THIS is the multi-turn
+                    surface. It sits in the reader's title row, in flow, so it
+                    never covers a line of text; it was fixed to the viewport,
+                    which in a cockpit pane put it over the text and the right
+                    pane (cockpit R2-H4). Its open conversation is placed
+                    against the reader root, inside the pane. */}
+                <TalkToBook
+                  documentId={documentId}
+                  title={book.title}
+                  initialOpen={openTalkOnLoad}
+                  onJumpToPage={jumpToPage}
+                />
+              </div>
+            </header>
+          </div>
+        </div>
+        <div data-testid="reader-scroll" className="flex-1 min-h-0 overflow-y-auto">
+          <div ref={mainRef} className="relative min-h-full">
+            {/* The island widget layer (SPR-02): anchored widgets enacted over the
+                reading column at their layout-map rects. Pointer-events pass
+                through except on the widgets themselves — the SAME pattern as the
+                floating layer. NEVER a workspace window. */}
+            {enactedIslands.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
+                {enactedIslands.map((enacted) =>
+                  enacted.rect ? (
+                    <div
+                      key={enacted.widget.id}
+                      className="absolute pointer-events-auto"
+                      style={{
+                        top: enacted.rect.top,
+                        left: enacted.rect.left + enacted.rect.width,
+                      }}
                     >
-                      {showVoice ? "Close voice note" : "＋ Voice note"}
-                    </LemonButton>
-                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
-                  </div>
-                  {showVoice && (
-                    <VoiceNote
-                      documentId={documentId}
-                      pageIndex={pageIndex}
-                      investigationId={readingThreadId}
-                    />
-                  )}
+                      {enacted.widget.render(enacted.rect, islandRenderCtx)}
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            )}
+            <div className="w-full mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
+              {isArxivLinkBack ? (
+                /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
+                   body and serves NO ads here (body-serving + ad-eligibility are
+                   {T1}-only, per the binding rights law). The reader renders the
+                   link-back ArxivFrame (pointing at the gate-served canonical_url)
+                   + the Attribution chrome, and nothing else: no ReadingColumn body,
+                   no AdBorder slots, no in-book page actions. The iframe inside the
+                   frame, if it loads at all, loads browser→arXiv — Antiek never
+                   proxies arXiv bytes. The only thing that differs between T2 and T3
+                   is the attribution label (handled inside ArxivFrame/Attribution). */
+                <ArxivFrame
+                  canonicalUrl={body.canonical_url as string}
+                  title={book.title}
+                  author={book.author}
+                  tier={body.tier as "T2" | "T3"}
+                />
+              ) : isArxivLinkUnavailable ? (
+                /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
+                   unreachable from the OAI persist path). Antiek hosts NO body for
+                   these tiers and has no link to offer — so we render an HONEST
+                   notice and nothing else: no empty ReadingColumn, no AdBorder
+                   rails. This degrades the M3 contract gracefully rather than
+                   falling through to an empty hosted-body view. */
+                <div
+                  data-arxiv-link-unavailable
+                  className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+                >
+                  This paper is read on arXiv, but its arXiv link isn’t available
+                  right now. Try again later or search arXiv for the title above.
                 </div>
+              ) : (
+                <>
+                  {!ownerReadable && (
+                    <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                      {book.servability === "taken_down"
+                        ? "This title has been removed and is no longer available to read."
+                        : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
+                    </div>
+                  )}
+
+                  {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
+                      The backend computes ad-eligibility regression-safely: arXiv →
+                      {T1}-only; non-arXiv → == servable (today's behaviour). So a
+                      non-arXiv servable book keeps its rails (unchanged), an arXiv T1
+                      gets rails, and any non-ad-eligible body shows NO rails. The fill
+                      is still the zero-buyer house PLACEHOLDER (no live ad serving /
+                      revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
+                  {adEligible && (
+                    <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
+                  )}
+
+                  {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
+                      attribution markers (SPR-09 M3). The shared useFloatMenuSelection
+                      hook listens on `selectionchange` and opens the menu only for
+                      selections inside this <article>; ReadingColumn forwards the ref so
+                      that scope is preserved verbatim. The load-bearing addition: when
+                      the gate served full text (a SERVABLE asset), the column carries
+                      `data-akb-asset-id={documentId}` so SPR-07's shell-level
+                      useFrameAttention — which scans the working region for
+                      [data-akb-asset-id] — finally detects an in-frame IP asset and the
+                      per-second telemetry stops being all-house-seconds. §9.0: a gated /
+                      taken-down work never reaches here with a body (the snippet path
+                      below renders the notice), so a tagged column is only ever a
+                      servable asset; attribution can never accrue to withheld text. We
+                      pass no chunkId — the books read path exposes no per-chunk id for
+                      the linear body, and we never fabricate one (asset-level is
+                      correct, per the contract's cover/title-card case). For an arXiv
+                      T1 the gate served extracted hosted TEXT (no PDF blob exists —
+                      see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
+                      through this SAME markdown column, no PDF.js. */}
+                  <ReadingColumn
+                    ref={articleRef}
+                    assetId={ownerReadable ? documentId : null}
+                    chunkId={
+                      page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
+                    }
+                    text={page?.text ?? ""}
+                    contentFormat={body.content_format ?? "text"}
+                    marks={pageMarks}
+                  />
+
+                  {/* Per-page actions: voice note + spin a deep research. */}
+                  {page && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <LemonButton
+                          type="button"
+                          variant="tertiary"
+                          size="sm"
+                          aria-pressed={showVoice}
+                          onClick={() => setShowVoice((v) => !v)}
+                        >
+                          {showVoice ? "Close voice note" : "＋ Voice note"}
+                        </LemonButton>
+                        <LemonButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={spawnFreeInquiry}
+                          title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
+                        >
+                          Research from here
+                        </LemonButton>
+                        <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
+                      </div>
+                      {showVoice && (
+                        <VoiceNote
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          investigationId={readingThreadId}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
+                  {adEligible && (
+                    <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+                  )}
+                </>
               )}
 
-              {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+              {/* Attribution (M3) — renders on ALL branches: it tells the reader
+                  where the work came from + under what license. For an arXiv doc it
+                  shows the canonical "via arXiv" link + tier/license chips; for a
+                  non-arXiv doc it renders nothing extra (the servability badge above
+                  stays the rights cue). Reads tier/canonical/license off the gate
+                  response, never a local flag. */}
+              <Attribution body={body} />
+
+              {/* Pager — hidden on the link-back branch (no hosted pages there). */}
+              {!isArxivLinkBack && pages.length > 0 && (
+                <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
+                  <LemonButton
+                    size="sm"
+                    type="button"
+                    disabled={pageIndex <= 0}
+                    onClick={() => setPageIndex(pageIndex - 1)}
+                  >
+                    ← Previous
+                  </LemonButton>
+                  <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                    {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
+                  </span>
+                  <LemonButton
+                    size="sm"
+                    type="button"
+                    disabled={pageIndex >= pages.length - 1}
+                    onClick={() => setPageIndex(pageIndex + 1)}
+                  >
+                    Next →
+                  </LemonButton>
+                </nav>
               )}
-            </>
-          )}
-
-          {/* Attribution (M3) — renders on ALL branches: it tells the reader
-              where the work came from + under what license. For an arXiv doc it
-              shows the canonical "via arXiv" link + tier/license chips; for a
-              non-arXiv doc it renders nothing extra (the servability badge above
-              stays the rights cue). Reads tier/canonical/license off the gate
-              response, never a local flag. */}
-          <Attribution body={body} />
-
-          {/* Pager — hidden on the link-back branch (no hosted pages there). */}
-          {!isArxivLinkBack && pages.length > 0 && (
-            <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex <= 0}
-                onClick={() => setPageIndex(pageIndex - 1)}
-              >
-                ← Previous
-              </LemonButton>
-              <span className="text-[12px] font-mono text-shadow-1 dark:text-moonlight">
-                {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
-              </span>
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex >= pages.length - 1}
-                onClick={() => setPageIndex(pageIndex + 1)}
-              >
-                Next →
-              </LemonButton>
-            </nav>
-          )}
+            </div>
+          </div>
         </div>
       </main>
 
       {/* The Read glass-box (M2) stays available while highlight chases open in
           floating workspace chrome. The page never moves (usePosition), so a
           reader can inspect a spawned chase and keep the book context intact. */}
-      <ReadingCompanion
-        documentId={documentId}
-        title={book.title}
-        readingThreadId={readingThreadId}
-      />
+      <div
+        data-reader-companion-slot
+        hidden={cockpitCompanion || undefined}
+        className={cockpitCompanion ? "hidden" : "contents"}
+      >
+        <ReadingCompanion
+          documentId={documentId}
+          title={book.title}
+          readingThreadId={readingThreadId}
+        />
+      </div>
 
-      {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
-          conversation that persists across page navigation (session state, the
-          usePosition precedent). Answers cite pages → jumpToPage moves the
-          SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
-          THIS is the new multi-turn surface. */}
-      <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
     </div>
   );
 }
 
-function CenterNote({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
+function CenterNote({
+  children,
+  inWindow = false,
+}: {
+  children: React.ReactNode;
+  inWindow?: boolean;
+}) {
   return (
-    <div className="h-screen flex items-center justify-center bg-ice-0 dark:bg-charcoal-2">
-      <p
-        className={`text-sm font-serif ${
-          tone === "error" ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"
-        }`}
-      >
-        {children}
-      </p>
+    <div
+      data-testid="book-reader-status"
+      className={`${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"} flex items-center justify-center`}
+    >
+      {children}
     </div>
   );
 }

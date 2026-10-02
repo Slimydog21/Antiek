@@ -12,7 +12,15 @@ on the 100-fixture benchmark corpus.
 | p50 | 129.83 μs |
 | p99 | 213.84 μs |
 
-CI fails on any commit whose p95 regresses by more than **10%** against
+CI does **not** fail on a p95 regression — the step is informational by
+design. The threshold below is enforced operator-side. (Corrected
+2026-09-20: this read "CI fails on any commit whose p95 regresses by more
+than 10%". `ci.yml:190` runs `--check-regression || echo "::warning
+title=Latency check is informational on CI::..."`, and the step's own
+comment records that the shared runner "reports a false +120% here", so it
+warns on every run and is swallowed on every run.
+`docs/decisions/ci-informational-gates.md:19-31` already described it
+honestly; these two documents disagreed.) The **10%** threshold applies
 this baseline. The full machinery lives at `benchmarks/rubric_latency.py`;
 the locked numbers + corpus distribution sit in `benchmarks/baseline.json`.
 

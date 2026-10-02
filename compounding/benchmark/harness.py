@@ -73,7 +73,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     import sys
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from processing.embedding.embed import HashEmbedding  # type: ignore[no-redef]
+    from processing.embedding.embed import HashEmbedding
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ class IrrelevantSeed:
     name: str = "irrelevant"
 
 
-ArmSeed = "ColdSeed | WarmSeed | IrrelevantSeed"
+type ArmSeed = ColdSeed | WarmSeed | IrrelevantSeed
 
 
 # Off-topic unit texts for the irrelevant arm. Drawn from the zero-overlap
@@ -311,8 +311,12 @@ def run_arm(
             )
         )
     finally:
-        if reuse_substrate is not None:
-            reuse_substrate.close()
+        # The RetrievalSubstrate protocol does not declare close(), but every
+        # make_substrate implementation provides it (substrate-side protocol
+        # gap — fixing the protocol is out of scope for this benchmark change).
+        close_fn = getattr(reuse_substrate, "close", None)
+        if close_fn is not None:
+            close_fn()
 
     return ArmResult(
         question_id=question.question_id,

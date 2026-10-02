@@ -7,7 +7,12 @@ import type { Cartridge } from "./types";
 function cartridge(): Cartridge {
   return {
     id: "mount-test",
-    meta: { title: "Test cartridge", blurb: "", style: "demo" },
+    meta: {
+      title: "Test cartridge",
+      blurb: "",
+      instructions: "Focus the game, then use Space or Enter to start.",
+      style: "demo",
+    },
     init: vi.fn(),
     update: vi.fn(),
     render: vi.fn(),

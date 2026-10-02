@@ -185,7 +185,22 @@ python -m tools.lints.cli_with_baseline capture no_raise \
 # CI then fails only on NEW violations in substrate/newpkg/
 ```
 
-The `mypy_strict_baseline` does the same for type errors — substrate core (`db_lock` + `event_log`) is at **zero** grandfathered errors, so any new strict error there fails CI.
+The `mypy_strict_baseline` does the same for type errors.
+
+> **Corrected 2026-09-20.** This paragraph previously ended "— substrate core
+> (`db_lock` + `event_log`) is at **zero** grandfathered errors, so any new
+> strict error there fails CI." Both halves were wrong.
+>
+> `tools/lints/baselines/mypy_strict_substrate_core.json` does hold zero
+> violations, but neither `mypy_strict_baseline` nor
+> `mypy_strict_substrate_core` appears anywhere in `.github/` — **CI never
+> runs it**, so its emptiness enforces nothing.
+>
+> The mypy that CI *does* run over those files is
+> `enforce_declared_bar.yml:150`, against `declared_mypy.json`, which
+> grandfathers **14** errors in `runtime/db_lock.py` and **23** in
+> `substrate/event_log/events.py`. A new strict error in substrate core fails
+> CI only if it is not already one of those 37.
 
 ## Property-based testing — invariants over the input space
 

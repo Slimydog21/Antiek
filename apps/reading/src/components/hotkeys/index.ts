@@ -2,10 +2,10 @@
  * Hotkeys public surface — SPR-08.
  *
  * This barrel is the documented INTEGRATION SEAM for downstream sprints:
- *   - SPR-06 (penguin) imports the activation contract:
+ *   - SPR-06 (mascot) imports the activation contract:
  *       PRODUCT_ACTIVATE_EVENT, ProductActivateDetail, emitProductActivate.
  *     A click handler and the hotkey handler both call `emitProductActivate`,
- *     so the penguin reacts identically to click and hotkey.
+ *     so the mascot reacts identically to click and hotkey.
  *   - SPR-07 (on-bar chip placement) imports `<KeyChip>` + `chipBindings()`
  *     (+ bindingForProduct) to drop a ⌘+key chip next to each NavRail door
  *     and the launcher's sub-action rows — WITHOUT this sprint editing those
@@ -32,7 +32,7 @@ export type {
 } from "./useCustomHotkeys";
 
 export {
-  // activation contract (the penguin / SPR-06 click≡hotkey parity)
+  // activation contract (the mascot / SPR-06 click≡hotkey parity)
   PRODUCT_ACTIVATE_EVENT,
   emitProductActivate,
   makeProductActivateEvent,

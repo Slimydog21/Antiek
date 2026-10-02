@@ -23,9 +23,10 @@ import io
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any, BinaryIO
 
 try:
-    from pypdf import PdfReader  # type: ignore[import-not-found]
+    from pypdf import PdfReader
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "acquisition.books.reader requires pypdf. "
@@ -165,7 +166,7 @@ def _extract_outline(reader: PdfReader) -> list[TocEntry]:
     declares, we don't infer one.
     """
     try:
-        raw = reader.outline  # type: ignore[attr-defined]
+        raw = reader.outline
     except Exception:
         return []
     if not raw:
@@ -201,14 +202,14 @@ def _extract_outline(reader: PdfReader) -> list[TocEntry]:
     return entries
 
 
-def _metadata_field(meta: object, key: str) -> str | None:
+def _metadata_field(meta: Any, key: str) -> str | None:
     """pypdf returns a dict-ish object; values may have a ``/`` prefix
     or come as ``IndirectObject``. Coerce to a plain string when we
     can; None when missing."""
     if meta is None:
         return None
     try:
-        val = meta.get(key)  # type: ignore[union-attr]
+        val = meta.get(key)
     except Exception:
         return None
     if val is None:
@@ -237,7 +238,7 @@ def _join_pages_to_markdown(
 
 
 def read_pdf(
-    source: bytes | io.IOBase | str,
+    source: bytes | BinaryIO | str,
     *,
     promote_headings: bool = True,
 ) -> ReadResult:

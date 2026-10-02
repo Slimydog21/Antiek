@@ -21,16 +21,32 @@ investigations *produces the signal* the gates consume. G5 closes when you
 re-run the dispatch-tier verdict CLI against the fresh `rubric.scored` events;
 G7 closes on six months of accumulated signal. Both need this runbook first.
 
+**On the code pointers below**: they name symbols, not line numbers. Every
+line anchor this runbook used to carry had rotted — all five pointed at
+unrelated code, one of them off by 2,312 lines — so each pointer is now
+something `git grep -n '<symbol>' -- interfaces/research/api/app.py` finds in
+one command, which is what you want at 2am and not a number that drifts every
+time someone inserts a route.
+
 ---
 
 ## Step 0 — Preflight: is the substrate ready for a real run?
 
-Run on the VM (or locally with `ANTIEK_API_BASE` pointed at prod). Every check
-must pass before you spend a real dispatch call.
+Every check must pass before you spend a real dispatch call. The curls name
+`https://api.antiek.ai` literally and run from anywhere with network access —
+your laptop is fine. No environment variable redirects them (`ANTIEK_API_BASE`
+is read by `tools/prod_parity/check.py` and by nothing in this runbook), so
+point them at another host by editing the URL. The two VM-side checks — the
+`build_sha` comparison and sourcing provider env — do need a shell on the box.
+
+Every interpreter call is `python3`, deliberately. The VM installs `python3`,
+`python3-venv`, `python3-pip` and `python3-dev` and not `python-is-python3`
+(`infrastructure/ansible/playbooks/setup.yml`), so a bare `python` exits 127
+there even though it happens to work on a Mac with anaconda on PATH.
 
 ```bash
 # 0a. Is the service up + on the build you expect?
-curl -sS https://api.antiek.ai/health | python -m json.tool
+curl -sS https://api.antiek.ai/health | python3 -m json.tool
 ```
 
 What you are reading:
@@ -44,7 +60,7 @@ What you are reading:
 
 ```bash
 # 0b. Are the dispatch provider keys registered? (the gate the whole AI is on)
-curl -sS https://api.antiek.ai/health | python -c "
+curl -sS https://api.antiek.ai/health | python3 -c "
 import json, sys
 h = json.load(sys.stdin)
 print('registered_providers:', h.get('registered_providers'))
@@ -52,34 +68,60 @@ print('providers_ready:', h.get('providers_ready'))
 "
 ```
 
-`registered_providers` is the `list[str]` of dispatch providers that bootstrapped
-with a key; `providers_ready` is the boolean the launch path gates on
-(`HealthResponse`, `interfaces/research/api/app.py:101-108`). The keyed first-run
-capture (read a synthesis → accrual view → honest G2/G3 payout refusal) is
-actionable only when these are populated. If the list is empty or missing the
-synthesis tier, the investigation will degrade to local-only / no-synthesis
-rather than fail — **a green preflight with no keys is not "research works."**
-Source the provider env on the VM (`/etc/antiek/secrets.env`) and restart
-`antiek` if needed (`infrastructure/runbooks/magic-link-auth.md` for the auth
-side).
+`registered_providers` is the `list[str]` of dispatch providers that
+bootstrapped with a key; `providers_ready` is the boolean the launch path gates
+on (`providers_ready` on `class HealthResponse`,
+`interfaces/research/api/app.py`). The keyed first-run capture (read a
+synthesis → accrual view → honest G2/G3 payout refusal) is actionable only when
+these are populated. If the list is empty or missing the synthesis tier, the
+investigation will degrade to local-only / no-synthesis rather than fail — **a
+green preflight with no keys is not "research works."** Source the provider env
+on the VM (`/etc/antiek/secrets.env`) and restart `antiek` if needed
+(`infrastructure/runbooks/magic-link-auth.md` for the auth side).
+
+```bash
+# 0c. Do you hold a credential the API accepts? Answer this BEFORE Step 1 —
+# every /investigations call sits behind the operator gate.
+export ANTIEK_OPERATOR_TOKEN='…'   # from /etc/antiek/secrets.env on the VM
+curl -sS -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
+  https://api.antiek.ai/investigations/credential-check | python3 -m json.tool
+```
+
+`{"investigation_id": "credential-check", "status": "not_found"}` is the
+**pass**: the gate let you through and there is simply no investigation by
+that name. A `401` carrying `"code": "operator_auth_required"` means the
+credential is missing or wrong, and every command from Step 1 onward fails the
+same way — which is how this runbook used to read, sending
+`Cookie: ANTIEK_SESSION=` from a variable it never set.
+
+The middleware accepts any one of three credentials (`magic-link-auth.md` has
+the full picture): the `ANTIEK_OPERATOR_TOKEN` bearer used above, which is the
+machine path probes and CI already take; a Cloudflare Access service-token
+pair; or the `ANTIEK_SESSION` cookie minted by a browser sign-in at
+`https://antiek.ai/login`. To use the cookie instead, copy it out of DevTools →
+Application → Cookies, `export ANTIEK_SESSION='…'`, and swap every
+`-H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN"` below for
+`-H "Cookie: ANTIEK_SESSION=$ANTIEK_SESSION"`. The rest of this runbook is
+written against the bearer because it is the one you can hold in a terminal.
 
 ---
 
 ## Step 1 — Launch one investigation (the cold-question entry point)
 
-`POST /investigations` is the operator-facing cold-question surface
-(`interfaces/research/api/app.py:225`). One question in, a full Loop-1
-trajectory out.
+`POST /investigations` is the operator-facing cold-question surface (handler
+`async def post_investigation` in `interfaces/research/api/app.py`; the
+decorator above it is split across lines, so grep the handler name, not the
+route string). One question in, a full Loop-1 trajectory out.
 
 ```bash
 curl -sS -X POST https://api.antiek.ai/investigations \
-  -H "Cookie: ANTIEK_SESSION=$ANTIEK_SESSION" \
+  -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "question": "<your real research question, >= 3 chars>",
     "max_sub_questions": 8,
     "research_tier": null
-  }' | python -m json.tool
+  }' | python3 -m json.tool
 ```
 
 Field guidance (load-bearing — read before you change a default):
@@ -95,7 +137,8 @@ Field guidance (load-bearing — read before you change a default):
   `"deep"` here would persist and silently displace that Opus primary once
   `DEEPSEEK_API_KEY` is set, corrupting the G5 measurement). Pick a tier
   explicitly only when you are deliberately testing a specific tier. See the
-  `research_tier` docstring at `app.py:242-262` — this is the one field where
+  comment block above `research_tier: Literal["fast", "deep"] | None` on
+  `InvestigationStartRequest` in `app.py` — this is the one field where
   a wrong default breaks the measurement you are trying to produce.
 - **`investigation_id`**: omit (auto-generated) for a fresh run; supply a
   stable id only when retrying the same question for backtest correlation.
@@ -109,10 +152,11 @@ Save the returned `investigation_id` — you poll with it next.
 ```bash
 # Replace <id> with the investigation_id from Step 1.
 curl -sS https://api.antiek.ai/investigations/<id> \
-  -H "Cookie: ANTIEK_SESSION=$ANTIEK_SESSION" | python -m json.tool
+  -H "Authorization: Bearer $ANTIEK_OPERATOR_TOKEN" | python3 -m json.tool
 ```
 
-Read the `status` field (`app.py:415`):
+Read the `status` field (`status: str` on `class InvestigationStatusResponse`
+in `app.py`, whose docstring lists these same four literals):
 
 | `status` | Meaning | Action |
 |---|---|---|
@@ -121,9 +165,12 @@ Read the `status` field (`app.py:415`):
 | `completed` | `investigation.completed` present | go to Step 3 |
 | `failed` | `investigation.failed` present | read `terminal_payload` for the cause |
 
-While `in_progress`, `current_phase` (1–8) and `last_delivered_action_type`
-show where the chain is. A long stall at one phase with no new delivered
-events is the signal to check the dispatch logs, not to keep polling.
+While `in_progress`, `current_phase` (1–9) and `last_delivered_action_type`
+show where the chain is. The protocol is nine phases, not eight — the field is
+declared `phase: int | None = Field(default=None, ge=1, le=9)` — so a
+`current_phase` of 9 is the last phase, not an out-of-range reading. A long
+stall at one phase with no new delivered events is the signal to check the
+dispatch logs, not to keep polling.
 
 ---
 
@@ -131,7 +178,8 @@ events is the signal to check the dispatch logs, not to keep polling.
 
 When `status == "completed"`:
 
-- **`rubric_score`** (SPR-11 M3, `app.py:390`) is the §14.4 inline-rubric verdict
+- **`rubric_score`** (SPR-11 M3, `rubric_score: RubricScore | None` on
+  `InvestigationStatusResponse`) is the §14.4 inline-rubric verdict
   for this investigation's synthesis, read from the persisted `rubric.scored`
   event. **`null` is an honest absent value, never a fabricated number** — a
   completed investigation with `rubric_score: null` means no scored event was
@@ -162,7 +210,21 @@ fresh events (this is the re-open trigger documented in
 ```bash
 ssh -i ~/.ssh/antiek_ed25519 root@167.235.202.98 \
   '/opt/antiek/.venv/bin/python -m tools.dispatch_tier_verdict \
-   --events /home/antiek/.antiek/research_events/ --since 2026-05-23'
+   --events /home/antiek/.antiek/research_events/ --since 2026-05-23 \
+   --output /opt/antiek/docs/decisions/dispatch-tier-verdict.md'
+```
+
+Pass `--output` absolutely, as above. Its default is the *relative*
+`docs/decisions/dispatch-tier-verdict.md` and this ssh lands you in `/root`,
+so without it the verdict is written to `/root/docs/decisions/` — and because
+the CLI creates parent directories silently, nothing errors and you go looking
+for a file the repo never received. The verdict then sits on the VM, so pull
+it down before you can tick the checklist item below, and commit it:
+
+```bash
+scp -i ~/.ssh/antiek_ed25519 \
+  root@167.235.202.98:/opt/antiek/docs/decisions/dispatch-tier-verdict.md \
+  docs/decisions/
 ```
 
 Expect a real verdict (`keep_opus_primary` or `flip_to_hermes_primary`) based

@@ -161,3 +161,23 @@ describe("ChatInputArea — the model driver reaches the request", () => {
     expect(startBodies[0].parent_investigation_id).toBe("inv-parent");
   });
 });
+
+describe("ChatInputArea — the mode survives its navigation (lane A B2-8)", () => {
+  it("a research started inside /inv/<id>?m=reading opens at /inv/<new>?m=reading", async () => {
+    const { Routes, Route, useLocation } = await import("react-router-dom");
+    function Where() {
+      const loc = useLocation();
+      return <span data-testid="where">{loc.pathname + loc.search}</span>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/inv/inv-parent?m=reading"]}>
+        <Routes>
+          <Route path="*" element={<><Where /><ChatInputArea /></>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ask" })).toBeTruthy());
+    await ask("what changed in the margin structure?");
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/inv/inv-started?m=reading"));
+  });
+});

@@ -92,9 +92,10 @@ class WhisperTranscriber:
             govern_if_arxiv,
         )
 
-        if self._client is not None:
+        client = self._client
+        if client is not None:
             def _send() -> httpx.Response:
-                return self._client.post(
+                return client.post(
                     url, headers=headers, files=files, data=data,
                     timeout=DEFAULT_TIMEOUT_S,
                 )

@@ -91,7 +91,7 @@ class RemoteExecRuntimeError(RemoteExecProviderError):
     sandbox down."""
 
 
-class RemoteSignal(str, enum.Enum):
+class RemoteSignal(enum.StrEnum):
     """A steering signal injected into a running remote loop. The provider
     relays it to the in-sandbox loop's cooperative checkpoint — the remote
     analogue of ``LoopContext.checkpoint()`` in the host-local runner.

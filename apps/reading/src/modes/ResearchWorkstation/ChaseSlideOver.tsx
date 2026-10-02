@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
@@ -35,7 +35,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
   const [busy, setBusy] = useState(false);
   const [spawnedId, setSpawnedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
 
   // If the spawnContext changes mid-life (operator reopens with a new
   // selection), reset the form.
@@ -81,7 +81,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
   return (
     <div className="flex flex-col p-4 gap-4 h-full text-ink dark:text-bright">
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Highlighted from parent
         </label>
         <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
@@ -90,7 +90,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Question to chase
         </label>
         <LemonTextarea

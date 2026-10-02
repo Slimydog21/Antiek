@@ -23,7 +23,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class IngestEventKind(str, enum.Enum):
+class IngestEventKind(enum.StrEnum):
     """Lifecycle events the orchestrator emits."""
 
     GATED_PASS_PUBLIC = "gated_pass_public"

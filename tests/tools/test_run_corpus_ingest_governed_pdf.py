@@ -48,7 +48,9 @@ class _NoopThrottle:
     def before_request(self, key: str) -> None:
         self.before.append(key)
 
-    def note_response(self, key: str, status: int, headers: dict) -> None:
+    def note_response(
+        self, key: str, status: int, headers: dict, *, url: str | None = None
+    ) -> None:
         self.noted.append((key, status))
 
 

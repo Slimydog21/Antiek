@@ -4,7 +4,7 @@
  * Motion lives in defined slots: the base interactions (the Tailwind
  * `transition-*` utilities routed through the motion tokens — see
  * src/design/motion.ts), the four signature beats (src/shared/delight),
- * and Werner's four pose keyframes (src/brand/werner/animated/animations.css,
+ * and Brain's four pose keyframes (src/brand/mascot/animated/animations.css,
  * U-02). The sprawl this guards against is a NEW raw `@keyframes` — a
  * fresh, untokenised motion vocabulary — declared somewhere outside those
  * homes. That's the mechanical signal a contributor is improvising motion
@@ -47,7 +47,7 @@ const BASELINE = join(HERE, "motion_guard_baseline.json");
 
 /**
  * Files allowed to declare raw @keyframes — the motion system's own homes.
- * Werner's pose keyframes (U-02) and the motion-system files. A NEW
+ * Brain's pose keyframes (U-02) and the motion-system files. A NEW
  * keyframe anywhere else is the sprawl signal.
  */
 const SANCTIONED = new Set<string>([
@@ -55,18 +55,18 @@ const SANCTIONED = new Set<string>([
   // the U-02 slot's brain edition; same kind of dedicated motion home as
   // animations.css. See brand/BrainMascot.tsx + brand/README.md.
   "src/brand/mascot-brain/brainMascot.css",
-  "src/brand/werner/animated/animations.css",
-  // Semantic reactions are a single, token-driven Werner motion home. Keep
+  "src/brand/mascot/animated/animations.css",
+  // Semantic reactions are a single, token-driven Brain motion home. Keep
   // their seven one-shot beats consolidated here instead of baselining them
   // as unrelated ad-hoc motion.
-  "src/brand/werner/reactions/semantic-reactions.css",
+  "src/brand/mascot/reactions/semantic-reactions.css",
   "src/design/motion.css",
   "src/design/motion.ts",
-  // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a
+  // The reactive Brain mascot's waddle/bump poses (AMS SPR-05/10) — a
   // dedicated motion home, the same kind of slot as animations.css above.
-  "src/werner/waddle.css",
+  "src/mascot/waddle.css",
   // The living-mountainscape scene's consolidated keyframes (AMS SPR-04):
-  // krea crossfade + the scenery penguin's journey/bob. One motion home, not
+  // krea crossfade + the scenery mascot's journey/bob. One motion home, not
   // sprawled inline across the layer components.
   "src/scene/scene.css",
 ]);
@@ -138,7 +138,7 @@ describe("motion anti-noise guard — no NEW ad-hoc @keyframes (U-05 M4)", () =>
         `motion-guard FAILED: ${fresh.length} NEW @keyframes outside the motion system.\n` +
           `Motion belongs in defined slots — base interactions via the tokens\n` +
           `(src/design/motion.ts), the signature beats (src/shared/delight), or\n` +
-          `Werner's poses (src/brand/werner/animated/animations.css). A hand-rolled\n` +
+          `Brain's poses (src/brand/mascot/animated/animations.css). A hand-rolled\n` +
           `keyframe is the sprawl this guards against. New keyframes:\n${detail}\n\n` +
           `See src/design/motion/README.md for the allowed slots. If this is a\n` +
           `genuine new motion-system home, add it to SANCTIONED here — never\n` +

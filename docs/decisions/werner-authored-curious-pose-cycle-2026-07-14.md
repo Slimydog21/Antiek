@@ -18,7 +18,7 @@ That pose is the brand-bible illustration assigned to curiosity.
 
 ## Composition
 
-The reaction boundary exposes `data-werner-mood="thinking"` as inspectable
+The reaction boundary exposes `data-mascot-mood="thinking"` as inspectable
 semantic evidence. Only the curious mark substitutes `headTilt`; happy, dizzy,
 and hit continue through the canonical four-mood `Werner` renderer. The outer
 reaction owns the accessible name and evidence chrome. Reduced motion retains

@@ -26,8 +26,8 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import asdict as dataclass_asdict
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -36,10 +36,12 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api import create_app  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.auth.magic_link import mint_session_cookie  # noqa: E402
+from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_chunk, insert_document, insert_node  # noqa: E402
+from substrate.schemas import InvestigationStartRequestedPayload  # noqa: E402
 from substrate.write.outline_block import list_section_blocks  # noqa: E402
 from substrate.write.promote_context import promote_investigation_to_deliverable  # noqa: E402
 from substrate.write.provenance import resolve_provenance  # noqa: E402
@@ -73,7 +75,7 @@ def client(monkeypatch) -> TestClient:
 
 
 def _read():
-    return duckdb.connect(default_db_path(), read_only=True)
+    return connect_read(default_db_path())
 
 
 def _seed_synthesis(
@@ -125,6 +127,20 @@ def _seed_synthesis(
                 [synthesis_id, nid],
             )
     return node_ids
+
+
+def _seed_start_event(
+    *, investigation_id: str = "inv-1", owner_user_id: str | None
+) -> None:
+    """Record the investigation ownership source the promoter must honor."""
+    emit_typed(
+        investigation_id,
+        InvestigationStartRequestedPayload(
+            question="What does the evidence support?",
+            owner_user_id=owner_user_id,
+        ),
+        role="operator",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +353,141 @@ def test_route_binds_authenticated_owner(client):
     finally:
         con.close()
     assert owner == "user-bob"
+
+
+def test_route_refuses_another_owners_investigation(client):
+    _seed_synthesis()
+    _seed_start_event(owner_user_id="user-alice")
+    client.cookies.update(_cookie("user-bob"))
+
+    response = client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": "inv-1", "deliverable_kind": "research_memo"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "no_synthesis"
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 0
+
+
+def test_route_idempotency_key_replays_one_deliverable(client, monkeypatch):
+    _seed_synthesis()
+    _seed_start_event(owner_user_id="user-bob")
+    client.cookies.update(_cookie("user-bob"))
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        "substrate.write.promote_context.dispatch_pending_best_effort",
+        lambda _con, investigation_id, **_kwargs: dispatched.append(investigation_id),
+    )
+    body = {
+        "investigation_id": "inv-1",
+        "deliverable_kind": "research_memo",
+        "idempotency_key": "promo-once",
+    }
+
+    first = client.post("/write/deliverables/from-investigation", json=body)
+    second = client.post("/write/deliverables/from-investigation", json=body)
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 200, second.text
+    assert second.json()["deliverable_id"] == first.json()["deliverable_id"]
+    assert second.json()["idempotent_replay"] is True
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 1
+    assert dispatched == ["inv-1", "inv-1"]
+
+
+def test_route_idempotency_conflict_detects_changed_body(client):
+    _seed_synthesis()
+    _seed_start_event(owner_user_id="user-bob")
+    client.cookies.update(_cookie("user-bob"))
+    first = client.post(
+        "/write/deliverables/from-investigation",
+        json={
+            "investigation_id": "inv-1",
+            "deliverable_kind": "research_memo",
+            "idempotency_key": "promo-once",
+        },
+    )
+    conflict = client.post(
+        "/write/deliverables/from-investigation",
+        json={
+            "investigation_id": "inv-1",
+            "deliverable_kind": "general_essay",
+            "idempotency_key": "promo-once",
+        },
+    )
+
+    assert first.status_code == 201, first.text
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["error"] == "idempotency_conflict"
+
+
+def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
+    _seed_synthesis()
+    _seed_start_event(owner_user_id="user-a")
+    calls = 0
+
+    def _fail_first_asdict(result):
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            raise RuntimeError("receipt serialization failed")
+        return dataclass_asdict(result)
+
+    monkeypatch.setattr("substrate.write.promote_context.asdict", _fail_first_asdict)
+
+    def _promote():
+        with connect_write(default_db_path(), purpose="test/promote") as con:
+            return promote_investigation_to_deliverable(
+                con,
+                "inv-1",
+                deliverable_kind="research_memo",
+                owner_user_id="user-a",
+                idempotency_key="promo-atomic",
+                request_digest="0" * 64,
+            )
+
+    with pytest.raises(RuntimeError, match="receipt serialization failed"):
+        _promote()
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 0
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert placed_events == []
+
+    result = _promote()
+    assert result is not None and result.idempotent_replay is False
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 1
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert [
+        event["payload"]["outline_block_id"] for event in placed_events
+    ] == result.block_ids
 
 
 def test_route_rejects_missing_authenticated_identity_without_writing(client):

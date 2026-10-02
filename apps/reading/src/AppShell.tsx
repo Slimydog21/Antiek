@@ -3,15 +3,16 @@ import { useNavigate } from "react-router-dom";
 
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
-import { PenguinMascot } from "./shell/PenguinMascot";
+import { MascotStation } from "./shell/MascotStation";
 import { Scene } from "./scene/Scene";
-import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
+import { PrefixChip } from "./components/hotkeys/PrefixChip";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
+import { useViewportTier } from "./workspace/useViewportTier";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
@@ -66,10 +67,10 @@ type Props = {
 };
 
 export function AppShell({ children }: Props) {
-  // S8 — mount the keyboard shortcut handler once at the shell level.
-  // Lives here (not lower) so ⌘K, ⌘B, ⌘/, ⌘[, ⌘], G+I etc. fire from
-  // any route. The handler ignores key events when the active element
-  // is editable, so the operator can still type freely.
+  // MS-01 — the keymap dispatcher, mounted once: the ONE owner of every
+  // global key (the table is components/hotkeys/keymap.ts). The prefix
+  // (ctrl+b), the ctrl+alt chords and the ⌘ combos fire from any route; the
+  // scope rules keep typing, the Write editor and dialogs undisturbed.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
 
@@ -98,6 +99,16 @@ export function AppShell({ children }: Props) {
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
 
+  // DECISIONS C2 (operator-confirmed 2026-09-26): the Omarchy inset keeps
+  // the LEFT toolbar visible, at every tier the inset draws (xl, lg, and md,
+  // the Omarchy half screen: R3-M4). The rail is then the vertical left rail
+  // (NavRail's `left` orientation). The docked preset keeps the SPR-06
+  // bottom dock, and so does the phone tier (sm), where PanelLayout draws
+  // no inset and the bottom dock is the phone design (R2-H3).
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
+  const railLeft = layoutPreset === "omarchy-inset" && tier !== "sm";
+
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport
     // and reserves the four edges via `--akb-border-inset-*` (tokens.css,
@@ -116,7 +127,9 @@ export function AppShell({ children }: Props) {
       // ramp), so there is no colour jump — the shell still reads ice by day,
       // space by night, but now it can MOVE. text tokens stay on the frame so
       // any chrome that doesn't set its own colour inherits readable ink.
-      className="h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
+      // relative + overflow-hidden: anything absolutely positioned inside the
+      // frame is clipped by it and can never widen the page.
+      className="relative h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
       style={{
         paddingTop: "var(--akb-border-inset-top)",
         paddingRight: "var(--akb-border-inset-right)",
@@ -134,7 +147,10 @@ export function AppShell({ children }: Props) {
           on a hidden tab. (It lives INSIDE the seam frame so the ad border's
           reserved band, when SPR-07 lights it up, frames the scene too.) */}
       <Scene />
-      <BrainPresence />
+      {/* No ambient brain here. BrainPresence (a 420px ghost brain anchored
+          past the frame's corner) bled 77px sideways at 1280 and tinted the
+          content; the mascot now appears only in hero, empty and error
+          states, plus its station in the dock (design wave 3). */}
 
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
@@ -142,59 +158,64 @@ export function AppShell({ children }: Props) {
           `relative` so it stacks above the absolute z-0 scene. */}
       <div className="relative h-full w-full flex flex-col">
         <Topbar />
-        <div className="relative flex-1 min-h-0 min-w-0">
-          {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
-              main slot: per-workflow action bar + in-scene tabs sit
-              above the surface, while the Zustand panel workspace
-              continues to dock left/right/bottom + float around it.
-              The mode still mounts as a panel exactly as before. */}
-          <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
-          {/* SPR-09 — transparent workspace windows float over the working
-              region + scene (this container is `relative` so the layer's
-              absolute inset-0 anchors here, between Topbar and the NavRail).
-              Renders nothing until a window opens. SPR-09's one-line wiring,
-              deferred to the AppShell owner so SPR-09 kept this file untouched. */}
-          <WindowsLayer />
+        {/* The working row: the inset's left rail (C2), then the region. In
+            every other layout the row holds the region alone. */}
+        <div className="relative flex-1 min-h-0 min-w-0 flex">
+          {railLeft ? <NavRail orientation="left" /> : null}
+          <div className="relative flex-1 min-h-0 min-w-0">
+            {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
+                main slot: per-workflow action bar + in-scene tabs sit
+                above the surface, while the Zustand panel workspace
+                continues to dock left/right/bottom + float around it.
+                The mode still mounts as a panel exactly as before. */}
+            <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
+            {/* SPR-09 — transparent workspace windows float over the working
+                region + scene (this container is `relative` so the layer's
+                absolute inset-0 anchors here, between Topbar and the NavRail).
+                Its inert coordinate layer remains mounted even when empty.
+                SPR-09's one-line wiring,
+                deferred to the AppShell owner so SPR-09 kept this file untouched. */}
+            <WindowsLayer />
+          </div>
         </div>
 
         {/* SPR-06 M2 — navigation moved from the LEFT rail to a horizontal
             BOTTOM rail (orientation defaults to "bottom"), freeing the left
             edge so the working region above is full-width + symmetric. Four
-            doors + Search + More, all shortcuts/accent/a11y preserved. */}
-        <NavRail />
+            doors + Search + More, all shortcuts/accent/a11y preserved. The
+            inset at lg/xl takes the left rail instead (C2, above). */}
+        {railLeft ? null : <NavRail />}
       </div>
 
-      {/* SPR-12 M3 — the Penguin mascot IS the floating project home, now an
-          AUTONOMOUS WADDLER (SPR-06 M5): it roams the viewport on its own,
-          bounded + reduced-motion-safe. Mounted at shell level so it floats
-          over the whole app (any route), not inside one surface. Single-click
-          floats the project tree panel, double-click opens the project home,
-          drag moves it (clamped on-screen). This supersedes the old NavRail
-          "+ project / Project tree" button — the tree is reached through the
-          Penguin. (It sits OUTSIDE the seam frame on purpose: a free agent
-          roaming the whole window, not a chrome element constrained by the
-          ad-border inset.) */}
-      <PenguinMascot />
+      {/* SPR-12 M3 — the Mascot IS the floating project home. Mounted at shell
+          level so it floats over the whole app (any route), not inside one
+          surface. Single-click floats the project tree panel, double-click
+          opens the project home, drag re-stations it (clamped on-screen).
+          It seats itself in the dock's reserved station ([data-mascot-station]
+          in NavRail), so it never covers the working area (design wave 3). */}
+      <MascotStation />
 
-      {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
-          ONCE here so it wraps every lens — Read / Research / Write / Speak —
-          with ONE code path. Its DOM position inside this frame is irrelevant
-          to layout: the border itself is `position: fixed` (inset-0), and it
-          SETS the `--akb-border-inset-*` vars on the document root (default 0
-          in tokens.css), which the seam frame `div` above inherits and reads as
-          padding — so the working region shrinks into the reserved band while
-          the fixed border paints in that band and never overlaps, clips, or
-          shifts the working region. */}
+      {/* SPR-07 — the one labelled house-ad slot (a single top rail since
+          design wave 3; it was a four-edge border). Mounted ONCE here so it
+          serves every lens with ONE code path. It is `position: fixed` and SETS
+          the `--akb-border-inset-*` vars on the document root (default 0 in
+          tokens.css), which the seam frame above reads as padding — so the
+          working region shrinks into the reserved band while the slot paints
+          in that band and never overlaps, clips, or shifts the working region. */}
       <AdBorderMount />
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
 
-      {/* SPR-08 — the keyboard cheat-sheet. Mounted ONCE here so a single
-          uncontrolled instance self-subscribes to the HELP_TOGGLE window event
-          (fired by `?` in shortcuts.ts, guarded so it never fires while
-          typing); ESC closes it via LemonModal's focus trap. */}
+      {/* The key sheet (`?` or prefix+?). Mounted ONCE here; the uncontrolled
+          instance self-subscribes to the HELP_TOGGLE window event the keymap
+          dispatches, and lazy-loads the sheet itself (KeySheet.tsx) on first
+          open. ESC closes it via LemonModal. */}
       <HotkeyHud />
+
+      {/* MS-01 — the quiet "prefix armed" chip, shown while the keymap's
+          prefix waits for its next key. */}
+      <PrefixChip />
     </div>
   );
 }

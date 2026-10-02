@@ -4,7 +4,9 @@ import { useParams } from "react-router-dom";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { markSeen } from "../../workspace/seen";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import type { ResearchSourcePolicy } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
+import AIActionFailure from "../../shared/AIActionFailure";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -16,8 +18,33 @@ import NotesPanel from "./NotesPanel";
 import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import SuggestedResearch from "./SuggestedResearch";
+import DiligenceRail from "./DiligenceRail";
 import ThinkingStream from "./ThinkingStream";
 import CapacitySoftWarnBanner from "../../components/CapacitySoftWarnBanner";
+
+const SOURCE_POLICY_LABELS: Record<ResearchSourcePolicy, string> = {
+  operator_corpus: "Corpus",
+  web: "Web",
+  arxiv: "arXiv",
+  substack: "Substack",
+};
+
+export function SourceIntentReceipt({ policy }: { policy: ResearchSourcePolicy[] }) {
+  if (policy.length === 0) return null;
+  return (
+    <div className="border-b border-rule bg-ice-1 px-4 py-2 text-xs font-mono text-ink-mute dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+      <span className="uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        Source intent
+      </span>
+      <span className="ml-2 text-ink dark:text-bright">
+        {policy.map((item) => SOURCE_POLICY_LABELS[item] ?? item).join(" · ")}
+      </span>
+      <span className="ml-2 font-serif text-xs">
+        recorded at start; execution receipts arrive separately
+      </span>
+    </div>
+  );
+}
 
 /**
  * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
@@ -89,6 +116,11 @@ export default function ResearchWorkstation() {
       : []),
   ];
 
+  // "/" and "/inv/:investigationId" render this component at the same tree
+  // position, so React keeps ONE instance across /inv/a → /inv/b. PanelHost
+  // keys its starters on the route params (MS-01 F5 generalized into
+  // PanelHost, GAPS §8 G-X1): the old investigation's chat closes and the
+  // new one's opens without a per-route React key here.
   return (
     <PanelHost starters={starters}>
       {investigationId ? (
@@ -156,6 +188,18 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-ink-mute dark:text-moonlight font-serif italic">
         Loading investigation…
+      </div>
+    );
+  }
+  if (investigation.status === "error") {
+    return (
+      <div className="h-full flex items-center justify-center px-4">
+        <AIActionFailure
+          title="Couldn’t load this research"
+          code={investigation.loadError?.code ?? "unknown"}
+          retryable
+          onRetry={() => investigation.retry?.()}
+        />
       </div>
     );
   }
@@ -229,6 +273,7 @@ function CenterContent({
     // honest no-result state on its own.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        <SourceIntentReceipt policy={investigation.sourcePolicy} />
         {synth ? <MasterMdViewer synthesis={synth} /> : null}
         <div className="border-t border-rule dark:border-charcoal-1">
           <DistillView
@@ -241,8 +286,10 @@ function CenterContent({
             answer as threads worth chasing. Read-only to render; chasing one
             reuses SPR-04's chase gesture (onChaseQuestion → the one
             ChaseThread panel), so it launches through the same capped path —
-            no second launch mechanism, no auto-spawn. */}
+            no second launch mechanism, no auto-spawn. The diligence queue
+            rail rides beside it (autonomous-diligence SPR-01). */}
         <div className="border-t border-rule dark:border-charcoal-1">
+          <DiligenceRail />
           <SuggestedResearch
             variant="beside"
             onChase={(c) => onChaseQuestion({ text: c.text })}
@@ -264,16 +311,19 @@ function CenterContent({
   // the cascade monitor (DeepResearchWorkspace) is where Stop/redirect/deepen
   // are wired through a session.
   return (
-    <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1">
-        <ThinkingStream investigation={investigation} />
-      </div>
-      <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
-        <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
-          Notes
+    <div className="flex h-full min-h-0 flex-col">
+      <SourceIntentReceipt policy={investigation.sourcePolicy} />
+      <div className="flex min-h-0 flex-1">
+        <div className="min-w-0 flex-1">
+          <ThinkingStream investigation={investigation} />
         </div>
-        <NotesPanel investigation={investigation} />
-      </aside>
+        <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
+          <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+            Notes
+          </div>
+          <NotesPanel investigation={investigation} />
+        </aside>
+      </div>
     </div>
   );
 }

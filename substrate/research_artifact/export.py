@@ -11,10 +11,11 @@ from substrate.event_log import emit_typed
 from substrate.schemas.events import ArtifactGeneratedPayload
 
 from .build_body import build_body
-from .paths import artifact_source_path_for, research_artifacts_dir
+from .paths import artifact_path_for, artifact_source_path_for, research_artifacts_dir
 from .render import render_html
 from .schema import ResearchArtifactBody
 from .store import ResearchArtifactStore
+from .twin_notes import write_twin_notes
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class ExportResult:
     artifact_id: str
     investigation_id: str
     path: Path
+    twin_notes_path: Path
     content_hash: str
     size_bytes: int
     event_id: str | None
@@ -47,6 +49,9 @@ def export_research_artifact(
     )
     out_dir = research_artifacts_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
+    path = artifact_path_for(investigation_id)
+    path.write_text(html_text, encoding="utf-8")
+    twin_notes_path = write_twin_notes(body, artifact_path=path)
     raw = html_text.encode("utf-8")
     path = artifact_source_path_for(artifact_id, hashlib.sha256(raw).hexdigest())
     if db_path is not None:
@@ -80,6 +85,7 @@ def export_research_artifact(
         artifact_id=artifact_id,
         investigation_id=investigation_id,
         path=path,
+        twin_notes_path=twin_notes_path,
         content_hash=content_hash,
         size_bytes=len(raw),
         event_id=event_id,

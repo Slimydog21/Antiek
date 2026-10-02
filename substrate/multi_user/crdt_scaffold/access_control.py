@@ -50,7 +50,7 @@ from .interfaces import (
 )
 
 
-class EditOutcome(str, enum.Enum):
+class EditOutcome(enum.StrEnum):
     ACCEPTED = "accepted"
     """The edit is authorized; merge it into the document state."""
 

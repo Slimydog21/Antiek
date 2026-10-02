@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -15,7 +16,7 @@ from compounding.benchmark.question_set import (
 )
 
 
-def test_frozen():
+def test_frozen() -> None:
     """M1 acceptance: two loads of the same path return the identical
     ``frozen_sha`` (the set is frozen, not merely labelled frozen), every
     question has a valid overlap_class, and the high_overlap +
@@ -33,7 +34,7 @@ def test_frozen():
     assert a.by_class("partial_overlap"), "partial cell must be non-empty (dose-response)"
 
 
-def test_recorded_sha_matches_content():
+def test_recorded_sha_matches_content() -> None:
     """The recorded sha is content-addressed: recomputing it over the raw
     questions reproduces the stored value."""
     with open(QUESTION_SET_PATH, encoding="utf-8") as f:
@@ -41,7 +42,7 @@ def test_recorded_sha_matches_content():
     assert compute_frozen_sha(raw["questions"]) == raw["frozen_sha"]
 
 
-def test_twelve_questions_three_cells():
+def test_twelve_questions_three_cells() -> None:
     """§2: 12 questions across 3 cells (5 high-overlap incl. 1 internal-probe,
     3 partial, 4 zero-overlap control)."""
     qs = load_question_set()
@@ -55,14 +56,14 @@ def test_twelve_questions_three_cells():
     assert len(internal) == 1 and internal[0].question_id == "Q-HI-I1"
 
 
-def test_control_questions_have_no_seed():
+def test_control_questions_have_no_seed() -> None:
     """The zero-overlap control questions name no seeded units — nothing in the
     graph can accelerate them, so they must stay flat."""
     for q in load_question_set().control_questions():
         assert q.seeded_unit_ids == ()
 
 
-def test_edited_question_set_fails_to_load(tmp_path):
+def test_edited_question_set_fails_to_load(tmp_path: Path) -> None:
     """A hand-edit to the JSON that does NOT re-freeze the sha is caught at load
     — the set cannot be silently mutated."""
     from compounding.benchmark.question_set import QUESTION_SET_PATH
@@ -77,7 +78,7 @@ def test_edited_question_set_fails_to_load(tmp_path):
         load_question_set(str(path))
 
 
-def test_missing_overlap_class_rejected(tmp_path):
+def test_missing_overlap_class_rejected(tmp_path: Path) -> None:
     """A set missing a whole overlap class is rejected (the validity control +
     headline both depend on their cells being present)."""
     with open(QUESTION_SET_PATH, encoding="utf-8") as f:

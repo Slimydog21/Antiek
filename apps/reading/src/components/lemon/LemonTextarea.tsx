@@ -80,7 +80,7 @@ export const LemonTextarea = forwardRef<HTMLTextAreaElement, LemonTextareaProps>
           "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright " +
           "border-edge border-sun shadow-none focus:shadow-z1 " +
           "dark:focus:shadow-z1-night transition-shadow " +
-          "font-sans text-[14px] leading-snug outline-none " +
+          "font-sans text-sm leading-snug outline-none " +
           "placeholder:text-ink-mute dark:placeholder:text-moonlight " +
           className
         }

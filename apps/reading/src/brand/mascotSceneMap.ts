@@ -28,21 +28,21 @@ const LIVE_CUES: Record<DayPart, Record<Weather, CueCell>> = {
   dawn: {
     snow: {
       mood: "idle",
-      reason: "First light through the snow; Werner stays calmly present.",
+      reason: "First light through the snow; Brain stays calmly present.",
     },
     clear: {
       mood: "idle",
-      reason: "Clear first light; Werner stays calmly present.",
+      reason: "Clear first light; Brain stays calmly present.",
     },
   },
   day: {
     snow: {
       mood: "idle",
-      reason: "Daylight and snow are Werner's steady reading weather.",
+      reason: "Daylight and snow are Brain's steady reading weather.",
     },
     clear: {
       mood: "idle",
-      reason: "A clear day keeps Werner in the steady resting pose.",
+      reason: "A clear day keeps Brain in the steady resting pose.",
     },
   },
   dusk: {
@@ -62,7 +62,7 @@ const LIVE_CUES: Record<DayPart, Record<Weather, CueCell>> = {
     },
     clear: {
       mood: "idle",
-      reason: "A clear night is settled; Werner stays present.",
+      reason: "A clear night is settled; Brain stays present.",
     },
   },
 };
@@ -71,11 +71,11 @@ const FALLBACK_CUES: Record<DayPart, Record<Weather, CueCell>> = {
   dawn: {
     snow: {
       mood: "idle",
-      reason: "Procedural dawn snow is enough; Werner keeps company.",
+      reason: "Procedural dawn snow is enough; Brain keeps company.",
     },
     clear: {
       mood: "idle",
-      reason: "Procedural clear dawn is enough; Werner keeps company.",
+      reason: "Procedural clear dawn is enough; Brain keeps company.",
     },
   },
   day: {
@@ -101,11 +101,11 @@ const FALLBACK_CUES: Record<DayPart, Record<Weather, CueCell>> = {
   night: {
     snow: {
       mood: "idle",
-      reason: "Procedural night snow is normal; Werner stays settled.",
+      reason: "Procedural night snow is normal; Brain stays settled.",
     },
     clear: {
       mood: "idle",
-      reason: "Procedural clear night is normal; Werner stays settled.",
+      reason: "Procedural clear night is normal; Brain stays settled.",
     },
   },
 };
@@ -150,8 +150,8 @@ export const POSE_GAPS: readonly PoseGap[] = [
 ];
 
 const COMPANION_COPY: Record<ArtPresence, string> = {
-  live: "Werner notices the scene and stays out of the text.",
-  fallback: "No live art here; Werner stays with the procedural scene.",
+  live: "Brain notices the scene and stays out of the text.",
+  fallback: "No live art here; Brain stays with the procedural scene.",
 };
 
 function artPresenceFrom(sceneArt?: Pick<SceneArt, "isFallback"> | null): ArtPresence {

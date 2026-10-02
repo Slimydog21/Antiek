@@ -20,7 +20,17 @@
  * `unseen` is a presentation axis, not a state: a completed research you
  * have not opened reads "done" with the unread flag (herdr's
  * `done = Idle ∧ ¬seen`). Pure module: no React, no storage.
+ *
+ * Run-lifecycle facet (Q9): the five-state vocabulary covers a research *as
+ * remembered* (InvestigationSummary); the DRW cascade monitor watches runs
+ * *as they execute* (SPR-06's ResearchRunState), which has states the
+ * summary map lacks — queued, paused, stopping, budget_halted. That facet
+ * lives here too (`researchRunStateStyle`), on the same canonical colour
+ * map: working=sun, blocked=danger, done=success (adjudication D2:
+ * state.done is success, minted in Q3; aurora stays reserved for
+ * AI-thinking per D8 — never a generic state colour).
  */
+import type { ResearchRunState } from "../api/research";
 import type { InvestigationSummary } from "../lib/api";
 
 export type ResearchState =
@@ -38,7 +48,7 @@ export interface ResearchStateStyle {
   /** Plain-language label (SPR-02 narration vocabulary). */
   label: "working" | "needs attention" | "done" | "stopped" | "unavailable";
   /** LemonTag colour (back-compat with the pre-registry encodings). */
-  colour: "sun" | "aurora" | "muted" | "danger";
+  colour: "sun" | "success" | "muted" | "danger";
   /** Semantic token name, minus the `--` prefix. */
   token:
     | "state-working"
@@ -109,11 +119,62 @@ export function researchStateStyle(
     case "blocked":
       return { state, label: "needs attention", colour: "danger", token: "state-blocked", running: false };
     case "done":
-      return { state, label: "done", colour: "aurora", token: "state-done", running: false };
+      return { state, label: "done", colour: "success", token: "state-done", running: false };
     case "stopped":
       return { state, label: "stopped", colour: "muted", token: "state-stopped", running: false };
     case "unavailable":
       return { state, label: "unavailable", colour: "muted", token: "state-muted", running: false };
+    default:
+      return assertNever(state);
+  }
+}
+
+/** DRW run-lifecycle style (SPR-06's ResearchRunState). Same mapping shape
+ *  as ResearchStateStyle, minus `state` (run states are not summary states)
+ *  and plus `textClass` for the monitor badge. Colours stay on the canonical
+ *  map; labels keep the monitor's plain run words. `running` means "still
+ *  consuming concurrency" — a stopping run burns until the halt lands. */
+export interface ResearchRunStateStyle {
+  label:
+    | "queued"
+    | "running"
+    | "paused"
+    | "stopping"
+    | "done"
+    | "stopped"
+    | "failed"
+    | "budget halted";
+  colour: ResearchStateStyle["colour"];
+  token: ResearchStateStyle["token"];
+  /** Badge text class; resolves through the --state-* family, so the night
+   *  value tracks automatically (no dark: variant needed). */
+  textClass: string;
+  running: boolean;
+}
+
+export function researchRunStateStyle(
+  state: ResearchRunState,
+): ResearchRunStateStyle {
+  switch (state) {
+    case "pending":
+      return { label: "queued", colour: "muted", token: "state-muted", textClass: "text-[var(--state-muted)]", running: false };
+    case "running":
+      return { label: "running", colour: "sun", token: "state-working", textClass: "text-[var(--state-working)]", running: true };
+    case "paused":
+      // Held by the operator: live but not consuming compute — muted, with
+      // the Resume control carrying the resumable meaning.
+      return { label: "paused", colour: "muted", token: "state-muted", textClass: "text-[var(--state-muted)]", running: false };
+    case "stopping":
+      return { label: "stopping", colour: "muted", token: "state-stopped", textClass: "text-[var(--state-stopped)]", running: true };
+    case "done":
+      return { label: "done", colour: "success", token: "state-done", textClass: "text-[var(--state-done)]", running: false };
+    case "stopped":
+      return { label: "stopped", colour: "muted", token: "state-stopped", textClass: "text-[var(--state-stopped)]", running: false };
+    case "failed":
+      // Failed is failed — the operator needs to see it, not a softer word.
+      return { label: "failed", colour: "danger", token: "state-blocked", textClass: "text-[var(--state-blocked)]", running: false };
+    case "budget_halted":
+      return { label: "budget halted", colour: "danger", token: "state-blocked", textClass: "text-[var(--state-blocked)]", running: false };
     default:
       return assertNever(state);
   }

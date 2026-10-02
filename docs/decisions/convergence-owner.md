@@ -160,6 +160,16 @@ ruled canonical (SPR-07 out-of-scope rule).
 
 ## The in-repo vs recommended-skill boundary
 
+> **Corrected 2026-09-20.** The sentence below says "LIVE in this repo" and
+> lists a blocking CI step plus a planted-duplicate proof
+> (`tests/test_uniqueness_registry.py`). Neither exists: `uniqueness_registry`
+> appears **zero** times in `.github/` and **zero** times in `tests/`, and
+> `git log -S` shows the CI step was never committed. Its only importers are
+> `tools/lint/retrieval_gate_uniqueness.py` and `tools/reachability/sweep.py`,
+> both themselves uninvoked. The same applies to the reachability row of the
+> table above, so BOTH mechanical guards this role rests on are unwired — the
+> "mechanically backed" claim is false on both axes.
+
 This sprint shipped, **LIVE in this repo**:
 
 - the registry (`tools/lint/uniqueness_registry.py`) + its blocking CI step;

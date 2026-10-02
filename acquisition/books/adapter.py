@@ -131,8 +131,17 @@ def ingest_pdf(
     embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     promote_headings: bool = True,
+    content_class: str | None = None,
+    ip_holder_id: str | None = None,
 ) -> IngestBookResult:
     """Read ``source`` (bytes or path), ingest into the substrate.
+
+    ``content_class`` / ``ip_holder_id`` are stamped on the documents row IN
+    THE SAME WRITE as the chunks, so a book never exists unclassified
+    (content_class NULL is grandfathered as public by the chunk gate) while
+    a second transaction — one that can time out on the write lock — is
+    still to come. Callers must pass an already-resolved class (see
+    ``substrate.rights.register.resolve_content_class``).
 
     ``source_uri`` is the public URL or stable identifier callers
     want stamped onto the document row (e.g. an arXiv pdf URL when
@@ -207,6 +216,8 @@ def ingest_pdf(
                     "bytes" if isinstance(source, bytes) else "path"
                 ),
             },
+            content_class=content_class,
+            ip_holder_id=ip_holder_id,
             on_conflict="ignore",
         )
         # Reader-HTML sidecar (BookReader HTML-native). Same sanitize-on-write
@@ -363,6 +374,7 @@ def ingest_servable_book(
     from substrate.books.ingest import register_book
     from substrate.books.model import TocItem
     from substrate.graph import default_db_path, ensure_initialized
+    from substrate.rights.register import resolve_content_class
 
     ingest_result = ingest_pdf(
         source,
@@ -372,21 +384,28 @@ def ingest_servable_book(
         db_path=db_path,
         embedder=embedder,
         min_word_count=min_word_count,
+        # Resolved + validated BEFORE the first write, so the documents row is
+        # born classified and there is no NULL-class window for a write-lock
+        # timeout on the registration below to leave behind (#13).
+        content_class=resolve_content_class(content_class),
+        ip_holder_id=ip_holder_id,
     )
 
     # If ingest_pdf skipped (e.g. word_count below the floor), no documents row
-    # was written and register_book would raise. Return the skipped result with
-    # a derived deny-by-default servability rather than crashing — the caller
-    # (per-item-isolated in the batch) sees a clean skip.
+    # was written and register_book would raise. Return the skipped result
+    # rather than crashing — the caller (per-item-isolated in the batch) sees a
+    # clean skip. A book that was NOT ingested cannot have its full text
+    # served, whatever its class would have been: deriving servability from
+    # the class here told opt-in intake a non-existent document was servable
+    # and accrued escrow for it (#14).
     if ingest_result.skipped_reason is not None:
-        from substrate.books.servability import is_servable_full_text, servability_of
+        from substrate.books.servability import servability_of
 
-        skipped_status = servability_of(content_class, taken_down=False)
         return IngestServableBookResult(
             ingest=ingest_result,
             document_id=ingest_result.document_id,
-            servability=skipped_status.value,
-            servable_full_text=is_servable_full_text(skipped_status),
+            servability=servability_of(None, taken_down=False).value,
+            servable_full_text=False,
         )
 
     resolved_db_path = db_path or default_db_path()

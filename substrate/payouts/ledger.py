@@ -42,9 +42,9 @@ REUSE (rigor #1 — compose, do not fork the ad-economics core)
     versioned, single-home multi-author split policy (M3).
   * ``substrate.constants.UNATTRIBUTED_RIGHTS_BUCKET`` — the established
     held-never-misattributed sentinel reused for the unattributed pool (M4).
-  * ``substrate.rights.arxiv_tiers.resolve_tier`` +
-    ``substrate.rights.ad_eligibility.ads_allowed`` — the T1 earn gate. The tier
-    is RE-DERIVED from the immutable ``license_uri`` (the SPR-02 anti-laundering
+  * ``substrate.rights.ad_eligibility.ad_eligibility`` +
+    ``licence_tier_of`` — the SAME earn gate the serve guard stamps from. The
+    tier is RE-DERIVED from parsed metadata (the SPR-02 anti-laundering
     rule), NEVER trusted from a stored ``rights_tier``.
 
 SINGLE-WRITER (seam #3 inheritance)
@@ -61,14 +61,16 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.ad_inventory.frame_attention import apportion_cents
-from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
+from substrate.books.servability import is_servable_full_text, servability_of
 from substrate.payouts.split import SPLIT_POLICY_VERSION, equal_split
-from substrate.rights.ad_eligibility import ads_allowed
-from substrate.rights.arxiv_tiers import resolve_tier
-from substrate.schemas.documents import RightsTier
+from substrate.rights.ad_eligibility import (
+    AdEligibility,
+    ad_eligibility,
+    licence_tier_of,
+)
 
 # The author_position sentinel for the explicit unattributed entry. A real
 # byline position is 0-based and non-negative; -1 is impossible as a real
@@ -151,7 +153,7 @@ class AccrualLine:
 
     arxiv_id: str
     author_position: int
-    orcid: Optional[str]
+    orcid: str | None
     attribution_kind: str
     amount_cents: int
 
@@ -168,7 +170,7 @@ class PaperReadAccrual:
     event_ref: str
     ad_event_id: str
     document_id: str
-    arxiv_id: Optional[str]
+    arxiv_id: str | None
     attributed_cents: int
     lines: tuple[AccrualLine, ...]
     accruable: bool
@@ -202,7 +204,7 @@ class PaperReadAccrual:
 # ---------------------------------------------------------------------------
 
 
-def _load_metadata(con: Any, document_id: str) -> Optional[dict]:
+def _load_metadata(con: Any, document_id: str) -> dict[str, Any] | None:
     """Read + parse ``documents.metadata`` JSON for a row. Returns the parsed
     dict, ``{}`` for a NULL metadata, or ``None`` when the row is absent. Raises
     ``ValueError`` on malformed JSON. Mirrors
@@ -220,12 +222,50 @@ def _load_metadata(con: Any, document_id: str) -> Optional[dict]:
     if isinstance(raw, dict):
         return raw
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except (json.JSONDecodeError, TypeError) as exc:
         raise ValueError(f"malformed metadata JSON for {document_id}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"malformed metadata JSON for {document_id}")
+    return parsed
 
 
-def _resolved_authors(meta: dict) -> list[dict]:
+def _publicly_servable(con: Any, document_id: str) -> bool:
+    """The same body-servability fact serve_full_text computes:
+    content_class + book_assets.taken_down through
+    substrate.books.servability. False when the row is absent."""
+    row = con.execute(
+        "SELECT d.content_class, COALESCE(b.taken_down, FALSE) FROM documents d "
+        "LEFT JOIN book_assets b ON d.document_id = b.document_id WHERE d.document_id = ?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return False
+    return is_servable_full_text(servability_of(row[0], taken_down=bool(row[1])))
+
+
+def payout_ad_eligibility(
+    con: Any, document_id: str, *, metadata: dict[str, Any] | None = None
+) -> AdEligibility | None:
+    """Payout-time ad-eligibility of ``document_id``: the SAME predicate over
+    the SAME facts the serve guard stamps as ``ServeResult.ad_eligible``
+    (licence tier from ``documents.metadata`` via ``licence_tier_of``, else
+    body servability). Both payout-side settlements ask it before anything
+    else: ``accrue_paper_read`` (the per-author arXiv ledger) and
+    ``book_escrow.accrue_reading_session`` (the reader-session settlement
+    into the rights holder's escrow). None when the document does not exist.
+    ``metadata`` lets a caller that already parsed the row skip a second
+    read."""
+    meta = metadata if metadata is not None else _load_metadata(con, document_id)
+    if meta is None:
+        return None
+    tier = licence_tier_of(meta)
+    if tier is not None:
+        return ad_eligibility(tier, servable=None)
+    return ad_eligibility(None, servable=_publicly_servable(con, document_id))
+
+
+def _resolved_authors(meta: dict[str, Any]) -> list[dict[str, Any]]:
     """The persisted OpenAlex author list (read, never re-fetched). Returns the
     list of ``{orcid, author_position, display_name}`` dicts, or ``[]`` when the
     enrichment key is absent OR the authors list is empty/missing — BOTH common
@@ -267,10 +307,17 @@ def _accrual_id(event_ref: str, author_position: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _position_sort_key(author: dict[str, Any]) -> int:
+    """Sort authors by their 0-based byline position; malformed/missing
+    positions sort last (1_000_000) rather than crashing the split."""
+    position = author.get("author_position")
+    return position if isinstance(position, int) else 1_000_000
+
+
 def _aggregate(
     *,
     arxiv_id: str,
-    authors: list[dict],
+    authors: list[dict[str, Any]],
     attributed_cents: int,
 ) -> tuple[AccrualLine, ...]:
     """Split ``attributed_cents`` across authors (default EQUAL), conserved to
@@ -293,7 +340,7 @@ def _aggregate(
     # M3: equal (default, versioned) split across author positions, keyed by the
     # 0-based author_position the author dict carries (NOT the list index — the
     # ledger key is the byline position OpenAlex assigned).
-    by_position: dict[str, dict] = {}
+    by_position: dict[str, dict[str, Any]] = {}
     for a in authors:
         pos = a.get("author_position")
         if not isinstance(pos, int) or pos < 0:
@@ -325,7 +372,7 @@ def _aggregate(
     }
     split = apportion_cents(pos_weights, attributed_cents)
 
-    lines = tuple(
+    return tuple(
         AccrualLine(
             arxiv_id=arxiv_id,
             author_position=int(pos),
@@ -335,7 +382,6 @@ def _aggregate(
         )
         for pos in sorted_positions
     )
-    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +395,7 @@ def accrue_paper_read(
     document_id: str,
     revenue_cents: int,
     ad_event_id: str,
-    impression_ids: Optional[Sequence[str]] = None,
+    impression_ids: Sequence[str] | None = None,
 ) -> PaperReadAccrual:
     """Accrue one T1 paper read's attributed ad revenue to the per-author
     ledger, append-only and conserved to the cent. INTERNAL accounting only —
@@ -360,11 +406,14 @@ def accrue_paper_read(
     path's existing write transaction; the single-writer invariant is never
     violated by a second connection).
 
-    T1 GATE (rigor — the only accruable case): the tier is RE-DERIVED from the
-    document's immutable ``metadata['license_uri']`` via ``resolve_tier`` (the
-    stored ``rights_tier`` is NEVER trusted — SPR-02 anti-laundering), and the
-    event is accruable ONLY when ``ads_allowed(tier)`` (T1). A non-arXiv doc (no
-    ``arxiv_id``), a T2/T3 paper, or a zero-revenue event emits NOTHING.
+    T1 GATE (rigor — the only accruable case): the first gate is
+    ``payout_ad_eligibility`` — the predicate shared with the serve guard —
+    over metadata-derived licence tier (the stored ``rights_tier`` is NEVER
+    trusted — SPR-02 anti-laundering) or, absent a licence signal, body
+    servability; a refusal carries its reason. Only then does the ledger's
+    own scope apply: an eligible non-arXiv doc (no ``arxiv_id``) is
+    ``not_an_arxiv_paper`` (its revenue is the reader-session settlement's),
+    and a zero-revenue event emits NOTHING.
 
     Idempotent + append-only: rows are keyed by a deterministic id derived from
     the source ``ad_event_id`` + canonical inputs, so re-accruing the SAME
@@ -389,18 +438,31 @@ def accrue_paper_read(
     if meta is None:
         return _not_accruable(ad_event_id, document_id, None, "document_not_found")
 
-    arxiv_id = meta.get("arxiv_id")
-    if not isinstance(arxiv_id, str) or not arxiv_id:
-        # Non-arXiv document → the payouts ledger emits nothing (only T1 arXiv
-        # reads accrue here; book/publisher revenue is book_escrow's concern).
+    raw_arxiv_id = meta.get("arxiv_id")
+    arxiv_id = raw_arxiv_id if isinstance(raw_arxiv_id, str) and raw_arxiv_id else None
+
+    # AD-ELIGIBILITY FIRST — the same predicate as the serve guard, over the
+    # same metadata derivation, so a refusal names the predicate's reason
+    # whatever the document is. The ledger's own scope applies after it.
+    decision = payout_ad_eligibility(con, document_id, metadata=meta)
+    if decision is None or not decision.eligible:
+        return _not_accruable(
+            ad_event_id,
+            document_id,
+            arxiv_id,
+            decision.reason if decision is not None else "document_not_found",
+        )
+
+    if arxiv_id is None:
+        # An ad-eligible document that is not an arXiv paper has no bylined
+        # authors for this ledger. Its revenue accrues through the reader-
+        # session settlement (book_escrow.accrue_reading_session), which asked
+        # the same predicate; this ledger emits nothing.
         return _not_accruable(ad_event_id, document_id, None, "not_an_arxiv_paper")
 
-    # T1 GATE — re-derive tier from the immutable license_uri (never trust the
-    # stored rights_tier). Only T1 (ads_allowed) emits accruable author events.
-    license_uri = meta.get("license_uri")
-    tier: RightsTier = resolve_tier(license_uri if isinstance(license_uri, str) else None)
-    if not ads_allowed(tier):
-        return _not_accruable(ad_event_id, document_id, arxiv_id, f"tier_not_ad_eligible:{tier.value}")
+    tier = decision.tier
+    if tier is None:  # unreachable: licence_tier_of gives every arxiv_id row a tier
+        raise RuntimeError(f"arXiv document {document_id!r} has no licence tier")
 
     if revenue_cents <= 0:
         # Zero-buyer / house fill → no revenue to attribute. Honest $0, never
@@ -434,14 +496,7 @@ def accrue_paper_read(
                 "author_position": a.get("author_position"),
                 "orcid": a.get("orcid"),
             }
-            for a in sorted(
-                authors,
-                key=lambda x: (
-                    x.get("author_position")
-                    if isinstance(x.get("author_position"), int)
-                    else 1_000_000
-                ),
-            )
+            for a in sorted(authors, key=_position_sort_key)
         ],
     }
     inputs_json = _canonical_json(inputs)
@@ -500,7 +555,7 @@ def accrue_paper_read(
 
 
 def _not_accruable(
-    ad_event_id: str, document_id: str, arxiv_id: Optional[str], reason: str
+    ad_event_id: str, document_id: str, arxiv_id: str | None, reason: str
 ) -> PaperReadAccrual:
     """A non-accruable outcome — nothing written, conserves trivially (0 == 0).
     This is the T1-only / non-arXiv / zero-revenue gate's honest result."""
@@ -562,7 +617,7 @@ def _load_event(con: Any, event_ref: str) -> PaperReadAccrual:
 # ---------------------------------------------------------------------------
 
 
-def reconcile(con: Any, arxiv_id: Optional[str] = None) -> dict[str, int]:
+def reconcile(con: Any, arxiv_id: str | None = None) -> dict[str, int]:
     """Read-only: Σ author cents + Σ unattributed cents (+ Σ attributed cents)
     over the ledger, optionally scoped to one ``arxiv_id``, so a caller can
     assert author + unattributed == attributed (the M2 invariant).
@@ -618,5 +673,6 @@ __all__ = [
     "AccrualLine",
     "PaperReadAccrual",
     "accrue_paper_read",
+    "payout_ad_eligibility",
     "reconcile",
 ]

@@ -37,24 +37,15 @@ Discipline carried verbatim from upstream:
 
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-try:
-    from ...constants import (
-        AUTONOMOUS_RESEARCH_PHASES,
-        AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        AUTONOMOUS_RESEARCH_PHASES,
-        AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
-    )
+from substrate.constants import (
+    AUTONOMOUS_RESEARCH_PHASES,
+    AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
+)
 
 from ..phase_log import PhaseAssertionError, PhaseLog
 

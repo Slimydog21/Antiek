@@ -17,7 +17,6 @@ the proto-grounder over these queries.
 """
 
 import os as _os
-from typing import Optional as _Optional
 
 
 def default_db_path() -> str:
@@ -34,21 +33,27 @@ def default_db_path() -> str:
     return _os.path.expanduser(_DUCKDB_PATH)
 
 
-def ensure_initialized(db_path: str | None = None) -> str:
+def ensure_initialized(
+    db_path: str | None = None, *, timeout_s: float | None = None
+) -> str:
     """Make sure the schema is present at ``db_path``. Returns the
     resolved path. Idempotent — CREATE IF NOT EXISTS is the workhorse.
 
     Used by the wrestling bridge before the first DB-touching event
     in a given process. Cheap (~1ms after first call) so we don't
     bother with a "has-this-been-called" memo.
+
+    ``timeout_s`` bounds the write-lock wait on the cold path (schema
+    absent, or the read-only probe refused because another process holds
+    the file). ``None`` keeps ``connect_write``'s default.
     """
     resolved = db_path or default_db_path()
     from .schema import init_database_at_path
-    init_database_at_path(resolved)
+    init_database_at_path(resolved, timeout_s=timeout_s)
     return resolved
 
 
-from .ops import (
+from .ops import (  # noqa: E402 -- lazy package exports
     append_interview_turn,
     attach_block_to_section,
     complete_interview,
@@ -64,7 +69,7 @@ from .ops import (
     new_random_id,
     update_section_prose,
 )
-from .rlm_tools import (
+from .rlm_tools import (  # noqa: E402 -- lazy package exports
     CATEGORY_TOOL_MAP,
     MAX_TOOL_OUTPUT_CHARS,
     MAX_TOOL_ROUNDS,
@@ -79,14 +84,14 @@ from .rlm_tools import (
     tools_for_category,
     web_search,
 )
-from .schema import (
+from .schema import (  # noqa: E402 -- lazy package exports
     ANTIEK_GRAPH_SCHEMA_V1_SQL,
     SCHEMA_TABLES,
     init_database,
     init_database_at_path,
     list_tables,
 )
-from .search import (
+from .search import (  # noqa: E402 -- lazy package exports
     EmbeddingModel,
     SentenceTransformerEmbedding,
     cosine_similarity_sql,
@@ -94,7 +99,7 @@ from .search import (
     search,
     search_nodes_by_label,
 )
-from .traverse import (
+from .traverse import (  # noqa: E402 -- lazy package exports
     TraversalAlgorithm,
     TraversalScope,
     bfs_semantic_stop,

@@ -1,5 +1,8 @@
 import { useState } from "react";
 
+import LemonButton from "../../components/lemon/LemonButton";
+import { LemonModal } from "../../components/lemon/LemonModal";
+
 import type { NotebookBlockResponse, NotebookResponse } from "./types";
 
 interface Props {
@@ -150,6 +153,9 @@ function BlockControls({
   onDeleteBlock: Props["onDeleteBlock"];
   onMoveBlock: Props["onMoveBlock"];
 }) {
+  // Destructive delete confirms via the house modal (LemonModal), never
+  // window.confirm — same pattern as CommandPalette's layout-wipe confirm.
+  const [confirmingDelete, setConfirmingDelete] = useState<boolean>(false);
   return (
     <div className="absolute -right-2 top-0 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
       {onMoveBlock && (
@@ -175,22 +181,46 @@ function BlockControls({
         </>
       )}
       {onDeleteBlock && (
-        <button
-          type="button"
-          title="Delete block"
-          onClick={() => {
-            if (
-              window.confirm(
-                `Delete block ${position + 1}? This deletes the row from the substrate.`,
-              )
-            ) {
-              void onDeleteBlock(blockId);
+        <>
+          <button
+            type="button"
+            title="Delete block"
+            onClick={() => setConfirmingDelete(true)}
+            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor"
+          >
+            ×
+          </button>
+          <LemonModal
+            open={confirmingDelete}
+            onClose={() => setConfirmingDelete(false)}
+            title={`Delete block ${position + 1}?`}
+            size="sm"
+            forceUserAction
+            footer={
+              <div className="flex items-center justify-end gap-2">
+                <LemonButton
+                  variant="secondary"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </LemonButton>
+                <LemonButton
+                  variant="danger"
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    void onDeleteBlock(blockId);
+                  }}
+                >
+                  Delete block
+                </LemonButton>
+              </div>
             }
-          }}
-          className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor hover:bg-red-50"
-        >
-          ×
-        </button>
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              This deletes the row from the substrate.
+            </p>
+          </LemonModal>
+        </>
       )}
     </div>
   );
@@ -289,7 +319,7 @@ function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: 
     );
   }
   return (
-    <div className="border-l-2 border-emerald-300 pl-3 py-1">
+    <div className="border-l-2 border-sun-deep pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(claim ${claimId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">claim: {claimId}</p>
     </div>
@@ -305,7 +335,7 @@ function NoteReferenceBlock({ noteId, text }: { noteId: string | null; text: str
     );
   }
   return (
-    <div className="border-l-2 border-amber-300 pl-3 py-1">
+    <div className="border-l-2 border-sun pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(note ${noteId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">note: {noteId}</p>
     </div>
@@ -327,7 +357,7 @@ function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; exce
 
 function QuestionCardBlock({ questionId, text }: { questionId: string | null; text: string }) {
   return (
-    <div className="border-l-2 border-blue-300 pl-3 py-1">
+    <div className="border-l-2 border-aurora pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(question ${questionId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">open: {questionId}</p>
     </div>
@@ -361,69 +391,100 @@ function CrossDocLinkBlock({
   );
 }
 
+/** The block kinds the append picker can create via its modal form. */
+type AppendKind = "prose" | "question_card" | "latex" | "claim_card" | "region_embed";
+
+/** Per-kind form shape: one primary field (always required) + an optional
+ *  secondary field for the two embed kinds. Replacing the old prompt() pair
+ *  per kind with one modal keeps the operator in the document. */
+const APPEND_FORMS: Record<
+  AppendKind,
+  {
+    title: string;
+    primaryLabel: string;
+    primaryMultiline?: boolean;
+    secondaryLabel?: string;
+    submitLabel: string;
+    build: (primary: string, secondary: string) => {
+      block_type: string;
+      content: unknown;
+      ref_id?: string | null;
+    };
+  }
+> = {
+  prose: {
+    title: "Add prose",
+    primaryLabel: "Prose text",
+    primaryMultiline: true,
+    submitLabel: "Add prose",
+    build: (text) => ({ block_type: "prose", content: { text } }),
+  },
+  question_card: {
+    title: "Add question card",
+    primaryLabel: "Question text (will surface as a parked question)",
+    primaryMultiline: true,
+    submitLabel: "Add question",
+    build: (text) => ({
+      block_type: "question_card",
+      content: { question_text: text },
+    }),
+  },
+  latex: {
+    title: "Add LaTeX",
+    primaryLabel: "LaTeX source",
+    primaryMultiline: true,
+    submitLabel: "Add LaTeX",
+    build: (text) => ({ block_type: "latex", content: { latex: text } }),
+  },
+  claim_card: {
+    title: "Embed claim reference",
+    primaryLabel: "Claim ID to embed",
+    secondaryLabel: "Display text for the claim (optional)",
+    submitLabel: "Embed claim",
+    build: (claimId, text) => ({
+      block_type: "claim_card",
+      content: { text },
+      ref_id: claimId,
+    }),
+  },
+  region_embed: {
+    title: "Embed region",
+    primaryLabel: "Region ID to embed",
+    secondaryLabel: "Cached excerpt text (optional)",
+    submitLabel: "Embed region",
+    build: (regionId, excerpt) => ({
+      block_type: "region_embed",
+      content: { excerpt },
+      ref_id: regionId,
+    }),
+  },
+};
+
 function AppendProseAffordance({
   onAppendBlock,
 }: { onAppendBlock: Props["onAppendBlock"] }) {
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [dialog, setDialog] = useState<AppendKind | null>(null);
+  const [primary, setPrimary] = useState<string>("");
+  const [secondary, setSecondary] = useState<string>("");
 
-  const appendProse = () => {
-    const text = prompt("Prose text:");
-    if (text && text.trim()) {
-      void onAppendBlock({
-        block_type: "prose",
-        content: { text: text.trim() },
-      });
-    }
+  const openDialog = (kind: AppendKind) => {
+    setPrimary("");
+    setSecondary("");
+    setDialog(kind);
     setPickerOpen(false);
   };
-  const appendQuestion = () => {
-    const text = prompt("Question text (will surface as a parked question):");
-    if (text && text.trim()) {
-      void onAppendBlock({
-        block_type: "question_card",
-        content: { question_text: text.trim() },
-      });
-    }
-    setPickerOpen(false);
+
+  const submit = () => {
+    if (!dialog) return;
+    const form = APPEND_FORMS[dialog];
+    const value = primary.trim();
+    if (!value) return; // primary field is required for every kind
+    void onAppendBlock(form.build(value, secondary.trim()));
+    setDialog(null);
   };
-  const appendLatex = () => {
-    const text = prompt("LaTeX source:");
-    if (text && text.trim()) {
-      void onAppendBlock({
-        block_type: "latex",
-        content: { latex: text.trim() },
-      });
-    }
-    setPickerOpen(false);
-  };
-  const appendClaimReference = () => {
-    const claimId = prompt("Claim ID to embed:");
-    if (!claimId || !claimId.trim()) {
-      setPickerOpen(false);
-      return;
-    }
-    const text = prompt("Display text for the claim:") ?? "";
-    void onAppendBlock({
-      block_type: "claim_card",
-      content: { text: text.trim() },
-      ref_id: claimId.trim(),
-    });
-    setPickerOpen(false);
-  };
-  const appendRegionRef = () => {
-    const regionId = prompt("Region ID to embed:");
-    if (!regionId || !regionId.trim()) {
-      setPickerOpen(false);
-      return;
-    }
-    const excerpt = prompt("Cached excerpt text (optional):") ?? "";
-    void onAppendBlock({
-      block_type: "region_embed",
-      content: { excerpt: excerpt.trim() },
-      ref_id: regionId.trim(),
-    });
-    setPickerOpen(false);
-  };
+
+  const form = dialog ? APPEND_FORMS[dialog] : null;
 
   return (
     <div className="space-y-2">
@@ -436,13 +497,80 @@ function AppendProseAffordance({
       </button>
       {pickerOpen && (
         <div className="border border-rule dark:border-charcoal-1 rounded-md p-3 grid grid-cols-2 gap-2">
-          <PickerButton label="Prose" onClick={appendProse} />
-          <PickerButton label="Question card" onClick={appendQuestion} />
-          <PickerButton label="LaTeX" onClick={appendLatex} />
-          <PickerButton label="Claim reference" onClick={appendClaimReference} />
-          <PickerButton label="Region embed" onClick={appendRegionRef} />
+          <PickerButton label="Prose" onClick={() => openDialog("prose")} />
+          <PickerButton label="Question card" onClick={() => openDialog("question_card")} />
+          <PickerButton label="LaTeX" onClick={() => openDialog("latex")} />
+          <PickerButton label="Claim reference" onClick={() => openDialog("claim_card")} />
+          <PickerButton label="Region embed" onClick={() => openDialog("region_embed")} />
         </div>
       )}
+
+      {/* Append dialog — the house modal, not window.prompt. Submit on
+          Enter (single-line fields) or the button; Esc/outside-click cancels. */}
+      <LemonModal
+        open={dialog !== null}
+        onClose={() => setDialog(null)}
+        title={form?.title ?? "Add block"}
+        size="sm"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <LemonButton variant="secondary" onClick={() => setDialog(null)}>
+              Cancel
+            </LemonButton>
+            <LemonButton
+              variant="primary"
+              disabled={!primary.trim()}
+              onClick={submit}
+            >
+              {form?.submitLabel ?? "Add"}
+            </LemonButton>
+          </div>
+        }
+      >
+        {form && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            <label className="block space-y-1">
+              <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                {form.primaryLabel}
+              </span>
+              {form.primaryMultiline ? (
+                <textarea
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  rows={4}
+                  className="w-full text-base font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 leading-relaxed"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  className="w-full text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+                />
+              )}
+            </label>
+            {form.secondaryLabel && (
+              <label className="block space-y-1">
+                <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                  {form.secondaryLabel}
+                </span>
+                <input
+                  type="text"
+                  value={secondary}
+                  onChange={(e) => setSecondary(e.target.value)}
+                  className="w-full text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+                />
+              </label>
+            )}
+          </form>
+        )}
+      </LemonModal>
     </div>
   );
 }

@@ -240,50 +240,25 @@
   color: var(--lm-node);
 }
 
-/* Detail modal. */
-.lm-modal-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  background: rgba(10, 10, 18, 0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(3px);
-}
+/* Detail modal — LemonModal owns the ladder rung (z=100), scrim, Esc and the
+   focus trap; .lm-modal is the lm skin painted inside its body. */
 .lm-modal {
-  width: min(560px, 90vw);
-  max-height: 84vh;
+  max-height: 70vh;
   overflow-y: auto;
   border: 1px solid var(--lm-magenta);
-  border-radius: 16px;
+  border-radius: 12px;
   background: rgba(10, 10, 18, 0.96);
-  box-shadow: 0 0 60px rgba(255, 0, 255, 0.3);
-  padding: 20px;
+  box-shadow: 0 0 40px rgba(255, 0, 255, 0.25);
+  padding: 16px;
+  font-family: "Share Tech Mono", "Courier New", monospace;
 }
-.lm-modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.lm-modal-head h2 {
-  margin: 0;
+.lm-modal-title {
   font-family: "Bungee Shade", Impact, sans-serif;
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--lm-fire-core);
-}
-.lm-modal-close {
-  border: 1px solid var(--lm-smoke);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--lm-bone);
-  cursor: pointer;
-  padding: 4px 8px;
-}
-.lm-modal-close:hover {
-  border-color: var(--lm-magenta);
 }
 .lm-modal-facts {
   display: grid;

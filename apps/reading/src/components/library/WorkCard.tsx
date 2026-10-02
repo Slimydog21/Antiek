@@ -1,7 +1,8 @@
 import { LemonTag } from "../lemon";
+import { placeholderSpine } from "./placeholderSpine";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
-import { servabilityLabel } from "../../api/books";
+import { servabilityLabel, UNKNOWN_RIGHTS_LABEL } from "../../api/books";
 
 /**
  * WorkCard — one work on the M2 Library browse shelf (Read SPR-09).
@@ -32,15 +33,6 @@ export interface WorkCardProps {
   onClaim?: (documentId: string) => void;
 }
 
-// Deterministic cover hue from the document id so a placeholder spine is stable
-// across renders (no flicker) without storing a colour. Mirrors the existing
-// BookCard so the two shelves never disagree on a placeholder.
-function placeholderHue(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return h;
-}
-
 /** A short, human source line from the servability basis — "what kind of thing
  *  this is", distinct from the author. */
 function sourceLine(work: BookSummary): string {
@@ -57,13 +49,22 @@ function sourceLine(work: BookSummary): string {
       return "Catalog record";
     case "taken_down":
       return "Removed from the shelf";
+    case "personal_readable":
+      return "Your document";
+    default: {
+      // Exhaustive at compile time; a runtime value from a newer backend
+      // renders a neutral line instead of an empty one (A-01).
+      const _exhaustive: never = work.servability;
+      void _exhaustive;
+      return UNKNOWN_RIGHTS_LABEL;
+    }
   }
 }
 
 export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
   const { label, colour } = servabilityLabel(work.servability);
   const title = work.title ?? work.document_id;
-  const hue = placeholderHue(work.document_id);
+  const spine = placeholderSpine(work.document_id);
   const servable = work.servable_full_text;
   const removed = work.taken_down || work.servability === "taken_down";
 
@@ -92,15 +93,7 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${
           removed ? "" : cardLift
         }`}
-        style={
-          work.cover_uri
-            ? undefined
-            : {
-                background: `linear-gradient(160deg, hsl(${hue} 45% 32%), hsl(${
-                  (hue + 40) % 360
-                } 50% 22%))`,
-              }
-        }
+        style={work.cover_uri ? undefined : { background: spine }}
       >
         {work.cover_uri ? (
           <img
@@ -124,18 +117,18 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
         {/* The servable-vs-gated affordance, surfaced on the cover so it reads
             before the click: a servable work invites a Read, a gated one offers
             metadata + claim, a removed one shows nothing actionable. */}
-        <span className="absolute bottom-0 inset-x-0 bg-ink/70 px-2 py-1 text-[11px] font-mono text-ice-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+        <span className="absolute bottom-0 inset-x-0 bg-ink/70 px-2 py-1 text-xs font-mono text-ice-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
           {actionLabel}
         </span>
       </div>
       <p className="mt-2 font-serif text-sm text-ink dark:text-bright truncate" title={title}>
         {title}
       </p>
-      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
         {work.author ?? "Unknown author"}
         {work.page_count > 0 && <> · {work.page_count}p</>}
       </p>
-      <p className="text-[10.5px] font-mono text-shadow-2 dark:text-moonlight truncate">
+      <p className="text-xxs font-mono text-shadow-2 dark:text-moonlight truncate">
         {sourceLine(work)}
       </p>
     </button>

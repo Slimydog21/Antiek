@@ -15,7 +15,7 @@ class LabelledPaste:
 
 
 def load_labelled_pastes(path: Path | str) -> list[LabelledPaste]:
-    import yaml  # type: ignore[import]
+    import yaml
 
     p = Path(path)
     if not p.exists():

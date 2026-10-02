@@ -14,32 +14,10 @@ import { useState } from "react";
 import LemonButton from "../../components/lemon/LemonButton";
 import {
   TERMINAL_STATES,
-  type ResearchRunState,
   type ResearchStatus,
   type SteerKind,
 } from "../../api/research";
-
-const STATE_LABEL: Record<ResearchRunState, string> = {
-  pending: "queued",
-  running: "running",
-  paused: "paused",
-  stopping: "stopping",
-  done: "done",
-  stopped: "stopped",
-  failed: "failed",
-  budget_halted: "budget halted",
-};
-
-const STATE_CLASS: Record<ResearchRunState, string> = {
-  pending: "text-shadow-1 dark:text-moonlight",
-  running: "text-aurora",
-  paused: "text-sun-deep",
-  stopping: "text-shadow-1 dark:text-moonlight",
-  done: "text-aurora",
-  stopped: "text-shadow-1 dark:text-moonlight",
-  failed: "text-emperor",
-  budget_halted: "text-emperor",
-};
+import { researchRunStateStyle } from "../../shared/researchState";
 
 export interface ResearchPanelProps {
   research: ResearchStatus;
@@ -51,9 +29,10 @@ export interface ResearchPanelProps {
 export default function ResearchPanel({ research, costUsd, onSteer, busy }: ResearchPanelProps) {
   const [redirectOpen, setRedirectOpen] = useState(false);
   const [redirectText, setRedirectText] = useState("");
+  const runStyle = researchRunStateStyle(research.state);
   const terminal = TERMINAL_STATES.has(research.state);
   const isPaused = research.state === "paused";
-  const isRunning = research.state === "running" || research.state === "stopping";
+  const isRunning = runStyle.running;
 
   return (
     <section
@@ -63,14 +42,14 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       <header className="flex items-start justify-between gap-2">
         <p className="line-clamp-3 text-sm text-ink dark:text-bright">{research.sub_question}</p>
         <span
-          className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${STATE_CLASS[research.state]}`}
+          className={`shrink-0 text-xxs font-semibold uppercase tracking-[0.12em] ${runStyle.textClass}`}
           aria-label="research state"
         >
-          {STATE_LABEL[research.state]}
+          {runStyle.label}
         </span>
       </header>
 
-      <div className="flex items-center justify-between text-[11px] text-shadow-1 dark:text-moonlight">
+      <div className="flex items-center justify-between text-xs text-shadow-1 dark:text-moonlight">
         <span className="font-mono">${costUsd.toFixed(4)}</span>
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>

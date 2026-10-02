@@ -77,14 +77,28 @@ _PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({"operator_only", "private_r
 # callee is the same bypass as the string literal, so we flag it too.
 _PRIVILEGED_TAG_NAMES: frozenset[str] = frozenset({"_OWNER_READ_POLICY_TAG"})
 
-# Auth-checked call sites that legitimately resolve a privileged ``policy_tag``
-# (today exactly the owner-read endpoints). They pass the tag via
-# ``_owner_read_policy_tag(request)`` — a CALL, not a literal — so they do not
-# match the literal/Name rule anyway; the allowlist is documented defense in
-# depth so even a literal here is a reviewed, deliberate choice.
+# Reviewed call sites that legitimately use a privileged ``policy_tag``.
+#
+# ``books.py`` resolves the tag through ``_owner_read_policy_tag(request)`` at
+# the authenticated HTTP boundary.
+#
+# ``grounding.py`` is the internal, event-driven backend for a challenge raised
+# by the Wrestle route. It searches ONLY the ``document_id`` carried by that
+# typed event, never serves results over HTTP, and cannot retain the HTTP
+# request through the asynchronous event bus. The upstream route owns the auth
+# boundary; this allowlist is therefore narrowly scoped to the background
+# consumer rather than widening the HTTP surface.
 _ALLOWED_FILES: frozenset[str] = frozenset(
     {
         "interfaces/research/api/books.py",
+        "interfaces/research/api/grounding.py",
+        # The Antiek Memory MCP ``search_personal`` handler passes
+        # ``private_research`` only after ``_authenticated_owner`` accepts an
+        # owner the SERVER stamped from its launch binding
+        # (``AntiekMemoryServer.bound_owner`` / ANTIEK_MEMORY_OWNER; a client
+        # claim naming anyone else yields no identity), and it bounds the
+        # search to ``document_ids`` whose ``owner_user_id`` is that owner.
+        "tools/antiek_memory/__main__.py",
     }
 )
 

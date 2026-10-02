@@ -13,12 +13,14 @@
  * We clone the *idiom* from Notebook's ClaimCardBlock / QuestionCardBlock
  * (the colored left-bar + an Inspect/cite affordance) but NOT their TipTap
  * NodeViews — a canvas block is a different concept (a free-floating graph
- * node, not an inline editor node). The colors match DistillView's section
- * dots: aurora for insights, sun-deep for questions.
+ * node, not an inline editor node). Per adjudication D11, aurora is the one
+ * AI-cognition colour — thinking AND emergent outputs — so insights and
+ * questions share it (matching DistillView's dots and QuestionCardBlock's
+ * aurora bar); the kind label, not a second colour, tells them apart.
  *
  * Provenance (§9, acceptance criterion): every block surfaces a source
  * affordance. When the node carries a `source_document_id` we render a
- * "cite source" button (mirroring ClaimCardBlock's "Inspect"); when it does
+ * "read source" button (mirroring ClaimCardBlock's "Inspect"); when it does
  * not, we say "no source on record" honestly rather than hide the chain.
  * A raw document id is NEVER rendered as a label (copy-lint discipline).
  *
@@ -29,16 +31,22 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
+import FlagForDiligence from "../../../shared/FlagForDiligence";
+import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 
 export interface BlockCardProps {
   node: DistilledNode;
   /** Click-to-detail seam for SPR-04. Optional — when absent the card is
    *  inert (renders, but opens nothing). */
   onOpenDetail?: (node: DistilledNode) => void;
-  /** Cite-source / inspect-provenance affordance. Optional — when absent we
+  /** Read-source / inspect-provenance affordance. Optional — when absent we
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
+  /** The investigation the node was distilled from. Present ⇒ the calm
+   *  "flag for diligence" action renders (autonomous-diligence SPR-01);
+   *  absent ⇒ no flag affordance (never a dead one). */
+  sourceInvestigationId?: string;
 }
 
 const KIND_STYLE = {
@@ -49,9 +57,9 @@ const KIND_STYLE = {
     text: "insight",
   },
   question: {
-    bar: "border-sun-deep dark:border-sun",
-    bg: "bg-sun/10 dark:bg-sun/15",
-    label: "text-sun-deep dark:text-sun",
+    bar: "border-aurora",
+    bg: "bg-aurora/10 dark:bg-aurora/15",
+    label: "text-aurora",
     text: "question",
   },
 } as const;
@@ -64,9 +72,9 @@ function styleFor(kind: string) {
   return kind === "insight" ? KIND_STYLE.insight : KIND_STYLE.question;
 }
 
-export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCardProps) {
+export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInvestigationId }: BlockCardProps) {
   const s = styleFor(node.kind);
-  const hasSource = Boolean(node.source_document_id);
+  const hasSource = Boolean(node.source_document_id?.trim());
   const clickable = Boolean(onOpenDetail);
 
   return (
@@ -79,13 +87,13 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <span className={`font-mono text-[10px] uppercase tracking-wider ${s.label}`}>
+        <span className={`font-mono text-xxs uppercase tracking-wider ${s.label}`}>
           {/* Show the real kind so an unexpected graph kind is visible, not
               silently relabeled. */}
           {node.kind === "insight" || node.kind === "question" ? s.text : node.kind}
         </span>
         {node.escalated && (
-          <span className="font-mono text-[10px] text-sun-deep dark:text-sun" title="this needs more research">
+          <span className="font-mono text-xxs text-sun-deep dark:text-sun" title="this needs more research">
             needs more research
           </span>
         )}
@@ -100,27 +108,31 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           className="text-left"
           aria-label="Open block detail"
         >
-          <p className="line-clamp-4 font-serif text-[13px] leading-relaxed text-ink dark:text-bright">
+          <p className="line-clamp-4 font-serif text-sm leading-relaxed text-ink dark:text-bright">
             {node.text || <span className="italic text-ink-mute dark:text-moonlight">(empty)</span>}
           </p>
         </button>
       ) : (
-        <p className="line-clamp-4 font-serif text-[13px] leading-relaxed text-ink dark:text-bright">
+        <p className="line-clamp-4 font-serif text-sm leading-relaxed text-ink dark:text-bright">
           {node.text || <span className="italic text-ink-mute dark:text-moonlight">(empty)</span>}
         </p>
       )}
 
       {/* Provenance affordance — the §9 chain stays reachable. We surface the
           source's presence/absence in human terms; a raw id is never a label. */}
-      <div className="flex items-center gap-2 text-[10px] text-shadow-1 dark:text-moonlight">
+      <div className="flex items-center gap-2 text-xxs text-shadow-1 dark:text-moonlight">
         {hasSource ? (
           onCiteSource ? (
             <button
               type="button"
-              onClick={() => onCiteSource(node)}
+              onClick={(event) => {
+                const { left, top, right, bottom, width, height } =
+                  event.currentTarget.getBoundingClientRect();
+                onCiteSource(node, { left, top, right, bottom, width, height });
+              }}
               className="font-mono underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
             >
-              cite source
+              read source
             </button>
           ) : (
             <span className="font-mono">grounded in a source</span>
@@ -132,6 +144,9 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           <span className="font-mono">
             changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}
           </span>
+        )}
+        {sourceInvestigationId && (
+          <FlagForDiligence node={node} sourceInvestigationId={sourceInvestigationId} />
         )}
       </div>
     </div>

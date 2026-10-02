@@ -131,6 +131,7 @@ export const mockInvestigationInProgress: InvestigationState = {
   completedAt: null,
   streamStatus: "open",
   reconnects: 0,
+  sourcePolicy: ["operator_corpus", "web"],
 };
 
 export const mockInvestigationCompleted: InvestigationState = {
@@ -146,6 +147,7 @@ export const mockInvestigationCompleted: InvestigationState = {
   completedAt: "2026-05-21T17:42:00Z",
   streamStatus: "closed",
   reconnects: 0,
+  sourcePolicy: ["operator_corpus", "web"],
 };
 
 export const mockInvestigationLoading: InvestigationState = {
@@ -158,4 +160,5 @@ export const mockInvestigationLoading: InvestigationState = {
   completedAt: null,
   streamStatus: "connecting",
   reconnects: 0,
+  sourcePolicy: [],
 };

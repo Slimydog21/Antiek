@@ -1,6 +1,6 @@
 import { API_BASE, apiFetch } from "../lib/api";
 
-export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar";
+export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar" | "fred" | "alpha_vantage";
 export type ToolConnectionStatus =
   | "unconfigured"
   | "configured_unverified"
@@ -13,6 +13,14 @@ export interface ToolQuota {
   reset_at: string | null;
   hard_exhausted: boolean | null;
   note: string | null;
+  /**
+   * Upper-bound USD a single full-size search spends of the owner's own
+   * pay-per-use credit, for vendors that bill per call. Null where the vendor
+   * does not price that way, or where Antiek has no sourced rate to quote.
+   */
+  estimated_cost_usd: number | null;
+  /** Where `estimated_cost_usd` comes from, and what it does not include. */
+  cost_note: string | null;
 }
 
 export interface ToolConnection {
@@ -25,9 +33,14 @@ export interface ToolConnection {
   credential_present: boolean;
   status_note: string | null;
   quota: ToolQuota;
+  /**
+   * True when a research surface actually spends this credential today.
+   * A stored key nothing reads is "connected, not yet used", not configured.
+   */
+  searchable: boolean;
 }
 
-const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar"]);
+const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar", "fred", "alpha_vantage"]);
 const STATUSES = new Set<ToolConnectionStatus>([
   "unconfigured",
   "configured_unverified",
@@ -50,7 +63,8 @@ function exactKeys(value: Record<string, unknown>, expected: string[]): boolean 
 
 function parseQuota(value: unknown): ToolQuota {
   if (!isRecord(value) || !exactKeys(value, [
-    "hard_exhausted", "kind", "limit", "note", "remaining", "reset_at",
+    "cost_note", "estimated_cost_usd", "hard_exhausted", "kind", "limit", "note",
+    "remaining", "reset_at",
   ])) throw new Error("Tool settings returned an invalid quota response");
   if (typeof value.kind !== "string" || !QUOTA_KINDS.has(value.kind as ToolQuota["kind"])) {
     throw new Error("Tool settings returned an invalid quota response");
@@ -60,7 +74,9 @@ function parseQuota(value: unknown): ToolQuota {
     (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0);
   const nullableString = (candidate: unknown) => candidate === null || typeof candidate === "string";
   if (!nullableNumber(value.remaining) || !nullableNumber(value.limit) ||
+      !nullableNumber(value.estimated_cost_usd) ||
       !nullableString(value.reset_at) || !nullableString(value.note) ||
+      !nullableString(value.cost_note) ||
       !(value.hard_exhausted === null || typeof value.hard_exhausted === "boolean")) {
     throw new Error("Tool settings returned an invalid quota response");
   }
@@ -77,7 +93,10 @@ function parseQuota(value: unknown): ToolQuota {
       (remaining !== null || resetAt !== null || hardExhausted !== null)) ||
     (value.kind === "youtube_units" && limit !== null && limit <= 0) ||
     (value.kind === "rate_ceiling" && (limit === null || limit <= 0)) ||
-    (value.kind === "unavailable" && limit !== null)
+    (value.kind === "unavailable" && limit !== null) ||
+    // A price with no provenance is exactly the thing this field was added to
+    // stop, so refuse a figure that arrives without the note that sources it.
+    (value.estimated_cost_usd !== null && value.cost_note === null)
   ) {
     throw new Error("Tool settings returned an invalid quota response");
   }
@@ -87,13 +106,14 @@ function parseQuota(value: unknown): ToolQuota {
 function parseConnection(value: unknown): ToolConnection {
   if (!isRecord(value) || !exactKeys(value, [
     "auth", "credential_kind", "credential_present", "display_name", "docs_url",
-    "quota", "status", "status_note", "vendor",
+    "quota", "searchable", "status", "status_note", "vendor",
   ])) throw new Error("Tool settings returned an invalid connection response");
   if (typeof value.vendor !== "string" || !VENDORS.has(value.vendor as ToolVendor) ||
       typeof value.status !== "string" || !STATUSES.has(value.status as ToolConnectionStatus) ||
       (value.credential_kind !== "api_key" && value.credential_kind !== "contact") ||
       typeof value.display_name !== "string" || typeof value.auth !== "string" ||
       typeof value.docs_url !== "string" || typeof value.credential_present !== "boolean" ||
+      typeof value.searchable !== "boolean" ||
       !(value.status_note === null || typeof value.status_note === "string")) {
     throw new Error("Tool settings returned an invalid connection response");
   }

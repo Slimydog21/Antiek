@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -134,7 +134,7 @@ class AnthropicVisionProvider:
             self._client = httpx.Client(timeout=self._timeout_s)
         return self._client
 
-    def _build_image_block(self, image_url: str) -> dict:
+    def _build_image_block(self, image_url: str) -> dict[str, Any]:
         """Build the ``image`` content block. Supports two forms:
 
           - ``data:image/png;base64,XXXX`` — inline base64 (production
@@ -258,7 +258,7 @@ class MockVisionProvider:
     canned_output_tokens: int = 50
     canned_model: str = "claude-3-5-sonnet-20241022"
     raise_with: VisionProviderError | None = None
-    calls: list[dict] = None  # type: ignore[assignment]
+    calls: list[dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         if self.calls is None:
@@ -274,6 +274,7 @@ class MockVisionProvider:
         max_output_tokens: int = 4096,
         temperature: float = 0.1,
     ) -> VisionDispatchResult:
+        assert self.calls is not None, "test double constructed without a calls list"
         self.calls.append({
             "system_prompt": system_prompt,
             "user_text": user_text,

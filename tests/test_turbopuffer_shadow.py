@@ -51,7 +51,17 @@ class FakeNamespace:
         self.upserted_rows.extend(kwargs.get("upsert_rows", []))
 
     def query(self, **kwargs):
-        rows = [dict(r) for r in sorted(self.upserted_rows, key=lambda x: x["id"])]
+        # Honour rank_by DIRECTION and limit, the way the vendor does. The
+        # stub used to ignore both and always return every row ascending,
+        # which is why a prefix-only verification looked adequate: asc and
+        # desc were indistinguishable here.
+        rank_by = kwargs.get("rank_by") or ("id", "asc")
+        reverse = len(rank_by) > 1 and str(rank_by[1]).lower() == "desc"
+        rows = [dict(r) for r in sorted(self.upserted_rows,
+                                        key=lambda x: x["id"], reverse=reverse)]
+        limit = kwargs.get("limit")
+        if limit:
+            rows = rows[: int(limit)]
         if self.corrupt_verification and rows:
             rows[0]["text"] = "tampered"
         return type("QueryResponse", (), {"rows": [Row(**r) for r in rows]})()
@@ -376,10 +386,8 @@ def test_rebuild_accepts_lagging_approx_at_servable_scale(graph, tmp_path):
                 },
             )()
 
-        def query(self, **kwargs):
-            limit = int(kwargs.get("limit") or 64)
-            rows = [dict(r) for r in sorted(self.upserted_rows, key=lambda x: x["id"])][:limit]
-            return type("QueryResponse", (), {"rows": [Row(**r) for r in rows]})()
+        # query() is inherited: FakeNamespace now honours rank_by direction,
+        # so head and tail samples differ here as they do at the vendor.
 
     fake = LaggingNamespace()
     sub = TurbopufferSubstrate.open(
@@ -389,3 +397,69 @@ def test_rebuild_accepts_lagging_approx_at_servable_scale(graph, tmp_path):
     staged = sub.rebuild_shadow()
     assert staged["status"] == "staged"
     assert staged["row_count"] >= 120
+
+
+def test_rebuild_rejects_a_truncated_namespace_even_when_approx_lags(graph, tmp_path):
+    """The failure the staging verify exists to catch.
+
+    A truncated write lands the LOW ids and drops the tail. The verification
+    used to sample only the first 64 rows by ("id", "asc"), so a prefix-
+    truncated namespace satisfied the sample exactly; combined with the
+    approx==0 lag tolerance, it verified clean and promoted a partial index.
+
+    Here the vendor accepts only the first 70 of 120 rows and reports
+    approx_row_count=0 — indistinguishable from vendor lag by count alone.
+    Only the tail sample can tell the difference.
+    """
+    from runtime.db_lock import connect_write
+    from substrate.graph.embedding_meta import _identity
+
+    model = HashEmbedding()
+    con = connect_write(graph, purpose="tpuf-truncate-seed")
+    try:
+        provider, model_name, dim, fingerprint = _identity(model)
+        for i in range(120):
+            doc = f"doc-trunc-{i:03d}"
+            chunk = f"c-trunc-{i:03d}"
+            text = f"trunc text {i} public domain corpus row"
+            con.execute(
+                "INSERT OR REPLACE INTO documents(document_id, title, source_tier, "
+                "document_type, content_class) VALUES (?, ?, 1, 'paper', 'public_domain')",
+                [doc, f"Trunc {i}"],
+            )
+            emb = model.encode(text)
+            con.execute(
+                "INSERT OR REPLACE INTO chunks(chunk_id, document_id, chunk_index, text, "
+                "embedding, token_count) VALUES (?, ?, 0, ?, ?, ?)",
+                [chunk, doc, text, emb, max(1, len(text) // 4)],
+            )
+            con.execute(
+                "INSERT OR REPLACE INTO embeddings_meta VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)",
+                [chunk, provider, model_name, dim, fingerprint],
+            )
+    finally:
+        con.close()
+
+    class TruncatingNamespace(FakeNamespace):
+        """Accepts only the first 70 rows it is given, and reports approx 0."""
+
+        def write(self, **kwargs):
+            rows = kwargs.get("upsert_rows") or []
+            room = max(0, 70 - len(self.upserted_rows))
+            super().write(upsert_rows=rows[:room], **{
+                k: v for k, v in kwargs.items() if k != "upsert_rows"
+            })
+
+        def metadata(self, **kwargs):
+            return type("Metadata", (), {
+                "approx_row_count": 0,
+                "schema_": {"text": {"type": "string", "full_text_search": True}},
+            })()
+
+    fake = TruncatingNamespace()
+    sub = TurbopufferSubstrate.open(
+        graph, model=model, api_key="x", namespace=fake,
+        manifest_dir=tmp_path / "manifests-trunc",
+    )
+    with pytest.raises(RuntimeError, match="staging namespace verification failed"):
+        sub.rebuild_shadow()

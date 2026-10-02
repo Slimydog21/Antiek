@@ -49,9 +49,9 @@ test.describe("Storybook smoke — primitives render at every viewport", () => {
     });
   }
 
-  test("Werner animation gallery renders 5 poses", async ({ page }) => {
+  test("Brain animation gallery renders 5 poses", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loadStory(page, "brand-werner-animations--all-poses");
+    await loadStory(page, "brand-mascot-animations--all-poses");
     for (const label of [
       "Tobogganing",
       "Thinking",

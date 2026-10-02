@@ -40,6 +40,8 @@ class ProviderError(Exception):
         latency_ms: int,
         retryable: bool = False,
         request_id: str | None = None,
+        endpoint: str | None = None,
+        upstream_type: str | None = None,
     ):
         super().__init__(message)
         self.provider = provider
@@ -47,6 +49,86 @@ class ProviderError(Exception):
         self.latency_ms = latency_ms
         self.retryable = retryable
         self.request_id = request_id
+        self.endpoint = endpoint
+        self.upstream_type = upstream_type
+
+
+def parse_upstream_error_envelope(body: Any) -> tuple[str, str, Any] | None:
+    """Return ``(message, type, param)`` for an OpenAI-shaped error object.
+
+    OAuth token errors use a string ``error`` plus ``error_description``.
+    Those are not this envelope. A match requires ``error.message``,
+    ``error.type``, and an explicit ``error.param`` (null is valid).
+    """
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict) or "param" not in error:
+        return None
+    message = error.get("message")
+    error_type = error.get("type")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    if not isinstance(error_type, str) or not error_type.strip():
+        return None
+    return message, error_type, error.get("param")
+
+
+_MAX_UPSTREAM_MESSAGE_CHARS = 400
+_MAX_UPSTREAM_META_CHARS = 120
+
+
+def _bounded(value: str, limit: int) -> str:
+    """Keep hostile upstream fields from becoming oversized log lines."""
+    return value if len(value) <= limit else f"{value[:limit]}…"
+
+
+def describe_upstream_http_error(
+    body: Any,
+    *,
+    provider: str,
+    status_code: int,
+    endpoint: str,
+    secret: str = "",
+) -> tuple[str, str | None] | None:
+    """Classify an upstream/proxy envelope with provider and endpoint context.
+
+    Returns ``(detail, upstream_type)``. The detail names who was called and
+    the upstream message. ``type=server_error`` stays a field on that detail,
+    not the whole error. Credential material reflected by an untrusted
+    endpoint is omitted.
+    """
+    parsed = parse_upstream_error_envelope(body)
+    if parsed is None:
+        return None
+    message, error_type, param = parsed
+    if bool(secret) and secret in endpoint:
+        endpoint = endpoint.replace(secret, "[redacted]")
+    type_leaks = bool(secret) and secret in error_type
+    message_leaks = bool(secret) and secret in message
+    param_leaks = bool(secret) and isinstance(param, str) and secret in param
+    safe_type = None if type_leaks else error_type
+    if message_leaks or param_leaks:
+        bounded_type = (
+            _bounded(safe_type, _MAX_UPSTREAM_META_CHARS)
+            if safe_type is not None
+            else None
+        )
+        return f"{provider}: HTTP {status_code}: {endpoint}: upstream error", bounded_type
+    if param is None:
+        param_text = "null"
+    elif isinstance(param, str):
+        param_text = param
+    else:
+        param_text = str(param)
+    bounded_message = _bounded(message, _MAX_UPSTREAM_MESSAGE_CHARS)
+    bounded_type = _bounded(error_type, _MAX_UPSTREAM_META_CHARS)
+    bounded_param = _bounded(param_text, _MAX_UPSTREAM_META_CHARS)
+    detail = (
+        f"{provider}: HTTP {status_code}: {endpoint}: {bounded_message} "
+        f"(type={bounded_type}, param={bounded_param})"
+    )
+    return detail, safe_type
 
 
 def response_contains_secret(value: Any, secret: str) -> bool:
@@ -109,12 +191,64 @@ class NormalizedUsage:
     ``(input_tokens, cached_input_tokens, cache_creation_input_tokens, output_tokens)``
     together with the per-tier pricing entry to compute ``cost_usd``.
     Adapters MUST NOT compute cost themselves — keep pricing in one place.
+
+    ``reported`` is False when the provider did not report the counts (no
+    usage block, or an input/output count that is missing, null or not an
+    int; see ``usage_counts_reported``). Zero tokens and
+    unknown tokens are different facts: the router bills an unreported call
+    at its worst-case ceiling rather than as a free 0-token call.
+
+    ``cache_unknown`` is True when the primary counts are real but the cache
+    split is not (a null / non-int cached count). Only an adapter whose input
+    count is INCLUSIVE of cached tokens may use it (OpenAI-compatible): it
+    bills the whole input at the full rate with ``cached_input_tokens=0``,
+    conservative on the cache discount only, and never discards valid
+    primaries for the whole-call ceiling. An adapter whose input count
+    EXCLUDES the cache (Anthropic) cannot know its total and reports
+    ``reported=False`` instead.
     """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    reported: bool = True
+    cache_unknown: bool = False
+
+
+def usage_counts_reported(raw_usage: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    """True only when every required count in ``raw_usage`` is a real count.
+
+    Key presence is not enough: ``{"prompt_tokens": null}`` or a blank ``""``
+    is the provider saying nothing, and an adapter's ``int(x or 0)`` would
+    turn it into a definite 0 that prices a paid call as free. A count must
+    be a non-negative ``int`` (``bool`` excluded, since it subclasses int).
+    """
+    for key in keys:
+        value = raw_usage.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return False
+    return True
+
+
+def optional_count(container: Any, key: str) -> int | None:
+    """An OPTIONAL usage count (a cache subset): 0 when the key is absent (a
+    call with no cache genuinely reports none), the count when it is a real
+    non-negative ``int``, and None when it is present but not one (``null``,
+    a string, a float, a bool, a negative).
+
+    None means the provider did not really report the split, and the adapter
+    must return ``reported=False`` so the router bills the ceiling. Coercing
+    it to 0 prices a paid cache write as free, and ``int(value)`` on a string
+    raises before the router can bill the call at all."""
+    if not isinstance(container, dict):
+        return None
+    if key not in container:
+        return 0
+    value = container[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +316,8 @@ class Provider(Protocol):
         """Convert this provider's raw usage shape into ``NormalizedUsage``.
 
         Must handle the case where the provider returned partial or no
-        usage data — return zeros rather than raising. The router emits
-        the DispatchCall event regardless of whether usage was available.
+        usage data — return zeros with ``reported=False`` rather than
+        raising. The router emits the DispatchCall event regardless, priced
+        at the call's ceiling when usage was not reported.
         """
         ...

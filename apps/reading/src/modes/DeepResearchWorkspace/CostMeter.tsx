@@ -14,7 +14,7 @@ const WARN_FRACTION = 0.8;
 export default function CostMeter({ cost }: { cost: SessionCost | null }) {
   if (!cost) {
     return (
-      <div className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+      <div className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
         cost · awaiting session
       </div>
     );
@@ -28,12 +28,12 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
     ? "bg-emperor"
     : warn
       ? "bg-sun"
-      : "bg-aurora";
+      : "bg-success";
 
   return (
     <div className="flex flex-col gap-1" aria-label="session cost meter">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+        <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
           session cost
         </span>
         <span className="font-mono text-sm text-ink dark:text-bright">
@@ -48,12 +48,12 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
         />
       </div>
       {atCap && (
-        <span className="text-[11px] text-emperor">
+        <span className="text-xs text-emperor">
           Aggregate budget reached — new launches are blocked until the cap is lifted.
         </span>
       )}
       {warn && (
-        <span className="text-[11px] text-shadow-1 dark:text-moonlight">
+        <span className="text-xs text-shadow-1 dark:text-moonlight">
           Approaching the aggregate budget.
         </span>
       )}

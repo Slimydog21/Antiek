@@ -9,6 +9,29 @@ Two autouse fixtures, both function-scoped:
   test at a TMP store so no test can mutate the real ``~/.antiek`` store. This
   is the test/prod firewall that closes the test-residue pollution gap at its
   source.
+* ``_isolate_arxiv_governor`` — points the arXiv throttle state file AND the
+  host-global governor flock at ``tmp_path``. When this fixture landed,
+  ``ANTIEK_HOME`` (which ``_isolate_antiek_store`` sets) redirected NEITHER
+  arXiv path (SPR-05 task 5 later made it redirect both, so the two now
+  overlap as belt-and-braces), and a test that reached
+  ``ArxivRateGovernor(lock_path=None)`` took an
+  exclusive ``fcntl`` flock on the operator's real
+  ``~/.antiek/arxiv_throttle.json.governor.lock`` — measured: a three-hour
+  ``pytest tests/`` run was the live holder of that lock while a real arXiv
+  429 was drawn on the box. Same firewall, arXiv side.
+* ``_isolate_ban_event_log`` — points the append-only ban-event JSONL at
+  ``tmp_path`` and refuses (raises) if the resolved path is the operator's
+  real ``~/.antiek/ban_events.jsonl``. Same firewall, ban-attribution side.
+* ``_isolate_provider_keys`` — removes real provider API keys from the
+  environment. Same firewall, egress side: without it a developer who has
+  ``XIAOMI_API_KEY`` (or any of six siblings) exported gets REAL network
+  providers registered by ``register_default_providers``, which then outrank a
+  test's own stubs. Measured: ``tests/test_loop_one_orchestrator.py`` — whose
+  docstring says "the fixtures stub every role's provider" — dispatched to the
+  live ``api.mimo.xiaomi.com`` and failed, while passing in CI where no key
+  exists. Three tests behaved that way. A test that reaches a real provider
+  bills a real key and egresses real data, so this is a cost and privacy
+  boundary, not only a flakiness one.
 
 ``substrate.dispatch.breaker.default_breaker`` is a process-wide singleton the
 router consults on every dispatch. Without isolation, any test that exercises
@@ -28,6 +51,9 @@ import shutil
 
 import pytest
 
+from acquisition.arxiv import rate_governor as _arxiv_rate_governor
+from acquisition.arxiv.rate_governor import default_lock_path as arxiv_lock_path
+from acquisition.arxiv.throttle import default_state_path as arxiv_state_path
 from runtime.test_store_guard import real_operator_graph_db_path
 from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
@@ -59,11 +85,79 @@ def _check_store_isolated(db_path: str, real: str, *, node_id: str = "") -> None
         )
 
 
+def _real_arxiv_paths() -> tuple[str, str]:
+    """The operator's real arXiv throttle state file and governor lock, symlinks
+    resolved (realpath). Computed from ``~`` directly, NOT from the resolvers —
+    the resolvers are what the fixture is checking."""
+    real_state = os.path.realpath(os.path.expanduser("~/.antiek/arxiv_throttle.json"))
+    real_lock = os.path.realpath(
+        os.path.expanduser("~/.antiek/arxiv_throttle.json.governor.lock")
+    )
+    return real_state, real_lock
+
+
+def _check_arxiv_isolated(path: str, real: str, *, node_id: str = "") -> None:
+    """Raise ``AssertionError`` iff ``path`` resolves to a real arXiv state path.
+
+    Resolve-and-compare (``realpath``), never string-compare, so a symlink that
+    aliases the real file is still caught — the same discipline as
+    ``_check_store_isolated``. Extracted from the autouse fixture so the guard
+    is unit-testable hermetically (see ``tests/test_isolation_guard.py``).
+    """
+    if os.path.realpath(os.path.expanduser(str(path))) == real:
+        loc = f" for {node_id!r}" if node_id else ""
+        raise AssertionError(
+            "arXiv isolation guard: the resolved arXiv path is the REAL operator "
+            f"path ({real}){loc} — a governor-lock leak. Set "
+            "ANTIEK_ARXIV_THROTTLE_PATH and ANTIEK_ARXIV_GOVERNOR_LOCK_PATH to tmp "
+            "paths, or mark @pytest.mark.arxiv_state_contract for a test that "
+            "probes the default-path fallback on purpose."
+        )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_default_breaker():
     default_breaker.reset()
     yield
     default_breaker.reset()
+
+
+# Every env var `substrate/dispatch/providers/bootstrap.py` consults via
+# `resolve_provider_key(handle, env_var)`. tests/test_provider_key_isolation.py
+# re-derives this set FROM THAT SOURCE and fails if the two drift, so adding a
+# provider cannot silently reopen the hole.
+PROVIDER_KEY_ENV_VARS = (
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "HERMES_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "XIAOMI_API_KEY",
+    "Z_AI_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_keys(request, monkeypatch):
+    """No test reaches a real provider because the developer happens to have keys.
+
+    `register_default_providers()` registers every provider whose key resolves,
+    and a registered real provider outranks a stub the test installed. On CI no
+    key exists so the stubs win; on a developer machine they do not. That is a
+    test that passes in CI and fails locally for a reason the author never sees
+    — and worse, one that silently bills a live API from a unit test.
+
+    BYOK lookups already land in the tmp store via `_isolate_antiek_store`, so
+    the environment is the remaining channel.
+
+    Opt out with `@pytest.mark.live_provider` for a test that genuinely needs
+    real credentials (a live smoke check). The marker is opt-in, registered in
+    pyproject.toml, and grants exactly nothing else.
+    """
+    if request.node.get_closest_marker("live_provider"):
+        return
+    for var in PROVIDER_KEY_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(scope="session")
@@ -124,3 +218,79 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path, _antiek_schema_templat
     yield
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
     _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_arxiv_governor(request, monkeypatch, tmp_path):
+    """The arXiv half of the test/prod firewall (SPR-05 arXiv task 1).
+
+    ``ArxivThrottle()`` resolves its state file from ``ANTIEK_ARXIV_THROTTLE_PATH``
+    and ``ArxivRateGovernor(lock_path=None)`` resolves its flock from
+    ``ANTIEK_ARXIV_GOVERNOR_LOCK_PATH``. When this fixture landed neither
+    honoured ``ANTIEK_HOME``, so the store fixture above left both pointing at
+    the operator's real ``~/.antiek``. SPR-05 task 5 made ``ANTIEK_HOME``
+    redirect both; the explicit variables here stay as the first defence, and a
+    test that deletes them still lands in ``tmp_path``. Passing ``state_path=`` to a throttle does not redirect the
+    lock either. What broke: a test run blocked up to 300s behind a live
+    harvest, a live harvest stalled for the length of the test, and
+    ``_stale_pid_check`` could unlink the operator's live lock file.
+
+    Both env vars are redirected into ``tmp_path`` for every test, and the
+    cached canonical throttle is cleared so it cannot carry a path bound under
+    an earlier test (or under no test at all). The setup check proves the
+    redirect actually took; the teardown check fails any test that re-pointed
+    at the real paths mid-body — both raise, never warn.
+
+    Opt out with ``@pytest.mark.arxiv_state_contract`` for a test that
+    deliberately probes the default-path fallback (the marker is opt-in and
+    registered in ``pyproject.toml``); it grants nothing else.
+    """
+    if request.node.get_closest_marker("arxiv_state_contract"):
+        yield
+        return
+    real_state, real_lock = _real_arxiv_paths()
+    monkeypatch.setenv("ANTIEK_ARXIV_THROTTLE_PATH", str(tmp_path / "arxiv_throttle.json"))
+    monkeypatch.setenv(
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH",
+        str(tmp_path / "arxiv_throttle.json.governor.lock"),
+    )
+    monkeypatch.setattr(_arxiv_rate_governor, "_CANONICAL_THROTTLE", None)
+
+    node = request.node.nodeid
+    _check_arxiv_isolated(arxiv_state_path(), real_state, node_id=node)
+    _check_arxiv_isolated(arxiv_lock_path(), real_lock, node_id=node)
+    yield
+    _check_arxiv_isolated(arxiv_state_path(), real_state, node_id=node)
+    _check_arxiv_isolated(arxiv_lock_path(), real_lock, node_id=node)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ban_event_log(request, monkeypatch, tmp_path):
+    """Point the append-only ban-event JSONL at ``tmp_path`` (SPR-05 arXiv
+    task 5B). Same resolve-and-compare discipline as ``_check_arxiv_isolated``:
+    compute the REAL path from ``~/.antiek/ban_events.jsonl`` BEFORE yield, and
+    at setup and teardown raise ``AssertionError`` (never warn) if
+    ``default_ban_event_log_path()`` resolves to it.
+
+    No opt-out marker — a test probing the default resolution redirects
+    ``ANTIEK_HOME`` or ``HOME``, which this check permits (those redirects make
+    the resolved path differ from the operator's real file).
+    """
+    from substrate.ban_events import default_ban_event_log_path
+
+    real = os.path.realpath(os.path.expanduser("~/.antiek/ban_events.jsonl"))
+    monkeypatch.setenv("ANTIEK_BAN_EVENT_LOG_PATH", str(tmp_path / "ban_events.jsonl"))
+
+    def _check() -> None:
+        resolved = os.path.realpath(default_ban_event_log_path())
+        if resolved == real:
+            raise AssertionError(
+                "ban-event log isolation guard: default_ban_event_log_path() "
+                f"resolves to the REAL operator path ({real}) for "
+                f"{request.node.nodeid!r} — a ban-event log leak. Set "
+                "ANTIEK_BAN_EVENT_LOG_PATH to a tmp path."
+            )
+
+    _check()
+    yield
+    _check()

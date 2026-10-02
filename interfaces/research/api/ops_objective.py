@@ -73,22 +73,39 @@ def _pricing_is_placeholder(tiers: dict[str, Any] | None) -> bool:
 
 
 def _dispatch_section() -> dict[str, Any]:
-    config = _load_dispatch_config() or {}
+    loaded = _load_dispatch_config()
+    config_readable = loaded is not None
+    config = loaded or {}
     tiers = config.get("tiers", {})
+    # 0.0 in config.yaml means "unverified placeholder", not free. An
+    # UNREADABLE config is not a placeholder either: ``{}`` used to flow into
+    # _pricing_is_placeholder and the card asserted "all pricing values are
+    # 0.0 placeholders" as fact about a file it could not open. Unknown is
+    # reported as None, and the note says what was (not) read.
+    placeholder: bool | None = _pricing_is_placeholder(tiers) if config_readable else None
+    if not config_readable:
+        note = (
+            "substrate/dispatch/config.yaml could not be read — this card makes "
+            "NO statement about tier pricing."
+        )
+    elif placeholder:
+        note = (
+            "All tier pricing values are 0.0 placeholders — the operator "
+            "owns these values and has not verified per-provider pricing "
+            "yet (config.yaml header)."
+        )
+    else:
+        note = "Tier pricing values are set in config.yaml (not all-zero placeholders)."
     return {
         "source": "substrate/dispatch/config.yaml",
+        "config_readable": config_readable,
         "version": config.get("version"),
         "role_tiers": config.get("role_tiers", {}),
         "tiers": tiers,
         "tier_defaults": config.get("tier_defaults", {}),
         "cost_tracking": config.get("cost_tracking", {}),
-        # 0.0 in config.yaml means "unverified placeholder", not free.
-        "pricing_placeholder": _pricing_is_placeholder(tiers),
-        "pricing_note": (
-            "All tier pricing values are 0.0 placeholders — the operator "
-            "owns these values and has not verified per-provider pricing "
-            "yet (config.yaml header)."
-        ),
+        "pricing_placeholder": placeholder,
+        "pricing_note": note,
     }
 
 

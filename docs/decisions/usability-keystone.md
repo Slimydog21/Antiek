@@ -1,7 +1,34 @@
 # The usability keystone — an executable definition of "usable"
 
 **Date:** 2026-06-04
-**Status:** INSTALLED (the probe IS the definition) + verify-live WIRED + live run OPERATOR-GATED
+**Status:** ✅ INSTALLED — `Usability keystone probe (SPR-08)` runs in ci.yml's
+`keystone` job, which IS a required context.
+>
+> Wired 2026-09-22, after the dep install (the probe boots the app). ~13s.
+> It needs NO credentials — verified REACHABLE twice with all seven
+> provider keys unset, which is exactly CI's posture.
+>
+> `--only usability_keystone` is deliberate: `compounding` measures
+> cost_cold vs cost_warm and both read 0 without provider credentials, so
+> running the full probe suite in CI would wire a permanently-red gate.
+>
+> Mutation-verified rather than assumed: injecting a 404 into the
+> `GET /chunks/{chunk_id}` handler flips the probe to
+> `BLOCKED ... read — GET /chunks`, exit 1, naming the failing leg;
+> reverting returns exit 0. `tests/test_usability_keystone_wired.py` is
+> the tripwire this record previously lacked.
+
+> Corrected 2026-09-20. This read "INSTALLED (the probe IS the definition) +
+> verify-live WIRED". None of the four artifacts cited below exists:
+> `tests/test_usability_keystone.py`, the "REQUIRED verify-live task" in
+> `infrastructure/ansible/playbooks/deploy.yml` (`grep -c keystone` over that
+> file returns **0**), `antiek_keystone_verify_live` in `group_vars/all.yml`
+> (it appears repo-wide only inside this document), and
+> `infrastructure/runbooks/usability-keystone-verify-live.md`.
+>
+> So the executable definition of "is Antiek usable" is not run by CI, not run
+> by deploy, and has no test. An operator reading the old Status would believe
+> a five-leg journey check gates every deploy. It gates nothing. + live run OPERATOR-GATED
 **Owner:** Antiek — Convergence SPR-08 (end-to-end usability keystone, the capstone)
 **Surfaces:**
 `tools/reachability/probes/usability_keystone.py` (the probe — the executable

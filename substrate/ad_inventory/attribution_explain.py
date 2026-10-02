@@ -21,6 +21,7 @@ module reconstructs from what it is given and never invents an impression count.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .attribution import (
     AttributionAlgorithm,
@@ -225,7 +226,7 @@ def explain_asset_earning(
     )
 
 
-def explanation_to_json(exp: AssetEarningExplanation) -> dict:
+def explanation_to_json(exp: AssetEarningExplanation) -> dict[str, Any]:
     """Serialize an explanation to a JSON-friendly dict (read-only surface)."""
     return {
         "document_id": exp.document_id,

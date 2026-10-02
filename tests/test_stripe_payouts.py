@@ -5,7 +5,7 @@ end-to-end against the MockStripeProvider."""
 
 from __future__ import annotations
 
-import pytest
+from datetime import UTC
 
 from substrate.anti_gaming.verdict import (
     FraudSignal,
@@ -20,9 +20,9 @@ from tools.stripe_connect import (
 )
 from tools.stripe_connect.payouts import (
     RevSharePayoutRouter,
+    _idem_key,
     export_tax_year,
     route_impression_revenue,
-    _idem_key,
 )
 
 
@@ -255,8 +255,8 @@ def test_export_tax_year_aggregates_completed_transfers():
     # Pull a tax year that matches "now" — completion timestamps are ISO with
     # a current-year prefix. We accept that the test runs in a year matching
     # datetime.utcnow().year.
-    from datetime import datetime, timezone
-    year = datetime.now(timezone.utc).year
+    from datetime import datetime
+    year = datetime.now(UTC).year
     rows = export_tax_year(router, year=year)
     assert len(rows) == 1
     assert rows[0].recipient_ref == "u-1"

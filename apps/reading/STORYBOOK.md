@@ -115,7 +115,7 @@ because the `dark:` Tailwind variants follow `prefers-color-scheme`.
 
 ## Brand reference
 
-- `docs/ui_redesign_posthog/brand_werner.html` — the Werner brand bible
+- `docs/ui_redesign_posthog/brand_werner.html` — the original brand bible (penguin era, historical)
   (mascot, palette, highlighter, animation principles).
 - `docs/ui_redesign_posthog/sprint_02_storybook.html` — this sprint's spec.
 - `src/design/tokens.ts` — canonical TS tokens used by all components.

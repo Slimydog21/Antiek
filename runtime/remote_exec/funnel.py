@@ -40,15 +40,16 @@ import sys
 from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_write
+    from runtime.db_lock import connect_write
+
     from ..research_runner.promotion_funnel import PromotionFunnel
     from ..research_runner.protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_write  # type: ignore[no-redef]  # noqa: F401
-    from runtime.research_runner.promotion_funnel import PromotionFunnel  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
+    from runtime.db_lock import connect_write  # noqa: F401
+    from runtime.research_runner.promotion_funnel import PromotionFunnel
+    from runtime.research_runner.protocol import StepEvent
 
 
 # Touch the imported symbol so linters keep the import (it is the grep anchor

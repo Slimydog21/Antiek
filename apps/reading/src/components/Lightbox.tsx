@@ -19,7 +19,7 @@ type Props = {
 export default function Lightbox({ src, alt, caption }: Props) {
   if (!src) {
     return (
-      <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2 text-ink-mute dark:text-moonlight font-mono text-[12px] p-6 text-center">
+      <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2 text-ink-mute dark:text-moonlight font-mono text-xs p-6 text-center">
         Lightbox opened without a src.
       </div>
     );
@@ -34,7 +34,7 @@ export default function Lightbox({ src, alt, caption }: Props) {
         />
       </div>
       {caption && (
-        <figcaption className="font-serif italic text-[13.5px] text-ink-soft dark:text-starlight px-4 py-2 border-t-edge border-sun shrink-0">
+        <figcaption className="font-serif italic text-sm text-ink-soft dark:text-starlight px-4 py-2 border-t-edge border-sun shrink-0">
           {caption}
         </figcaption>
       )}

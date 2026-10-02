@@ -25,11 +25,11 @@ from collections import Counter
 from collections.abc import Iterable
 
 try:
-    from ...constants import TIER_AGGREGATE_K, TIER_HIGHEST, TIER_LOWEST
+    from substrate.constants import TIER_AGGREGATE_K, TIER_HIGHEST, TIER_LOWEST
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
+    from substrate.constants import (
         TIER_AGGREGATE_K,
         TIER_HIGHEST,
         TIER_LOWEST,

@@ -587,6 +587,7 @@ async def test_runner_start_emits_reuse_before_first_step(seeded_quantum_db):
     # autouse fixture) — the runner's lifecycle events, the assembler's pack
     # event, and the reuse event then all co-locate in one trajectory.
     sub = make_substrate("brute_force", db, model=emb)
+    closed = False
     try:
         runner = HostLocalRunner(
             make_demo_loop(steps=1, delay_s=0.0),
@@ -597,9 +598,23 @@ async def test_runner_start_emits_reuse_before_first_step(seeded_quantum_db):
             sub_question="neutral atom qubit error rate suppression scaling",
         )
         await runner.start("inv-runner", plan)
+        # Close the retrieval substrate BEFORE join(), not in `finally`.
+        #
+        # The reuse event is emitted during start(); the substrate is not needed
+        # afterwards. Holding its READ connection to graph.duckdb across join()
+        # blocks the runner's seal_investigation, which needs a WRITE connection
+        # to the same file — so it waited out db_lock.DEFAULT_TIMEOUT_S (300s)
+        # in full, every run.
+        #
+        # Measured: 315.37s -> 0.47s. The sibling
+        # test_runner_start_without_substrate_is_unchanged, identical but with no
+        # substrate, already ran in 0.08s — that gap was the whole tell.
+        sub.close()
+        closed = True
         await runner.join()
     finally:
-        sub.close()
+        if not closed:
+            sub.close()
 
     rows = trajectory("inv-runner")
     reused = [r for r in rows if r["action_type"] == "knowledge.reused"]

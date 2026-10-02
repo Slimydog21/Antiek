@@ -1,10 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 
 import { fetchToolConnections } from "../../api/toolConnections";
-import { searchResearchTool, type ResearchToolCandidate, type SearchToolVendor } from "../../api/researchToolSearch";
+import { ingestResearchToolCandidate, searchResearchTool, type ResearchToolCandidate, type SearchToolVendor } from "../../api/researchToolSearch";
 import { LemonButton } from "../../components/lemon";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 const SEARCHABLE = new Set<SearchToolVendor>(["youtube", "x"]);
+
+type RowIngestState =
+  | { status: "ingesting" | "ingested"; operationId: string }
+  | { status: "skipped"; operationId: string; reason: string }
+  | { status: "error"; operationId: string; failure: DescribedFailure };
+
+function skippedReason(reason: string | null): string {
+  if (reason === "no_transcript") return "no captions available";
+  if (reason === "low_word_count") return "too little text";
+  return "nothing to read";
+}
 
 export default function ConnectedToolSearch() {
   const [available, setAvailable] = useState<SearchToolVendor[]>([]);
@@ -13,9 +25,11 @@ export default function ConnectedToolSearch() {
   const [results, setResults] = useState<ResearchToolCandidate[]>([]);
   const [busy, setBusy] = useState(false);
   const [inventoryError, setInventoryError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [pending, setPending] = useState<{ operationId: string; vendor: SearchToolVendor; query: string } | null>(null);
+  const [ingestByKey, setIngestByKey] = useState<Record<string, RowIngestState>>({});
   const generation = useRef(0);
+  const ingestGeneration = useRef(0);
 
   async function loadInventory() {
     const current = ++generation.current;
@@ -27,7 +41,12 @@ export default function ConnectedToolSearch() {
         .filter((row) => row.credential_present && row.status === "configured_unverified" && SEARCHABLE.has(row.vendor as SearchToolVendor))
         .map((row) => row.vendor as SearchToolVendor);
       setAvailable(next);
-      if (next.length > 0 && !next.includes(vendor)) setVendor(next[0]);
+      if (next.length > 0 && !next.includes(vendor)) {
+        ingestGeneration.current += 1;
+        setIngestByKey({});
+        setResults([]);
+        setVendor(next[0]);
+      }
     } catch {
       if (current === generation.current) setInventoryError(true);
     }
@@ -42,9 +61,11 @@ export default function ConnectedToolSearch() {
     event.preventDefault();
     if (busy || !query.trim() || !available.includes(vendor)) return;
     const current = ++generation.current;
+    ingestGeneration.current += 1;
     setBusy(true);
     setError(null);
     setResults([]);
+    setIngestByKey({});
     try {
       const identity = pending && pending.vendor === vendor && pending.query === query.trim()
         ? pending
@@ -54,10 +75,31 @@ export default function ConnectedToolSearch() {
       if (current === generation.current) { setResults(response.candidates); setPending(null); }
     } catch (cause) {
       if (current === generation.current) {
-        setError(cause instanceof Error ? cause.message : "Can't search this provider.");
+        setError(describeFailure(cause, { what: "search this provider" }));
       }
     } finally {
       if (current === generation.current) setBusy(false);
+    }
+  }
+
+  async function ingest(result: ResearchToolCandidate) {
+    const key = `${vendor}:${result.external_id}`;
+    const previous = ingestByKey[key];
+    if (previous?.status === "ingesting" || previous?.status === "ingested" || previous?.status === "skipped") return;
+    const operationId = previous?.operationId ?? `tool-ingest-${crypto.randomUUID()}`;
+    const current = ingestGeneration.current;
+    setIngestByKey((rows) => ({ ...rows, [key]: { status: "ingesting", operationId } }));
+    try {
+      const response = await ingestResearchToolCandidate({ operationId, vendor, externalId: result.external_id });
+      if (current !== ingestGeneration.current) return;
+      setIngestByKey((rows) => ({ ...rows, [key]: response.ingest_status === "ingested"
+        ? { status: "ingested", operationId }
+        : { status: "skipped", operationId, reason: skippedReason(response.skipped_reason) } }));
+    } catch (cause) {
+      if (current !== ingestGeneration.current) return;
+      setIngestByKey((rows) => ({ ...rows, [key]: {
+        status: "error", operationId, failure: describeFailure(cause, { what: "ingest this candidate" }),
+      } }));
     }
   }
 
@@ -68,10 +110,10 @@ export default function ConnectedToolSearch() {
         <div>
           <h2 id="connected-tool-search-title" className="text-sm font-semibold text-ink dark:text-bright">Search connected tools</h2>
           <p className="mt-1 max-w-2xl text-xs text-ink-soft dark:text-starlight">
-            Find source candidates with your own provider account. Results stay outside Antiek until you explicitly ingest them.
+            Find source candidates with your own provider account. Results stay outside Antiek until you choose Ingest. Ingested items are for your own reading.
           </p>
         </div>
-        <a href="/settings" className="text-xs font-medium text-ocean hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean">Manage tools</a>
+        <a href="/settings" className="text-xs font-medium text-sun-deep hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun">Manage tools</a>
       </div>
 
       {inventoryError ? (
@@ -84,15 +126,15 @@ export default function ConnectedToolSearch() {
         <form onSubmit={submit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="text-xs font-medium text-ink dark:text-bright sm:w-36">
             Provider
-            <select value={vendor} onChange={(event) => { setVendor(event.target.value as SearchToolVendor); setResults([]); setError(null); }} disabled={busy}
-              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean dark:border-charcoal-1 dark:bg-charcoal-2">
+            <select value={vendor} onChange={(event) => { ingestGeneration.current += 1; setVendor(event.target.value as SearchToolVendor); setResults([]); setIngestByKey({}); setError(null); }} disabled={busy}
+              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:bg-charcoal-2">
               {available.map((item) => <option key={item} value={item}>{item === "x" ? "X" : "YouTube"}</option>)}
             </select>
           </label>
           <label className="min-w-0 flex-1 text-xs font-medium text-ink dark:text-bright">
             What sources are you looking for?
             <input value={query} onChange={(event) => setQuery(event.target.value)} disabled={busy} maxLength={500}
-              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
+              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:bg-charcoal-2"
               placeholder={vendor === "x" ? "Recent reporting on battery recycling" : "Lectures about solid-state batteries"} />
           </label>
           <LemonButton type="submit" size="md" variant="primary" className="min-h-11" disabled={busy || !query.trim()}>{busy ? "Searching…" : "Search"}</LemonButton>
@@ -100,25 +142,41 @@ export default function ConnectedToolSearch() {
       )}
 
       {busy && <p role="status" aria-live="polite" className="mt-4 text-sm text-ink-soft dark:text-starlight">Searching {vendor === "x" ? "X" : "YouTube"} with your connected account…</p>}
-      {error && <p role="alert" className="mt-4 text-sm text-emperor">{error}</p>}
+      {error && <p role="alert" className="mt-4 text-sm text-emperor">{error.title} {error.detail}</p>}
       {!busy && !error && results.length === 0 && query.trim() && available.length > 0 && (
         <p role="status" className="mt-4 text-sm text-ink-soft dark:text-starlight">No candidates yet. Try a more specific query or another connected provider.</p>
       )}
       {results.length > 0 && (
         <ol aria-label="Source candidates" className="mt-5 divide-y divide-rule border-y border-rule dark:divide-charcoal-1 dark:border-charcoal-1">
-          {results.map((result) => (
-            <li key={`${vendor}-${result.external_id}`} className="py-4">
+          {results.map((result) => {
+            const state = ingestByKey[`${vendor}:${result.external_id}`];
+            return <li key={`${vendor}-${result.external_id}`} className="py-4">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-shadow-1 dark:text-moonlight">
                 <span className="font-semibold uppercase tracking-wide">{vendor === "x" ? "X" : "YouTube"}</span>
                 {result.author && <span className="break-words">{result.author}</span>}
                 {result.published_at && <time dateTime={result.published_at}>{new Date(result.published_at).toLocaleDateString()}</time>}
-                <span>Candidate · not ingested</span>
+                {state?.status !== "ingested" && state?.status !== "skipped" && <span>Candidate · not ingested</span>}
               </div>
-              <a href={result.url} target="_blank" rel="noreferrer" className="mt-1 block break-words text-sm font-medium leading-6 text-ink hover:text-ocean hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean dark:text-bright">
+              <a href={result.url} target="_blank" rel="noreferrer" className="mt-1 block break-words text-sm font-medium leading-6 text-ink hover:text-sun-deep hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:text-bright">
                 {result.title_or_text || result.url}
               </a>
-            </li>
-          ))}
+              {state?.status === "ingested" ? (
+                <p role="status" className="mt-2 text-xs text-ink-soft dark:text-starlight">Ingested · personal reading</p>
+              ) : state?.status === "skipped" ? (
+                <p role="status" className="mt-2 text-xs text-ink-soft dark:text-starlight">Not ingested · {state.reason}</p>
+              ) : !result.ingestable ? (
+                <p className="mt-2 text-xs text-ink-soft dark:text-starlight">A channel or playlist · open it to pick individual videos to ingest</p>
+              ) : (
+                <div className="mt-2">
+                  <LemonButton size="sm" variant="secondary" aria-label={`Ingest ${result.title_or_text || result.url}`}
+                    disabled={state?.status === "ingesting"} onClick={() => void ingest(result)}>
+                    {state?.status === "ingesting" ? "Ingesting…" : "Ingest"}
+                  </LemonButton>
+                  {state?.status === "error" && <p role="alert" className="mt-2 text-xs text-emperor">{state.failure.title} {state.failure.detail}</p>}
+                </div>
+              )}
+            </li>;
+          })}
         </ol>
       )}
     </section>

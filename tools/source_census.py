@@ -41,6 +41,7 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.constants import SERVABLE_CONTENT_CLASSES  # noqa: E402
 from substrate.dedup import (  # noqa: E402
     IdentityRecord,
@@ -461,9 +462,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     db_path = ensure_initialized(args.db_path or default_db_path())
-    import duckdb
 
-    con = duckdb.connect(db_path, read_only=True)
+    con = connect_read(db_path)
     try:
         censuses = compute_source_censuses(con, args.source)
     finally:

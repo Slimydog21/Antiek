@@ -7,7 +7,7 @@
  *    the SAME roles/labels, and the SAME accessible home control — only the
  *    layout axis differs (no parallel nav, no dropped destination);
  *  - the home control is a real, labelled, keyboard-focusable button that
- *    routes to /home (the igloo replaced the static penguin but the control
+ *    routes to /home (the igloo replaced the static mascot but the control
  *    semantics are unchanged);
  *  - every keyboard shortcut + the active-route accent are untouched (those
  *    live in shortcuts.ts + workflowTaxonomy and are not re-implemented per
@@ -18,11 +18,12 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { NavRail } from "./NavRail";
+import { formatBinding } from "../components/hotkeys/bindings";
 import { WORKFLOW_ORDER, WORKFLOWS } from "./workflowTaxonomy";
 
 // SPR-08 — the rail now renders on-bar KeyChips, which read
 // usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia; stub it
-// exactly as the hotkey/ad/penguin suites already do. This adds no new
+// exactly as the hotkey/ad/mascot suites already do. This adds no new
 // assertion — it only lets the real rail render its real children.
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -61,13 +62,13 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
       </MemoryRouter>,
     );
     const rail = screen.getByLabelText("Primary navigation");
-    // The bottom rail is a fixed-height horizontal bar with the accent on its
-    // TOP edge (its inner edge, toward the working region). The left rail is a
+    // The bottom rail is a fixed-height horizontal bar; the left rail is a
     // fixed-WIDTH vertical bar. We assert the bottom-rail shape so a silent
-    // revert to the left rail reddens.
-    expect(rail.className).toContain("h-14");
+    // revert to the left rail reddens. (Design wave 3 dropped the sun rule on
+    // its top edge: the sun marks only the active key.)
+    expect(rail.className).toContain("h-16");
     expect(rail.className).toContain("w-full");
-    expect(rail.className).toContain("border-t-edge");
+    expect(rail.className).not.toContain("border-sun");
     expect(rail.className).not.toContain("w-[72px]");
   });
 
@@ -100,13 +101,14 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
           <NavRail orientation={orientation} />
         </MemoryRouter>,
       );
-      expect(screen.getByTitle("Search · ⌘K")).toBeTruthy();
+      // The keys in the title come from the keymap (⌘K on a Mac, CtrlK elsewhere).
+      expect(screen.getByTitle(`Search · ${formatBinding("mod+k")}`)).toBeTruthy();
       expect(screen.getByTitle(/More - all products/)).toBeTruthy();
       unmount();
     }
   });
 
-  it("the home control is an accessible, keyboard-focusable button labelled for /home (igloo replaced the penguin, semantics intact)", () => {
+  it("the home control is an accessible, keyboard-focusable button labelled for /home (igloo replaced the mascot, semantics intact)", () => {
     render(
       <MemoryRouter>
         <NavRail />
@@ -114,10 +116,11 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
     );
     const home = screen.getByRole("button", { name: "Antiek home" });
     // A real <button> is keyboard-focusable + activatable by default; the
-    // visible focus ring is the focus-visible:outline class on it.
+    // visible focus ring is the global :focus-visible outline in --focus,
+    // which the dark dock sets to the sun (an ink ring would vanish on ink).
     expect(home.tagName).toBe("BUTTON");
-    expect(home.className).toContain("focus-visible:outline");
-    // The igloo mark renders inside it (an <svg>), the penguin <img> does not.
+    expect(home.closest('[aria-label="Primary navigation"]')!.className).toContain("[--focus:var(--sun)]");
+    // The igloo mark renders inside it (an <svg>), the mascot <img> does not.
     expect(home.querySelector("svg")).toBeTruthy();
     expect(home.querySelector("img")).toBeNull();
     // No accessible name leaks onto the decorative mark itself.

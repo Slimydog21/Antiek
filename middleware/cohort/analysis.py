@@ -22,14 +22,14 @@ from collections.abc import Sequence
 from typing import Any
 
 try:
-    from ...constants import (
+    from substrate.constants import (
         COHORT_MIN_OBSERVED_INVESTIGATIONS,
         CONFIDENCE_CALIBRATION_TARGETS,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
+    from substrate.constants import (
         COHORT_MIN_OBSERVED_INVESTIGATIONS,
         CONFIDENCE_CALIBRATION_TARGETS,
     )

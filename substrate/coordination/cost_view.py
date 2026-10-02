@@ -53,7 +53,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from substrate.event_log.events import (
     default_events_dir,
@@ -69,7 +69,7 @@ from substrate.speak.economics_mode import (
 
 # ── Workflow enum (mirrors the SPR-04 taxonomy's four workflows) ─────────────
 
-class Workflow(str, Enum):
+class Workflow(StrEnum):
     """The four product workflows, plus an honest ``UNMAPPED`` bucket for a
     dispatch role the taxonomy does not yet classify. ``UNMAPPED`` is the
     rigor-#3 guard: an unclassified role's cost is still summed into the
@@ -138,7 +138,7 @@ def workflow_for_role(role: str | None) -> Workflow:
 
 # ── Margin status (honesty #1 — stub the economics you can't compute) ────────
 
-class MarginStatus(str, Enum):
+class MarginStatus(StrEnum):
     """Whether a margin figure is real (the policy is built) or honestly
     stubbed (the product sprint hasn't landed). A stubbed margin is NEVER
     rendered as a dollar figure — only the raw realized cost is."""

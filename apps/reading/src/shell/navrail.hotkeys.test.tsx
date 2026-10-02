@@ -4,7 +4,7 @@
  * The verifier-critic found that (2) no on-bar button rendered a KeyChip, so
  * the operator's headline ask — "hotkeys shown on-screen" — was unmet, and (3)
  * no click path emitted the activation event, so click≡hotkey parity (which
- * SPR-10's penguin hard-depends on) was unproven (the old shortcuts test
+ * SPR-10's mascot hard-depends on) was unproven (the old shortcuts test
  * "faked" the click by calling the emitter directly).
  *
  * This file asserts against a REAL rendered NavRail:
@@ -12,7 +12,7 @@
  *   - a real DOM CLICK on a product button fires PRODUCT_ACTIVATE_EVENT on
  *     window with source:"click" and the correct productId;
  *   - each product button carries data-product-id (the SPR-10 geometry
- *     contract: the penguin resolves the button rect via that attribute).
+ *     contract: the mascot resolves the button rect via that attribute).
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
@@ -25,6 +25,7 @@ import {
   ariaBinding,
   type ProductActivateDetail,
 } from "../components/hotkeys/bindings";
+import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -64,9 +65,14 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     expect(bindingForProduct("research")!.spec).toBe("mod+j");
     const expectedAria = ariaBinding(bindingForProduct("research")!.spec);
     expect(expectedAria).toMatch(/^(Meta|Control)\+J$/);
-    const chip = button.querySelector('[role="img"]') as HTMLElement;
+    // MS-01: the BUTTON carries aria-keyshortcuts, generated from the keymap
+    // table; the on-bar chip stays visible but is decorative, so the shortcut
+    // is announced once, on the control that runs it.
+    expect(button.getAttribute("aria-keyshortcuts")).toBe(ariaKeyshortcutsFor("door.research"));
+    expect(button.getAttribute("aria-keyshortcuts")).toBe(expectedAria);
+    const chip = button.querySelector(".antiek-keychip") as HTMLElement;
     expect(chip, "the Research door must render an on-bar hotkey chip").toBeTruthy();
-    expect(chip.getAttribute("aria-keyshortcuts")).toBe(expectedAria);
+    expect(chip.getAttribute("aria-hidden")).toBe("true");
     // The chip is a single combo glyph (⌘J / CtrlJ) — NOT two chord keys,
     // and no "then" separator is rendered.
     expect(button.querySelector(".antiek-keychip__then")).toBeNull();
@@ -87,7 +93,7 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     for (const pid of ["research", "read", "write", "speak"]) {
       expect(
         document.querySelector(`[data-product-id="${pid}"]`),
-        `the ${pid} door must carry data-product-id so the penguin can resolve its rect`,
+        `the ${pid} door must carry data-product-id so the mascot can resolve its rect`,
       ).toBeTruthy();
     }
   });
@@ -138,5 +144,27 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     expect(fired[0].source).toBe("click");
     expect(fired[0].productId).toBe("more");
     expect(fired[0].route).toBeUndefined();
+  });
+
+  it("every bound rail control carries aria-keyshortcuts from the keymap (none hand-written)", () => {
+    render(
+      <MemoryRouter>
+        <NavRail />
+      </MemoryRouter>,
+    );
+    const expectations: Array<[string, Parameters<typeof ariaKeyshortcutsFor>[0]]> = [
+      ['[data-product-id="research"]', "door.research"],
+      ['[data-product-id="read"]', "door.read"],
+      ['[data-product-id="write"]', "door.write"],
+      ['[data-product-id="speak"]', "door.speak"],
+      ['[data-product-id="more"]', "door.more"],
+      ['[data-product-id="home"]', "door.home"],
+    ];
+    for (const [selector, action] of expectations) {
+      const el = document.querySelector(selector) as HTMLElement;
+      expect(el.getAttribute("aria-keyshortcuts"), selector).toBe(ariaKeyshortcutsFor(action));
+    }
+    const search = screen.getByTitle(/^Search · /);
+    expect(search.getAttribute("aria-keyshortcuts")).toBe(ariaKeyshortcutsFor("palette.toggle"));
   });
 });

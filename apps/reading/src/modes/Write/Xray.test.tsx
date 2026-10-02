@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { OutlineBlockView } from "./writeApi";
+import { getTraceTarget, type TraceTarget } from "./writeApi";
 import Xray, { splitParagraphs } from "./Xray";
 
 /**
@@ -40,6 +41,50 @@ function block(over: Partial<OutlineBlockView> = {}): OutlineBlockView {
 }
 
 afterEach(cleanup);
+
+async function openSourceLine() {
+  render(
+    <Xray
+      proseText="A sourced paragraph."
+      proseProvenance={{ "0": [NODE] }}
+      blocks={[block()]}
+    />,
+  );
+  await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+  await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
+  return screen.findByText(/Source: Source Book/);
+}
+
+describe("Xray — frame attention source markers", () => {
+  it("tags a servable single-chunk trace", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "document", full_text_allowed: true, document_id: "doc-1",
+      document_title: "Source Book", chunk_ids: ["c1"], servability_status: "servable", detail: null,
+    } satisfies TraceTarget);
+    const source = await openSourceLine();
+    expect(source.getAttribute("data-akb-asset-id")).toBe("doc-1");
+    expect(source.getAttribute("data-akb-chunk-id")).toBe("c1");
+  });
+
+  it("tags a multi-chunk trace only at document level", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "document", full_text_allowed: true, document_id: "doc-1",
+      document_title: "Source Book", chunk_ids: ["c1", "c2"], servability_status: "servable", detail: null,
+    } satisfies TraceTarget);
+    const source = await openSourceLine();
+    expect(source.getAttribute("data-akb-asset-id")).toBe("doc-1");
+    expect(source.hasAttribute("data-akb-chunk-id")).toBe(false);
+  });
+
+  it("leaves a gated trace untagged", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "document", full_text_allowed: false, document_id: "doc-1",
+      document_title: "Source Book", chunk_ids: ["c1"], servability_status: "restricted", detail: "Metadata only",
+    } satisfies TraceTarget);
+    const source = await openSourceLine();
+    expect(source.hasAttribute("data-akb-asset-id")).toBe(false);
+  });
+});
 
 describe("Xray — paragraph↔blocks over persisted provenance", () => {
   it("splits prose the substrate's way (blank line)", () => {

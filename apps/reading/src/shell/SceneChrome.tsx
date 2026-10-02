@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { createDeliverable } from "../lib/api";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
+import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
+import type { ActionId } from "../components/hotkeys/keymap";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -11,7 +13,9 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { WorkflowStub } from "./WorkflowStub";
-import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
+// The trail renders only when a parent passes one, and none does yet, so it
+// loads on demand rather than riding in the entry chunk.
+const Trail = lazy(() => import("./Trail"));
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
@@ -38,14 +42,19 @@ import type { Thread, ThreadHop } from "./threadModel";
 type Action = {
   id: string;
   label: string;
-  /** Navigate to a route, or dispatch a workspace event. */
+  /** Navigate to a route, fire a synchronous workspace verb, or dispatch a
+   *  workspace event (only where a production listener exists). */
   to?: string;
+  act?: () => void;
   event?: string;
   /** A verb that DOES something (create a record) before/instead of
    *  navigating. Takes precedence over `to`/`event`. The handler owns
    *  the navigate so it can land on the newly-created entity. */
   run?: (navigate: NavigateFunction) => Promise<void>;
   primary?: boolean;
+  /** MS-01: the keymap action this verb shares, so its button carries
+   *  aria-keyshortcuts generated from the keymap table. */
+  keymapAction?: ActionId;
 };
 
 type Tab = { id: string; label: string; to: string };
@@ -66,7 +75,11 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   research: {
     actions: [
       { id: "new-investigation", label: "New investigation", to: "/", primary: true },
-      { id: "ask", label: "Ask", event: SHORTCUT_EVENTS.AISIDECAR_TOGGLE },
+      // "Ask" toggles the REAL AI sidecar via the same workspace-store path
+      // as ⌘/ (shortcuts.ts toggleAISidecar). It used to dispatch the bare
+      // AISIDECAR_TOGGLE CustomEvent, which has no production listener — a
+      // dead verb on the primary action bar.
+      { id: "ask", label: "Ask", act: toggleAISidecar, keymapAction: "aisidecar.toggle" },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
     tabs: [
@@ -126,19 +139,18 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
 export function SceneChrome({
   children,
   /**
-   * The cross-workflow thread for the entity currently in focus (SPR-06). When
-   * present, SceneChrome renders the unified ThreadBreadcrumb in the chrome
-   * (zone 3) row — the entity's trajectory across the four workflows. Absent
-   * when no entity is focused (the breadcrumb only appears when there's a
-   * thread to show). The parent supplies it from GET /thread/{node_id}.
+   * The cross-workflow trail for the entity currently in focus (SPR-06). When
+   * present, SceneChrome renders the unified Trail in the chrome (zone 3)
+   * row — the entity's trajectory across the four workflows. Absent when no
+   * entity is focused. The parent supplies it from GET /thread/{node_id}.
    */
-  thread,
-  /** Fired when a breadcrumb segment is clicked — wire to ThreadJump's jump. */
-  onThreadJump,
+  trail,
+  /** Fired when a breadcrumb segment is clicked — wire to TrailJump's jump. */
+  onTrailJump,
 }: {
   children: ReactNode;
-  thread?: Thread;
-  onThreadJump?: (hop: ThreadHop) => void;
+  trail?: Thread;
+  onTrailJump?: (hop: ThreadHop) => void;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -162,6 +174,8 @@ export function SceneChrome({
       void a
         .run(navigate)
         .finally(() => setRunningAction(null));
+    } else if (a.act) {
+      a.act();
     } else if (a.to) {
       navigate(a.to);
     } else if (a.event) {
@@ -176,11 +190,11 @@ export function SceneChrome({
     <div className="h-full w-full flex flex-col min-h-0">
       {/* Action bar — workflow verbs + in-scene tabs. */}
       <div
-        className="shrink-0 border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2"
+        className="shrink-0 border-b border-hairline bg-card"
         data-testid={`scene-chrome-${wf}`}
       >
         <div className="h-10 px-4 flex items-center gap-3">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
+          <span className="font-mono text-xxs font-semibold uppercase tracking-[0.08em] text-3 shrink-0">
             {meta.label}
           </span>
           <div className="flex-1" />
@@ -194,11 +208,10 @@ export function SceneChrome({
                   onClick={() => runAction(a)}
                   disabled={busy}
                   aria-busy={busy || undefined}
+                  aria-keyshortcuts={a.keymapAction ? ariaKeyshortcutsFor(a.keymapAction) : undefined}
                   className={
-                    "px-2.5 py-1 rounded text-[12.5px] disabled:opacity-60 " +
-                    (a.primary
-                      ? "bg-sun text-ink hover:bg-sun-glow"
-                      : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
+                    "px-2.5 py-1 rounded text-xs disabled:opacity-60 " +
+                    (a.primary ? "bg-sun text-ink hover:bg-sun-hover" : "text-2 hover:bg-wash hover:text-1")
                   }
                 >
                   {busy ? "Creating…" : a.label}
@@ -222,10 +235,8 @@ export function SceneChrome({
                   onClick={() => navigate(t.to)}
                   aria-current={active ? "page" : undefined}
                   className={
-                    "px-3 py-1.5 text-[12.5px] border-b-2 " +
-                    (active
-                      ? "border-sun text-ink dark:text-bright font-medium"
-                      : "border-transparent text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright")
+                    "px-3 py-1.5 text-xs border-b-2 " +
+                    (active ? "border-current text-1 font-medium" : "border-transparent text-2 hover:text-1")
                   }
                 >
                   {t.label}
@@ -235,16 +246,17 @@ export function SceneChrome({
           </nav>
         )}
 
-        {/* SPR-06 — the cross-workflow thread breadcrumb. Shown only when an
-            entity is in focus (a thread to follow). It is the SAME node id at
-            every hop; copies are provenance bugs the breadcrumb refuses to
-            render (see ThreadBreadcrumb). */}
-        {thread && (
+        {/* SPR-06 — the cross-workflow trail. Shown only when an entity is
+            in focus. It is the SAME node id at every hop; copies are
+            provenance bugs the trail refuses to render (see Trail). */}
+        {trail && (
           <div
             className="border-t border-rule/60 dark:border-charcoal-1 py-1"
             data-testid="scene-chrome-thread"
           >
-            <ThreadBreadcrumb thread={thread} onJump={onThreadJump} />
+            <Suspense fallback={null}>
+              <Trail thread={trail} onJump={onTrailJump} />
+            </Suspense>
           </div>
         )}
       </div>

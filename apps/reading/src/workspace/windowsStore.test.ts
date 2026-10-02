@@ -197,6 +197,24 @@ describe("windowsStore — bounded fan-out (cap)", () => {
     expect(w().order.length).toBe(MAX_WINDOWS);
   });
 
+  it("can replace the oldest at the cap when exact asset identity is load-bearing", () => {
+    for (let i = 0; i < MAX_WINDOWS; i++) {
+      w().open("stats", {}, { id: `s${i}` });
+    }
+    const oldest = w().order[0];
+    const returned = w().open(
+      "reader",
+      { documentId: "doc-9" },
+      { id: "reader:doc-9", replaceOldestAtLimit: true },
+    );
+
+    expect(returned).toBe("reader:doc-9");
+    expect(w().windows[oldest]).toBeUndefined();
+    expect(w().windows[returned].payload).toEqual({ documentId: "doc-9" });
+    expect(w().focusedId).toBe(returned);
+    expect(w().order).toHaveLength(MAX_WINDOWS);
+  });
+
   // AMS2-SPR-04: windows are now the DEFAULT, so the cap must hold on the hot
   // path. The MINIMAL over-cap case (MAX_WINDOWS + 1) is the load-bearing one:
   // the count never exceeds 8 and the over-cap open() returns the focused-oldest

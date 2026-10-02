@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -45,17 +46,23 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        describe_upstream_http_error,
+        optional_count,
         response_contains_secret,
+        usage_counts_reported,
     )
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from dispatch.base import (  # type: ignore[no-redef]
+    from dispatch.base import (  # type: ignore[no-redef,import-not-found]
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        describe_upstream_http_error,
+        optional_count,
         response_contains_secret,
+        usage_counts_reported,
     )
 
 
@@ -70,20 +77,49 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _DEFAULT_TIMEOUT_S = 120.0
 
 
-def _extract_cached_tokens(usage: dict[str, Any]) -> int:
+def _described_upstream_error(
+    resp: httpx.Response,
+    *,
+    provider: str,
+    endpoint: str,
+    secret: str,
+) -> tuple[str, str | None] | None:
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    return describe_upstream_http_error(
+        payload,
+        provider=provider,
+        status_code=resp.status_code,
+        endpoint=endpoint,
+        secret=secret,
+    )
+
+
+def _extract_cached_tokens(usage: dict[str, Any]) -> int | None:
     """Read the cached-input-token count from the provider's usage shape.
 
     Watch-item: providers diverge on this field name. Add new shapes
     here when they appear; never let the router compute cost without
     knowing how many tokens were cached.
+
+    Returns 0 when no cache field is present, the count when it is a real
+    count, and None when a cache field is present but is not one (a null,
+    a string, a null or non-object ``prompt_tokens_details``). None means
+    the cache SPLIT is unknown, not the call: ``prompt_tokens`` already
+    includes cached tokens, so the caller bills it all at the full rate.
     """
     # OpenAI shape (dominant, also adopted by DeepSeek v3+ and MiMo)
-    details = usage.get("prompt_tokens_details") or {}
-    if "cached_tokens" in details:
-        return int(details["cached_tokens"] or 0)
+    if "prompt_tokens_details" in usage:
+        details = usage["prompt_tokens_details"]
+        if not isinstance(details, dict):
+            return None
+        if "cached_tokens" in details:
+            return optional_count(details, "cached_tokens")
     # DeepSeek legacy / explicit field
     if "prompt_cache_hit_tokens" in usage:
-        return int(usage["prompt_cache_hit_tokens"] or 0)
+        return optional_count(usage, "prompt_cache_hit_tokens")
     return 0
 
 
@@ -178,7 +214,10 @@ class OpenAICompatProvider:
         prompt: str,
         max_tokens: int,
         temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
     ) -> RawProviderResponse:
+        """``extra_body`` adds fields for this call only, after the
+        constructor's; a shared adapter instance is never mutated per call."""
         api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {
@@ -195,6 +234,8 @@ class OpenAICompatProvider:
         # top, never overriding the core request shape.
         if self._extra_body:
             body.update(self._extra_body)
+        if extra_body:
+            body.update(extra_body)
 
         client = self._ensure_client()
         t_start = time.monotonic()
@@ -237,6 +278,22 @@ class OpenAICompatProvider:
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
+            described = _described_upstream_error(resp, provider=self.name, endpoint=url, secret=api_key)
+            if described is not None:
+                detail, upstream_type = described
+                raise ProviderError(
+                    detail,
+                    provider=self.name, model=model,
+                    latency_ms=latency_ms,
+                    retryable=resp.status_code in _RETRYABLE_STATUS,
+                    request_id=(
+                        resp.headers.get("x-request-id")
+                        if self._expose_error_body
+                        else None
+                    ),
+                    endpoint=url,
+                    upstream_type=upstream_type,
+                )
             detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
                 f"{self.name}: HTTP {resp.status_code}{detail}",
@@ -248,6 +305,7 @@ class OpenAICompatProvider:
                     if self._expose_error_body
                     else None
                 ),
+                endpoint=url,
             )
 
         # User-configured endpoints are untrusted. They already receive the
@@ -313,12 +371,18 @@ class OpenAICompatProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
-        if not raw_usage:
-            return NormalizedUsage(input_tokens=0, output_tokens=0)
+        if not raw_usage or not usage_counts_reported(raw_usage, ("prompt_tokens", "completion_tokens")):
+            return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
+        # prompt_tokens is INCLUSIVE of cached tokens, so an unknown cache
+        # split (codex critic round 2 on #3415) must not discard the valid
+        # primaries for the whole-call ceiling: bill every input token at the
+        # full rate and flag it. Conservative on the cache discount only.
+        cached = _extract_cached_tokens(raw_usage)
         return NormalizedUsage(
-            input_tokens=int(raw_usage.get("prompt_tokens", 0) or 0),
-            output_tokens=int(raw_usage.get("completion_tokens", 0) or 0),
-            cached_input_tokens=_extract_cached_tokens(raw_usage),
+            input_tokens=int(raw_usage["prompt_tokens"]),
+            output_tokens=int(raw_usage["completion_tokens"]),
+            cached_input_tokens=cached if cached is not None else 0,
+            cache_unknown=cached is None,
         )
 
     def close(self) -> None:

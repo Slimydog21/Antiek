@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -42,7 +43,7 @@ from compounding.benchmark.profiles import (  # noqa: E402
 # ── M1 acceptance: --profile prod flips to real dispatch (mock_run=False) ─
 
 
-def test_prod_profile_flips_to_real_dispatch():
+def test_prod_profile_flips_to_real_dispatch() -> None:
     prof = load_profile("prod")
     assert prof.mock_run is False, "prod profile MUST set mock_run=False (not the demo-loop mock)"
     assert prof.dispatch_mode == "real", "prod profile dispatch_mode must be 'real'"
@@ -56,7 +57,7 @@ def test_prod_profile_flips_to_real_dispatch():
     assert prof.model_tiers, "prod profile must name the prod model tiers"
 
 
-def test_dev_profile_is_the_existing_mock_path():
+def test_dev_profile_is_the_existing_mock_path() -> None:
     prof = load_profile("dev")
     assert prof is DEV_PROFILE
     assert prof.mock_run is True, "dev profile is the autonomous mock path"
@@ -65,11 +66,11 @@ def test_dev_profile_is_the_existing_mock_path():
     assert prof.out_filename("abc1234") == "spr09_run.json"
 
 
-def test_prod_toml_is_discoverable():
+def test_prod_toml_is_discoverable() -> None:
     assert "prod" in available_profiles()
 
 
-def test_unknown_profile_is_rejected_loudly():
+def test_unknown_profile_is_rejected_loudly() -> None:
     with pytest.raises(FileNotFoundError):
         load_profile("does-not-exist")
 
@@ -77,7 +78,7 @@ def test_unknown_profile_is_rejected_loudly():
 # ── M1: run.py routing — prod REFUSES (no mock fallback), dev runs ────────
 
 
-def test_run_prod_profile_refuses_and_does_not_mock_around(capsys):
+def test_run_prod_profile_refuses_and_does_not_mock_around(capsys: pytest.CaptureFixture[str]) -> None:
     # --profile prod must exit 2 (could-not-complete) WITHOUT writing a
     # results artifact — it prints the operator-window command instead of
     # falling back to the mock demo loop.
@@ -93,7 +94,7 @@ def test_run_prod_profile_refuses_and_does_not_mock_around(capsys):
     assert "wrote" not in out.lower(), "prod refusal must NOT have written an artifact"
 
 
-def test_run_dev_profile_writes_mock_artifact(tmp_path):
+def test_run_dev_profile_writes_mock_artifact(tmp_path: Path) -> None:
     out = tmp_path / "dev_run.json"
     # --n 2 (the bootstrap minimum): this test proves the SELECTOR routes
     # --profile dev to the mock path and writes the artifact — it is NOT a
@@ -106,7 +107,7 @@ def test_run_dev_profile_writes_mock_artifact(tmp_path):
     assert out.is_file(), "dev profile writes the mock artifact"
 
 
-def test_default_profile_is_dev(tmp_path):
+def test_default_profile_is_dev(tmp_path: Path) -> None:
     # No --profile flag → dev (the existing default behaviour, unchanged).
     # --n 2: asserts the DEFAULT routes to the dev mock path AND runs to a
     # written artifact — not the full statistical benchmark (kept fast for the

@@ -52,12 +52,53 @@ from __future__ import annotations
 
 # ── Banned hostnames (suffix-matched) ─────────────────────────────
 BANNED_DOMAINS: tuple[str, ...] = (
-    # Empty seed. Each entry MUST cite the court order, takedown
-    # notice, or lawyer-reviewed source that justifies inclusion.
-    # Examples of the entry shape, kept commented out:
+    # Seeded 2026-09-22 (SPR-07 task 1) from the doc-to-HTML pipeline's
+    # ``BLOCKED_DOMAINS`` (acquisition/doc_to_html/converter.py), which
+    # now imports THIS tuple so there is one source of truth. Each entry
+    # MUST cite the court order, takedown notice, or lawyer-reviewed
+    # source that justifies inclusion. The cites below are public
+    # court records located by an agent; counsel review of the list
+    # is the standing operator step, not something this seed replaces.
     #
-    # "libgen.is",       # cite: ...
-    # "z-lib.is",        # cite: ...
+    # Library Genesis mirrors.
+    # cite: Elsevier Inc. v. Sci-Hub, No. 1:15-cv-04282 (S.D.N.Y.),
+    #   default judgment + permanent injunction against Library Genesis
+    #   (2017); Cengage Learning, Inc. v. Does 1-50 d/b/a Library
+    #   Genesis, No. 1:23-cv-08136 (S.D.N.Y.), default judgment +
+    #   permanent injunction naming the libgen mirror domains (2024);
+    #   Bartz v. Anthropic PBC, No. 3:24-cv-05417 (N.D. Cal.), order on
+    #   fair use (2025-06-23) holding the LibGen copies pirated.
+    "libgen.is",
+    "libgen.rs",
+    "libgen.li",
+    "libgen.me",
+    "libgen.org",
+    "libgen.io",
+    # Anna's Archive (successor to Pirate Library Mirror / PiLiMi).
+    # cite: OCLC, Inc. v. Anna's Archive, No. 2:24-cv-00144 (S.D. Ohio,
+    #   filed 2024-01-12); Bartz v. Anthropic PBC (above) holding the
+    #   PiLiMi copies pirated.
+    "annas-archive.org",
+    "annas-archive.cc",
+    "annas-archive.se",
+    # Z-Library and its login / mirror domains.
+    # cite: United States v. Napolsky and Ermolaeva (E.D.N.Y.),
+    #   indictment unsealed 2022-11-16; FBI / USPIS seizure of the
+    #   Z-Library domain set (z-lib, 1lib, b-ok, singlelogin,
+    #   book4you, bookfi) under that action.
+    "z-lib.org",
+    "zlib.org",
+    "z-lib.is",
+    "z-lib.cc",
+    "singlelogin.re",
+    "singlelogin.site",
+    "1lib.sk",
+    "1lib.domains",
+    "b-ok.cc",
+    "b-ok.org",
+    "bookfi.net",
+    "book4you.org",
+    "book4you.se",
 )
 
 

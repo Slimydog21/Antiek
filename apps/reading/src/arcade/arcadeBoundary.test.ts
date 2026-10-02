@@ -17,9 +17,9 @@ function productionFiles(directory: string): string[] {
 }
 
 const forbidden = [
-  /from\s+["'][^"']*(?:AppShell|\/App|DeepResearch|WernerStage|reactionBus)["']/,
+  /from\s+["'][^"']*(?:AppShell|\/App|DeepResearch|MascotStage|reactionBus)["']/,
   /from\s+["']react-router/,
-  /from\s+["'][^"']*(?:navigation|content|provider|persistence|mascot|PenguinMascot|sessionAssets|SceneHotspots)["']/i,
+  /from\s+["'][^"']*(?:navigation|content|provider|persistence|mascot|MascotStation|sessionAssets|SceneHotspots)["']/i,
   /\b(?:fetch|XMLHttpRequest|WebSocket|sendBeacon)\b/,
   /\b(?:localStorage|sessionStorage|indexedDB)\b/,
   /\b(?:useNavigate|location\.(?:assign|replace)|document\.cookie|navigator\.credentials)\b/,

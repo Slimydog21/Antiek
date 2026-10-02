@@ -22,6 +22,7 @@ caller choose the right cadence (every contribution vs. nightly batch).
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -162,13 +163,11 @@ def drain_promotable_to_substrate(
         # subscriber that reads the event log and then reads the
         # skill_rules table sees consistent state).
         if broadcast is not None:
-            try:
-                broadcast(_audit_event(decision, investigation_id=investigation_id))
-            except Exception:
+            with contextlib.suppress(Exception):
                 # Broadcast failure does not roll back the write —
                 # the substrate row is the source of truth. The miss
                 # surfaces in trajectory replay as a gap (acceptable).
-                pass
+                broadcast(_audit_event(decision, investigation_id=investigation_id))
 
         outcomes.append(WriteOutcome(
             rule_id=decision.rule_id,

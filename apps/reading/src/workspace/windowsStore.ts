@@ -111,6 +111,10 @@ export type OpenWindowOptions = {
   rect?: Partial<WindowRect>;
   /** Open already expanded to full. */
   mode?: WindowMode;
+  /** At the hard cap, replace the oldest window instead of redirecting this
+   * exact-identity open to an unrelated surface. Opt-in because replacement
+   * is appropriate only when showing the requested asset is load-bearing. */
+  replaceOldestAtLimit?: boolean;
 };
 
 export type WindowsActions = {
@@ -162,7 +166,12 @@ const EMPTY: WindowsSnapshot = {
   zCounter: WINDOW_Z_BASE,
 };
 
-const DEFAULT_RECT: WindowRect = { x: 96, y: 88, width: 720, height: 520 };
+export const DEFAULT_WINDOW_RECT: Readonly<WindowRect> = {
+  x: 96,
+  y: 88,
+  width: 720,
+  height: 520,
+};
 
 function uniqueId(prefix: string): string {
   return `win:${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -171,7 +180,11 @@ function uniqueId(prefix: string): string {
 /** Cascade each new window down-right of the previous (elevation contract). */
 function cascadeRect(n: number): WindowRect {
   const off = cascadeOffset(n, "windows");
-  return { ...DEFAULT_RECT, x: DEFAULT_RECT.x + off.x, y: DEFAULT_RECT.y + off.y };
+  return {
+    ...DEFAULT_WINDOW_RECT,
+    x: DEFAULT_WINDOW_RECT.x + off.x,
+    y: DEFAULT_WINDOW_RECT.y + off.y,
+  };
 }
 
 export const useWindows = create<Store>()((set, get) => ({
@@ -187,10 +200,14 @@ export const useWindows = create<Store>()((set, get) => ({
     }
     // Bounded fan-out — at the cap, focus the oldest rather than exceeding it.
     // Returning the existing id keeps callers honest (no phantom new window).
-    if (get().order.length >= MAX_WINDOWS) {
+    if (get().order.length >= MAX_WINDOWS && !opts.replaceOldestAtLimit) {
       const oldest = get().order[0];
       if (oldest) get().focus(oldest);
       return oldest ?? id;
+    }
+    if (get().order.length >= MAX_WINDOWS) {
+      const oldest = get().order[0];
+      if (oldest) get().close(oldest);
     }
     set((s) => {
       const z = s.zCounter + 1;

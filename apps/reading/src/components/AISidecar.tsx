@@ -6,10 +6,14 @@ import {
 } from "../hooks/useThoughtPartnerThread";
 
 import { apiFetch } from "../lib/api";
-import { WernerThinking } from "../brand/werner/animated";
+import { BrainThinking } from "../brand/mascot/animated";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
 import { useReplyMode } from "../hooks/useReplyMode";
+import { notifyThoughtPartnerReplyReceived } from "../mascot";
+import { AISIDECAR_PANEL_ID } from "../workspace/shortcuts";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -78,8 +82,14 @@ export default function AISidecar() {
   const thread = useThoughtPartnerThread();
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aliveRef = useRef(true);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
   const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
+  // SPR-03 Task 3 — which of the operator's own keys drives the thought
+  // partner. The picker is the same control every other AI surface mounts;
+  // the choice rides on the request as model_choice + operation_id.
+  const model = useOwnerModelChoice("sidecar");
+  const { select: selectModel, launchFields } = model;
 
   /**
    * Actions the AI has dispatched against this workspace. Each entry
@@ -106,18 +116,27 @@ export default function AISidecar() {
       if (typeof detail.system_context === "string") {
         setComposedContext(detail.system_context);
       }
+      // A driver picked elsewhere (the CommandPalette) lands here, so the
+      // palette's dropdown and this one are the same choice.
+      if (detail.owner_model && typeof detail.owner_model.row_id === "string") {
+        selectModel(detail.owner_model.row_id, detail.owner_model.model_id);
+      }
       queueMicrotask(() => inputRef.current?.focus());
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
-  }, []);
+  }, [selectModel]);
 
 
   const reloadContext = useCallback(async () => {
     try {
       setContextError(null);
       const [u, t] = await Promise.all([
-        apiFetch(`/billing/summary/__operator__/${period}`),
+        // `me` resolves server-side to the authenticated caller. This was
+        // hardcoded to `__operator__`, so every signed-in user's sidecar
+        // requested the OPERATOR's spend — and the endpoint served it,
+        // because `user_id` was an unchecked path parameter.
+        apiFetch(`/billing/summary/me/${period}`),
         apiFetch("/trajectory?limit=8"),
       ]);
       if (u?.ok) {
@@ -164,29 +183,22 @@ export default function AISidecar() {
     }
   }, [period]);
 
-  // S8 refactor: ⌘J as a legacy shortcut now closes the panel (since
-  // mounting === open, "toggling" while mounted means closing). The
-  // workspace store handles open via the shortcut module's ⌘/ binding.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        // Defer to shortcuts.ts via the custom-event channel; the
-        // shortcut module knows the panel id + routes through workspace.
-        window.dispatchEvent(new CustomEvent("antiek:aisidecar:toggle"));
-        return;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+  // MS-01: the sidecar no longer listens for ⌘J itself. That listener only
+  // dispatched "antiek:aisidecar:toggle", which nothing handles, while the
+  // keymap dispatcher ALSO took ⌘J to the Research door: two owners for one
+  // key. The keymap (components/hotkeys/keymap.ts) owns ⌘J (Research) and ⌘/
+  // (toggle this sidecar).
 
   // Mount-load: fetch usage + dispatch context immediately + focus the
   // textarea. Refresh on each mount (the panel system unmounts + remounts
   // when the operator closes + reopens, so this is fresh-on-open).
   useEffect(() => {
+    aliveRef.current = true;
     void reloadContext();
     setTimeout(() => inputRef.current?.focus(), 0);
+    return () => {
+      aliveRef.current = false;
+    };
   }, [reloadContext]);
 
   const sendThoughtPartner = async () => {
@@ -207,8 +219,15 @@ export default function AISidecar() {
           system_context: composeThoughtPartnerSystemContext(
             composedContext.trim() ? composedContext : null,
           ),
+          // Both fields or neither (see useOwnerModelChoice). Honest status:
+          // ThoughtPartnerRequest (app.py) does not read model_choice yet and
+          // ignores unknown fields, so today this ships reach, not function —
+          // the same as every owner route until the SPR-03 Task 4 namespace
+          // fix lands. The surface is wired for the day the route reads it.
+          ...launchFields(prompt),
         }),
       });
+      if (!aliveRef.current) return;
       if (!resp.ok) {
         thread.failTurn(
           messageId,
@@ -217,6 +236,7 @@ export default function AISidecar() {
         return;
       }
       const data = await resp.json();
+      if (!aliveRef.current) return;
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
       const { prose, actions, parseErrors } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -224,22 +244,41 @@ export default function AISidecar() {
         prose || rawText,
         normalizeThoughtPartnerShape(data.shape),
       );
+      notifyThoughtPartnerReplyReceived();
       if (actions.length > 0) {
         const ctx = {
           operator_prompt: prompt.slice(0, 2000),
           investigation_id: "__sidecar__",
         };
-        const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
-        setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        const dispatched: DispatchedAction[] = [];
+        for (const action of actions) {
+          // A reply may operate on the workspace, but it cannot erase its own
+          // transparency surface before the operator can inspect what arrived.
+          if (action.kind === "close_panel" && action.id === AISIDECAR_PANEL_ID) {
+            continue;
+          }
+          try {
+            dispatched.push(dispatchAiAction(action, ctx));
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              // eslint-disable-next-line no-console
+              console.warn("[ai] action dispatch failed:", error);
+            }
+          }
+        }
+        if (dispatched.length > 0) {
+          setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        }
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {
         console.warn("[AISidecar] @@actions parse errors", parseErrors);
       }
     } catch (e: unknown) {
+      if (!aliveRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       thread.failTurn(messageId, msg);
     } finally {
-      setPending(false);
+      if (aliveRef.current) setPending(false);
     }
   };
 
@@ -255,12 +294,9 @@ export default function AISidecar() {
   // positioning, no own slide-over chrome). The workspace mounts it
   // via `PanelLayoutPanel` when ⌘/ opens the "AISidecar" PanelKind
   // docked-right; the panel chrome (handle + drag) is provided by
-  // the panel system, not by this component.
-  //
-  // For backward-compat, the legacy ⌘J toggle still works — it
-  // routes through the workspace store (open or focus). The
-  // `antiek:aisidecar:toggle` event handler kept above also routes
-  // through the workspace.
+  // the panel system, not by this component. Toggling (⌘/ via the keymap,
+  // SceneChrome "Ask", CommandPalette) goes through
+  // `toggleAISidecar` in shortcuts.ts.
   return (
     <aside
       className="h-full overflow-hidden flex flex-col"
@@ -269,7 +305,7 @@ export default function AISidecar() {
       <div className="px-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
           <header className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
-            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               transparent · scoped to your session
             </p>
           </header>
@@ -284,7 +320,7 @@ export default function AISidecar() {
                 style={{ width: `${freePct}%` }}
               />
             </div>
-            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               {usage
                 ? `${usage.free_tokens_consumed.toLocaleString()} / 5,000,000 tokens`
                 : "–"}
@@ -304,6 +340,22 @@ export default function AISidecar() {
               non-owner path (the picker renders what reached the model).
             */}
             <ContextPicker onContextChange={setComposedContext} />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                Driver
+              </span>
+              <ModelUsagePicker
+                models={model.models}
+                value={model.selectedRowId}
+                valueModelId={model.selectedModelId}
+                onChange={model.select}
+                includeDefault
+                defaultLabel="Default (house route)"
+                triggerLabel={model.triggerLabel}
+                triggerAriaLabel="Model for the thought partner"
+                size="sm"
+              />
+            </div>
             <textarea
               ref={inputRef}
               value={draft}
@@ -320,7 +372,7 @@ export default function AISidecar() {
             >
               {pending ? (
                 <>
-                  <WernerThinking size={20} label="" />
+                  <BrainThinking size={20} label="" />
                   <span>Thinking…</span>
                 </>
               ) : (
@@ -330,7 +382,7 @@ export default function AISidecar() {
                         {thread.messages.length > 0 && (
               <div className="space-y-2" data-testid="thought-partner-thread">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                  <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                     Thread · {thread.messages.length}
                   </p>
                   <div className="flex items-center gap-2">
@@ -341,7 +393,7 @@ export default function AISidecar() {
                           type="button"
                           aria-pressed={replyMode === m}
                           onClick={() => setReplyMode(m)}
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                          className={`text-xxs font-mono px-1.5 py-0.5 rounded ${
                             replyMode === m
                               ? "bg-ink text-white"
                               : "text-shadow-1 dark:text-moonlight hover:bg-ice-3 dark:hover:bg-charcoal-1"
@@ -353,7 +405,7 @@ export default function AISidecar() {
                     </div>
                     <button
                       type="button"
-                      className="text-[10px] font-mono underline text-ink-mute"
+                      className="text-xxs font-mono underline text-ink-mute"
                       onClick={() => thread.clear()}
                       data-testid="thought-partner-clear-thread"
                     >
@@ -368,16 +420,16 @@ export default function AISidecar() {
                       className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-1 dark:bg-charcoal-2"
                       data-testid="thought-partner-turn"
                     >
-                      <p className="text-[11px] text-ink-mute dark:text-moonlight">
+                      <p className="text-xs text-ink-mute dark:text-moonlight">
                         You: {msg.question}
                       </p>
                       {msg.answer == null ? (
-                        <p className="text-[11px] italic" data-testid="thought-partner-pending">
+                        <p className="text-xs italic" data-testid="thought-partner-pending">
                           Thinking…
                         </p>
                       ) : (
                         <>
-                          <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                          <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                             {msg.shape ?? "SYNTHESIS"}
                           </p>
                           <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
@@ -406,7 +458,7 @@ export default function AISidecar() {
                 until the assistant actually emits an @@actions block. */}
             {aiLog.length > 0 && (
               <div className="space-y-1.5 pt-1">
-                <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                   AI did
                 </p>
                 <ul className="space-y-1">
@@ -415,7 +467,7 @@ export default function AISidecar() {
                       key={`${rec.at}-${idx}`}
                       className="flex items-center gap-2 border border-rule dark:border-charcoal-1 rounded px-2 py-1 bg-ice-0 dark:bg-charcoal-2"
                     >
-                      <span className="flex-1 text-[11px] text-ink dark:text-bright truncate">
+                      <span className="flex-1 text-xs text-ink dark:text-bright truncate">
                         {rec.label}
                       </span>
                       {rec.undo && (
@@ -427,7 +479,7 @@ export default function AISidecar() {
                               prev.filter((r) => r !== rec),
                             );
                           }}
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
+                          className="text-xxs font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15 dark:hover:text-bright"
                         >
                           undo
                         </button>
@@ -444,11 +496,11 @@ export default function AISidecar() {
               Recent dispatch
             </p>
             {contextError ? (
-              <p className="text-[11px] text-red-700 dark:text-red-300">
+              <p className="text-xs text-danger">
                 {contextError}
               </p>
             ) : recentCalls.length === 0 ? (
-              <p className="text-[11px] italic text-shadow-1 dark:text-moonlight">
+              <p className="text-xs italic text-shadow-1 dark:text-moonlight">
                 No recent calls in this session.
               </p>
             ) : (
@@ -456,7 +508,7 @@ export default function AISidecar() {
                 {recentCalls.map((c) => (
                   <li
                     key={c.call_id}
-                    className="text-[11px] font-mono text-ink dark:text-bright flex items-center justify-between gap-2"
+                    className="text-xs font-mono text-ink dark:text-bright flex items-center justify-between gap-2"
                   >
                     <span className="truncate">
                       {c.tier} · {c.provider}/{c.model}
@@ -471,7 +523,7 @@ export default function AISidecar() {
             )}
           </section>
 
-          <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+          <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-xxs font-mono text-shadow-1 dark:text-moonlight">
             ⌘/ toggle · Esc close
           </footer>
       </div>

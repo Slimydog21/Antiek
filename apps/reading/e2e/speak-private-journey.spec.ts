@@ -43,7 +43,12 @@ test.describe("Speak — private-lane journey", () => {
     // A private project: invites capture record consent (publish is never the
     // default), and each invitee shows their lifecycle status as a human word.
     await expect(page.getByText(/invitations/i)).toBeVisible();
-    await expect(page.getByText(/private/i)).toBeVisible();
+    // Two elements legitimately say "private" on this surface -- the consent
+    // line ("private - invites capture record consent") and the earnings
+    // banner ("Private project - invitees will NOT make money"). Either
+    // satisfies what this line asserts (the surface names the lane), but
+    // strict mode refuses the ambiguous match, so scope to the first.
+    await expect(page.getByText(/private/i).first()).toBeVisible();
     await expect(page.getByText(/uncle\.fawzi@example\.com/i)).toBeVisible();
     // SPR-02 humanizes the lifecycle word: a "completed" invite reads "Shared".
     await expect(page.getByText(/shared/i)).toBeVisible();

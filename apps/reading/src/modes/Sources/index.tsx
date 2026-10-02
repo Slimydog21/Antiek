@@ -1,21 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import WorkflowArt from "../../brand/WorkflowArt";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import LemonCard from "../../components/lemon/LemonCard";
-import ConnectedToolSearch from "./ConnectedToolSearch";
 import {
   ingestSource,
   type IngestSourceResponse,
   type SourceKind,
 } from "../../lib/api";
 import {
+  attestationToken,
+  type AttestationChoice,
+  authoredUploadSupported,
+  fileStem,
+  loadUploadAttestations,
   SOURCE_UPLOAD_EXTENSIONS,
   SOURCE_UPLOAD_MAX_LABEL,
   SourceUploadError,
   type SourceUploadResponse,
+  type UploadAttestationCapability,
   uploadSource,
   validateSourceUpload,
 } from "../../lib/sourceUploadApi";
+
+// The connected-tool search sits below the ingest form and is only useful once
+// a tool is connected, so it loads as its own chunk rather than in the entry,
+// which is within about 1 KB of its 700 KB gz ceiling.
+const ConnectedToolSearch = lazy(() => import("./ConnectedToolSearch"));
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -32,6 +43,7 @@ function detectKindLabel(url: string): SourceKind {
   const u = url.toLowerCase().trim();
   if (u.includes("arxiv.org")) return "arxiv";
   if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("substack.com")) return "substack";
   if (
     u.endsWith(".rss") ||
     u.endsWith(".xml") ||
@@ -61,7 +73,7 @@ function StatusBadge({ row }: { row: IngestRow }) {
   const s = row.result.status;
   if (s === "ingested") {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">
         ingested
       </span>
     );
@@ -102,13 +114,18 @@ export default function Sources() {
   const [status, setStatus] = useState<Status>("idle");
   const [rows, setRows] = useState<IngestRow[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  /** Pre-filled from the file name; sent as the document title (A-04). */
+  const [uploadTitle, setUploadTitle] = useState("");
   const [attested, setAttested] = useState(false);
-  /** Bartz attestation → content_class. personal_reading stays the default
-   * (owner-only); user_owned is for content Faisal authored so BookReader
-   * can serve full text + spin without the owner-full-text privilege. */
-  const [uploadAttestation, setUploadAttestation] = useState<
-    "personal_reading" | "user_owned"
-  >("personal_reading");
+  /** Bartz attestation choice. Personal reading stays the default (owner-only).
+   * "Authored" is sent as user_authored_private and is offered ONLY when the
+   * API advertises that token; the legacy authored class is served publicly on
+   * an API without A-06, so there is no fallback to it (backend INBOX
+   * 2026-09-27T00:40Z). */
+  const [uploadChoice, setUploadChoice] = useState<AttestationChoice>("personal");
+  const [capability, setCapability] = useState<UploadAttestationCapability | null>(null);
+  const [capabilityState, setCapabilityState] = useState<"checking" | "ready">("checking");
+  const authoredAvailable = authoredUploadSupported(capability);
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done">("idle");
   const [uploadResult, setUploadResult] = useState<SourceUploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -118,10 +135,32 @@ export default function Sources() {
 
   useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
+  const capabilityMounted = useRef(true);
+  useEffect(() => {
+    capabilityMounted.current = true;
+    void checkCapability(false);
+    return () => {
+      capabilityMounted.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function checkCapability(refresh: boolean) {
+    setCapabilityState("checking");
+    const next = await loadUploadAttestations({ refresh });
+    if (!capabilityMounted.current) return;
+    setCapability(next);
+    setCapabilityState("ready");
+    if (!authoredUploadSupported(next)) setUploadChoice("personal");
+  }
+
   const uploadErrorCopy: Record<string, string> = {
     too_large: `Choose a file no larger than ${SOURCE_UPLOAD_MAX_LABEL}.`,
     unsupported: "Choose a supported document type.",
     book_ceremony: "EPUB files use the book acquisition flow.",
+    attestation_conflict:
+      "This file is already stored under a narrower rights attestation. An upload cannot widen it.",
+    authored_unavailable: "This needs a server update. Try again later.",
     conversion_failed: "This document could not be converted.",
     cancelled: "Upload cancelled. The file was not added.",
     unavailable: "The upload service is unavailable. Try again.",
@@ -132,12 +171,14 @@ export default function Sources() {
     setUploadResult(null);
     setUploadState("idle");
     setUploadFile(null);
+    setUploadTitle("");
     setAttested(false);
-    setUploadAttestation("personal_reading");
+    setUploadChoice("personal");
     if (!file) return;
     const validationError = validateSourceUpload(file);
     setUploadError(validationError ? uploadErrorCopy[validationError] : null);
     setUploadFile(validationError ? null : file);
+    if (!validationError) setUploadTitle(fileStem(file.name));
   }
 
   async function handleUpload(e: React.FormEvent) {
@@ -148,7 +189,12 @@ export default function Sources() {
     setUploadState("uploading");
     setUploadError(null);
     try {
-      const result = await uploadSource(uploadFile, uploadAttestation, controller.signal);
+      const result = await uploadSource(
+        uploadFile,
+        attestationToken(uploadChoice, capability),
+        controller.signal,
+        uploadTitle,
+      );
       if (controller.signal.aborted) {
         setUploadError(uploadErrorCopy.cancelled);
         setUploadState("idle");
@@ -216,16 +262,19 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
+    <div className="flex flex-col h-full bg-ice-1 dark:bg-charcoal-2">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            Sources
+          <div className="flex items-center gap-3">
+              <WorkflowArt workflow="sources" size={52} className="shrink-0" />
+              <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
+              Sources
           </h1>
+            </div>
           <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
-            Add arXiv papers, YouTube transcripts, podcast feeds, or any
-            URL into the substrate graph. Auto-detects source kind from
-            the URL.
+            Add arXiv papers, YouTube transcripts, podcast feeds,
+            Substack publications, or any URL into the substrate graph.
+            Auto-detects source kind from the URL.
           </p>
 
           <section aria-labelledby="upload-heading" className="mt-6">
@@ -258,7 +307,7 @@ export default function Sources() {
                   if (uploadState === "uploading") return;
                   chooseFile(event.dataTransfer.files[0] ?? null);
                 }}
-                className={`flex min-h-32 w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-5 py-6 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-sun disabled:cursor-wait disabled:opacity-60 ${dragActive ? "border-sun bg-sun/10" : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-3"}`}
+                className={`flex min-h-32 w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-5 py-6 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-sun disabled:cursor-wait disabled:opacity-60 ${dragActive ? "border-sun bg-sun/10" : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2"}`}
                 aria-describedby="upload-types"
               >
                 <span className="text-sm font-semibold text-ink dark:text-bright">
@@ -275,28 +324,65 @@ export default function Sources() {
                 </p>
               )}
 
+              {uploadFile && (
+                <div className="mt-4">
+                  <label htmlFor="upload-title" className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
+                    Title
+                  </label>
+                  <input
+                    id="upload-title"
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(event) => setUploadTitle(event.target.value)}
+                    disabled={uploadState === "uploading"}
+                    placeholder={fileStem(uploadFile.name)}
+                    className="w-full px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-sun disabled:opacity-60"
+                  />
+                </div>
+              )}
+
               <fieldset className="mt-5 space-y-3" disabled={uploadState === "uploading"}>
                 <legend className="text-sm font-semibold text-ink dark:text-bright">Confirm how you may use this document</legend>
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
                   <input
                     type="radio"
                     name="upload-attestation"
-                    checked={uploadAttestation === "personal_reading"}
-                    onChange={() => setUploadAttestation("personal_reading")}
+                    checked={uploadChoice === "personal"}
+                    onChange={() => setUploadChoice("personal")}
                     className="mt-0.5"
                   />
-                  <span>Personal reading — I lawfully hold this copy for myself. Reader content stays owner-only.</span>
+                  <span>Personal reading — I lawfully hold this copy for myself. Only you can read it.</span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                <label className={`flex items-start gap-3 text-sm text-ink dark:text-bright ${authoredAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                   <input
                     type="radio"
                     name="upload-attestation"
-                    checked={uploadAttestation === "user_owned"}
-                    onChange={() => setUploadAttestation("user_owned")}
+                    checked={uploadChoice === "authored"}
+                    disabled={!authoredAvailable}
+                    onChange={() => setUploadChoice("authored")}
+                    aria-describedby="authored-availability"
                     className="mt-0.5"
                   />
-                  <span>I authored this (notes / drafts) — open it in BookReader with full text, highlight, and spin-research.</span>
+                  <span>I wrote this (notes or drafts). Only you can read it. It opens in the reader with full text, highlights and research.</span>
                 </label>
+                {!authoredAvailable && (
+                  <div id="authored-availability" className="ml-7 flex flex-wrap items-center gap-3 text-xs text-shadow-1 dark:text-moonlight" role="status">
+                    {capabilityState === "checking" ? (
+                      <span>Checking whether this server accepts authored uploads…</span>
+                    ) : (
+                      <>
+                        <span>This needs a server update. Try again later.</span>
+                        <button
+                          type="button"
+                          onClick={() => void checkCapability(true)}
+                          className="underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
+                        >
+                          Retry
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
                   <input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} className="mt-0.5" />
                   <span>I confirm the attestation above is accurate.</span>
@@ -318,7 +404,7 @@ export default function Sources() {
               </div>
 
               {uploadResult && (
-                <div className="mt-5 flex flex-col gap-3 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-3" role="status">
+                <div className="mt-5 flex flex-col gap-3 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-2" role="status">
                   <p className="text-sm text-ink dark:text-bright">Converted from {uploadResult.detected_kind.toUpperCase()} to sanitized reader HTML.</p>
                   <button type="button" onClick={() => navigate(`/read/${encodeURIComponent(uploadResult.document_id)}`)} className="self-start rounded bg-ink px-4 py-2 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:bg-slate-1">Open in reader</button>
                 </div>
@@ -340,6 +426,7 @@ export default function Sources() {
                 placeholder={
                   "https://arxiv.org/abs/2402.03300\n" +
                   "https://www.youtube.com/watch?v=...\n" +
+                  "https://example.substack.com\n" +
                   "https://feeds.example.com/podcast.rss"
                 }
                 rows={4}
@@ -378,6 +465,7 @@ export default function Sources() {
                   <option value="arxiv">arXiv</option>
                   <option value="youtube">YouTube</option>
                   <option value="podcast">Podcast (RSS)</option>
+                  <option value="substack">Substack</option>
                   <option value="url">URL</option>
                 </select>
               </div>
@@ -395,7 +483,7 @@ export default function Sources() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
-                  Max episodes (podcast)
+                  Max feed items
                 </label>
                 <input
                   type="number"
@@ -421,7 +509,9 @@ export default function Sources() {
             </div>
           </form>
 
-          <ConnectedToolSearch />
+          <Suspense fallback={null}>
+            <ConnectedToolSearch />
+          </Suspense>
 
           {rows.length > 0 && (
             <section className="mt-8">

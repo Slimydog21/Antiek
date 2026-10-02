@@ -44,13 +44,16 @@ WHAT THE CONTRACT ACTUALLY IS, now that the seam is joined
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 
 import pytest
 
 import interfaces.research.api.cascade_routes as cascade_mod
+import runtime.research_runner.contained_gather as cg
 from runtime.exec_backend.factory import BACKEND_ENV, build_execution_backend
 from runtime.exec_backend.interface import (
     ALLOW_ALL,
@@ -724,3 +727,180 @@ class TestBudgetIsChargedForContainedWork:
             return runner.budget.spent("inv-budget")
 
         assert asyncio.run(scenario()) == pytest.approx(0.06)
+
+
+# ---------------------------------------------------------------------------
+# A caller can supply the program (SPR-02 task 4)
+# ---------------------------------------------------------------------------
+
+SENTINEL = "spr02-caller-sentinel-7f3a"
+
+#: A caller-written contained step. Stdlib only, same channel contract as the
+#: placeholder (cwd is ``work/``; the artifact is ``../out/gather.jsonl``), but
+#: it writes a sentinel the placeholder never could — which is what lets the
+#: round-trip below prove the caller's program ran, not the default.
+PROGRAM = f'''\
+"""Caller-supplied contained step (test payload). Stdlib only."""
+
+import json
+import os
+import sys
+
+ARTIFACT = os.path.join("..", "out", "gather.jsonl")
+step = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+os.makedirs(os.path.dirname(ARTIFACT), exist_ok=True)
+with open(ARTIFACT, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps({{"step": step, "sentinel": "{SENTINEL}", "uid": os.getuid()}}) + "\\n")
+print("[caller] pass %d carried the sentinel" % step)
+'''
+
+
+class _ProgramCaptureBackend(RecordingBackend):
+    """Keeps the bytes that crossed ``put_file`` for ``PROGRAM_PATH``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.programs: list[bytes] = []
+
+    async def create(
+        self,
+        profile: WorkspaceProfile,
+        *,
+        limits: ResourceLimits,
+        net_policy: NetPolicy,
+    ) -> RecordingWorkspace:
+        self.calls.append(("create", (profile.image, net_policy.kind)))
+        outer = self
+
+        class _Capturing(RecordingWorkspace):
+            async def put_file(self, path: str, content: bytes) -> None:
+                await super().put_file(path, content)
+                if path == PROGRAM_PATH:
+                    outer.programs.append(content)
+
+        return _Capturing(f"ws-{len(self.calls)}", self.calls)
+
+
+class TestCallerSuppliedProgram:
+    def test_program_parameter_defaults_to_the_placeholder(self) -> None:
+        """Nothing changes for a caller that passes no program: the parameter
+        exists, its default is ``GATHER_PROGRAM``, and those are the bytes the
+        workspace receives."""
+        params = inspect.signature(make_contained_gather_loop).parameters
+        assert "program" in params
+        assert params["program"].default is cg.GATHER_PROGRAM
+
+        backend = _ProgramCaptureBackend()
+        asyncio.run(_drain(make_contained_gather_loop(backend, steps=1), _ctx()))
+
+        assert backend.programs == [cg.GATHER_PROGRAM.encode("utf-8")]
+
+    def test_caller_program_is_what_the_workspace_receives(self) -> None:
+        """The narrow half: the caller's source, byte for byte, lands at
+        ``PROGRAM_PATH`` alongside the request. (Only that a string was
+        written — the round-trip test below is the proof.)"""
+        backend = _ProgramCaptureBackend()
+        loop_fn = make_contained_gather_loop(backend, steps=1, program=PROGRAM)
+
+        asyncio.run(_drain(loop_fn, _ctx()))
+
+        assert backend.programs == [PROGRAM.encode("utf-8")]
+        paths = [arg for name, arg in backend.calls if name == "put_file"]
+        assert paths[0] == PROGRAM_PATH and REQUEST_PATH in paths
+
+    def test_caller_program_sentinel_round_trips(self, tmp_path) -> None:
+        """The proof of completion. A program the caller wrote runs in a REAL
+        workspace (a real child process), writes a sentinel into the artifact
+        channel, and that sentinel arrives at ``on_emit`` — the hook the
+        cascade launch site binds to ``funnel.submit``. Asserted on what the
+        funnel RECEIVED, never on the argument handed to ``put_file``.
+
+        ALLOW_ALL is passed explicitly because ``LocalProcessBackend`` refuses
+        the loop's DENY_ALL default (see the uncontained test below); this
+        proves the caller's program executes and round-trips, not that it is
+        contained."""
+        # Anti-no-op guards: the default program cannot satisfy this test.
+        assert SENTINEL not in cg.GATHER_PROGRAM
+        assert PROGRAM.strip() != cg.GATHER_PROGRAM.strip()
+
+        backend = LocalProcessBackend(workdir_base=str(tmp_path / "ws"))
+        loop_fn = make_contained_gather_loop(
+            backend,
+            steps=2,
+            interpreter=sys.executable,
+            net_policy=ALLOW_ALL,
+            image=None,
+            program=PROGRAM,
+        )
+        submitted: list = []
+        streamed: list = []
+
+        async def capture(ev) -> None:
+            submitted.append(ev)
+
+        async def scenario() -> None:
+            runner = HostLocalRunner(
+                loop_fn,
+                on_emit=capture,
+                seal_on_complete=False,
+                events_dir=str(tmp_path / "events"),
+            )
+            plan = ResearchPlan(
+                investigation_id="inv-caller-program",
+                sub_question="does the caller's program run?",
+                budget=BudgetCap(cost_usd=1.0, max_steps=50),
+            )
+            handle = await runner.start("inv-caller-program", plan)
+            async for ev in runner.stream(handle):
+                streamed.append(ev)
+
+        asyncio.run(scenario())
+
+        # What the funnel received: one note, carrying the exported artifact.
+        assert [e.kind for e in submitted] == ["note"]
+        note = submitted[0]
+        assert [r["sentinel"] for r in note.data["artifact_records"]] == [SENTINEL, SENTINEL]
+        assert note.data["contained_passes"] == 2
+        assert note.data["ran_as_uid"] == os.getuid()
+        # And the step text is the caller program's stdout, not the placeholder's.
+        step_texts = [e.text for e in streamed if e.kind == "step"]
+        assert step_texts == [
+            "[caller] pass 0 carried the sentinel",
+            "[caller] pass 1 carried the sentinel",
+        ]
+
+    def test_a_caller_program_still_cannot_run_uncontained(self, tmp_path) -> None:
+        """Supplying a program does not weaken the egress guard: under the
+        loop's DENY_ALL default, ``LocalProcessBackend`` still refuses at
+        ``create()`` (invariant I4) before any program is written or run."""
+        backend = LocalProcessBackend(workdir_base=str(tmp_path))
+        loop_fn = make_contained_gather_loop(backend, steps=1, program=PROGRAM)
+
+        with pytest.raises(NetPolicyUnsupported):
+            asyncio.run(_drain(loop_fn, _ctx()))
+
+    def test_factory_threads_the_program_to_the_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A caller above the loop reaches the program through
+        ``_research_loop_factory(program=...)``, and the runner is untouched
+        (``TestRunnerIsNotSwapped`` still holds)."""
+        backend = _ProgramCaptureBackend()
+        monkeypatch.setenv(BACKEND_ENV, "local")
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+        monkeypatch.setattr(
+            cascade_mod, "build_execution_backend", lambda *a, **k: backend
+        )
+
+        asyncio.run(
+            _drain(cascade_mod._research_loop_factory(program=PROGRAM), _ctx())
+        )
+
+        assert backend.programs == [PROGRAM.encode("utf-8")]
+        # And with no program passed, the factory hands the loop the placeholder.
+        default_backend = _ProgramCaptureBackend()
+        monkeypatch.setattr(
+            cascade_mod, "build_execution_backend", lambda *a, **k: default_backend
+        )
+        asyncio.run(_drain(cascade_mod._research_loop_factory(), _ctx()))
+        assert default_backend.programs == [cg.GATHER_PROGRAM.encode("utf-8")]

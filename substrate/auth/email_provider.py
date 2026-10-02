@@ -148,6 +148,12 @@ class ResendEmailProvider:
             ) from exc
         except urllib.error.URLError as exc:
             raise EmailDeliveryFailure(f"Resend transport error: {exc}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            # A 200 whose body is not JSON (a proxy's error page, a truncated
+            # response) is a delivery we cannot confirm — it stays inside the
+            # documented EmailDeliveryFailure contract instead of escaping to
+            # a catch-all as "degraded_unexpected".
+            raise EmailDeliveryFailure(f"Resend returned a non-JSON body: {exc}") from exc
 
         return EmailRecord(
             email=email,
@@ -208,7 +214,7 @@ class AgentMailEmailProvider:
                 "ANTIEK_AGENTMAIL_INBOX_ID to its id."
             )
         url = f"{self.api_base.rstrip('/')}/inboxes/{self.inbox_id}/messages/send"
-        payload: dict = {
+        payload: dict[str, str] = {
             "to": email.to,
             "subject": email.subject,
             "text": email.text_body,
@@ -239,6 +245,8 @@ class AgentMailEmailProvider:
             ) from exc
         except urllib.error.URLError as exc:
             raise EmailDeliveryFailure(f"AgentMail transport error: {exc}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise EmailDeliveryFailure(f"AgentMail returned a non-JSON body: {exc}") from exc
 
         return EmailRecord(
             email=email,

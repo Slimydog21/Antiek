@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import TrajectoryReplay from "../../components/TrajectoryReplay";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import type { Event } from "../../generated/types";
 import { API_BASE, apiFetch } from "../../lib/api";
 import { PanelHost } from "../../workspace/PanelHost";
@@ -160,7 +161,7 @@ export default function Replay() {
               <span
                 className={`px-1.5 py-0.5 rounded ${
                   wsConnected
-                    ? "bg-emerald-100 text-emerald-700"
+                    ? "bg-success/10 text-success"
                     : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
                 }`}
               >
@@ -174,9 +175,9 @@ export default function Replay() {
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading trajectory…</p>
           )}
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
           {!loading && !error && events.length === 0 && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">

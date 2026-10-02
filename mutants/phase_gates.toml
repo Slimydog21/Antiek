@@ -1,0 +1,86 @@
+# Phase-gate mutants — the seed-set hole the detector reported on itself.
+#
+# `fake_gate_detector --enforce` read 8/8 killed, 100%, NO FINDINGS on
+# 2026-09-22 while FIVE of the eight Loop-One phase gates were passing on
+# orchestrator-authored filler. Not a detection failure: no seed targeted
+# orchestration/phase_runner at all, so no mutant could survive there. A
+# 100% kill-rate says "every mutant I planted died", not "every gate works".
+#
+# Each mutant below would have SURVIVED before the 2026-09-22 fixes. They pin
+# the repairs so a regression is caught automatically rather than by someone
+# re-reading the orchestrator.
+
+[[mutant]]
+id = "phase2.padding_check_noop"
+target = "orchestration/phase_runner/postconditions.py"
+op = "noop"
+anchor = { qualname = "check_phase_2", match = "padded.append(f\"{p}: {reason}\")" }
+test_selector = ["tests/test_phase_runner_postconditions.py", "-k", "padding"]
+rationale = """
+check_phase_2 asserted only that three round-1 files exist above
+_ROUND1_MIN_BYTES (500). The orchestrator wrote
+("Evidence-grounded round 1 content. " * 50) — one sentence, ~1700 bytes — so
+the gate cleared over three files that said nothing, and the producer and the
+checker were written to the same weak spec. No-op-ing the line that RECORDS a padded file restores exactly that (the
+if-guard itself cannot be no-op'd — deleting it orphans its body, which the
+tool correctly refuses): test_phase_2_rejects_padding_that_clears_the_size_floor
+feeds the real historical filler string and must fail. A survivor means the
+gate is back to measuring bytes instead of content."""
+added = "2026-09-22"
+added_by = "phase-gate seed (detector seed-set hole)"
+
+[[mutant]]
+id = "phase8.investigation_scope_invert"
+target = "orchestration/phase_runner/postconditions.py"
+op = "invert_guard"
+anchor = { qualname = "check_phase_8", match = "if provenance_marker in body:" }
+test_selector = ["tests/test_phase_runner_postconditions.py", "-k", "another_investigations"]
+rationale = """
+The keystone's path B passed if ANY file under the knowledge-skills root had an
+mtime after the cutoff. That root is SHARED — default_knowledge_skills_dir()
+takes no investigation argument — so investigation A's skill write satisfied
+investigation B's keystone, and the production caller omits
+investigation_started_at, widening the cutoff to 24h. Inverting the marker
+check removes the investigation scoping;
+test_phase_8_does_not_pass_on_another_investigations_skill_write recreates the
+real topology (one root, two investigations) and must fail. The pre-existing
+mtime test could NOT catch this: it runs under tmp_path, an isolation
+production does not have."""
+added = "2026-09-22"
+added_by = "phase-gate seed (detector seed-set hole)"
+
+[[mutant]]
+id = "phase1.absence_declaration_invert"
+target = "orchestration/phase_runner/postconditions.py"
+op = "invert_guard"
+anchor = { qualname = "check_phase_1", match = "if NO_PRIOR_GRAPH_KNOWLEDGE in section:" }
+test_selector = ["tests/test_phase_runner_postconditions.py", "-k", "cold_start or neither"]
+rationale = """
+Phase 1 required a chunk/node citation, and for a cold question the orchestrator
+supplied one: "chunk_orientation_marker and node_orchestrator_start seed the
+connector substrate..." — tokens matching the citation regex while referring to
+no chunk and no node. The gate read a FABRICATION, and the fabrication was
+structural: the only way to pass was to claim prior knowledge. Inverting the
+honest-absence branch removes the legitimate route, so a cold-start
+investigation must either fail or go back to inventing citations. Both
+targeting tests must react."""
+added = "2026-09-22"
+added_by = "phase-gate seed (detector seed-set hole)"
+
+[[mutant]]
+id = "phase2.insufficient_evidence_hatch_invert"
+target = "orchestration/phase_runner/postconditions.py"
+op = "invert_guard"
+anchor = { qualname = "check_phase_2", match = "if payloads and all(pl.insufficient_evidence for pl in payloads):" }
+test_selector = ["tests/test_phase_runner_postconditions.py", "-k", "thin_round1"]
+rationale = """
+Dropping the orchestrator's padding makes a genuinely thin round 1 fall under
+the byte floor, so Phase 2 carries the same insufficient_evidence hatch as
+Phases 6 and 8: a thin round 1 passes ONLY when every evidence delivery
+declined. Inverting the hatch turns it into a blanket exemption in one
+direction and punishes honesty in the other; the paired tests
+(thin_round1_passes_when_every_retriever_declined and
+thin_round1_still_fails_when_retrievers_did_answer) must react. This one pins
+that the FIX did not itself become a hole."""
+added = "2026-09-22"
+added_by = "phase-gate seed (detector seed-set hole)"

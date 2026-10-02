@@ -54,8 +54,8 @@ def _to_naive_utc(ts: datetime) -> datetime:
     return ts
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas import (
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         SubstrateManifestWrittenPayload,
         SynthesisArchivedPayload,
         SynthesisRecommendation,
@@ -64,8 +64,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         SubstrateManifestWrittenPayload,
         SynthesisArchivedPayload,
         SynthesisRecommendation,
@@ -269,10 +269,7 @@ def archive_synthesis_via_db(
     The DB writes happen inside a transaction so a manifest failure
     rolls back the syntheses row. Events fire AFTER commit so we
     never advertise an archive that doesn't exist on disk."""
-    try:
-        from ..runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
-    except ImportError:
-        from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
     if not isinstance(con, LockedConnection):
         raise TypeError(
             "archive_synthesis_via_db requires a LockedConnection "

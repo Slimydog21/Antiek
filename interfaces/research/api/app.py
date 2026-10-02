@@ -32,6 +32,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import sys
 import threading
@@ -40,6 +41,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
+
+import duckdb
 
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
@@ -73,6 +76,7 @@ from roles.thought_partner import (  # noqa: E402
     compose_thought_partner_prompt,
     parse_thought_partner_response,
 )
+from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -89,6 +93,11 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+
+# Retry-After hint (seconds) served with every 503 mapped from
+# runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
+# Conservative client backoff hint, not a measured hold time.
+_DB_CONNECTION_RETRY_AFTER_S = "2"
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -125,6 +134,13 @@ class HealthResponse(BaseModel):
     registered_providers: list[str] = Field(default_factory=list)
     # DRW honest-failure: True when at least one dispatch provider registered.
     providers_ready: bool = False
+    # Which gather backend the DRW cascade would build: "stub" (no real
+    # retrieval), "exa" (live Exa Wedge-1), "contained" (execution backend),
+    # or "conflict" (mutually exclusive flags — _gather_loop raises). Prod
+    # had no outside signal for this: ansible renders ANTIEK_DRW_GATHER
+    # EMPTY, which resolves to the stub, so a deploy could do no retrieval
+    # while the smoke runbook read green.
+    drw_gather_mode: str = "unknown"
     # SPR-07 (antiek-foundation-v2): the commit SHA the running process was
     # built from, so the prod-parity check (tools/prod_parity/check.py) can
     # assert deployed-SHA == main-SHA. Sourced (in order) from the
@@ -152,17 +168,24 @@ class HealthResponse(BaseModel):
     # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
     # hybrid_ready requires env+key+active pointer; production_default_mount
     # stays False until deliberately flipped in a future decision.
-    turbopuffer_servable_enabled: bool = False
-    turbopuffer_shadow_enabled: bool = False
-    turbopuffer_api_key_present: bool = False
-    turbopuffer_active_pointer: bool = False
+    # None on these five means the probe did not run or raised — a crashed
+    # probe used to be byte-identical to "TurboPuffer is switched off". The
+    # error text rides on turbopuffer_probe_error.
+    turbopuffer_servable_enabled: bool | None = False
+    turbopuffer_shadow_enabled: bool | None = False
+    turbopuffer_api_key_present: bool | None = False
+    turbopuffer_active_pointer: bool | None = False
     turbopuffer_pointer_context_ok: bool | None = None
-    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_hybrid_ready: bool | None = False
+    turbopuffer_probe_error: str | None = None
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
-    turbopuffer_duckdb_is_sot: bool = True
-    turbopuffer_thought_partner_hybrid_wired: bool = True
+    # bool | None, not bool: None means the probe could not determine it.
+    # These were `bool = True`, so a FAILED probe still reported both as
+    # satisfied — two claims asserted exactly when nothing had checked them.
+    turbopuffer_duckdb_is_sot: bool | None = None
+    turbopuffer_thought_partner_hybrid_wired: bool | None = None
     turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
@@ -175,6 +198,102 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # SPR-11 T4: account-memory v10 schema postconditions, read from the same
+    # startup-cached snapshot as the duckdb_* fields (never a per-request open).
+    # Reported independently of duckdb_ready: idx_edges_owner is created only by
+    # migrate_v10_account_memory, so a False memory_owner_index_ready on a fresh
+    # schema is a pending migration, not an outage.
+    memory_node_type_ready: bool = False
+    memory_edges_owner_ready: bool = False
+    memory_owner_index_ready: bool = False
+    # Verified-backup freshness (pass46 / production-audit P1). A green
+    # /health must not hide a missing or stale backup marker. Mirrors
+    # tools/backup_freshness.py: fresh=False + backup_reason when the
+    # marker is missing/unreadable/stale; never raises.
+    backup_fresh: bool = False
+    backup_completed_at: str | None = None
+    backup_age_hours: float | None = None
+    backup_marker_path: str = ""
+    backup_reason: str = ""
+    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
+    # be starved of the DuckDB write lock for hours while /health says "ok";
+    # this is the field that makes that state visible without opening a log.
+    # Empty dict when the worker is disabled or has not run a pass yet.
+    note_taker_replay: dict[str, Any] = {}
+
+
+    # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
+    # these fields existed /health said nothing about Prime or RLM, so an
+    # operator could flip ANTIEK_PRIME_AGENT_RLM_ENABLED + ANTIEK_RLM_RATIFIED
+    # and have the lane silently do nothing. ``prime_agent_binary_present``
+    # is a RESOLVE (which + identity snapshot), never a spawn.
+    # ``prime_agent_invocations_attempted`` is the process-wide count of
+    # backend runs that reached the spawn path, whatever their outcome.
+    # Resolved per request by ``_probe_prime_lane``; never raises.
+    prime_agent_enabled: bool = False
+    rlm_ratified: bool = False
+    prime_agent_binary_present: bool = False
+    prime_agent_invocations_attempted: int = 0
+
+
+def _probe_backup_freshness() -> dict[str, Any]:
+    """Read-only backup freshness for /health. Never raises."""
+    try:
+        from tools.backup_freshness import evaluate, resolve_marker_path
+
+        verdict = evaluate(resolve_marker_path(None), 26.0)
+        return {
+            "backup_fresh": verdict.fresh,
+            "backup_completed_at": verdict.completed_at,
+            "backup_age_hours": verdict.age_hours,
+            "backup_marker_path": verdict.marker_path,
+            "backup_reason": verdict.reason,
+        }
+    except Exception as exc:
+        return {
+            "backup_fresh": False,
+            "backup_completed_at": None,
+            "backup_age_hours": None,
+            "backup_marker_path": "",
+            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+        }
+def _probe_prime_lane() -> dict[str, bool | int]:
+    """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
+
+    Mirrors ``_resolve_build_sha``'s swallow-to-default: any failure resolves
+    to False/0. Reads the same flag spellings the lane itself uses — the
+    backend factory's truthy set for the enable flag, the bridge's literal
+    "1" for ratification — so /health cannot disagree with the code path.
+    """
+    from orchestration.rlm.bridge import is_ratified
+    from orchestration.rlm.prime_agent_backend import (
+        prime_agent_invocations_attempted,
+    )
+    from runtime.prime_agent.installation import resolve_prime_agent_binary
+
+    enabled = (
+        os.environ.get("ANTIEK_PRIME_AGENT_RLM_ENABLED", "").strip().lower()
+        in {"1", "true", "yes"}
+    )
+    try:
+        resolve_prime_agent_binary()
+        binary_present = True
+    except Exception:
+        binary_present = False
+    try:
+        ratified = is_ratified()
+    except Exception:
+        ratified = False
+    try:
+        attempted = prime_agent_invocations_attempted()
+    except Exception:
+        attempted = 0
+    return {
+        "prime_agent_enabled": enabled,
+        "rlm_ratified": ratified,
+        "prime_agent_binary_present": binary_present,
+        "prime_agent_invocations_attempted": attempted,
+    }
 
 
 def _resolve_build_sha() -> str:
@@ -269,6 +388,16 @@ def _probe_flywheel() -> tuple[bool, int]:
         return (False, 0)
 
 
+def _tp_flag(app: Any, key: str) -> bool | None:
+    """A TurboPuffer health flag for /health. None (not False) when the probe
+    raised — the dict then carries ``error`` — or never ran; a crashed probe
+    must not read as "switched off"."""
+    tp = getattr(app.state, "turbopuffer_health", None) or {}
+    if not tp or tp.get("error"):
+        return None
+    return bool(tp.get(key))
+
+
 def _probe_turbopuffer() -> dict[str, Any]:
     """Cheap TurboPuffer dogfood snapshot for /health (no vendor network)."""
     try:
@@ -289,8 +418,10 @@ def _probe_turbopuffer() -> dict[str, Any]:
             "resolved_kind": "brute_force",
             "indexed_row_count": None,
             "content_hash": None,
-            "duckdb_is_sot": True,
-            "thought_partner_hybrid_wired": True,
+            # Probe unavailable → unknown, not "yes". See the same reasoning
+            # in substrate/graph/retrieval_adapters/turbopuffer.py.
+            "duckdb_is_sot": None,
+            "thought_partner_hybrid_wired": None,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -353,6 +484,12 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. Recording this
+    # does not launch retrieval or connector calls; runner/source-pack execution
+    # must still be explicitly wired through the approved research path.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
     # Parsed manually: validation errors must never reflect provider/model values.
     model_choice: object | None = None
     operation_id: object | None = None
@@ -428,6 +565,11 @@ class InvestigationSummary(BaseModel):
     # translates this into the "found by the loop" badge — the raw policy_id is
     # never sent to the client, only this honest boolean.
     spawned_by_daemon: bool = False
+    # LB-2 (A1c-H1 / R8): the source document this investigation reads.
+    # Optional and additive — null when the investigation has no document
+    # (daemon-spawned or legacy runs). The frontend's source-document
+    # affordance (companionStore.sourceDocumentOf) resolves against this.
+    document_id: str | None = None
 
 
 class InvestigationListResponse(BaseModel):
@@ -446,7 +588,9 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
+    kind: Literal[
+        "arxiv", "youtube", "podcast", "twitter", "substack", "url", "inbox"
+    ] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -543,6 +687,11 @@ class InvestigationStatusResponse(BaseModel):
     # the start event has no tier (legacy / daemon-spawned runs predate
     # the field); the surface treats null as the default, never fabricates.
     research_tier: str | None = None
+    # Source-pack intent recorded on the start event. Empty for legacy runs
+    # and for requests that did not choose a source pack; never recomputed.
+    source_policy: list[str] = Field(default_factory=list)
+    # LB-2: parity with InvestigationSummary — the source document, or null.
+    document_id: str | None = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -568,9 +717,27 @@ class DeliverableSummary(BaseModel):
     section_count: int = 0
 
 
+class SeriesStats(BaseModel):
+    """One column of a read-only projection, summarized by the
+    ``py_analysis`` kernel skill (``substrate.agent_skills``): stdlib-only
+    and pure, so the projection is read through ``connect_read`` and no
+    writer handle is opened."""
+
+    name: str
+    kind: str
+    count: int
+    mean: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    total: float | None = None
+
+
 class DeliverableListResponse(BaseModel):
     count: int
     deliverables: list[DeliverableSummary] = Field(default_factory=list)
+    # ``section_count`` across the listed deliverables via
+    # ``py_analysis.summarize_rows``; None when the projection is empty.
+    section_stats: SeriesStats | None = None
 
 
 class CreateSectionRequest(BaseModel):
@@ -702,6 +869,11 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
+    # Additive compare-and-set guard (CR-F1's surviving half). Absent = the
+    # long-standing blind write, so existing callers are unchanged. Supplied,
+    # it must equal the stored prose or the write is refused with 409
+    # `prose_revision_conflict` and nothing is written.
+    based_on_prose_text: str | None = None
     original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -759,6 +931,12 @@ class ProviderRatioResponse(BaseModel):
     openrouter_fraction: float = 0.0
     alert_recommended: bool = False
     alert_reason: str | None = None
+    # An alarm must be able to say "I could not measure". Without these two,
+    # a dead sensor and a quiet system are the SAME payload
+    # (total_dispatches=0, alert_recommended=false) and the cron reads silence
+    # as health.
+    evidence_readable: bool = True
+    unreadable_event_files: int = 0
 
 
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
@@ -884,6 +1062,8 @@ def _detect_source_kind(
         return "youtube"
     if "twitter.com" in u or "x.com" in u or "://t.co" in u:
         return "twitter"
+    if "substack.com" in u:
+        return "substack"
     # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
     # The dashboard convention "podcasts.<host>/feed" + ".rss"
     # extensions cover most.
@@ -1392,6 +1572,14 @@ class OutcomeRecordRequest(BaseModel):
     notes: str | None = None
 
 
+# SPR-08 T3: the attribution routes append a replayable audit row. That write
+# is Phase-1 telemetry (no money moves), so it waits a bounded time for the
+# single-writer lock, like the ad routes' frame writes, and the read is served
+# either way with ``X-Antiek-Attribution-Audit: recorded|failed``. The
+# connect_write default (300 s) would otherwise stall a read behind an ingest.
+_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S = 5.0
+
+
 class AttributionComputeRequest(BaseModel):
     page_id: str
     chunk_to_document: dict[str, str]
@@ -1405,6 +1593,26 @@ class AttributionComputeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
+
+class PublisherClaimRequest(BaseModel):
+    """Body of ``POST /publishers/{ip_holder_id}/claim``.
+
+    Module level, NOT nested inside ``create_app``. This module sets
+    ``from __future__ import annotations`` (line 29), so every annotation is a
+    string that Pydantic resolves against MODULE globals when it builds the
+    request-body TypeAdapter. A class defined in the factory's local scope is
+    not in those globals, so the reference never resolves and
+    ``app.openapi()`` raises PydanticUserError -- taking the whole schema
+    down, not just this route.
+
+    The 32 sibling models that stay local are fine because they are only ever
+    passed as ``response_model=X``, which hands Pydantic the class OBJECT
+    rather than a name to look up. Only a PARAMETER annotation goes through
+    string resolution, and this was the only one.
+    """
+
+    stripe_connect_account_id: str | None = None
 
 
 def create_app(
@@ -1441,6 +1649,34 @@ def create_app(
         ),
     )
 
+    # Database admission conflicts share one retryable HTTP response handler.
+    # ReadLockTimeout covers an external file lock; WriteConfigurationTimeout
+    # covers an incompatible same-process handle after the write wait expires.
+    # Separate types preserve existing route-specific WriteLockTimeout handling.
+    from fastapi.responses import JSONResponse
+
+    from runtime.db_lock import ReadLockTimeout, WriteConfigurationTimeout
+
+    @app.exception_handler(WriteConfigurationTimeout)
+    @app.exception_handler(ReadLockTimeout)
+    async def _database_connection_unavailable(
+        _request: Request, _exc: ReadLockTimeout | WriteConfigurationTimeout
+    ) -> JSONResponse:
+        # Static body: no db path or holder detail leaks to clients. The
+        # 2s Retry-After is a conservative client backoff hint, not derived
+        # from measured hold times.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "database read is temporarily unavailable; retry shortly"
+                    if isinstance(_exc, ReadLockTimeout)
+                    else "database connection is temporarily unavailable; retry shortly"
+                )
+            },
+            headers={"Retry-After": _DB_CONNECTION_RETRY_AFTER_S},
+        )
+
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
     # the operator can override via env for non-default ports or staging
     # hosts. WebSocket origin checks honor the same list.
@@ -1468,20 +1704,6 @@ def create_app(
                 "https://antiek.ai",
                 "https://www.antiek.ai",
             ]
-    if cors_origins:
-        # H6 magic-link auth: ``credentials=True`` is required for the
-        # browser to carry the ANTIEK_SESSION cookie cross-origin from
-        # the Pages frontend to api.antiek.ai. Pair with explicit
-        # origins (no wildcard); the cookie itself is HttpOnly +
-        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
     # ── H4 + H4.5 + H6: operator auth middleware ──
     # THREE complementary auth paths, all opt-in via env vars:
     #
@@ -1582,6 +1804,15 @@ def create_app(
             request.state.user_id = claims.user_id
             request.state.scopes = frozenset(claims.scopes)
             request.state.auth_method = "unauthenticated_local"
+            # Namespace Option A: single-operator local/tests derive the owner
+            # from the configured allowlist address (first entry).
+            if claims.email is None:
+                _op = os.environ.get("ANTIEK_OPERATOR_EMAIL", "").split(",")[0].strip()
+                # Local/tests often have no allowlist env; fall back to a
+                # stable single-operator address so derivation still works.
+                request.state.user_email = _op or "operator@localhost"
+            else:
+                request.state.user_email = claims.email
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
@@ -1656,7 +1887,9 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if not operator_emails or cookie_email in operator_emails:
+                    # Allowlist, never "no list = anyone": with no
+                    # operator email configured a cookie proves nobody.
+                    if cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -1714,6 +1947,32 @@ def create_app(
             },
         )
 
+    if cors_origins:
+        # H6 magic-link auth: ``credentials=True`` is required for the
+        # browser to carry the ANTIEK_SESSION cookie cross-origin from
+        # the Pages frontend to api.antiek.ai. Pair with explicit
+        # origins (no wildcard); the cookie itself is HttpOnly +
+        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[
+                "X-Artifact-ID",
+                "X-Artifact-Style",
+                "X-Artifact-Version",
+                "X-Content-SHA256",
+                "X-Source-SHA256",
+                "X-Artifact-Source-State",
+                "X-Artifact-Current-Source-SHA256",
+                "X-Document-ID",
+                "X-Reader-Revision",
+                "ETag",
+            ],
+        )
+
     # ── Magic-link auth routes (PostHog-style owned login surface) ──
     # Mounted unconditionally so /auth/request + /auth/callback are
     # reachable; the routes themselves no-op when the operator email
@@ -1753,6 +2012,29 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Anchor-first SPR-03 — anchored highlights: owner-scoped pin/list/delete
+    # + the chunk anchor-map (ids/offsets/hashes only, gated like the body).
+    from .book_anchor_routes import register_book_anchor_routes
+    register_book_anchor_routes(app)
+    # Reading-global SPR-01 — the reading-state bus: one position per
+    # owner+document across every reader mount (refs/numbers only, 409 on
+    # stale revision, the empty v1 prefs allowlist).
+    from .reading_state_routes import register_reading_state_routes
+    register_reading_state_routes(app)
+    # Autonomous-diligence SPR-01 — the flag queue: owner-scoped idempotent
+    # flags with write-time ref grounding (refs only — never the object's
+    # text), the queue read, and dismiss.
+    from .diligence_routes import register_diligence_routes
+    register_diligence_routes(app)
+    # Companions SPR-02 — the companion surfaces + the evidence-base query
+    # API: per-document companion (HTML export / structured payload), the
+    # owner-scoped evidence reads, project scope honestly unavailable.
+    from .companion_routes import register_companion_routes
+    register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
@@ -1829,6 +2111,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
+    # time box, approved ceiling, route policy, source policy, and HTML/twin-note
+    # artifact obligations. Does not launch agents or reserve budget.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # OYM P1 §5 — visible tiers (write half): user-settable chunk tier
     # overrides (POST /settings/tier-overrides) + per-chunk override
     # history (GET /settings/tier-overrides?chunk_id=...).
@@ -2050,6 +2337,10 @@ def create_app(
 
     # ── Health ──────────────────────────────────────────────────
 
+    from interfaces.research.api.cascade_routes import (
+        resolved_gather_mode as _resolved_gather_mode,
+    )
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         # Deferred flywheel probe (see create_app): never block /health on the
@@ -2093,7 +2384,11 @@ def create_app(
         from .settings_budget import route_ready_provider_ids
 
         route_ready_providers = route_ready_provider_ids(registered_providers)
+        # Resolve-only (which + identity snapshot of a small file); never a
+        # spawn, never raises — see _probe_prime_lane.
+        prime_lane = _probe_prime_lane()
         return HealthResponse(
+            drw_gather_mode=_resolved_gather_mode(),
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
@@ -2103,35 +2398,18 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
-            turbopuffer_servable_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "servable_enabled"
-                )
-            ),
-            turbopuffer_shadow_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "shadow_enabled"
-                )
-            ),
-            turbopuffer_api_key_present=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "api_key_present"
-                )
-            ),
-            turbopuffer_active_pointer=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "active_pointer_file"
-                )
-            ),
+            turbopuffer_servable_enabled=_tp_flag(app, "servable_enabled"),
+            turbopuffer_shadow_enabled=_tp_flag(app, "shadow_enabled"),
+            turbopuffer_api_key_present=_tp_flag(app, "api_key_present"),
+            turbopuffer_active_pointer=_tp_flag(app, "active_pointer_file"),
             turbopuffer_pointer_context_ok=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "active_pointer_context_ok"
                 )
             ),
-            turbopuffer_hybrid_ready=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "hybrid_ready"
-                )
+            turbopuffer_hybrid_ready=_tp_flag(app, "hybrid_ready"),
+            turbopuffer_probe_error=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get("error")
             ),
             turbopuffer_resolved_kind=str(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
@@ -2148,14 +2426,17 @@ def create_app(
                     "content_hash"
                 )
             ),
-            turbopuffer_duckdb_is_sot=bool(
+            # No bool() and no True default: both would launder "unknown"
+            # into a definite answer. A missing key means the probe never ran,
+            # which is exactly as unknown as a probe that raised.
+            turbopuffer_duckdb_is_sot=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "duckdb_is_sot", True
+                    "duckdb_is_sot"
                 )
             ),
-            turbopuffer_thought_partner_hybrid_wired=bool(
+            turbopuffer_thought_partner_hybrid_wired=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "thought_partner_hybrid_wired", True
+                    "thought_partner_hybrid_wired"
                 )
             ),
             turbopuffer_production_default_mount=bool(
@@ -2171,6 +2452,19 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            memory_node_type_ready=duckdb_health.memory_node_type_ready,
+            memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
+            memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
+            **_probe_backup_freshness(),
+            note_taker_replay=dict(
+                getattr(app.state, "note_taker_recovery", {}) or {}
+            ),
+            prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
+            rlm_ratified=bool(prime_lane["rlm_ratified"]),
+            prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
+            prime_agent_invocations_attempted=int(
+                prime_lane["prime_agent_invocations_attempted"]
+            ),
         )
 
     # ── POST typed event ────────────────────────────────────────
@@ -2203,6 +2497,18 @@ def create_app(
                 role=envelope.role,
                 policy_id=envelope.policy_id,
                 document_id=envelope.document_id,
+                # strict_write makes the except clause below reachable. It says
+                # "Pydantic ValidationError or write error", and with the emitter's
+                # default (False) a write error could never arrive here: `_safe`
+                # swallows it, prints to stderr, and emit_typed still returns a
+                # non-None event_id -- so the `event_id is None` check below, whose
+                # own comment promises to tell the client "nothing was persisted",
+                # could not fire either. A caller therefore received 201 and an
+                # event id for an event that was never written. Measured:
+                # substrate/event_log/events.py:424-428 returns event_id on both
+                # branches. This is a POST whose whole purpose is durability, and
+                # its sibling 503 already distinguishes that case by design.
+                strict_write=True,
             )
         except Exception as exc:  # Pydantic ValidationError or write error
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2549,6 +2855,14 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # Meter 1 ACU for this start (gated, idempotent on investigation_id)
+        # BEFORE anything is claimed, appended or broadcast. A failed charge
+        # (503/429) must mean no run, never an unmetered run behind a 503.
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="post_investigations",
+        )
         replay_event_id: str | None = None
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
@@ -2594,6 +2908,8 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+
+                    source_policy=req.source_policy,
                     owner_user_id=owner_user_id,
                     owner_operation_id=operation_id,
                     owner_model_choices=parsed_choices,
@@ -2668,12 +2984,6 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
-        # Meter 1 ACU for this start (idempotent on investigation_id).
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="post_investigations",
-        )
         warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
         attach_capacity_warn_header(response, warn_gate)
 
@@ -2712,6 +3022,14 @@ def create_app(
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
 
+        # LB-2: the source document (envelope field on any row).
+        doc_id: str | None = None
+        for r in rows:
+            _doc = r.get("document_id")
+            if isinstance(_doc, str) and _doc.strip():
+                doc_id = _doc.strip()
+                break
+
         # Walk newest-first to find the latest phase, latest delivered,
         # and any terminal verdict.
         last_phase: int | None = None
@@ -2746,6 +3064,7 @@ def create_app(
         # (legacy/daemon runs predate the field) — never fabricated.
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
         research_tier: str | None = None
+        source_policy: list[str] = []
         for r in rows:
             if r.get("action_type") == start_action:
                 payload = r.get("payload")
@@ -2753,6 +3072,9 @@ def create_app(
                     rt = payload.get("research_tier")
                     if isinstance(rt, str):
                         research_tier = rt
+                    sp = payload.get("source_policy")
+                    if isinstance(sp, list):
+                        source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
         if terminal_row is not None:
@@ -2769,6 +3091,8 @@ def create_app(
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
                 research_tier=research_tier,
+                source_policy=source_policy,
+                document_id=doc_id,
             )
 
         return InvestigationStatusResponse(
@@ -2779,6 +3103,8 @@ def create_app(
             terminal_payload=None,
             rubric_score=rubric_score,
             research_tier=research_tier,
+            source_policy=source_policy,
+            document_id=doc_id,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -2867,6 +3193,7 @@ def create_app(
             question: str | None = None
             started_at: str | None = None
             completed_at: str | None = None
+            document_id: str | None = None
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: str | None = None
@@ -2931,6 +3258,10 @@ def create_app(
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+                if document_id is None:
+                    _doc = r.get("document_id")
+                    if isinstance(_doc, str) and _doc.strip():
+                        document_id = _doc.strip()
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -2944,6 +3275,7 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
                 spawned_by_daemon=spawned_by_daemon,
+                document_id=document_id,
             ))
 
         # Derive each session container's status from its leaves (the same
@@ -3010,12 +3342,25 @@ def create_app(
         it."""
         import duckdb as _duckdb
 
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
-            con = _duckdb.connect(db_path, read_only=True)
+            # connect_read, not raw duckdb.connect(read_only=True).
+            # db_lock.py:921 says so in as many words, and the reason is not
+            # style: DuckDB REFUSES a read-only handle when this process
+            # already holds the same file read-write, which under
+            # `--workers 1` is the normal state. The raw call raises
+            # ConnectionException — NOT the IOException caught below — so it
+            # escaped as a 500. connect_read catches that exact conflict and
+            # falls back to a read-oriented read-write handle.
+            #
+            # Found by running tools/reachability/probes/usability_keystone.py,
+            # a five-leg journey probe that exists in the tree and that no
+            # workflow runs. Every per-brick test passed; the journey did not.
+            con = connect_read(db_path)
         except _duckdb.IOException as exc:
             raise HTTPException(
                 status_code=503,
@@ -3092,6 +3437,7 @@ def create_app(
     )
     async def post_ingest_source(
         req: IngestSourceRequest,
+        request: Request,
     ) -> IngestSourceResponse:
         """Ingest a URL into the substrate graph. Auto-detects source
         kind unless ``req.kind`` is set. Routes to the appropriate
@@ -3136,11 +3482,24 @@ def create_app(
                 )
             if detected == "youtube":
                 from acquisition.youtube import ingest_youtube
+                from acquisition.youtube.client import fetch_with_data_api
+                from interfaces.research.api import research_tool_search as _tool_lane
+
                 yt_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id
                 }
                 if req.source_tier is not None:
                     yt_kwargs["source_tier"] = req.source_tier
+                connector = _tool_lane.connected_tool_for_request(request, "youtube")
+                if connector is not None:
+                    # Metadata uses the owner's Data API key (videos.list, 1 unit).
+                    # Captions still use unofficial timedtext. The ToS question remains open.
+                    # A failing key is reported as an error, never retried through
+                    # yt-dlp: that would scrape for a user who chose the official API.
+                    try:
+                        yt_kwargs["video"] = fetch_with_data_api(connector, req.url)
+                    finally:
+                        connector.close()
                 yt_r = ingest_youtube(req.url, **yt_kwargs)
                 return IngestSourceResponse(
                     status=(
@@ -3181,6 +3540,37 @@ def create_app(
                     title=title,
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
+                )
+            if detected == "substack":
+                from acquisition.substack import ingest_publication_feed
+
+                feed_url = req.url.rstrip("/")
+                if "/feed" not in feed_url.lower():
+                    feed_url = f"{feed_url}/feed"
+                substack_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                    "max_posts": req.max_episodes,
+                }
+                if req.source_tier is not None:
+                    substack_kwargs["source_tier"] = req.source_tier
+                summary = ingest_publication_feed(feed_url, **substack_kwargs)
+                chunks_written = sum(r.chunks_written for r in summary.results)
+                first_result = next(
+                    (r for r in summary.results if r.status == "ingested"),
+                    summary.results[0] if summary.results else None,
+                )
+                return IngestSourceResponse(
+                    status="ingested" if summary.ingested > 0 else "skipped",
+                    detected_kind="substack",
+                    document_id=first_result.document_id if first_result else None,
+                    document_loaded_event_id=(
+                        first_result.document_loaded_event_id if first_result else None
+                    ),
+                    chunks_written=chunks_written,
+                    skipped_reason=None if summary.ingested > 0 else "no_public_posts_ingested",
+                    title=summary.publication_title,
+                    episodes_processed=len(summary.results),
+                    episodes_ingested=summary.ingested,
                 )
             if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall
@@ -3294,9 +3684,10 @@ def create_app(
 
     @app.get("/deliverables", response_model=DeliverableListResponse)
     async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
-        import duckdb
+
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
@@ -3310,6 +3701,11 @@ def create_app(
             ).fetchall()
         finally:
             con.close()
+        # The projection is already in hand (read-only); summarize its one
+        # numeric column through the kernel skill rather than re-querying.
+        section_summary = summarize_rows(
+            [{"section_count": r[7] or 0} for r in rows]
+        ).summary("section_count")
         return DeliverableListResponse(
             count=len(rows),
             deliverables=[
@@ -3319,15 +3715,28 @@ def create_app(
                     created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
                 ) for r in rows
             ],
+            section_stats=(
+                SeriesStats(
+                    name=section_summary.name,
+                    kind=section_summary.kind,
+                    count=section_summary.count,
+                    mean=section_summary.mean,
+                    minimum=section_summary.minimum,
+                    maximum=section_summary.maximum,
+                    total=section_summary.total,
+                )
+                if section_summary is not None
+                else None
+            ),
         )
 
     @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
     async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT deliverable_id, title, deliverable_kind, status, "
@@ -3436,17 +3845,17 @@ def create_app(
         q: str = Query(default="", max_length=200),
         limit: int = Query(default=20, ge=1, le=100),
     ) -> BlockSearchResponse:
+        from runtime.db_lock import connect_read
         """Search the operator's graph for insight/claim/note blocks to
         drag into a deliverable section. Mode C palette uses this.
 
         Sprint 14 implementation: ILIKE over nodes.canonical_label +
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
-        import duckdb
 
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT n.node_id, n.canonical_label, n.node_type, "
@@ -3582,7 +3991,12 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.graph.ops import (
+            ProseRevisionConflict,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
         from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
         from substrate.write.event_outbox import (
             build_typed_envelope,
@@ -3607,9 +4021,22 @@ def create_app(
                 claim_node_id: str | None = None
                 claim_event_id: str | None = None
                 with eventful_transaction(con, req.investigation_id):
-                    update_section_prose(
-                        con, section_id=section_id, prose_text=req.prose_text,
-                    )
+                    try:
+                        update_section_prose(
+                            con, section_id=section_id, prose_text=req.prose_text,
+                            based_on_prose_text=req.based_on_prose_text,
+                        )
+                    except ProseRevisionConflict as exc:
+                        # Nothing is written and nothing is enqueued: the guard
+                        # raises before the UPDATE, inside the caller's
+                        # transaction, so the whole edit rolls back.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="prose_revision_conflict",
+                            headers={
+                                "X-Prose-Updated-At": str(exc.current_updated_at)
+                            },
+                        ) from exc
                     if req.promote_to_graph:
                         label = req.prose_text.strip().splitlines()[0]
                         if len(label) > 160:
@@ -3690,6 +4117,7 @@ def create_app(
         deliverable_id: str,
         format: str = Query(default="markdown"),
     ) -> ExportFormat:
+        from runtime.db_lock import connect_read
         """Export a deliverable as Markdown, HTML, or a structured JSON
         bundle. Returns the content inline (the caller can save it via
         the Blob API in the browser). The substrate keeps no
@@ -3706,13 +4134,11 @@ def create_app(
             )
         import json as _json
 
-        import duckdb
-
         from substrate.write.deliverable_sources import (
             resolve_deliverable_sources,
         )
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT title, deliverable_kind FROM deliverables "
@@ -3848,7 +4274,9 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore[import-not-found]
+                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    pisa,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -3921,7 +4349,9 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore[import-not-found]
+                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    epub,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4051,13 +4481,24 @@ def create_app(
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
+            # NOT "zero dispatches". We could not look. Fail CLOSED: an alarm
+            # whose sensor is unplugged must page, not report health.
             return ProviderRatioResponse(
-                window_minutes=window_minutes, total_dispatches=0,
+                window_minutes=window_minutes,
+                total_dispatches=0,
+                evidence_readable=False,
+                alert_recommended=True,
+                alert_reason=(
+                    f"event log directory is unreadable ({events_dir!r}); this "
+                    "is NOT a statement that no dispatches occurred — the "
+                    "provider-ratio sensor could not read its own data source."
+                ),
             )
         cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
+        unreadable_files = 0
         for filename in _os.listdir(events_dir):
             if not filename.endswith(".jsonl"):
                 continue
@@ -4067,6 +4508,7 @@ def create_app(
                     _os.path.getmtime(path), tz=UTC,
                 )
             except OSError:
+                unreadable_files += 1
                 continue
             # Skip files entirely older than the cutoff window — saves
             # an open() on the long tail of historical investigations.
@@ -4108,6 +4550,7 @@ def create_app(
                             bucket["success"] += 1
                         total += 1
             except OSError:
+                unreadable_files += 1
                 continue
 
         breakdown = []
@@ -4150,6 +4593,17 @@ def create_app(
                 f"Hermes-primary is likely silently failing."
             )
 
+        if unreadable_files:
+            # Evidence we KNOW we could not read. Unlike the zero-dispatch case
+            # below, there is no ambiguity here to defer to another probe: the
+            # measurement is incomplete and the ratio may be wrong. Page.
+            alert = True
+            unread_note = (
+                f"{unreadable_files} event file(s) could not be read; the "
+                "provider ratio is computed over incomplete evidence."
+            )
+            reason = f"{reason} {unread_note}" if reason else unread_note
+
         return ProviderRatioResponse(
             window_minutes=window_minutes,
             total_dispatches=total,
@@ -4158,6 +4612,8 @@ def create_app(
             openrouter_fraction=openrouter_fraction,
             alert_recommended=alert,
             alert_reason=reason,
+            evidence_readable=unreadable_files == 0,
+            unreadable_event_files=unreadable_files,
         )
 
     # ── Sprint 16 partial: attribution telemetry ───────────────────
@@ -4168,6 +4624,7 @@ def create_app(
     )
     async def get_attribution_report(
         synthesis_id: str,
+        response: Response,
         emit_event: bool = Query(default=False),
     ) -> AttributionReportResponse:
         """Compute attribution shares for a synthesis under all three
@@ -4183,6 +4640,48 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        try:
+            from runtime.db_lock import connect_write
+            from substrate.ad_inventory.attribution import (
+                AttributionResult as AuditAttributionResult,
+            )
+            from substrate.ad_inventory.attribution_audit import (
+                PRODUCER_SYNTHESIS_TELEMETRY,
+                SYNTHESIS_LETTER_TO_ALGORITHM,
+                record_attribution,
+                synthesis_audit_inputs,
+            )
+
+            inputs = synthesis_audit_inputs(r.claims)
+
+            def _record_synthesis_audit() -> None:
+                with connect_write(
+                    default_db_path(),
+                    purpose="api:attribution_audit",
+                    timeout_s=_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S,
+                ) as con:
+                    for letter, res in (("A", r.option_a), ("B", r.option_b), ("C", r.option_c)):
+                        record_attribution(
+                            con,
+                            impression_set_ref=f"synthesis:{synthesis_id}",
+                            result=AuditAttributionResult(
+                                algorithm=SYNTHESIS_LETTER_TO_ALGORITHM[letter],
+                                page_id=synthesis_id,
+                                shares=dict(res.shares),
+                            ),
+                            inputs=inputs,
+                            producer_module=PRODUCER_SYNTHESIS_TELEMETRY,
+                        )
+
+            await asyncio.to_thread(_record_synthesis_audit)
+            response.headers["X-Antiek-Attribution-Audit"] = "recorded"
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "attribution audit failed for synthesis_id=%s: %s",
+                synthesis_id, type(exc).__name__,
+            )
+            response.headers["X-Antiek-Attribution-Audit"] = "failed"
 
         def _to_resp(
             algo: Literal["A", "B", "C"], result: AttributionResult
@@ -4256,9 +4755,9 @@ def create_app(
     async def list_interview_projects() -> list[InterviewProjectSummary]:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT p.project_id, p.title, p.topic_description, "
@@ -4296,11 +4795,11 @@ def create_app(
     async def list_interviews_for_project(
         project_id: str,
     ) -> list[InterviewSummary]:
+        from runtime.db_lock import connect_read
         """All interviews invited under one project, oldest first."""
-        import duckdb
 
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT i.interview_id, i.project_id, i.informant_handle, "
@@ -4381,9 +4880,9 @@ def create_app(
     async def get_interview(interview_id: str) -> InterviewDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             row = con.execute(
                 "SELECT i.interview_id, i.project_id, i.status, "
@@ -4542,11 +5041,66 @@ def create_app(
 
     # ── WebSocket live tail ─────────────────────────────────────
 
+    def _ws_client_is_authorised(ws: WebSocket) -> bool:
+        """Apply the operator gate to a WebSocket handshake.
+
+        ``_operator_auth_middleware`` is installed with
+        ``@app.middleware("http")``, i.e. Starlette ``BaseHTTPMiddleware``,
+        whose ``__call__`` begins ``if scope["type"] != "http": await
+        self.app(...); return``. A WebSocket scope is therefore never seen by
+        it — and for the same reason never seen by ``CORSMiddleware``, so the
+        ``Origin`` header is not validated either. ``/ws/events`` called
+        ``ws.accept()`` unconditionally, which on 2026-09-20 answered a
+        credential-free handshake from an arbitrary Origin with
+        ``101 Switching Protocols`` in production and streamed the owner's
+        live typed-event bus (investigation_id, document_id, question_text)
+        to it.
+
+        The check below is the middleware's cookie path, verbatim in effect:
+        same enforcement-disabled escape, same ``ANTIEK_AUTH_SECRET`` gate,
+        same ``verify_session_cookie`` + allowlist comparison.
+
+        Cookies are the right credential here because a browser cannot set
+        headers on ``new WebSocket()``. The session cookie is issued with
+        ``Domain=.antiek.ai`` and ``SameSite=Lax``, so a handshake from
+        ``antiek.ai`` to ``api.antiek.ai`` is SAME-site and carries it, while
+        a page on any other registrable domain is cross-site and does not —
+        which is precisely the boundary we want.
+        """
+        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        expected_st_client_id = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
+        ).strip().lower()
+        if not expected_token and not operator_emails and not expected_st_client_id:
+            # Enforcement disabled — local dev and the existing tests, which
+            # connect to this socket with no credentials, work unchanged.
+            return True
+        if not os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+            return False
+        session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+        if not session_value:
+            return False
+        try:
+            from substrate.auth import verify_session_cookie
+            claims = verify_session_cookie(session_value)
+        except Exception:  # noqa: BLE001 — invalid cookie is simply unauthorised
+            return False
+        if claims is None:
+            return False
+        cookie_email = claims.email.strip().lower()
+        return cookie_email in operator_emails
+
     @app.websocket("/ws/events")
     async def ws_events(
         ws: WebSocket,
         investigation_id: str | None = Query(default=None),
     ) -> None:
+        if not _ws_client_is_authorised(ws):
+            # Close BEFORE accept: an unauthenticated peer must never reach
+            # the event bus, and never sees 101.
+            await ws.close(code=1008)
+            return
         await ws.accept()
         sub = await bus.subscribe(ws, investigation_id=investigation_id)
         try:
@@ -4880,9 +5434,6 @@ def create_app(
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
-
-    class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
@@ -5292,27 +5843,39 @@ def create_app(
                             "existing_block_count": existing_block_count,
                         },
                     )
-                # Atomic replace: drop all existing blocks, then re-insert
-                # in order. Both operations sit inside the single
-                # connect_write lock so a concurrent read never sees a
-                # partial state.
-                con.execute(
-                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
-                    [notebook_id],
-                )
-                for block in decomposed:
-                    append_block(
-                        con,
-                        notebook_id=notebook_id,
-                        block_type=block.block_type,
-                        ref_id=block.ref_id,
-                        content=block.content_json,
+                # Atomic replace: drop all existing blocks, then re-insert in
+                # order, then stamp the notebook — all or nothing.
+                #
+                # The write lock alone does NOT make this atomic, and the
+                # previous comment here claimed it did. DuckDB autocommits
+                # every statement, so a failure part-way through the re-insert
+                # loop left the DELETE durable and destroyed the operator's
+                # notes; `append_block` raises on an unknown block_type and a
+                # SQL CHECK backs it, so that failure is reachable from a
+                # decomposer emitting a node type the schema rejects.
+                # Fault-injected on origin/main, a 3-block notebook lost 2 of 3.
+                #
+                # SPR-01 closed the empty-doc TRIGGER of this loss. This closes
+                # the class: mutual exclusion is not atomicity, and only the
+                # transaction supplies the second.
+                with con.transaction():
+                    con.execute(
+                        "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                        [notebook_id],
                     )
-                con.execute(
-                    "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
-                    "WHERE notebook_id = ?",
-                    [notebook_id],
-                )
+                    for block in decomposed:
+                        append_block(
+                            con,
+                            notebook_id=notebook_id,
+                            block_type=block.block_type,
+                            ref_id=block.ref_id,
+                            content=block.content_json,
+                        )
+                    con.execute(
+                        "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                        "WHERE notebook_id = ?",
+                        [notebook_id],
+                    )
                 return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
@@ -5662,7 +6225,7 @@ def create_app(
         response_model=BillingSummaryResponse,
     )
     async def billing_summary(
-        user_id: str, period: str,
+        user_id: str, period: str, request: Request,
     ) -> BillingSummaryResponse:
         """Per-user-month billing summary. Period format: YYYY-MM.
 
@@ -5671,6 +6234,27 @@ def create_app(
         wires this against a persisted dispatch.call event index.
         For Sprint 19 the substrate computes from event log on
         demand (slow but correct)."""
+        # `user_id` is a PATH parameter and was used unchecked: any
+        # authenticated caller could read any other user's spend by editing
+        # the URL. The operator allowlist is comma-separated
+        # (operator_allowlist_from_env), so more than one identity
+        # authenticating is a supported configuration, and each gets a
+        # distinct request.state.user_id — which makes this a live IDOR in
+        # that configuration rather than a theoretical one.
+        #
+        # `me` resolves to the caller, so a client never needs to know or
+        # transmit its own id. The operator keeps cross-user read: the
+        # billing dashboard and AISidecar are operator surfaces. When auth is
+        # disabled the caller IS `__operator__` (the same fallback the rest of
+        # the API uses), so local dev and the existing tests are unchanged.
+        caller = str(getattr(request.state, "user_id", None) or "__operator__")
+        if user_id == "me":
+            user_id = caller
+        elif user_id != caller and caller != "__operator__":
+            raise HTTPException(
+                status_code=403,
+                detail="billing summary is scoped to the authenticated user",
+            )
         from substrate.billing.aggregator import aggregate_period
         from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
 
@@ -5765,6 +6349,7 @@ def create_app(
         response_model=AttributionResponse,
     )
     async def attribution_compute(
+        response: Response,
         req: AttributionComputeRequest = Body(...),
     ) -> AttributionResponse:
         """Compute per-document attribution shares for a synthesis
@@ -5774,12 +6359,21 @@ def create_app(
             compute_attribution_option_b,
             compute_attribution_option_c,
         )
+        # ``inputs`` records the exact kwargs each algorithm was called with
+        # (minus page_id): the attribution audit replays them verbatim.
+        inputs: dict[str, Any]
         if req.algorithm == "option_a":
+            inputs = {"chunk_to_document": req.chunk_to_document}
             r = compute_attribution_option_a(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
             )
         elif req.algorithm == "option_b":
+            inputs = {
+                "chunk_to_document": req.chunk_to_document,
+                "chunk_to_claim_confidence": req.chunk_to_claim_confidence,
+                "document_to_source_tier": req.document_to_source_tier,
+            }
             r = compute_attribution_option_b(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
@@ -5787,6 +6381,11 @@ def create_app(
                 document_to_source_tier=req.document_to_source_tier,
             )
         elif req.algorithm == "option_c":
+            inputs = {
+                "chunk_to_document": req.chunk_to_document,
+                "chunk_to_claim_id": req.chunk_to_claim_id,
+                "claim_load_bearing_scores": req.claim_load_bearing_scores,
+            }
             r = compute_attribution_option_c(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
@@ -5798,6 +6397,35 @@ def create_app(
                 status_code=400,
                 detail=f"unknown algorithm {req.algorithm!r}",
             )
+        try:
+            from runtime.db_lock import connect_write
+            from substrate.ad_inventory.attribution_audit import (
+                PRODUCER_AD_INVENTORY,
+                record_attribution,
+            )
+
+            def _record_page_audit() -> None:
+                with connect_write(
+                    default_db_path(),
+                    purpose="api:attribution_audit",
+                    timeout_s=_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S,
+                ) as con:
+                    record_attribution(
+                        con,
+                        impression_set_ref=f"page:{req.page_id}",
+                        result=r,
+                        inputs=inputs,
+                        producer_module=PRODUCER_AD_INVENTORY,
+                    )
+
+            await asyncio.to_thread(_record_page_audit)
+            response.headers["X-Antiek-Attribution-Audit"] = "recorded"
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "attribution audit failed for page_id=%s: %s",
+                req.page_id, type(exc).__name__,
+            )
+            response.headers["X-Antiek-Attribution-Audit"] = "failed"
         return AttributionResponse(
             algorithm=r.algorithm.value,
             page_id=r.page_id,
@@ -6007,8 +6635,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[OutcomeRecentRow] = []
         for r in rows:
             out.append(OutcomeRecentRow(
@@ -6413,8 +7060,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[PayoutTransferResponse] = []
         for r in rows:
             out.append(PayoutTransferResponse(
@@ -6698,8 +7364,26 @@ def create_app(
                     "WHERE user_id = ? ORDER BY requested_at DESC",
                     [user_id],
                 ).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # Table not created yet — genuinely no requests have been filed.
             rows = []
+        except Exception as exc:
+            # GDPR/CCPA surface (master-spec 13.3/13.7). Returning [] told a
+            # user who HAD filed an erasure request that they never did — and
+            # the client cannot tell, so it hid their cancel control while the
+            # cancellation window ran down. Never impersonate "none" here.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "deletion_ledger_unavailable",
+                        "message": (
+                            "Your deletion requests could not be read. This is "
+                            "NOT a statement that none are pending."
+                        ),
+                    }
+                },
+            ) from exc
         return DeletionRequestListResponse(
             requests=[
                 _deletion_request_row_to_response(r) for r in rows
@@ -6881,8 +7565,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[DocumentSummary] = []
         for r in rows:
             out.append(DocumentSummary(
@@ -7010,10 +7713,15 @@ def create_app(
                         else (str(r[7]) if r[7] is not None else None)
                     ),
                 ))
-        except Exception:
+        except duckdb.CatalogException:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
             # return an empty list rather than 500.
+            #
+            # NARROWED from `except Exception`: that also swallowed a genuinely
+            # unreadable store, so corruption was reported as "no rules yet".
+            # Only the missing-table case is a normal state; anything else is a
+            # real failure and must surface.
             rules = []
 
         return SkillRuleListResponse(rules=rules)
@@ -7297,17 +8005,31 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    note_taker_recovery_start_lock = threading.Lock()
+
     def _recover_note_taker_replay() -> None:
         from substrate.graph import default_db_path
 
         from .note_taking import start_replay_recovery
 
-        stop = threading.Event()
-        app.state.note_taker_recovery_stop = stop
-        app.state.note_taker_recovery_worker = start_replay_recovery(
-            db_path=default_db_path(),
-            stop_event=stop,
-        )
+        with note_taker_recovery_start_lock:
+            worker = getattr(app.state, "note_taker_recovery_worker", None)
+            # Repeated startup must retain the live worker and its stop/report
+            # handles; replacing them orphans a thread that shutdown cannot stop.
+            if worker is not None and worker.is_alive():
+                return
+            stop = threading.Event()
+            app.state.note_taker_recovery_stop = stop
+            # The worker's own report, published for /health. Prod 2026-10-01: it
+            # failed against a contended DuckDB write lock for hours — thousands of
+            # stderr lines and no projection progress — while /health answered
+            # "ok", because nothing read what the worker knew.
+            app.state.note_taker_recovery = {}
+            app.state.note_taker_recovery_worker = start_replay_recovery(
+                db_path=default_db_path(),
+                stop_event=stop,
+                state=app.state.note_taker_recovery,
+            )
 
     def _stop_note_taker_replay() -> None:
         stop = getattr(app.state, "note_taker_recovery_stop", None)

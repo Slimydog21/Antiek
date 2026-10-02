@@ -19,7 +19,9 @@ Surface:
   ban-sentinel machinery; OA sources don't have that failure history).
 """
 
-from .licenses import LicenseResolution, resolve_oa_license
+from acquisition.licenses_core import LicenseResolution
+
+from .licenses import resolve_oa_license
 from .throttle import POLITE_POOL_MAILTO, OAThrottle
 
 __all__ = [

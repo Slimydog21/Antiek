@@ -67,12 +67,12 @@ function DecomposeRow({ event }: { event: Event }) {
           <li key={i}>
             <span className="text-ink dark:text-bright">{s.sub_question}</span>{" "}
             {s.category && (
-              <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1">
+              <span className="text-xxs font-mono text-ink-mute dark:text-moonlight ml-1">
                 · {s.category}
               </span>
             )}
             {s.evidence_type_required && (
-              <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1">
+              <span className="text-xxs font-mono text-ink-mute dark:text-moonlight ml-1">
                 · need: {s.evidence_type_required}
               </span>
             )}
@@ -112,7 +112,7 @@ function EvidenceRow({ event }: { event: Event }) {
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <div className="text-[10px] font-mono uppercase text-emerald-700 mb-1">
+          <div className="text-xxs font-mono uppercase text-success mb-1">
             insights ({claims.length})
           </div>
           <ul className="space-y-1.5 text-sm text-ink dark:text-bright font-serif">
@@ -123,7 +123,7 @@ function EvidenceRow({ event }: { event: Event }) {
               <li key={i}>
                 <span className="text-ink dark:text-bright">{c.claim}</span>
                 {c.chunk_ids && c.chunk_ids.length > 0 && (
-                  <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1.5">
+                  <span className="text-xxs font-mono text-ink-mute dark:text-moonlight ml-1.5">
                     [{c.chunk_ids.length} chunk{c.chunk_ids.length === 1 ? "" : "s"}]
                   </span>
                 )}
@@ -132,7 +132,7 @@ function EvidenceRow({ event }: { event: Event }) {
           </ul>
         </div>
         <div>
-          <div className="text-[10px] font-mono uppercase text-sun-deep dark:text-sun mb-1">
+          <div className="text-xxs font-mono uppercase text-sun-deep dark:text-sun mb-1">
             open questions ({gaps.length})
           </div>
           <ul className="space-y-1.5 text-sm text-ink dark:text-bright font-serif">
@@ -218,7 +218,7 @@ function DispatchRow({ event }: { event: Event }) {
     latency_ms?: number;
   };
   return (
-    <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
+    <div className="text-xs font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
       <span>→</span>
       <span>{p.target_role}</span>
       <span>·</span>
@@ -237,7 +237,7 @@ function SkillPatchRow({ event }: { event: Event }) {
   const p = event.payload as { domains_patched?: string[] };
   const ds = p.domains_patched ?? [];
   return (
-    <div className="text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
+    <div className="text-xs font-mono text-shadow-1 dark:text-moonlight italic">
       ✦ Phase 8: patched {ds.length === 0 ? "no" : ds.length} domain skill
       {ds.length === 1 ? "" : "s"}
       {ds.length > 0 && ` (${ds.join(", ")})`}
@@ -247,7 +247,7 @@ function SkillPatchRow({ event }: { event: Event }) {
 
 function GenericRow({ event }: { event: Event }) {
   return (
-    <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
+    <div className="text-xxs font-mono text-ink-mute dark:text-moonlight truncate">
       · {event.action_type}
     </div>
   );
@@ -284,7 +284,7 @@ function CardHeader({ label, detail }: { label: string; detail?: string }) {
     <div className="flex items-baseline justify-between mb-2">
       <div className="text-xs font-semibold text-ink dark:text-bright">{label}</div>
       {detail && (
-        <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">{detail}</div>
+        <div className="text-xxs font-mono text-shadow-1 dark:text-moonlight">{detail}</div>
       )}
     </div>
   );

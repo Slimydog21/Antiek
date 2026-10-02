@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { fn } from "@storybook/test";
 
 import AdSlot, { type AdItem } from "./AdSlot";
 
@@ -43,6 +44,13 @@ export const Suppressed: Story = {
     pattern: "page-border",
     shouldSuppress: true,
     voiceContext: "synthesis-heavy paragraph",
+    // AdSlot invokes onSuppressed DURING RENDER when shouldSuppress is true
+    // (AdSlot.tsx: `if (shouldSuppress) { if (onSuppressed) {...} }`).
+    // Storybook 8 throws on an IMPLICIT action arg called at render time, so
+    // the preview-level `argTypesRegex: "^on[A-Z].*"` stub is not enough here
+    // — the story rendered a Storybook error page instead of the component,
+    // and lost-pixel captured that error page as its "current" shot.
+    onSuppressed: fn(),
   },
 };
 

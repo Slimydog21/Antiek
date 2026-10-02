@@ -19,10 +19,9 @@ from substrate.ad_inventory.payout import (
     PayoutRouter,
     RevShareDecision,
     RevShareKind,
-    distribute_session_ad_revenue,
     distribute_with_gates,
 )
-from substrate.billing.kyc import KycRegistry, complete, begin, invite
+from substrate.billing.kyc import KycRegistry, begin, complete, invite
 from substrate.graph.schema import init_database
 
 

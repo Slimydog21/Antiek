@@ -25,7 +25,7 @@ def make_broadcasting_observation_hook(
     investigation_id: str,
     broadcast: Callable[[Event], None],
     param_version: str = "substrate-v0",
-):
+) -> Callable[[str, bool, float, float, float, str], None]:
     """Build an ``on_observation`` hook for ``PreferenceLearningStream``
     that emits a typed event per accepted observation.
 

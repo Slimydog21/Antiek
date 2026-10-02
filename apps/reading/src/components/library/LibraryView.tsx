@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonInput } from "../lemon";
+import { ErrorBanner, LemonButton, LemonInput } from "../lemon";
 import { useLibrary, type LibraryFilter } from "./useLibrary";
 import WorkCard from "./WorkCard";
+import { LoadingState } from "../states";
 
 /**
  * LibraryView — the M2 Library browse view (Read SPR-09), the paginated browse
@@ -124,7 +125,7 @@ export default function LibraryView({
       </div>
 
       {routeAbsent && (
-        <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright flex items-center justify-between gap-3">
+        <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright flex items-center justify-between gap-3">
           <span>
             The catalog isn’t available yet — the library service hasn’t come up.
             This is an honest “not ready”, not an empty shelf.
@@ -136,13 +137,13 @@ export default function LibraryView({
       )}
 
       {error && (
-        <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+        <ErrorBanner>
           {error}
-        </p>
+        </ErrorBanner>
       )}
 
       {loading && (
-        <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+        <LoadingState variant="inline" label="Opening the library" />
       )}
 
       {!loading && !error && !routeAbsent && works.length === 0 && (
@@ -185,7 +186,7 @@ export default function LibraryView({
           >
             ← Previous
           </LemonButton>
-          <span className="text-[12px] font-mono text-shadow-1 dark:text-moonlight">
+          <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
             Page {page} of {lastPage}
           </span>
           <LemonButton

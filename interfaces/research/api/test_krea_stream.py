@@ -359,16 +359,31 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(
 # ── (c) NO streaming route was added under /krea (RULE-1) ────────────────
 
 
-def test_krea_namespace_is_exactly_three_routes_no_stream() -> None:
-    """The /krea namespace exposes EXACTLY the three SPR-02 routes and
-    nothing matching a streaming shape. SPR-05 (NO-GO) adds no SSE /
-    WebSocket / EventSource / /krea/stream endpoint."""
+def test_krea_namespace_is_exactly_the_sanctioned_routes_no_stream() -> None:
+    """The /krea namespace exposes EXACTLY the sanctioned routes and nothing
+    matching a streaming shape. SPR-05 (NO-GO) adds no SSE / WebSocket /
+    EventSource / /krea/stream endpoint.
+
+    ``/krea/status`` joined the original three SPR-02 routes after this test
+    was written. It is a read-only observability endpoint: a plain
+    ``@app.get`` returning ``status_snapshot()``, which documents that it
+    deliberately avoids ``_roll_day_locked()`` and ``rate_limited()`` so that
+    observing the budget cannot mutate it. It is therefore not a streaming
+    shape and does not violate RULE-1 — but the exact-set assertion is kept
+    (rather than loosened to a subset check) precisely so the NEXT route to
+    appear also has to be justified here rather than arriving unremarked.
+
+    This expectation was stale and unnoticed from the day the route landed,
+    because nothing collected this file; see
+    tests/test_test_collection_coverage.py.
+    """
     app = _app()
     krea = _krea_paths(app)
     assert krea == {
         "/krea/generate",
         "/krea/jobs/{job_id}",
         "/krea/scene",
+        "/krea/status",
     }, f"unexpected /krea route surface: {sorted(krea)}"
 
     # No krea path matches any streaming marker.

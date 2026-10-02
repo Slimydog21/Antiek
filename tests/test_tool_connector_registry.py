@@ -148,6 +148,31 @@ def test_edgar_contact_is_encrypted_and_resolved_without_public_echo(paths) -> N
     assert contact not in repr(connector)
 
 
+def test_edgar_resolves_every_owner_onto_the_one_host_wide_window(paths, tmp_path, monkeypatch) -> None:
+    """EDGAR's rate window belongs to the host, never to an owner.
+
+    SEC allows 10 requests per second per IP and blocks the address for about
+    ten minutes past that. Every account's EDGAR request leaves this server
+    from one address, so a window per owner would let N accounts send 8N a
+    second between them and trip the block for all of them.
+    """
+    _, artifact = paths
+    monkeypatch.setenv("ANTIEK_CONNECTOR_RATE_DIR", str(tmp_path / "rate"))
+    owners = ("user-a", "user-b")
+    for owner in owners:
+        connect_tool(owner, "edgar", f"{owner}@example.test", artifact_path=artifact, key_bytes=KEY_BYTES)
+    connectors = [
+        resolve_tool_connection(owner, "edgar", artifact_path=artifact, key_bytes=KEY_BYTES)
+        for owner in owners
+    ]
+    try:
+        assert [c.governor.scope for c in connectors] == ["host_shared", "host_shared"]
+        assert {c.governor.state_path for c in connectors} == {str(tmp_path / "rate" / "edgar.json")}
+    finally:
+        for connector in connectors:
+            connector.close()
+
+
 def test_tampered_fingerprint_degrades_and_refuses_resolution(paths) -> None:
     registry, artifact = paths
     connect_tool(

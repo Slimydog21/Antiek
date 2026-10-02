@@ -47,7 +47,11 @@ export function LemonDropdown({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      // The Esc is the menu's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -109,6 +113,7 @@ export function LemonDropdown({
             "py-1 " + menuClassName
           }
           role="menu"
+          data-esc-overlay=""
         >
           {children({ close })}
         </div>
@@ -143,7 +148,7 @@ export function LemonMenuItem({
       disabled={disabled}
       role="menuitem"
       className={
-        "w-full flex items-center gap-2 px-3 py-1.5 text-left text-[13px] " +
+        "w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm " +
         "text-ink dark:text-bright " +
         "hover:bg-sun/20 dark:hover:bg-sun/15 " +
         "disabled:opacity-50 disabled:pointer-events-none"
@@ -152,7 +157,7 @@ export function LemonMenuItem({
       {icon && <span className="shrink-0 w-4 text-center">{icon}</span>}
       <span className="flex-1">{children}</span>
       {hint && (
-        <kbd className="shrink-0 border border-ink dark:border-bright rounded px-1 text-[10px] font-mono leading-tight bg-ice-1 dark:bg-charcoal-1 text-ink dark:text-bright">
+        <kbd className="shrink-0 border border-ink dark:border-bright rounded px-1 text-xxs font-mono leading-tight bg-ice-1 dark:bg-charcoal-1 text-ink dark:text-bright">
           {hint}
         </kbd>
       )}

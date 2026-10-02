@@ -27,6 +27,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Write compose index when multiple ids given",
     )
+    p.add_argument(
+        "--draft-merge",
+        action="store_true",
+        help="Write no-mutation draft merge review HTML when composing",
+    )
     p.add_argument("--no-event", action="store_true", help="Skip artifact.generated emit")
     args = p.parse_args(argv)
     if args.import_notes:
@@ -40,9 +45,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.investigation_ids:
         p.error("investigation_ids required unless --import-notes is set")
-    if len(args.investigation_ids) > 1 and args.compose:
-        composed = compose_artifacts(args.investigation_ids)
-        print(composed.path)
+    if len(args.investigation_ids) > 1 and (args.compose or args.draft_merge):
+        composed = compose_artifacts(
+            args.investigation_ids,
+            write_draft_merge=args.draft_merge,
+        )
+        print(composed.draft_merge_path or composed.path)
         return 0
     for iid in args.investigation_ids:
         exported = export_research_artifact(iid, emit_event=not args.no_event)

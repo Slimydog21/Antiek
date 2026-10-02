@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { CreatePlanResponse, PlanResponse } from "../../api/research";
-import { WERNER_EXPERIENCE_EVENT } from "../../werner";
+import { MASCOT_EXPERIENCE_EVENT } from "../../mascot";
 
 const {
   createPlanMock,
@@ -362,7 +362,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
 
   it("launch approves then launches the plan and hands back the session", async () => {
     const reaction = vi.fn();
-    window.addEventListener(WERNER_EXPERIENCE_EVENT, reaction);
+    window.addEventListener(MASCOT_EXPERIENCE_EVENT, reaction);
     createPlanMock.mockResolvedValue(CREATE_RESP);
     approvePlanMock.mockResolvedValue({
       root_node_id: "q-pn-root",
@@ -390,7 +390,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     expect((reaction.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
       experience: "deep_research_start",
     });
-    window.removeEventListener(WERNER_EXPERIENCE_EVENT, reaction);
+    window.removeEventListener(MASCOT_EXPERIENCE_EVENT, reaction);
   });
 
   it("freezes plan and budget controls while approval and launch are in flight", async () => {

@@ -13,26 +13,12 @@ failure can never break a real synthesis — matches the
 
 from __future__ import annotations
 
-import os
-import sys
-
-try:
-    from ...event_log import emit_typed
-    from ...schemas import (
-        PhaseEnterPayload,
-        PhaseExitPayload,
-        PhaseVerifyPayload,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
-        PhaseEnterPayload,
-        PhaseExitPayload,
-        PhaseVerifyPayload,
-    )
-
+from substrate.event_log import emit_typed
+from substrate.schemas import (
+    PhaseEnterPayload,
+    PhaseExitPayload,
+    PhaseVerifyPayload,
+)
 
 _DEFAULT_POLICY_ID = "orchestrator-deterministic"
 

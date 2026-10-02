@@ -14,6 +14,7 @@ const SECRET = "AIza-secret-never-render";
 const rows: ToolConnection[] = [
   {
     vendor: "youtube",
+    searchable: true,
     display_name: "YouTube Data API",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -28,10 +29,13 @@ const rows: ToolConnection[] = [
       reset_at: "2026-08-13T00:00:00-07:00",
       hard_exhausted: false,
       note: "Local Antiek meter",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
     vendor: "polygon",
+    searchable: false,
     display_name: "Polygon.io",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -46,10 +50,13 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Provider quota is not available to Antiek",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
     vendor: "fmp",
+    searchable: false,
     display_name: "Financial Modeling Prep",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -64,10 +71,13 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Provider quota is not available to Antiek",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
     vendor: "edgar",
+    searchable: false,
     display_name: "SEC EDGAR",
     credential_kind: "contact",
     auth: "none",
@@ -82,6 +92,29 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Local ceiling: 8 requests per second",
+      estimated_cost_usd: null,
+      cost_note: null,
+    },
+  },
+  {
+    vendor: "x",
+    searchable: true,
+    display_name: "X Developer API",
+    credential_kind: "api_key",
+    auth: "bearer_token",
+    docs_url: "https://example.test/x",
+    status: "configured_unverified",
+    credential_present: true,
+    status_note: null,
+    quota: {
+      kind: "rate_ceiling",
+      remaining: null,
+      limit: 25,
+      reset_at: null,
+      hard_exhausted: null,
+      note: "Antiek's own per-account brake on your key: 25 requests per 15 minutes. It is not a provider allowance.",
+      estimated_cost_usd: 0.125,
+      cost_note: "X bills pay-per-use credits, not a flat monthly tier: about $0.005 per post returned.",
     },
   },
 ];
@@ -113,6 +146,26 @@ describe("ToolConnectionsPanel", () => {
     expect(screen.getByText("Local ceiling: 8 requests per second")).toBeTruthy();
     expect(screen.getByText("Needs attention")).toBeTruthy();
     expect(document.body.textContent).not.toContain(SECRET);
+  });
+
+  it('labels a configured polygon row "connected, not yet used" rather than configured', async () => {
+    // Polygon is connectable but no research surface reads it. A stored key
+    // must not be reported as configured; the row says exactly what is true.
+    const polygonStored: ToolConnection = {
+      ...rows[1],
+      status: "configured_unverified",
+      credential_present: true,
+    };
+    vi.mocked(fetchToolConnections).mockResolvedValue([rows[0], polygonStored]);
+    render(<ToolConnectionsPanel />);
+    const polygon = (await screen.findByText("Polygon.io")).closest("li")!;
+    expect(within(polygon).getByText("Connected, not yet used")).toBeTruthy();
+    expect(within(polygon).queryByText("Credential stored · not yet verified")).toBeNull();
+    expect(within(polygon).getByText(/no Antiek research surface reads this provider yet/)).toBeTruthy();
+    // A searchable vendor with a stored key keeps the ordinary label.
+    const youtube = (await screen.findByText("YouTube Data API")).closest("li")!;
+    expect(within(youtube).getByText("Credential stored · not yet verified")).toBeTruthy();
+    expect(within(youtube).queryByText("Connected, not yet used")).toBeNull();
   });
 
   it("submits and immediately clears a write-only password", async () => {
@@ -261,6 +314,18 @@ describe("ToolConnectionsPanel", () => {
     await screen.findByText("Quota exhausted");
     expect(screen.getByText(/Local quota exhausted · resets/)).toBeTruthy();
     expect(screen.getByRole("meter", { name: "YouTube local quota remaining" }).getAttribute("value")).toBe("0");
+  });
+
+  it("shows what a pay-per-use provider costs rather than only its ceiling", async () => {
+    render(<ToolConnectionsPanel />);
+    const x = (await screen.findByText("X Developer API")).closest("li")!;
+    // The dollar figure, composed from the sourced per-post rate.
+    expect(within(x).getByText(/Costs you up to \$0\.125 per full-size search/)).toBeTruthy();
+    // And its provenance, so the number is never shown bare.
+    expect(within(x).getByText(/pay-per-use credits, not a flat monthly tier/)).toBeTruthy();
+    // A vendor with no sourced rate says nothing rather than guessing.
+    const youtube = screen.getByText("YouTube Data API").closest("li")!;
+    expect(within(youtube).queryByText(/Costs you up to/)).toBeNull();
   });
 
   it("uses full-width 44px controls at the mobile breakpoint", async () => {

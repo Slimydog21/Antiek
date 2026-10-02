@@ -149,11 +149,18 @@ async def test_investigation_deposits_synthesis_with_manifest(
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 
     # ── The SPR-03 witness assertions: the loop CLOSED + DEPOSITED ──────
-    import duckdb
-
+    from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
 
-    con = duckdb.connect(default_db_path(), read_only=True)
+    # NOT a raw `duckdb.connect(..., read_only=True)`. The loop under test
+    # holds this database read-write in THIS process, and DuckDB refuses a
+    # second connection opened with a different configuration:
+    #   ConnectionException: Can't open a connection to same database file
+    #   with a different configuration than existing connections
+    # That is what reded CI shard 1 on #3300. `connect_read` absorbs exactly
+    # this conflict (plus the unique-file-handle / already-attached variants)
+    # by falling back to a read-oriented handle, and re-raises anything else.
+    con = connect_read(default_db_path())
     try:
         n_synth = con.execute(
             "SELECT count(*) FROM syntheses WHERE investigation_id = ?", [inv]

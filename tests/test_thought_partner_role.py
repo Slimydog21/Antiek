@@ -40,6 +40,31 @@ def test_compose_prompt_includes_style_guide_when_provided():
     assert "sidelobe" in prompt
 
 
+def test_compose_prompt_advertises_the_skill_catalog():
+    # SPR-02 task 3: the kernel-skill catalog (substrate.agent_skills.registry)
+    # is rendered as prose into every thought-partner prompt, so the model is
+    # told what the research agents can execute. Keyed on the typed manifests
+    # rather than on frozen prose, so adding a skill cannot silently drop out.
+    from substrate.agent_skills.registry import list_skills
+
+    prompt = compose_thought_partner_prompt(
+        user_prompt="What should we chase next?",
+        selected_notes=[{"note_id": "n-1", "note_text": "Test"}],
+    )
+    assert "RESEARCH SKILL CATALOG" in prompt
+    manifests = list_skills()
+    assert manifests, "registry advertises no skills"
+    for m in manifests:
+        assert f"- {m.name}(" in prompt
+        assert m.summary in prompt
+    # After the notes, before the closing instruction: context, not directive.
+    assert (
+        prompt.index("SELECTED NOTES:")
+        < prompt.index("RESEARCH SKILL CATALOG")
+        < prompt.index("Respond in the JSON shape")
+    )
+
+
 def test_parse_challenge_shape():
     response = json.dumps({
         "shape": "challenge",

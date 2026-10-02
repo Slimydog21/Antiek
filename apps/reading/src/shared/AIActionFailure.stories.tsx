@@ -10,7 +10,7 @@ import AIActionFailure from "./AIActionFailure";
  *   - failure WITHOUT a reason (the honest no-provider/credential sentence),
  *   - the retrying state (the action re-runs in place; this never navigates).
  *
- * Werner skin (Lemon tokens) — no hardcoded colors.
+ * Brain skin (Lemon tokens) — no hardcoded colors.
  */
 const meta = {
   title: "Shared / AIActionFailure (U-04)",

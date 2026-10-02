@@ -70,6 +70,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.event_log import EVENT_SCHEMA_VERSION, default_events_dir  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
 
@@ -78,7 +79,11 @@ export_router = APIRouter(prefix="/export", tags=["export"])
 # Lock-window ceiling for the consistent snapshot. Shorter than the writer
 # default (300s): an HTTP request must fail loudly rather than pin a request
 # thread for minutes behind a stuck writer.
-EXPORT_LOCK_TIMEOUT_S = 15.0
+# Must exceed runtime.db_lock's warm-writer keepalive (default 20s): a parked
+# in-process writer releases the flock only when its keepalive lapses, so a
+# shorter wait here answers 503 on an IDLE service — measured on prod
+# 2026-09-21 ("graph write lock held by another process" after 15.09s).
+EXPORT_LOCK_TIMEOUT_S = 30.0
 
 # Value-free 503 details: never echo paths, exceptions, or stack traces.
 _DB_UNAVAILABLE = "graph database unavailable"
@@ -225,10 +230,10 @@ def _export_graph(
         except OSError:
             pass
 
-        import duckdb
+
 
         try:
-            con = duckdb.connect(db_path, read_only=True)
+            con = connect_read(db_path)
         except Exception:
             raise _ExportUnavailable(_DB_UNAVAILABLE) from None
         try:

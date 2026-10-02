@@ -27,7 +27,7 @@ from .rubric import (
 )
 
 
-class SuppressionVerdictKind(str, enum.Enum):
+class SuppressionVerdictKind(enum.StrEnum):
     RENDER = "render"
     SUPPRESS = "suppress"
 

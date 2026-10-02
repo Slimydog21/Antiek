@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from runtime.db_lock import connect_read
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 
 from ..adapters.notebook import ResolvedRefData
 
@@ -19,6 +20,13 @@ _KIND_PAYLOAD_KEYS: dict[str, str] = {
     "question": "question",
     "insight": "statement",
 }
+
+# Node kinds that are DERIVED FROM SOURCES. One of these with no source
+# document at all (no metadata pointer, no supported_by edge) is an
+# unsupported claim, not the operator's own words: its rights are unknown
+# and it resolves to the gated default. A question (the operator asked it)
+# or any other kind keeps None — genuinely own content.
+_SOURCED_KINDS: frozenset[str] = frozenset({"claim", "insight", "evidence"})
 
 
 def _parse_metadata(raw: str | None) -> dict[str, Any]:
@@ -63,8 +71,14 @@ def _document_rights(
         [document_id],
     ).fetchone()
     if row is None:
-        return None, None, None
+        # The node names a source document that is not there. Its rights are
+        # UNKNOWN, which the rights chokepoint treats as the gated default —
+        # never as None, which the deliverable adapter reads as "the
+        # operator's own content" and exports in full.
+        return None, GATED_DEFAULT_CONTENT_CLASS, None
     title, content_class, ip_holder_id = row
+    if content_class is None:
+        content_class = GATED_DEFAULT_CONTENT_CLASS
     return title, content_class, ip_holder_id
 
 
@@ -93,6 +107,8 @@ def resolve_refs(ref_ids: list[str], *, db_path: str) -> dict[str, ResolvedRefDa
             title: str | None = None
             content_class: str | None = None
             ip_holder_id: str | None = None
+            if not source_doc_id and str(node_type) in _SOURCED_KINDS:
+                content_class = GATED_DEFAULT_CONTENT_CLASS
             if source_doc_id:
                 title, content_class, ip_holder_id = _document_rights(
                     con, source_doc_id

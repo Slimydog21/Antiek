@@ -10,6 +10,7 @@ and the §16 invariant (the harness imports no second runtime).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -19,21 +20,21 @@ from compounding.benchmark.harness import (
     WarmSeed,
     run_arm,
 )
-from compounding.benchmark.question_set import load_question_set
+from compounding.benchmark.question_set import BenchmarkQuestion, load_question_set
 from substrate.event_log import trajectory
 
 
 @pytest.fixture
-def dirs(tmp_path):
+def dirs(tmp_path: Path) -> tuple[str, str]:
     return os.path.join(tmp_path, "events"), os.path.join(tmp_path, "graphs")
 
 
 @pytest.fixture
-def headline_q():
+def headline_q() -> BenchmarkQuestion:
     return load_question_set().headline_questions()[0]
 
 
-def test_arms_distinct_graph_handles(dirs, headline_q):
+def test_arms_distinct_graph_handles(dirs: tuple[str, str], headline_q: BenchmarkQuestion) -> None:
     """M2 acceptance + §2 arm isolation: the cold / warm / irrelevant arms hold
     DISTINCT db_path identities (single-writer-per-graph; no shared writer)."""
     events_dir, graphs_dir = dirs
@@ -48,7 +49,7 @@ def test_arms_distinct_graph_handles(dirs, headline_q):
         assert os.path.dirname(r.db_path) == graphs_dir
 
 
-def test_cold_arm_has_no_reuse_substrate(dirs, headline_q):
+def test_cold_arm_has_no_reuse_substrate(dirs: tuple[str, str], headline_q: BenchmarkQuestion) -> None:
     """The cold arm runs with retrieval_substrate=None (the automatic no-reuse
     path); the warm/irrelevant arms run with a live substrate."""
     events_dir, graphs_dir = dirs
@@ -58,7 +59,7 @@ def test_cold_arm_has_no_reuse_substrate(dirs, headline_q):
     assert warm.reuse_substrate_active is True
 
 
-def test_warm_arm_reaches_seeds_via_real_reuse_surface(dirs, headline_q):
+def test_warm_arm_reaches_seeds_via_real_reuse_surface(dirs: tuple[str, str], headline_q: BenchmarkQuestion) -> None:
     """The warm arm is populated ONLY through the deposit→retrieve→reuse surface
     — a ``knowledge.reused`` event lands on the investigation's trajectory
     (the reuse path ran), and the seeded unit count is non-zero. No back door."""
@@ -73,7 +74,7 @@ def test_warm_arm_reaches_seeds_via_real_reuse_surface(dirs, headline_q):
     )
 
 
-def test_control_question_seeds_nothing_in_warm(dirs):
+def test_control_question_seeds_nothing_in_warm(dirs: tuple[str, str]) -> None:
     """A zero-overlap control question names no seeded units, so even the WARM
     arm seeds nothing for it — it cannot compound and must stay flat."""
     events_dir, graphs_dir = dirs
@@ -82,7 +83,7 @@ def test_control_question_seeds_nothing_in_warm(dirs):
     assert warm.seeded_unit_count == 0
 
 
-def test_irrelevant_arm_seeds_same_count_as_warm(dirs, headline_q):
+def test_irrelevant_arm_seeds_same_count_as_warm(dirs: tuple[str, str], headline_q: BenchmarkQuestion) -> None:
     """§2 graph-size control: the irrelevant arm seeds the SAME COUNT of units as
     the warm arm (differing only in topical relevance) so the control isolates
     relevance from graph-presence."""
@@ -92,7 +93,7 @@ def test_irrelevant_arm_seeds_same_count_as_warm(dirs, headline_q):
     assert irr.seeded_unit_count == warm.seeded_unit_count == len(headline_q.seeded_unit_ids)
 
 
-def test_demo_loop_delta_is_null(dirs, headline_q):
+def test_demo_loop_delta_is_null(dirs: tuple[str, str], headline_q: BenchmarkQuestion) -> None:
     """THE KEYSTONE, surfaced at the harness: the reuse-blind demo loop makes no
     dispatch.call, so warm and cold token_cost_usd are BOTH 0 — the honest
     null. This test documents the finding mechanically; it does not 'pass' by

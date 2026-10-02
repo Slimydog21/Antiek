@@ -1,12 +1,13 @@
 /**
- * Shared arcade cartridge factory — the single entry both ArcadeCabinet and
- * LoadingGameHost use to build a playable cartridge. Tests drive score/wave
- * progression through THIS factory (the host entry path), not a re-implemented
- * game loop.
+ * Shared arcade cartridge factory — the single entry the wait-arcade host
+ * (`ResearchWaitArcadeGame`) uses to build a playable cartridge. Tests drive
+ * score/wave progression through THIS factory (the host entry path), not a
+ * re-implemented game loop.
  */
 
 import { createSeededRng } from "./engine/rng";
 import type { Cartridge } from "./engine/types";
+import type { Mode } from "../design/tokens";
 import { createIceFishingCartridge } from "./games/ice-fishing";
 import { createZombiesCartridge } from "./games/zombies";
 
@@ -14,15 +15,24 @@ export type ArcadeGameKind = "ice-fishing" | "zombies";
 
 export function createArcadeCartridge(
   game: ArcadeGameKind,
-  options?: { reducedMotion?: boolean },
+  options?: {
+    reducedMotion?: boolean;
+    /**
+     * App light/dark mode. Cartridges follow the host theme (D10); defaults
+     * to "day", matching the `prefers-color-scheme` fallback.
+     */
+    mode?: Mode;
+  },
 ): Cartridge {
   if (game === "ice-fishing") {
     return createIceFishingCartridge({
       reducedMotion: Boolean(options?.reducedMotion),
+      mode: options?.mode,
     });
   }
   return createZombiesCartridge({
     reducedMotion: Boolean(options?.reducedMotion),
+    mode: options?.mode,
   });
 }
 

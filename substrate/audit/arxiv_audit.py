@@ -178,6 +178,29 @@ def _find_body_keys(obj: Any) -> set[str]:
     return bad
 
 
+
+# §9.0 by value shape. An arXiv id is ~20 chars, a document_id ~40, a reason a
+# sentence. Nothing the trail is allowed to carry approaches this; an abstract,
+# an excerpt or a body exceeds it many times over.
+_MAX_DETAIL_STRING_CHARS = 400
+
+
+def _find_long_strings(obj: Any, path: str = "detail") -> list[str]:
+    """Paths of every string value longer than the cap, at any depth (dicts AND
+    lists), so a body cannot hide under an unlisted key or inside a list."""
+    found: list[str] = []
+    if isinstance(obj, str):
+        if len(obj) > _MAX_DETAIL_STRING_CHARS:
+            found.append(path)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            found.extend(_find_long_strings(v, f"{path}.{k}"))
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            found.extend(_find_long_strings(v, f"{path}[{i}]"))
+    return found
+
+
 def _reject_body_in_detail(detail: dict[str, Any]) -> None:
     """§9.0 enforcement: refuse any ``detail`` carrying a body-shaped key ANYWHERE
     in its nested structure (dicts AND lists). The audit trail records refs +
@@ -189,6 +212,19 @@ def _reject_body_in_detail(detail: dict[str, Any]) -> None:
             f"arxiv_audit detail must not carry body content (§9.0); offending "
             f"keys (any nesting depth): {sorted(bad)}. The audit trail stores "
             "document_id/arxiv_id/refs/counts only — never raw_text/snippet/body."
+        )
+    # A key-NAME denylist is only as complete as its author's imagination:
+    # ``excerpt``, ``abstract``, ``reason``, or a body inside a list of
+    # strings all sailed through and were persisted verbatim into the audit
+    # trail. §9.0 is a rule about what the trail CARRIES, so enforce it on the
+    # shape of the values: refs and counts are short; paper content is not.
+    long_paths = _find_long_strings(detail)
+    if long_paths:
+        raise ValueError(
+            f"arxiv_audit detail must not carry body-shaped content (§9.0); "
+            f"string values over {_MAX_DETAIL_STRING_CHARS} chars at: "
+            f"{sorted(long_paths)}. Record a document_id/arxiv_id ref and a "
+            "count, never the text itself."
         )
 
 

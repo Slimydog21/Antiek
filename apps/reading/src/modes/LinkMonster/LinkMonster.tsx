@@ -27,6 +27,7 @@ import type {
   MonsterStats,
 } from "../../api/linkMonster";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
+import { LemonModal } from "../../components/lemon/LemonModal";
 import { PLATFORM_META, createMonsterSketch } from "./monsterSketch";
 import type { MonsterPhase } from "./monsterSketch";
 import "./LinkMonster.css";
@@ -214,21 +215,22 @@ export default function LinkMonster() {
         )}
       </aside>
 
-      {selected && (
-        <div
-          className="lm-modal-backdrop"
-          role="presentation"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setSelected(null);
-          }}
-        >
-          <article className="lm-modal" role="dialog" aria-modal="true">
-            <header className="lm-modal-head">
-              <h2>{selected.digest.title ?? selected.source_uri}</h2>
-              <button type="button" className="lm-modal-close" onClick={() => setSelected(null)}>
-                ✕
-              </button>
-            </header>
+      <LemonModal
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        size="md"
+        title={
+          selected ? (
+            <span className="lm-modal-title">
+              {selected.digest.title ?? selected.source_uri}
+            </span>
+          ) : (
+            ""
+          )
+        }
+      >
+        {selected && (
+          <article className="lm-modal">
             <dl className="lm-modal-facts">
               <div>
                 <dt>platform</dt>
@@ -306,8 +308,8 @@ export default function LinkMonster() {
               </ul>
             </section>
           </article>
-        </div>
-      )}
+        )}
+      </LemonModal>
     </div>
   );
 }

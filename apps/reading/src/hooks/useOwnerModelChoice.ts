@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchUserModels, type UserModelRow } from "../api/settingsModels";
 import type { UserModelChoice } from "../lib/api";
+import { userModelVariants } from "../lib/userModelVariants";
 
 /**
  * useOwnerModelChoice — "which of my own models drives THIS action", as state.
@@ -66,10 +67,15 @@ export interface OwnerModelChoiceState {
   selected: UserModelRow | null;
   /** `ModelUsagePicker`'s `value`: the row id, or "" for the house route. */
   selectedRowId: string;
+  /** `ModelUsagePicker`'s `valueModelId`: the chosen variant under that row
+   *  (one of its `model_ids`), or null for the row's primary. */
+  selectedModelId: string | null;
   /** What the picker's trigger should read. */
   triggerLabel: string;
-  /** `ModelUsagePicker`'s `onChange`; "" selects the house route. */
-  select: (rowId: string) => void;
+  /** `ModelUsagePicker`'s `onChange`; "" selects the house route. The
+   *  optional second argument names a variant under the row (SPR-03 Task 2:
+   *  one key, many variants); omitted means the row's primary. */
+  select: (rowId: string, modelId?: string) => void;
   /** Spread into the start request. Both fields, or neither.
    *  `launchKey` is the request content this launch carries (the question, the
    *  piece title, the subject name): same key → same operation id, so a resend
@@ -90,6 +96,7 @@ export function useOwnerModelChoice(
   const [models, setModels] = useState<UserModelRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [selectedRowId, setSelectedRowId] = useState("");
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   // The current launch identity: which content it was minted for, and the id
   // itself. A ref, not state — it is read and rolled inside submit, and no
   // render depends on it.
@@ -119,12 +126,23 @@ export function useOwnerModelChoice(
   useEffect(() => {
     if (state === "ready" && selectedRowId && !selected) {
       setSelectedRowId("");
+      setSelectedModelId(null);
       launchRef.current = null;
     }
   }, [state, selectedRowId, selected]);
 
-  const select = useCallback((rowId: string) => {
+  // The variant actually in force: the chosen one when the row still lists
+  // it, else the row's primary. A variant the inventory no longer vouches
+  // for is never sent, mirroring the row-level guard above.
+  const effectiveModelId = selected
+    ? selectedModelId && userModelVariants(selected).includes(selectedModelId)
+      ? selectedModelId
+      : selected.model_id
+    : null;
+
+  const select = useCallback((rowId: string, modelId?: string) => {
     setSelectedRowId(rowId);
+    setSelectedModelId(rowId ? (modelId ?? null) : null);
     // The route is part of the launch digest, so a new choice is a new launch
     // and the next attempt must carry a new id rather than replay the last.
     launchRef.current = null;
@@ -132,7 +150,7 @@ export function useOwnerModelChoice(
 
   const launchFields = useCallback(
     (launchKey: string): OwnerLaunchFields => {
-      if (!selected) return {};
+      if (!selected || !effectiveModelId) return {};
       if (!launchRef.current || launchRef.current.key !== launchKey) {
         launchRef.current = {
           key: launchKey,
@@ -143,16 +161,18 @@ export function useOwnerModelChoice(
         model_choice: {
           authority: "user_model",
           provider_id: selected.id,
-          model_id: selected.model_id,
+          model_id: effectiveModelId,
         },
         operation_id: launchRef.current.id,
       };
     },
-    [selected, operationPrefix],
+    [selected, effectiveModelId, operationPrefix],
   );
 
   const triggerLabel = selected
-    ? selected.display_name || selected.model_id
+    ? effectiveModelId && effectiveModelId !== selected.model_id
+      ? `${selected.display_name || selected.model_id} · ${effectiveModelId}`
+      : selected.display_name || selected.model_id
     : "Default";
 
   return {
@@ -160,6 +180,7 @@ export function useOwnerModelChoice(
     state,
     selected,
     selectedRowId,
+    selectedModelId: effectiveModelId,
     triggerLabel,
     select,
     launchFields,

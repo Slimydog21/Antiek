@@ -27,7 +27,7 @@ from .types import (
 )
 
 
-def project_superseded_edges(rows: Iterable[tuple]) -> tuple[SupersededEdge, ...]:
+def project_superseded_edges(rows: Iterable[tuple[Any, ...]]) -> tuple[SupersededEdge, ...]:
     """Project a DB row iterable into ``SupersededEdge`` records.
 
     Expected column order (mirrors the upstream query):
@@ -46,7 +46,7 @@ def project_superseded_edges(rows: Iterable[tuple]) -> tuple[SupersededEdge, ...
     )
 
 
-def project_chunk_tier_changes(rows: Iterable[tuple]) -> tuple[ChunkTierChange, ...]:
+def project_chunk_tier_changes(rows: Iterable[tuple[Any, ...]]) -> tuple[ChunkTierChange, ...]:
     """Project a DB row iterable into ``ChunkTierChange`` records.
 
     Expected column order:

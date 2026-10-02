@@ -33,11 +33,41 @@ export interface BudgetResponse {
 }
 
 export interface PromptCostEstimateRequest {
+  task_kind?:
+    | "research_question"
+    | "reading_highlight"
+    | "midnight_oil"
+    | "synthesis"
+    | "verification"
+    | null;
+  role?: string | null;
+  route_mode?:
+    | "manual"
+    | "auto_quality"
+    | "auto_balanced"
+    | "auto_cost"
+    | "auto_latency";
+  manual_provider?: string | null;
+  manual_model?: string | null;
+  session_cache_key?: string | null;
   provider?: string | null;
   model?: string | null;
   tier?: string | null;
+  prompt_chars?: number | null;
   input_chars: number;
   expected_output_tokens: number;
+}
+
+export interface PromptCostCandidate {
+  provider: string;
+  model: string;
+  tier: string;
+  fallback_chain_index: number;
+  estimated_usd_low: number | null;
+  estimated_usd_high: number | null;
+  pricing_known: boolean;
+  cache_status: "warm" | "cold" | "unknown";
+  selection_reason: string;
 }
 
 export interface PromptCostEstimateResponse {
@@ -51,6 +81,75 @@ export interface PromptCostEstimateResponse {
   tier: string | null;
   provider: string | null;
   model: string | null;
+  task_kind: string | null;
+  role: string | null;
+  route_mode:
+    | "manual"
+    | "auto_quality"
+    | "auto_balanced"
+    | "auto_cost"
+    | "auto_latency"
+    | null;
+  selected_candidate: PromptCostCandidate | null;
+  candidates: PromptCostCandidate[];
+}
+
+export interface NotDiamondPromotionGate {
+  eligible: boolean;
+  required_consecutive_weeks: number;
+  evidence_week_ids: string[];
+  reason: string;
+}
+
+export interface NotDiamondAdvisorRecommendation {
+  advisor: "notdiamond";
+  mode: "disabled" | "shadow" | "advisory";
+  available: boolean;
+  provider: string | null;
+  model: string | null;
+  tier: string | null;
+  source:
+    | "disabled"
+    | "local_policy"
+    | "notdiamond_candidate"
+    | "advisor_unavailable"
+    | "advisor_candidate_unavailable"
+    | "advisor_cache_penalty";
+  confidence: number | null;
+  session_id: string | null;
+  reason: string;
+  cache_caveat: string | null;
+  external_call_performed: boolean;
+  notdiamond_would_call: boolean;
+  promotion_gate: NotDiamondPromotionGate;
+  notes: string[];
+}
+
+export interface NotDiamondAdvisorResponse {
+  estimate: PromptCostEstimateResponse;
+  recommendation: NotDiamondAdvisorRecommendation;
+}
+
+export interface AntiekBenchBestModelRow {
+  task_class: string;
+  provider: string;
+  model: string;
+  quality_score: number;
+  estimated_cost_usd: number | null;
+  actual_cost_usd: number | null;
+  cost_per_acceptable_answer: number | null;
+  latency_ms: number | null;
+  route_receipt_ids: string[];
+}
+
+export interface AntiekBenchLatestResponse {
+  available: boolean;
+  scorecard_id: string | null;
+  generated_at: string | null;
+  week_id: string | null;
+  mock_run: boolean | null;
+  best_by_task_class: AntiekBenchBestModelRow[];
+  notes: string[];
 }
 
 export type ModelDecisionTask =
@@ -399,6 +498,11 @@ export async function fetchSettingsBudget(): Promise<BudgetResponse> {
   return readJson<BudgetResponse>(res);
 }
 
+
+export async function fetchLatestAntiekBench(): Promise<AntiekBenchLatestResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/antiek-bench/latest`);
+  return readJson<AntiekBenchLatestResponse>(res);
+}
 export async function fetchFallbackReceiptHistory(
   cursor: string | null = null,
 ): Promise<FallbackReceiptHistoryResponse> {
@@ -431,7 +535,6 @@ export async function approveFallbackReceipt(
   if (!res.ok) throw new Error(`fallback approval API ${res.status}`);
   return validateFallbackApprovalReceipt(await res.json(), chain);
 }
-
 export async function estimatePromptCost(
   body: PromptCostEstimateRequest,
 ): Promise<PromptCostEstimateResponse> {
@@ -441,6 +544,18 @@ export async function estimatePromptCost(
     body: JSON.stringify(body),
   });
   return readJson<PromptCostEstimateResponse>(res);
+}
+
+
+export async function estimateNotDiamondAdvisor(
+  body: PromptCostEstimateRequest,
+): Promise<NotDiamondAdvisorResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/router-advisor/notdiamond`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<NotDiamondAdvisorResponse>(res);
 }
 
 export async function fetchModelDecision(body: {

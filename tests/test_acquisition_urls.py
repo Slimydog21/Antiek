@@ -199,6 +199,7 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
+    dimension = 16  # the EmbeddingProvider Protocol requires it; producers now pin it
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
@@ -277,7 +278,18 @@ def test_ingest_low_word_count_skips_graph_writes(temp_substrate):
         embedder=_StubEmbedder(),
         fetched=stub,
     )
+    # All three were asserted here until a refactor kept only the first, which is
+    # the one assertion that cannot detect the regression this test names. The
+    # contract is at acquisition/urls/adapter.py:236-247: the low-word-count gate
+    # returns early BUT still carries document_loaded_event_id, because the event
+    # is emitted so the operator can see the fetch happened even when graph writes
+    # are skipped. Dropping these two made the test pass while
+    # `if md_doc.word_count >= min_word_count:` guarded emit_typed -- a mutant that
+    # suppresses the event on exactly the path under test. Verified by restoring
+    # them and re-running against that mutant.
     assert res.skipped_reason == "low_word_count"
+    assert res.chunks_written == 0
+    assert res.document_loaded_event_id is not None
 
 
 def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
@@ -429,3 +441,93 @@ def test_ingest_web_article_lane_stable_on_reingest(temp_substrate):
         con.close()
     assert len(rows) == 1
     assert rows[0][0] == "personal_reading"
+
+
+def test_a_failed_reingest_does_not_strip_a_document_of_its_chunks(
+    temp_substrate, monkeypatch
+):
+    """The provenance chain must survive a failed re-ingest.
+
+    CLAUDE.md invariant: every claim cites chunks, every chunk cites a
+    document. The replace path DELETEs a document's chunks and re-inserts
+    them; DuckDB autocommits, so before the transaction wrap a failure
+    part-way through left the document with its old chunks gone and its new
+    ones only partly written — a document with a truncated or empty chunk set
+    and no error trail in the data.
+
+    Inject a failure on the second chunk insert of a re-ingest and assert the
+    original chunk set is intact.
+    """
+    import duckdb
+
+    import acquisition.urls.adapter as adapter
+
+    first = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    assert first.skipped_reason is None
+
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        before = con.execute(
+            "SELECT chunk_index, text FROM chunks WHERE document_id = ? "
+            "ORDER BY chunk_index",
+            [first.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(before) >= 2, (
+        f"fixture must produce >=2 chunks for this to mean anything, got "
+        f"{len(before)}"
+    )
+
+    real_insert = adapter.insert_chunk
+    calls = {"n": 0}
+
+    def flaky_insert_chunk(con_, **kw):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("injected: chunk insert failed mid-replace")
+        return real_insert(con_, **kw)
+
+    monkeypatch.setattr(adapter, "insert_chunk", flaky_insert_chunk)
+
+    changed = _good_fetched()
+    changed = changed.__class__(
+        requested_url=changed.requested_url,
+        final_url=changed.final_url,
+        status_code=changed.status_code,
+        content_type=changed.content_type,
+        charset=changed.charset,
+        body=_HTML_ARTICLE.replace(b"Better Title", b"Edited Title"),
+    )
+
+    with pytest.raises(RuntimeError, match="injected"):
+        ingest_url(
+            "https://example.com/post",
+            investigation_id="inv-test",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            fetched=changed,
+            on_conflict="replace",
+        )
+
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        after = con.execute(
+            "SELECT chunk_index, text FROM chunks WHERE document_id = ? "
+            "ORDER BY chunk_index",
+            [first.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+
+    assert after == before, (
+        f"a failed re-ingest left {len(after)} chunks where there were "
+        f"{len(before)}. The DELETE committed without its re-insert and the "
+        "document's provenance chain is broken."
+    )

@@ -24,8 +24,26 @@ from interfaces.research.api.settings_lineup import (
 from substrate.dispatch.router import reset_provider_registry
 
 
+def _derived_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator-under-test@example.com")
+    assert owner is not None
+    return owner
+
+
 def _fresh_app() -> FastAPI:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     register_settings_lineup_routes(app)
     return app
@@ -86,6 +104,21 @@ def test_bench_contains_dispatch_tiers_and_presets(client: TestClient) -> None:
     assert ("anthropic", "claude-haiku-4-5-20251001") in bench
 
 
+def test_house_bench_omits_preset_mode_variants(client: TestClient) -> None:
+    """``deepseek-flash-nothink`` is a BYOT catalog row sent as
+    ``deepseek-flash`` plus a mode switch. Only a user-registered adapter
+    translates it, so the house ``deepseek`` adapter never gets it."""
+    bench = {(b["provider_id"], b["model_id"]) for b in client.get("/settings/lineup").json()["bench"]}
+    assert ("deepseek", "deepseek-flash") in bench
+    assert ("deepseek", "deepseek-flash-nothink") not in bench
+    refused = client.put(
+        "/settings/lineup",
+        json={"general": {"writer": {"provider_id": "deepseek", "model_id": "deepseek-flash-nothink"}}},
+    )
+    assert refused.status_code == 422
+    assert "not on the bench" in refused.json()["detail"]
+
+
 def test_put_and_get_roundtrip(client: TestClient) -> None:
     put = client.put(
         "/settings/lineup",
@@ -112,7 +145,7 @@ def test_put_and_get_roundtrip(client: TestClient) -> None:
     }
     # persisted to the sidecar
     registry = json.loads(_registry_path().read_text(encoding="utf-8"))
-    assert "__operator__" in registry["owners"]
+    assert _derived_owner() in registry["owners"]
 
     # GET returns the same view
     get = client.get("/settings/lineup")

@@ -125,7 +125,7 @@ def _provider(
         session_root=tmp_path,
         process_factory=factory,
         binary_resolver=lambda binary: f"/fake/{binary}",
-        version_resolver=lambda _binary: "prime-agent 0.7.0",
+        installation_verifier=lambda binary: (binary, "0.7.0"),
     )
     return provider, factory
 
@@ -140,19 +140,63 @@ def test_prime_exec_provider_satisfies_remote_exec_protocol(tmp_path: Path) -> N
     assert provider.name == "prime_agent"
 
 
-def test_probe_rejects_unpinned_binary_version(
+_HELP_TOKENS = (
+    "-p --cwd --offline --no-session --no-tools --no-extensions --no-skills "
+    "--no-prompt-templates --no-themes --no-context-files --mode rpc"
+)
+
+
+def _stand_in_binary(tmp_path: Path, version: str) -> Path:
+    """A real executable that answers --version/--help like prime-agent."""
+    binary = tmp_path / "prime-agent"
+    binary.write_text(
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        f' --version) echo "prime-agent {version}"; exit 0;;\n'
+        f' --help) echo "{_HELP_TOKENS}"; exit 0;;\n'
+        "esac\n"
+        "exit 1\n"
+    )
+    binary.chmod(0o700)
+    return binary
+
+
+def test_probe_admits_a_version_inside_the_installation_window(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """SPR-01 Task 5. 0.9.4 is inside runtime.prime_agent.installation's
+    [MINIMUM_VERSION, MAXIMUM_VERSION) window; this lane used to hard-pin 0.7.0
+    and reject it as a 'version mismatch'. The default verifier now delegates."""
     monkeypatch.setenv(PRIME_EXEC_ENABLE_ENV, "1")
-    provider = PrimeExecProvider(
-        session_root=tmp_path,
-        binary_resolver=lambda binary: f"/fake/{binary}",
-        version_resolver=lambda _binary: "prime-agent 0.8.0",
-    )
+    binary = _stand_in_binary(tmp_path, "0.9.4")
+    provider = PrimeExecProvider(binary=binary, session_root=tmp_path)
 
-    with pytest.raises(RemoteExecUnavailable, match="version mismatch"):
+    resolved, version = provider._resolve_and_validate_binary()
+
+    assert Path(resolved) == binary.resolve()
+    assert version == "0.9.4"
+    provider.probe()  # same path, must not raise
+
+
+def test_probe_rejects_a_version_outside_the_installation_window(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The one authority still rejects drift — below the floor here — and the
+    reason names the window, not a phantom pin."""
+    monkeypatch.setenv(PRIME_EXEC_ENABLE_ENV, "1")
+    binary = _stand_in_binary(tmp_path, "0.6.9")
+    provider = PrimeExecProvider(binary=binary, session_root=tmp_path)
+
+    with pytest.raises(RemoteExecUnavailable, match=r"0\.6\.9 is outside >=0\.7\.0,<0\.10\.0"):
         provider.probe()
+
+
+def test_module_carries_no_version_pin_of_its_own() -> None:
+    from runtime.remote_exec import prime_exec
+
+    assert not hasattr(prime_exec, "PINNED_PRIME_AGENT_VERSION")
 
 
 async def test_turn_usage_must_be_complete_finite_and_nonnegative(
@@ -601,7 +645,7 @@ async def test_cancelled_provision_removes_partial_session_directory(
         session_root=tmp_path,
         process_factory=blocking_factory,
         binary_resolver=lambda binary: f"/fake/{binary}",
-        version_resolver=lambda _binary: "prime-agent 0.7.0",
+        installation_verifier=lambda binary: (binary, "0.7.0"),
     )
     task = asyncio.create_task(
         provider.provision(ResearchPlan(investigation_id="inv-cancel", sub_question="q"))

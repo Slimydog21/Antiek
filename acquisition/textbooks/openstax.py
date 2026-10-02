@@ -20,6 +20,7 @@ dedup keys on the catalog slug / ISBN (SPR-04, in the orchestrator).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
 
@@ -32,23 +33,23 @@ logger = logging.getLogger("acquisition.textbooks.openstax")
 OPENSTAX_CATALOG_URL = "https://openstax.org/apps/cms/api/v2/pages/?type=books.Book&fields=*"
 
 
-def _author(book: dict) -> str | None:
+def _author(book: dict[str, Any]) -> str | None:
     """Best-effort author/editor string from the catalog record."""
     authors = book.get("authors") or book.get("senior_authors") or []
     if isinstance(authors, list):
-        names = [
+        raw_names = [
             (a.get("value", {}).get("name") if isinstance(a, dict) else None)
             or (a.get("name") if isinstance(a, dict) else None)
             or (a if isinstance(a, str) else None)
             for a in authors
         ]
-        names = [n for n in names if n]
+        names = [str(n) for n in raw_names if n]
         if names:
             return "; ".join(names)
     return None
 
 
-def _declared_license(book: dict) -> str | None:
+def _declared_license(book: dict[str, Any]) -> str | None:
     """Read the book's DECLARED license string from the catalog record.
 
     Prefers the canonical CC URI (``license.url``); falls back to a license
@@ -73,7 +74,7 @@ def _declared_license(book: dict) -> str | None:
     return str(name) if name else None
 
 
-def _pdf_url(book: dict) -> str | None:
+def _pdf_url(book: dict[str, Any]) -> str | None:
     """The book's full-text PDF URL from the catalog record."""
     for key in ("high_resolution_pdf_url", "low_resolution_pdf_url", "pdf_url"):
         url = book.get(key)
@@ -82,7 +83,7 @@ def _pdf_url(book: dict) -> str | None:
     return None
 
 
-def _to_work(book: dict) -> TextbookWork | None:
+def _to_work(book: dict[str, Any]) -> TextbookWork | None:
     title = (book.get("title") or book.get("book_title") or "").strip()
     if not title:
         logger.info("openstax book %s skipped: no title", book.get("id"))

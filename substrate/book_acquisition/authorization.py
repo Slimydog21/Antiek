@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from runtime.db_lock import LockedConnection
+from substrate.legal_gate import default_legal_gate
 
 
 class BookAcquisitionConnection(Protocol):
@@ -26,6 +27,10 @@ class AcquisitionIntegrityError(RuntimeError):
 
 class AcquisitionConflictError(RuntimeError):
     """A replay conflicts with an existing terminal decision."""
+
+
+class ProcurementRefusedError(ValueError):
+    """The named store is a banned procurement source (legal gate)."""
 
 
 class DesiredFormat(StrEnum):
@@ -112,6 +117,30 @@ def _text(value: str, field: str) -> str:
     return normalized
 
 
+def check_store_procurement(store: str) -> str:
+    """Refuse a store that names a banned procurement host.
+
+    Runs every whitespace-delimited token of ``store`` through
+    ``substrate.legal_gate.default_legal_gate().check_url``, once as
+    written and once with an ``https://`` scheme prefixed when the token
+    has none, so a bare ``annas-archive.org`` is caught as well as a full
+    URL. Pure apart from the gate's own env escape hatches: no connection,
+    no write. Called at intent creation so a refused source never reaches
+    authorization or port and no bytes are ever accepted for it.
+    """
+    normalized = _text(store, "store")
+    gate = default_legal_gate()
+    for token in normalized.split():
+        candidates = [token] if "://" in token else [token, f"https://{token}"]
+        for candidate in candidates:
+            verdict = gate.check_url(candidate)
+            if not verdict.allowed:
+                raise ProcurementRefusedError(
+                    f"store {normalized!r} is refused by the legal gate: {verdict.reason}"
+                )
+    return normalized
+
+
 def _cents(value: int, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"{field} must be a non-negative integer")
@@ -176,7 +205,7 @@ def create_purchase_intent(
     operator_id = _text(operator_id, "operator_id")
     title = _text(title, "title")
     author = _text(author, "author")
-    store = _text(store, "store")
+    store = check_store_procurement(store)
     max_price_usd_cents = _cents(max_price_usd_cents, "max_price_usd_cents")
     if not isinstance(desired_format, DesiredFormat):
         raise ValueError("desired_format must be DesiredFormat.EPUB")

@@ -20,7 +20,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import httpx
 
@@ -86,7 +86,7 @@ class OAThrottle:
             self.sleep(self.min_spacing_s - elapsed)
         self._last_request_at = self.now()
 
-    def _note_status(self, status_code: int, headers: dict | None) -> None:
+    def _note_status(self, status_code: int, headers: dict[str, Any] | None) -> None:
         if self.persistent is not None:
             self.persistent.note_response(self.source, status_code, headers)
 

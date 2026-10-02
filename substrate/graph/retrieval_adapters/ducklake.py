@@ -25,6 +25,7 @@ the source of truth and is never written by this adapter.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Sequence
@@ -35,14 +36,14 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_here))))
-    from substrate.graph.search import EmbeddingModel  # type: ignore[no-redef]
+    from substrate.graph.search import EmbeddingModel
 
 try:
-    from ....runtime.db_lock import connect_read
+    from ....runtime.db_lock import connect_read  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(_here))))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 _SKIPPED = "skipped — no credentials"
@@ -92,7 +93,7 @@ class DuckLakeSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         if self.skipped:
             return {
                 "query": text,
@@ -115,7 +116,5 @@ class DuckLakeSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass

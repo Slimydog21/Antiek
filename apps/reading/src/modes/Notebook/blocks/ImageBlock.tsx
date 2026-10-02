@@ -38,7 +38,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
                 },
               );
             }}
-            className="absolute top-2 right-10 text-[11px] text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:bg-sun/15"
+            className="absolute top-2 right-10 text-xs text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:bg-sun/15"
             title="Open in lightbox panel"
           >
             ↗
@@ -48,7 +48,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
           type="button"
           onClick={() => deleteNode()}
           aria-label="Remove image"
-          className="absolute top-2 right-2 text-[11px] text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:text-emperor"
+          className="absolute top-2 right-2 text-xs text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:text-emperor"
         >
           ✕
         </button>
@@ -59,12 +59,12 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
             className="block max-h-[480px] max-w-full mx-auto"
           />
         ) : (
-          <div className="aspect-video flex items-center justify-center bg-ice-3 dark:bg-charcoal-1 text-ink-mute dark:text-moonlight font-mono text-[12px]">
+          <div className="aspect-video flex items-center justify-center bg-ice-3 dark:bg-charcoal-1 text-ink-mute dark:text-moonlight font-mono text-xs">
             (no src — substrate-ref pending)
           </div>
         )}
         {caption && (
-          <figcaption className="font-serif italic text-[13.5px] text-ink-soft dark:text-starlight px-4 py-2 border-t-edge border-sun">
+          <figcaption className="font-serif italic text-sm text-ink-soft dark:text-starlight px-4 py-2 border-t-edge border-sun">
             {caption}
           </figcaption>
         )}

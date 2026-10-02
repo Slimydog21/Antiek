@@ -2,7 +2,7 @@
 
 from .blocks import OutlineBlockRef, list_outline_blocks
 from .build_body import build_body
-from .compose import ComposeResult, compose_artifacts
+from .compose import ComposeMember, ComposeResult, compose_artifacts
 from .export import (
     ExportResult,
     build_html_only,
@@ -11,20 +11,43 @@ from .export import (
 )
 from .import_notes import ImportNotesResult, import_agent_notes, parse_body_from_html
 from .schema import SCHEMA_VERSION, ResearchArtifactBody
+from .source_merge import (
+    SourceMergeApplyReceipt,
+    SourceMergeCommitReceipt,
+    SourceMergePreviewReceipt,
+    SourceMergeRestoreReceipt,
+    apply_source_merge_review,
+    commit_source_merge_review,
+    preview_source_merge_review,
+    restore_source_merge_review,
+)
+from .twin_notes import render_twin_notes_html, write_twin_notes
 
 __all__ = [
     "SCHEMA_VERSION",
     "ComposeResult",
+
+    "ComposeMember",
     "build_body",
     "ExportResult",
     "ImportNotesResult",
     "OutlineBlockRef",
     "ResearchArtifactBody",
+    "SourceMergeApplyReceipt",
+    "SourceMergeCommitReceipt",
+    "SourceMergePreviewReceipt",
+    "SourceMergeRestoreReceipt",
+    "apply_source_merge_review",
     "build_html_only",
     "research_projection_doc_model",
     "compose_artifacts",
+    "commit_source_merge_review",
     "export_research_artifact",
     "import_agent_notes",
     "list_outline_blocks",
     "parse_body_from_html",
+    "preview_source_merge_review",
+    "restore_source_merge_review",
+    "render_twin_notes_html",
+    "write_twin_notes",
 ]

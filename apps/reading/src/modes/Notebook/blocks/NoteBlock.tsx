@@ -10,10 +10,10 @@ function NoteNodeView({ node, deleteNode }: NodeViewProps) {
   return (
     <NodeViewWrapper className="my-2" data-block="note">
       <div className="border-l-edge border-sun bg-sun/10 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
-        <span className="text-ink dark:text-sun font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 mt-1">
+        <span className="text-ink dark:text-sun font-mono text-xxs font-bold uppercase tracking-wider shrink-0 mt-1">
           note
         </span>
-        <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+        <p className="flex-1 font-serif text-base leading-relaxed text-ink dark:text-bright">
           {text || (
             <span className="italic text-ink-mute dark:text-moonlight">
               (empty note — edit attributes via the substrate)
@@ -24,7 +24,7 @@ function NoteNodeView({ node, deleteNode }: NodeViewProps) {
           type="button"
           onClick={() => deleteNode()}
           aria-label="Remove note"
-          className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
+          className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >
           ✕
         </button>

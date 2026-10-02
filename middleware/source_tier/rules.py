@@ -35,21 +35,16 @@ import os
 import re
 import sys
 from collections.abc import Mapping
-
-# Package-relative imports with a direct-script fallback.
-try:
-    from ..._safe_typing import _no_op_marker  # type: ignore  # noqa
-except Exception:  # pragma: no cover — placeholder while typing helpers don't exist
-    pass
+from typing import Any
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas import TierAssignedPayload, TierOverriddenPayload, TierRewriteBulkPayload
+    from substrate.event_log import emit_typed
+    from substrate.schemas import TierAssignedPayload, TierOverriddenPayload, TierRewriteBulkPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))  # project root
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         TierAssignedPayload,
         TierOverriddenPayload,
         TierRewriteBulkPayload,
@@ -149,7 +144,7 @@ _FALLBACK_KEYWORDS_PER_TIER: dict[int, list[str]] = {
 }
 
 
-def _safe_lower(val) -> str:
+def _safe_lower(val: object) -> str:
     if val is None:
         return ""
     return str(val).lower()
@@ -246,12 +241,12 @@ HEDGING_PATTERNS: list[tuple[str, str, int]] = [
 ]
 
 
-def _detect_hedging_signals(chunk_text: str) -> list[dict]:
+def _detect_hedging_signals(chunk_text: str) -> list[dict[str, Any]]:
     """Detect hedging signals via regex pattern matching (fast path).
     Returns one dict per distinct signal_type matched. Order matches
     the pattern catalogue."""
     chunk_lower = chunk_text.lower()
-    signals: list[dict] = []
+    signals: list[dict[str, Any]] = []
     seen_types = set()
     for pattern, signal_type, adjustment in HEDGING_PATTERNS:
         if signal_type in seen_types:
@@ -270,7 +265,7 @@ def adjust_tier_after_extraction(
     current_tier: int,
     *,
     llm_fallback: bool = False,  # DEFAULT CHANGED: regex-only until dispatch integration lands
-) -> dict:
+) -> dict[str, Any]:
     """Adjust tier downward based on hedging language. The asymmetry is
     enforced here: ``adjusted_tier >= current_tier`` always.
 

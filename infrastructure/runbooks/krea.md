@@ -135,14 +135,21 @@ ssh -i ~/.ssh/antiek_ed25519 root@<vm-ip>
 sudoedit /etc/antiek/secrets.env
 ```
 
-Fill in the `KREA_API_TOKEN=` line. If the source secret arrives as
-`KREA_API_KEY`, alias it into `KREA_API_TOKEN` in the unit environment
-before the process starts; the adapter will not read `KREA_API_KEY`
-directly. The ansible template ships the token line empty with the
-optional knobs commented —
-`infrastructure/ansible/templates/secrets.env.j2`; the playbook places
-that template with `force: false` so a populated live file is never
-overwritten: `infrastructure/ansible/playbooks/setup.yml:341-349`).
+**Append** the `KREA_API_TOKEN=` line — do not go hunting for an empty
+one. The ansible template carries no `KREA_*` slot at all: all 121 lines
+of `infrastructure/ansible/templates/secrets.env.j2` are the LLM
+provider keys, the `ANTIEK_OPERATOR_*` credentials, `ANTIEK_AUTH_SECRET`,
+the cookie/CORS pair and the alert webhook, and
+`grep -n KREA infrastructure/ansible/templates/secrets.env.j2` exits 1
+with zero matches (re-verified 2026-09-22). So on a freshly provisioned
+box you are adding the line, not filling one in — paste the block from
+`apps/reading/.env.example:85-92`, which is the one place that carries
+the token line plus all seven optional knobs already commented at their
+defaults. If the source secret arrives as `KREA_API_KEY`, alias it into
+`KREA_API_TOKEN` in the unit environment before the process starts; the
+adapter will not read `KREA_API_KEY` directly. The playbook places that
+template with `force: false` so a populated live file is never
+overwritten: `infrastructure/ansible/playbooks/setup.yml:459-464`.
 Then restart — systemd loads the file only at unit start
 (`EnvironmentFile=` in `infrastructure/ansible/templates/antiek.service.j2:42`):
 
@@ -216,38 +223,53 @@ and scrubs it from every printed line. Going through
 `https://api.antiek.ai` exercises the full prod path (Cloudflare Tunnel
 → Caddy → uvicorn); for edge-bypass debugging use
 `--base-url http://127.0.0.1:8001` (uvicorn's prod port,
-`infrastructure/ansible/group_vars/all.yml:72`).
+`infrastructure/ansible/group_vars/all.yml:74`).
 
 When the run finishes, **close the loop at the dashboard**: open
 <https://www.krea.ai/app/api> and confirm the balance moved by exactly
 the number of fresh generations the script reported (it prints this
 reminder itself).
 
-### The plumbing the smoke traverses (verified in-tree 2026-06-12)
+### The plumbing the smoke traverses (re-verified in-tree 2026-09-22)
 
-All citations are file:line in this repo — re-verify them rather than
-trusting this list if the files have churned since:
+All citations are file:line in this repo, and they rot fast — every
+`app.py` line here moved 280-430 lines between 2026-06-12 and
+2026-09-22, and the auth-path *count* changed with them. Re-verify by
+symbol (`grep -n '# Path 3:' interfaces/research/api/app.py`) rather
+than paging to a remembered line number:
 
 - **Caddy edge allowlist** — `/krea*` is in the one-line `@api_routes`
   path matcher: `infrastructure/ansible/templates/Caddyfile.j2:46`.
   Drift is CI-guarded by `tests/test_caddy_allowlist_coverage.py`
   (a registered route missing from the allowlist fails CI).
-- **Vite dev proxy** — `"/krea": "http://localhost:8000"` in
-  `apps/reading/vite.config.ts:33`, so the dev browser is same-origin
-  and never sees the token.
-- **Operator auth, four prod paths** — middleware in
-  `interfaces/research/api/app.py`: (1) Antiek session cookie
-  `app.py:1260-1282`; (2) Cloudflare Access email header
-  `app.py:1284-1291`; (3) Cloudflare Access service token
-  `app.py:1293-1313`; (4) `Authorization: Bearer $ANTIEK_OPERATOR_TOKEN`
-  `app.py:1315-1324`. **The smoke uses path 4** (bearer, sourced from
-  the secrets file as above, never echoed). `/health` is auth-open by
-  design (`app.py:1187-1201`), which is why the smoke's stage 0 needs no
-  credential.
+- **Vite dev proxy** — `"/krea": API_TARGET` at
+  `apps/reading/vite.config.ts:60`, where `API_TARGET` is
+  `process.env.ANTIEK_DEV_API_TARGET ?? "http://127.0.0.1:8000"`
+  (`vite.config.ts:11`). Don't grep for the literal `localhost:8000` —
+  that spelling is deliberately absent, because Node can resolve
+  `localhost` to IPv6 while uvicorn listens on IPv4. The dev browser
+  stays same-origin and never sees the token.
+- **Operator auth, three prod paths** — the middleware is
+  `_operator_auth_middleware` at `interfaces/research/api/app.py:1600`,
+  with the design note above it at `app.py:1537-1559`: (1) Antiek
+  session cookie, branch at `app.py:1695`; (2) Cloudflare Access service
+  token, branch at `app.py:1719`; (3)
+  `Authorization: Bearer $ANTIEK_OPERATOR_TOKEN`, branch at
+  `app.py:1741-1751`. **The smoke uses path 3** (bearer, sourced from
+  the secrets file as above, never echoed). There is no fourth path: an
+  injected Cloudflare Access *email header* was explicitly demoted
+  because the origin has no cryptographic proof that Access produced it
+  (`app.py:1557-1559`), and no branch reads such a header. The live 401
+  body still enumerates a "Cloudflare Access browser session" in its
+  prose — that string is stale, so don't burn incident time chasing it.
+  `/health` is auth-open by design: it is the first entry of
+  `_OPERATOR_AUTH_OPEN_PATHS` (`app.py:1566`, set opens at `1565`) and
+  the route itself is `app.py:2113`. That is why the smoke's stage 0
+  needs no credential.
 - **Secrets file → process env** — `EnvironmentFile={{ antiek_secrets_file }}`
   at `infrastructure/ansible/templates/antiek.service.j2:42`;
   `antiek_secrets_file` resolves to `/etc/antiek/secrets.env` at
-  `infrastructure/ansible/group_vars/all.yml:57`.
+  `infrastructure/ansible/group_vars/all.yml:59`.
 
 ## 5 — Rotate a key (mandatory before live activation)
 
@@ -281,16 +303,41 @@ section 4 is structurally unable to print one.
 
    ```bash
    grep -rIlE --exclude-dir=.git --exclude-dir=.venv --exclude-dir=node_modules \
-     'KREA_API_(TOKEN|KEY)=[^[:space:]<#]{8}' \
+     "KREA_API_(TOKEN|KEY)=[^[:space:]<#\$\"']{8}" \
      ~/Desktop/Antiek ~/specs ~/dev ~/.zsh_history 2>/dev/null
    ```
 
-   (The `{8}` requires 8+ value characters, so placeholders like
-   `<paste-token-here>` / `<REDACTED-...>`, empty template lines, and
-   this runbook's own grep examples never false-positive.) The only
-   acceptable hit is `~/Desktop/Antiek/.env` (the gitignored live
-   copy). Every other hit is a leak: open it and replace the value
-   with `<REDACTED-YYYY-MM-DD-rotated>`. Then a second pass for the old
+   The `{8}` requires 8+ value characters and the negated class rejects
+   `<`, `#`, `$`, `"` and `'`, so `<paste-token-here>` / `<REDACTED-...>`
+   placeholders, empty template lines, and shell-alias examples — this
+   runbook's own `export KREA_API_TOKEN="$KREA_API_KEY"` in section 3
+   among them — are all skipped. **Those last three characters are
+   load-bearing.** Without `$`, `"` and `'` in the class the sweep
+   matches *this very file* and returns one hit per checked-out
+   worktree: on 2026-09-22 the older pattern returned 174 files of which
+   169 were copies of `krea.md` itself, which is the runbook burying its
+   own signal at the exact moment you need it. Do not "simplify" the
+   quoting back. (Resist the tempting alternative of adding
+   `--exclude=krea.md`: it produces the same 6 hits today but goes blind
+   to a token genuinely pasted into a copy of this runbook, which is the
+   2026-06-12 failure class verbatim.)
+
+   Expect a **small handful**, and read it by provenance rather than by
+   a fixed allowlist. Verified 2026-09-22: 6 hits — five a 27-character
+   `your…here` placeholder in one old spec set, one a real-shaped value
+   in a gitignored `.env.local`. A hit in a **gitignored local env file**
+   (`~/Desktop/Antiek/.env`, any project's `.env.local`) is an expected
+   live copy: update it to the new value as part of step 2 and move on.
+   A hit anywhere **git-tracked**, or in a transcript, ledger, spec or
+   shell-history file, is a leak: open it and replace the value with
+   `<REDACTED-YYYY-MM-DD-rotated>`. Prove which one you are looking at
+   instead of assuming — `git -C <repo> check-ignore -v <file>` names the
+   ignoring rule, and `git -C <repo> log --oneline --all -- <file>`
+   printing nothing means the value never entered history. Note that
+   `~/Desktop/Antiek/.env` is *not* a hit until you have actually wired a
+   token there (`grep -c '^KREA_API_TOKEN=.' ~/Desktop/Antiek/.env`
+   returned `0` on 2026-09-22), so its absence is not reassurance.
+   Then a second pass for the old
    key pasted *without* the variable name — grep for the first 8
    characters of the **old key's id half** (the part before the colon;
    the id alone cannot authenticate, so this search string is safe to
@@ -392,6 +439,8 @@ direction for a runaway guard).
 - `infrastructure/runbooks/secret-rotation.md` — the LLM-key rotation
   this section 5 deliberately diverges from (graceful fallback → revoke
   can come first)
-- `infrastructure/runbooks/magic-link-auth.md` — the four-path auth
-  middleware the smoke's bearer rides
+- `infrastructure/runbooks/magic-link-auth.md` — the operator-auth
+  middleware the smoke's bearer rides (that runbook still counts four
+  paths; the middleware on main implements three — section 4 has the
+  current branches)
 - `infrastructure/SKILL.md` — production deployment manual

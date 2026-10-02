@@ -10,7 +10,7 @@ Outputs (in this directory):
   avatar-400.png         400x400 social avatar
   social-card-1200.png   1200x630 og:image / Twitter card with wordmark
 
-Mirrors ../werner/marks/build_marks.py (same recipe, brain source).
+Mirrors ../mascot/marks/build_marks.py (same recipe, brain source).
 """
 
 from __future__ import annotations

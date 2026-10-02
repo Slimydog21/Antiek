@@ -1,12 +1,12 @@
 # apps/reading/
 
 <p align="center">
-  <img src="src/brand/werner/marks/social-card-1200.png" alt="Werner the penguin · Antiek" width="640" />
+  <img src="src/brand/mascot/marks/social-card-1200.png" alt="Brain the mascot · Antiek" width="640" />
 </p>
 
 The TS side of the polyglot seam (`architecture_notes §11`). After the
 S0–S12 redesign (`docs/ui_redesign_posthog/`), this app is the
-Antarctic-themed Werner-the-penguin operator surface: a brand-outlined
+Antarctic-themed Brain-the-mascot operator surface: a brand-outlined
 panel-system shell with a literate notebook editor, layered persistence,
 and a popout-capable workspace.
 
@@ -45,11 +45,11 @@ src/
   PanelWindowApp.tsx          Popout window app (no shell chrome)
 
   design/
-    tokens.ts                 sun, surface, shadow, werner, accent, type
+    tokens.ts                 sun, surface, shadow, mascot, accent, type
     tokens.css                CSS-var sibling for non-Tailwind consumers
     moodboard.stories.tsx     The brand source of truth in Storybook
 
-  brand/werner/
+  brand/mascot/
     poses/                    Krea-generated PNGs (PIL-locked to #F5DF24)
     marks/                    Favicon + avatar + social-card derivatives
 
@@ -59,7 +59,7 @@ src/
       LemonTag, LemonSelect, LemonDropdown, LemonTable, LemonToast
       + PrimitivesShowcase.stories.tsx
     navigation/
-      NavRail.tsx             60px icon column (Werner mark + route icons)
+      NavRail.tsx             60px icon column (Brain mark + route icons)
       Topbar.tsx              breadcrumbs + ⌘K search + account
       ProjectTree.tsx         left-dock panel (pinned/recent/all)
     CommandPalette.tsx        ⌘K palette (routes + 5 search sources +
@@ -142,7 +142,7 @@ npm run visualtest:update # rebaseline (commit the .png changes)
 
 ## Operator-visible features (post-S12)
 
-- Werner mark anchored in NavRail; ink left-bar highlights active route.
+- Brain mark anchored in NavRail; ink left-bar highlights active route.
 - Topbar breadcrumbs + ⌘K search + account dropdown.
 - Floating panels: drag the handle, resize from the corner, ESC closes
   when focused (S3 acceptance), viewport edges clamp dragged position.
@@ -155,7 +155,7 @@ npm run visualtest:update # rebaseline (commit the .png changes)
 - `?ws=<base64>` shareable layout URLs (Cmd+K → "Copy shareable layout").
 - Notebook editor (TipTap): 5 custom blocks + slash menu + autosave
   to localStorage + optimistic-concurrency conflict detection.
-- Werner brand palette: layered glacial whites by day, ten-step night
+- Antiek brand palette: layered glacial whites by day, ten-step night
   sky by night (OS-preference driven).
 - Reduced-motion guards (`prefers-reduced-motion: reduce`).
 - Viewport-tier responsive: docks collapse below 1024 / 768.

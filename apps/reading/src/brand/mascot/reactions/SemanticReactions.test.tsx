@@ -1,0 +1,164 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { EMOTE_DURATION_MS, EmoteView } from "../../../mascot/emotes";
+import {
+  MascotCurious,
+  MascotDizzy,
+  MascotHappy,
+  MascotHit,
+  MASCOT_SEMANTIC_DURATION_MS,
+} from ".";
+
+const semantic = [
+  ["curious", MascotCurious, "examines the evidence"],
+  ["happy", MascotHappy, "marks the work verified"],
+  ["dizzy", MascotDizzy, "regains its bearings"],
+  ["hit", MascotHit, "bumps the control"],
+] as const;
+
+afterEach(cleanup);
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+describe("Brain semantic reactions", () => {
+  it.each(semantic)(
+    "gives %s one accessible owner",
+    (kind, Reaction, label) => {
+      const { container } = render(<Reaction size={64} reduced={false} />);
+      expect(screen.getByRole("img", { name: new RegExp(label) })).toBeTruthy();
+      expect(screen.getAllByRole("img")).toHaveLength(1);
+      expect(container.querySelector("img")?.getAttribute("src")).toBeTruthy();
+      expect(
+        container.firstElementChild?.getAttribute("data-mascot-reaction"),
+      ).toBe(kind);
+    },
+  );
+
+  it("pins every one-shot duration to the unchanged stage table", () => {
+    expect(MASCOT_SEMANTIC_DURATION_MS).toEqual({
+      curious: 1200,
+      happy: 800,
+      dizzy: 1300,
+      hit: 800,
+    });
+    expect(MASCOT_SEMANTIC_DURATION_MS).toEqual({
+      curious: EMOTE_DURATION_MS.curious,
+      happy: EMOTE_DURATION_MS.happy,
+      dizzy: EMOTE_DURATION_MS.dizzy,
+      hit: EMOTE_DURATION_MS.hit,
+    });
+  });
+
+  it("keeps happy on the idle anchor, free of the celebrate pose", () => {
+    const { container } = render(<MascotHappy size={64} reduced={false} />);
+    const src = container.querySelector("img")?.getAttribute("src") ?? "";
+    expect(src).toContain("01_hero_front");
+    expect(src).not.toContain("mood_excited");
+  });
+
+  it("uses the thinking mood for the public curious/thinking semantic", () => {
+    const curious = render(<MascotCurious size={64} reduced={false} />);
+    const root = curious.container.firstElementChild;
+    expect(root?.getAttribute("data-mascot-mood")).toBe("thinking");
+    expect(root?.getAttribute("data-duration-ms")).toBe("1200");
+    expect(
+      curious.container.querySelector("img")?.getAttribute("src"),
+    ).toContain("mood_thinking");
+    expect(
+      curious.container.querySelector(".mascot-semantic__evidence"),
+    ).toBeTruthy();
+    curious.unmount();
+
+    for (const [Reaction, source] of [
+      [MascotHappy, "01_hero_front"],
+      [MascotDizzy, "mood_sleepy"],
+      [MascotHit, "01_hero_front"],
+    ] as const) {
+      const other = render(<Reaction size={64} reduced={false} />);
+      expect(other.container.querySelector("img")?.getAttribute("src")).toContain(
+        source,
+      );
+      expect(
+        other.container.querySelector('[data-mascot-authored-pose="headTilt"]'),
+      ).toBeNull();
+      other.unmount();
+    }
+  });
+
+  it("keeps the authored-pose rasters private to the authored-pose map", () => {
+    // The mascot pose rasters are gone. The authored-pose map keeps its OWN
+    // rasters, separate from the four product moods, so this invariant stays
+    // exactly as strict as it was: precisely one module may import an authored
+    // pose directly, and no wrapper can substitute an unrelated pose behind it.
+    expect(
+      sourceFiles("src")
+        .filter((path) => !/\.(?:test|stories)\.[cm]?[jt]sx?$/.test(path))
+        .filter((path) =>
+          readFileSync(path, "utf8").includes(
+            "authored/mascot_head_tilt_v1_transparent.png",
+          ),
+        ),
+    ).toEqual([join("src", "brand", "mascot", "BrainAuthoredPose.tsx")]);
+  });
+
+  it.each(semantic)("renders a motionless but meaningful %s frame", (kind) => {
+    const { container } = render(<EmoteView kind={kind} size={64} reduced />);
+    expect(container.firstElementChild?.getAttribute("data-reduced")).toBe(
+      "true",
+    );
+    expect(
+      container.querySelector(`[data-mascot-reaction="${kind}"]`),
+    ).toBeTruthy();
+    const mark = container.querySelector(".mascot-semantic__mark");
+    const prop = container.querySelector("svg");
+    expect(mark).toBeTruthy();
+    expect(prop).toBeTruthy();
+    expect(getComputedStyle(mark as Element).animationName).toBe("none");
+    expect(getComputedStyle(prop as Element).animationName).toBe("none");
+  });
+
+  it("uses four distinct semantic compositions instead of legacy aliases", () => {
+    const source = readFileSync("src/mascot/emotes.tsx", "utf8");
+    expect(source).toContain("<MascotCurious");
+    expect(source).toContain("<MascotHappy");
+    expect(source).toContain("<MascotDizzy");
+    expect(source).toContain("<MascotHit");
+    expect(source).not.toMatch(/<BrainCaughtAFish|<BrainTobogganSpinner/);
+  });
+
+  it("keeps the reaction layer token-native, one-shot, and authority-free", () => {
+    const css = readFileSync(
+      "src/brand/mascot/reactions/semantic-reactions.css",
+      "utf8",
+    );
+    const source = readFileSync(
+      "src/brand/mascot/reactions/SemanticReactions.tsx",
+      "utf8",
+    );
+    expect(css).not.toMatch(/#[\da-f]{3,8}\b/i);
+    const mediaGuard = css.slice(
+      css.indexOf("@media (prefers-reduced-motion: reduce)"),
+    );
+    expect(mediaGuard).toContain("animation: none !important");
+    expect(mediaGuard).toContain(".mascot-semantic__evidence");
+    expect(mediaGuard).toContain(".mascot-semantic__stamp");
+    expect(mediaGuard).toContain(".mascot-semantic__orbit");
+    expect(css).not.toContain("infinite");
+    expect(source).not.toMatch(
+      /fetch\(|localStorage|sessionStorage|useNavigate|window\.|document\.|Date\.|Math\.random|requestAnimationFrame|setTimeout|setInterval/,
+    );
+    expect(
+      [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
+    ).toEqual(["react", "../../BrainMascot", "../../../design/tokens"]);
+  });
+});

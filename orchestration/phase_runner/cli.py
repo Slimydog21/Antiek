@@ -31,13 +31,16 @@ import argparse
 import importlib
 import json
 import sys
+from collections.abc import Callable
 
 from orchestration.phase_log import PhaseAssertionError
 
 from . import runner as _runner
 
 
-def _load_postcondition_check(module_path: str | None):
+def _load_postcondition_check(
+    module_path: str | None,
+) -> Callable[..., tuple[bool, str]] | None:
     """Resolve a ``PostconditionCheck`` callable from a dotted module
     path. The module is expected to expose ``run_check(phase,
     investigation_id) -> (passed, reason)``. Falls back to the
@@ -50,7 +53,8 @@ def _load_postcondition_check(module_path: str | None):
     except ImportError:
         return None
     if hasattr(mod, "run_check"):
-        return mod.run_check
+        check: Callable[..., tuple[bool, str]] = mod.run_check
+        return check
     return None
 
 
@@ -59,7 +63,7 @@ def _load_postcondition_check(module_path: str | None):
 # ---------------------------------------------------------------------------
 
 
-def _cmd_enter(args) -> int:
+def _cmd_enter(args: argparse.Namespace) -> int:
     _runner.enter_phase(
         args.investigation_id, args.phase, topic=args.topic or "",
         enforce_precondition=not args.no_precondition,
@@ -68,7 +72,7 @@ def _cmd_enter(args) -> int:
     return 0
 
 
-def _cmd_exit(args) -> int:
+def _cmd_exit(args: argparse.Namespace) -> int:
     _runner.exit_phase(
         args.investigation_id, args.phase,
         outputs_paths=args.outputs_path or None,
@@ -77,7 +81,7 @@ def _cmd_exit(args) -> int:
     return 0
 
 
-def _cmd_verify(args) -> int:
+def _cmd_verify(args: argparse.Namespace) -> int:
     """Keystone subcommand — exits 2 on postcondition failure so the
     worker MUST stop. The phase log is NOT marked verified in that
     case; a subsequent assert will refuse to advance."""
@@ -96,7 +100,7 @@ def _cmd_verify(args) -> int:
     return 0
 
 
-def _cmd_assert(args) -> int:
+def _cmd_assert(args: argparse.Namespace) -> int:
     try:
         if args.phase is not None:
             _runner.assert_phase(args.investigation_id, args.phase)
@@ -110,7 +114,7 @@ def _cmd_assert(args) -> int:
     return 0
 
 
-def _cmd_status(args) -> int:
+def _cmd_status(args: argparse.Namespace) -> int:
     check = _load_postcondition_check(args.postcondition_module)
     snap = _runner.phase_status(
         args.investigation_id, postcondition_check=check,
@@ -204,7 +208,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    exit_code: int = args.func(args)
+    return exit_code
 
 
 if __name__ == "__main__":

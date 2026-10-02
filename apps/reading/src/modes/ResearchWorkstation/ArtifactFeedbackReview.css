@@ -25,7 +25,7 @@
   display: grid;
   gap: 0.8rem;
   padding: 0.9rem;
-  border-top: 3px solid var(--ocean);
+  border-top: 3px solid var(--sun-deep);
 }
 
 .artifact-review__docket header {
@@ -48,7 +48,7 @@
 }
 
 .artifact-review__eyebrow {
-  color: var(--ocean);
+  color: var(--sun-deep);
   font-size: 0.62rem;
   font-weight: 750;
   letter-spacing: 0.1em;
@@ -93,15 +93,15 @@
 }
 
 .artifact-review__composer textarea:focus-visible {
-  outline: 2px solid var(--ocean);
+  outline: 2px solid var(--sun-deep);
   outline-offset: 2px;
 }
 
 .artifact-review__work-state {
   padding: 0.45rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--ocean) 45%, var(--rule));
+  border: 1px solid color-mix(in srgb, var(--sun-deep) 45%, var(--rule));
   background: var(--ice-3);
-  color: var(--ocean);
+  color: var(--sun-deep);
   font-size: 0.68rem;
   font-weight: 700;
 }
@@ -120,7 +120,7 @@
 }
 
 .artifact-review__thread li[data-author="agent"] {
-  border-left: 3px solid var(--ocean);
+  border-left: 3px solid var(--sun-deep);
 }
 
 .artifact-review__thread li > span {

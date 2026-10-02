@@ -68,7 +68,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    import duckdb
 
     from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
@@ -89,13 +88,20 @@ from orchestration.phase_runner import (  # noqa: E402
     run_check,
     verify_phase,
 )
+from orchestration.phase_runner.postconditions import (  # noqa: E402
+    NO_PRIOR_GRAPH_KNOWLEDGE,
+)
 from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+
+# connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
+from runtime.db_lock import ReadConnection, connect_read  # noqa: E402
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
 )
 from substrate.schemas import (  # noqa: E402
     ActionType,
+    ConnectorDeliveredPayload,
     ConnectorRequestedPayload,
     DecomposeQuestionDeliveredPayload,
     DecomposeQuestionRequestedPayload,
@@ -168,7 +174,7 @@ def _extract_keywords(text: str, *, min_len: int = 3, max_n: int = 8) -> list[st
 
 
 def _keyword_search_chunks(
-    con: duckdb.DuckDBPyConnection,
+    con: ReadConnection,
     keywords: list[str],
     top_k: int,
     *,
@@ -246,7 +252,6 @@ def _render_chunks_block_for_sub_question(
     never serves/attributes that content publicly.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -255,7 +260,7 @@ def _render_chunks_block_for_sub_question(
         db_path = default_db_path()
         embedder = default_embedding_provider()
         keywords = _extract_keywords(sub_question)
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             # Embedding side — half the slots
             emb_half = max(1, top_k // 2)
@@ -360,7 +365,6 @@ def _render_subgraph_block_for_sub_question(
     additive evidence, the chunks_block remains the floor.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -368,7 +372,7 @@ def _render_subgraph_block_for_sub_question(
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             res = graph_search(
                 con, sub_question, model=embedder, top_k=top_k,
@@ -449,10 +453,13 @@ def _prior_graph_knowledge_section(question: str) -> str:
             f"- {cid} cited from substrate graph search for orientation."
             for cid in ids
         )
-    return (
-        "chunk_orientation_marker and node_orchestrator_start seed the "
-        "connector substrate when the graph has no servable hits yet.\n"
-    )
+    # Say the graph had nothing. Do NOT manufacture citation-shaped tokens:
+    # the previous return value ("chunk_orientation_marker and
+    # node_orchestrator_start seed the connector substrate ...") matched the
+    # Phase 1 citation regex while referring to no chunk and no node, so a
+    # cold-start investigation passed the gate by claiming knowledge it did
+    # not have.
+    return NO_PRIOR_GRAPH_KNOWLEDGE + "\n"
 
 
 async def _render_chunks_block_for_sub_question_async(
@@ -678,11 +685,29 @@ async def _run_phase_1(
                 "decomposer returned no sub-questions "
                 "(bridge fallback or empty role response)"
             )
+        # Render the decomposer's actual sub-questions.
+        #
+        # This block used to splice in
+        # ``("Loop 1 orchestrator orienting on the cold question. " * 30)`` —
+        # 1560 characters of one sentence, whose only function was to clear the
+        # Phase 1 minimum-length check. The decomposition was already in hand
+        # and was not written down, so the orientation file recorded the
+        # orchestrator's padding instead of the role's output.
+        decomposition_lines: list[str] = []
+        for index, sq in enumerate(ctx.decomposition.decomposition, start=1):
+            decomposition_lines.append(
+                f"{index}. **{sq.sub_question.strip()}** "
+                f"({sq.category}, needs {sq.evidence_type_required})"
+            )
+            # The prompt treats a deletable rationale as the signal that a
+            # sub-question is performative, so it is recorded, not summarised.
+            decomposition_lines.append(f"   - _Why independent_: {sq.rationale.strip()}")
         body = (
             "# Orientation\n\n"
             f"Investigation: `{ctx.investigation_id}`\n\n"
             f"Question: {ctx.question}\n\n"
-            + ("Loop 1 orchestrator orienting on the cold question. " * 30)
+            "## Decomposition\n\n"
+            + "\n".join(decomposition_lines)
             + "\n\n## Prior Graph Knowledge\n\n"
             + await _prior_graph_knowledge_section_async(ctx.question)
         )
@@ -773,14 +798,60 @@ async def _run_phase_2(
             _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
         ))
         ctx.evidence.extend(results)
-        # Write the three round-1 dimension markers so the file-
-        # artifact postcondition for Phase 2 passes. The markers
-        # carry the evidence summaries the orchestrator already has.
-        body_base = (
-            f"# Round 1 — {ctx.investigation_id}\n\n"
-            f"Question: {ctx.question}\n\n"
-            + ("Evidence-grounded round 1 content. " * 50)
-        )
+        # Render the evidence the retrievers actually returned.
+        #
+        # This block used to append ``("Evidence-grounded round 1 content. "
+        # * 50)`` — one constant sentence, fifty times — and its own comment
+        # said why: "so the file-artifact postcondition for Phase 2 passes".
+        # The postcondition checks the three files exist and clear
+        # ``_ROUND1_MIN_BYTES``, and 1700 characters of one repeated sentence
+        # clears it. So Phase 2 verified the orchestrator's padding, not any
+        # role's output: the producer and the checker were written to the same
+        # weak spec, and the gate could not tell a real investigation from an
+        # empty one.
+        #
+        # The same comment also claimed the markers "carry the evidence
+        # summaries the orchestrator already has". They did not — ``results``
+        # was collected, appended to ``ctx.evidence``, and then discarded here.
+        # This makes the claim true.
+        lines: list[str] = [
+            f"# Round 1 — {ctx.investigation_id}",
+            "",
+            f"Question: {ctx.question}",
+            "",
+        ]
+        for payload in results:
+            lines.append(f"## {payload.sub_question}")
+            lines.append("")
+            if payload.insufficient_evidence:
+                lines.append(
+                    "_Retriever declined: insufficient evidence. A gap is "
+                    "first-class output, not a failure._"
+                )
+            elif payload.answer.strip():
+                lines.append(payload.answer.strip())
+            else:
+                lines.append("_No answer returned._")
+            lines.append("")
+            for claim in payload.supporting_claims:
+                cites = ", ".join(
+                    [f"chunk_{c}" for c in claim.chunk_ids]
+                    + [f"edge_{e}" for e in claim.edge_ids]
+                ) or "no citation"
+                lines.append(
+                    f"- **{claim.claim.strip()}** "
+                    f"({claim.evidence_type}, confidence={claim.confidence}; "
+                    f"{cites}) — {claim.confidence_basis.strip()}"
+                )
+            for gap in payload.evidentiary_gaps:
+                suggestion = (
+                    f" Suggested: {gap.additional_retrieval_suggested.strip()}"
+                    if gap.additional_retrieval_suggested
+                    else ""
+                )
+                lines.append(f"- _Gap_: {gap.gap_description.strip()}{suggestion}")
+            lines.append("")
+        body_base = "\n".join(lines)
         for name in (
             "round1-technical.md", "round1-competitive.md",
             "round1-strategic.md",
@@ -864,12 +935,43 @@ async def _run_phase_4(
         ctx.connector_result = delivered.payload
         # Round 2 deep-dive marker. The Phase 4 postcondition checks
         # for any round2-*.md (≠ critique) above the size floor.
+        # Render what the Connector actually returned. This used to be
+        # ``("Cross-domain connector substrate surfaced. " * 50)`` — one
+        # sentence, fifty times, sized to clear the Phase 4 floor while
+        # `ctx.connector_result` sat unread one line above.
+        relational_lines: list[str] = []
+        _cr = ctx.connector_result
+        if isinstance(_cr, ConnectorDeliveredPayload):
+            relational_lines.append(
+                f"Algorithm: `{_cr.selected_algorithm}`"
+                + (
+                    f" — {_cr.algorithm_rationale.strip()}"
+                    if _cr.algorithm_rationale else ""
+                )
+            )
+            relational_lines.append("")
+            relational_lines.append(
+                f"{len(_cr.paths)} graph path(s) traversed."
+            )
+            relational_lines.append("")
+            for rel in _cr.natural_language_relationships:
+                # `source_path_index` is the cite-back into `paths`; keeping it
+                # is what lets a reader check the claim against the traversal.
+                relational_lines.append(
+                    f"- {rel.text.strip()} (path #{rel.source_path_index})"
+                )
+            for km in _cr.keyword_mappings:
+                relational_lines.append(f"- _Mapping_: {km}")
+        else:
+            relational_lines.append(
+                "_No connector payload was delivered for this round._"
+            )
         _write_marker(
             ctx, "round2-relational.md",
             (
                 "# Round 2 — Relational Deep Dive\n\n"
                 f"Investigation: `{ctx.investigation_id}`\n\n"
-                + ("Cross-domain connector substrate surfaced. " * 50)
+                + "\n".join(relational_lines)
             ),
         )
     return await _drive_phase(ctx, phase=4, work=work())
@@ -1704,6 +1806,16 @@ async def run_synthesis_tail_from_pack(
         return ctx
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1719,7 +1831,6 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
-    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1764,14 +1875,20 @@ async def _run_investigation(
         lambda: _run_phase_7(ctx),
         lambda: _run_phase_8(ctx),
     ]
-    for run in phases:
+    for position, run in enumerate(phases, start=1):
         ok = await run()
         if not ok:
+            # A phase that returns False without naming itself still failed
+            # here. The payload's phase is 1..9, so reporting 0 raised inside
+            # this detached task and no terminal row was ever written; and an
+            # unset failed_phase would let the chase gate treat the run as a
+            # success.
+            ctx.failed_phase = ctx.failed_phase or position
             await broadcast_emit(
                 broadcaster,
                 ctx.investigation_id,
                 InvestigationFailedPayload(
-                    phase=ctx.failed_phase or 0,
+                    phase=ctx.failed_phase,
                     reason=ctx.fail_reason or "(unknown)",
                     last_completed_phase=(
                         ctx.last_completed_phase
@@ -1827,6 +1944,16 @@ async def _run_investigation(
         return
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1842,7 +1969,6 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
-    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
 
 
@@ -1989,12 +2115,12 @@ def make_loop_one_handler(
                 from interfaces.research.api.settings_models_admin import UserModelChoice
                 app = getattr(broadcaster, "_owner_model_app", None)
                 if app is None or req.owner_user_id is None or req.owner_operation_id is None:
-                    ctx.failed_phase = 0
+                    ctx.failed_phase = 1
                     ctx.fail_reason = "owner_model_unavailable"
                     await broadcast_emit(
                         broadcaster, ctx.investigation_id,
                         InvestigationFailedPayload(
-                            phase=0, reason=ctx.fail_reason,
+                            phase=1, reason=ctx.fail_reason,
                             last_completed_phase=None,
                         ), role="orchestrator", policy_id="owner-model-terminal",
                     )
@@ -2005,12 +2131,12 @@ def make_loop_one_handler(
                         for role in PAID_LOOP_ONE_ROLES
                     }
                 except Exception:
-                    ctx.failed_phase = 0
+                    ctx.failed_phase = 1
                     ctx.fail_reason = "owner_model_unavailable"
                     await broadcast_emit(
                         broadcaster, ctx.investigation_id,
                         InvestigationFailedPayload(
-                            phase=0, reason=ctx.fail_reason,
+                            phase=1, reason=ctx.fail_reason,
                             last_completed_phase=None,
                         ), role="orchestrator", policy_id="owner-model-terminal",
                     )

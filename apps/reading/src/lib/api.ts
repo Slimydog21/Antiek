@@ -179,7 +179,8 @@ function isFailureDetailObject(
   return typeof o.code === "string";
 }
 
-function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+/** The full envelope, including the server's own `message`, for classifyClientError only. */
+function readFailureEnvelope(err: ApiError): ClientFailureClassification | null {
   try {
     const parsed = JSON.parse(err.body) as { detail?: unknown };
     const detail = parsed.detail;
@@ -198,10 +199,28 @@ function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
   } catch {
     // unparseable body
   }
-  return {
-    code: "unknown",
-    retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
-  };
+  return null;
+}
+
+/**
+ * The closed-set failure envelope in an ApiError body, or null when the body
+ * does not carry one. Unlike classifyClientError, this tells a recognized
+ * `unknown` envelope apart from an unparseable body. It deliberately returns
+ * no `message`: the server's own text is never rendered. Show
+ * FAILURE_HEADLINES[code], as describeFailure does.
+ */
+export function parseFailureEnvelope(err: ApiError): { code: FailureCode; retryable: boolean } | null {
+  const envelope = readFailureEnvelope(err);
+  return envelope ? { code: envelope.code, retryable: envelope.retryable } : null;
+}
+
+function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+  return (
+    readFailureEnvelope(err) ?? {
+      code: "unknown",
+      retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
+    }
+  );
 }
 
 /** Classify a thrown value from apiFetch / research client calls. */
@@ -281,6 +300,7 @@ export async function getHealth(): Promise<{
  * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
  */
 export type ResearchTier = "fast" | "deep";
+export type ResearchSourcePolicy = "arxiv" | "substack" | "web" | "operator_corpus";
 
 export interface UserModelChoice {
   authority: "user_model";
@@ -298,6 +318,13 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+
+  /**
+   * Metadata-only source intent for this run. Recording it does not itself
+   * launch retrieval connectors; the backend start event makes the operator's
+   * requested source pack queryable for later runner/source-pack execution.
+   */
+  source_policy?: ResearchSourcePolicy[];
   /** Owner-selected route. The server requires this and operation_id together. */
   model_choice?: UserModelChoice;
   /** Stable idempotency identity for an owner-selected launch. */
@@ -369,6 +396,11 @@ export interface InvestigationSummary {
    * server-side). The surface badges it "found by the loop"; the raw
    * policy_id is never sent. Optional for back-compat with older responses. */
   spawned_by_daemon?: boolean;
+  /** THREAD-CONTRACT §1.2 ThreadSummary `document_id?`: the document this
+   * thread was born from, taken from the event envelope. Lane B's W1 wire
+   * carries it; until that ships the server omits it. Absent = unknown (not
+   * "no document"), so clients must stay correct without it. */
+  document_id?: string | null;
 }
 
 /** GET /investigations — list past investigations for the sidebar. */
@@ -629,6 +661,8 @@ export interface InvestigationStatus {
   /** The inline-rubric verdict for this research's answer; null when no
    *  score was persisted (the no-synthesis / no-key case). */
   rubric_score: RubricScore | null;
+  /** Metadata-only source-pack intent recorded on the start event. */
+  source_policy: ResearchSourcePolicy[];
 }
 
 /** GET /investigations/{id} — fetch terminal-state status. */
@@ -676,7 +710,7 @@ export interface ChunkResponse {
 
 // ── Sprint 12: source ingest ───────────────────────────────────────
 
-export type SourceKind = "arxiv" | "youtube" | "podcast" | "url";
+export type SourceKind = "arxiv" | "youtube" | "podcast" | "substack" | "url";
 
 export interface IngestSourceRequest {
   url: string;
@@ -1037,6 +1071,13 @@ export async function reorderBlock(req: {
 
 export interface UpdateSectionProseRequest {
   prose_text: string;
+  /**
+   * Additive compare-and-set guard (CR-F1's surviving half). The prose this
+   * edit was made against. The server refuses a stale write with 409
+   * `prose_revision_conflict` instead of overwriting a newer draft from
+   * another tab. Absent keeps the long-standing blind write.
+   */
+  based_on_prose_text?: string;
   original_text?: string;
   promote_to_graph?: boolean;
   cited_chunk_ids?: string[];
@@ -1203,6 +1244,174 @@ export async function ingestSource(
   return resp.json();
 }
 
+// ── Anchored highlights (anchor-first SPR-03) ────────────────────────────
+// Mirrors interfaces/research/api/book_anchor_routes.py. The anchor payload
+// is the proven lease field set (agent_work_routes.py:199-208); quote fields
+// are null on metadata-only anchors (a non-servable book's body is never
+// persisted, never surfaced here either).
+
+export interface BookAnchorPayload {
+  normalization: string;
+  node_id: string;
+  node_text_sha256: string;
+  start_scalar: number;
+  end_scalar: number;
+  quote: string | null;
+  prefix: string | null;
+  suffix: string | null;
+}
+
+export type BookAnchorStatus = "active" | "drifted" | "orphaned";
+
+export interface BookAnchor {
+  anchor_id: string;
+  document_id: string;
+  anchor: BookAnchorPayload;
+  servable_at_pin: boolean;
+  selection_text_sha256: string;
+  page_index_hint: number | null;
+  source: string;
+  status: BookAnchorStatus;
+  exact_valid: boolean;
+  /** The SPR-04 seam — present from day one, null until a thread links. */
+  investigation_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookAnchorListResponse {
+  document_id: string;
+  anchors: BookAnchor[];
+  count: number;
+}
+
+export interface AnchorMapChunk {
+  chunk_id: string;
+  section_path: string | null;
+  body_start: number;
+  body_end: number;
+  node_text_sha256: string;
+}
+
+export interface AnchorMapResponse {
+  document_id: string;
+  chunks: AnchorMapChunk[];
+  complete: boolean;
+}
+
+/** GET /books/{id}/anchors — the owner's anchors with live exact validity. */
+export async function listAnchors(documentId: string): Promise<BookAnchorListResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /books/{id}/anchors failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchorListResponse>;
+}
+
+/** POST /books/{id}/anchors — pin a passage; the server resolves the unique
+ * (chunk_id, offsets) and drops quote fields for non-servable books. */
+export interface CreateAnchorBody {
+  quote?: string;
+  prefix?: string;
+  suffix?: string;
+  page_index_hint?: number;
+  source?: string;
+  /** The explicit-anchor form (all three): a client-resolved metadata-only
+   *  location — a withheld selection's text never leaves the client. Send a
+   *  quote OR these, never both (the server 422s otherwise). */
+  node_id?: string;
+  start_scalar?: number;
+  end_scalar?: number;
+}
+
+export async function createAnchor(
+  documentId: string,
+  body: CreateAnchorBody,
+): Promise<BookAnchor> {
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/anchors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /books/{id}/anchors failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchor>;
+}
+
+/** DELETE /books/{id}/anchors/{anchorId} — idempotent (second delete is a
+ * 204, not a 404), so a missing anchor is not an error to surface. */
+export async function deleteAnchor(documentId: string, anchorId: string): Promise<void> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors/${encodeURIComponent(anchorId)}`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `DELETE /books/{id}/anchors/{anchorId} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+}
+
+/** PATCH /books/{id}/anchors/{anchorId} — the SPR-04 write-back: link the
+ * spawned research thread to its anchor. FIRST LINK WINS (a second spawn
+ * with a different thread throws ApiError 409 anchor_already_linked). */
+export async function linkAnchorInvestigation(
+  documentId: string,
+  anchorId: string,
+  investigationId: string,
+): Promise<BookAnchor> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors/${encodeURIComponent(anchorId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ investigation_id: investigationId }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `PATCH /books/{id}/anchors/{anchorId} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchor>;
+}
+
+/** GET /books/{id}/anchor-map — the chunk manifest (ids/offsets/hashes only,
+ * never body text), gated like the public body serve. `owner: true` uses the
+ * owner-readable mirror for personal-reading books. */
+export async function getAnchorMap(
+  documentId: string,
+  opts?: { owner?: boolean },
+): Promise<AnchorMapResponse> {
+  const suffix = opts?.owner ? "/anchor-map/owner" : "/anchor-map";
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}${suffix}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /books/{id}/anchor-map failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<AnchorMapResponse>;
+}
+
 // ── SPR-03: distill surface (insights / open questions / living notes) ──
 //
 // Mirrors interfaces/research/api/distill_routes.py. The node_id is an
@@ -1251,9 +1460,24 @@ export interface ResearchArtifactExportResponse {
   artifact_id: string;
   investigation_id: string;
   path: string;
+  twin_notes_path: string;
   content_hash: string;
   size_bytes: number;
   event_id: string | null;
+}
+
+export interface ResearchArtifactComposeMember {
+  investigation_id: string;
+  content_hash: string;
+  artifact_path: string;
+  twin_notes_path: string;
+}
+
+export interface ResearchArtifactComposeResponse {
+  path: string;
+  draft_merge_path: string | null;
+  members: ResearchArtifactComposeMember[];
+  hash_conflicts: string[][];
 }
 
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
@@ -1291,6 +1515,29 @@ export async function exportResearchArtifact(
   return resp.json();
 }
 
+/** POST /research/artifacts/compose — write a no-mutation draft merge review. */
+export async function composeResearchArtifacts(
+  investigationIds: string[],
+  writeDraftMerge = true,
+): Promise<ResearchArtifactComposeResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_ids: investigationIds,
+      write_draft_merge: writeDraftMerge,
+    }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/compose failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** GET /research/{id}/distill — the durable product of a research:
  *  its insights + open questions, read off the graph. */
 export async function getDistillation(
@@ -1321,7 +1568,6 @@ export interface ChallengeNoteResponse {
   /** The reserved (un-launched) child research id, when escalated. */
   reserved_child_investigation_id?: string | null;
 }
-
 
 /** Prompt / question telemetry from the investigation trajectory (event-log SoT).
  *  Full prompt bodies are not stored on dispatch.call — only prompt_hash +

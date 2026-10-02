@@ -78,10 +78,10 @@ export const Scene: Story = {
         <div className="h-screen flex flex-col bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
           <LemonToastViewport />
           <header className="shrink-0 border-b-edge border-sun bg-ink dark:bg-void px-6 py-2.5 flex items-center justify-between">
-            <div className="font-mono font-bold text-sun text-[13px] tracking-wider">
+            <div className="font-mono font-bold text-sun text-sm tracking-wider">
               ANTIEK · S3 PANEL DEMO
             </div>
-            <div className="flex items-center gap-2 text-[12.5px] font-mono text-ice-2/80">
+            <div className="flex items-center gap-2 text-xs font-mono text-ice-2/80">
               <span>open: <span className="text-sun">{ids.length}</span></span>
               <span>focused: <span className="text-sun">{focusedId ?? "—"}</span></span>
               <LemonButton variant="tertiary" size="sm" onClick={() => reset()}>

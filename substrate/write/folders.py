@@ -24,7 +24,8 @@ writer risks a mid-write collision. The DDL is identical in spirit to the
 V1–V8 blocks there; folding it in as a V9 block is a safe one-line
 follow-up once the parallel stream settles (recorded in the handoff). All
 writes still go through ``runtime/db_lock.connect_write`` (single-writer
-invariant intact); membership writes emit a typed folder event.
+invariant intact); membership writes currently emit no event (no typed
+folder payload has ever been registered in events.py — see NOTE below).
 """
 
 from __future__ import annotations
@@ -35,29 +36,20 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection
-    from ..event_log import emit_typed
+    from runtime.db_lock import LockedConnection
+
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.graph.ops import new_random_id
 
-# Folder events are typed when available (codegen-registered). The import
-# is defensive: if the sibling stream's concurrent events.py edits have not
-# yet landed the payloads, folders still function (membership is recorded
-# via db_lock writes) and emit falls back to an untyped event.
-try:
-    from substrate.schemas.events import (
-        FolderBlockAddedPayload,
-        FolderBlockRemovedPayload,
-        FolderCreatedPayload,
-    )
-    _TYPED_FOLDER_EVENTS = True
-except ImportError:  # pragma: no cover — payloads not yet registered
-    _TYPED_FOLDER_EVENTS = False
+# NOTE: typed folder event payloads (FolderCreatedPayload /
+# FolderBlockAddedPayload / FolderBlockRemovedPayload) were never added to
+# substrate.schemas.events (verified against git history), so folder writes
+# record membership via db_lock writes only and emit no event today. Do not
+# emit untyped payloads under typed names.
 
 
 FOLDERS_SCHEMA_SQL = """
@@ -133,11 +125,6 @@ def create_folder(
         "INSERT INTO write_folders (folder_id, name, owner_user_id) VALUES (?, ?, ?)",
         [fid, name, owner_user_id],
     )
-    if _TYPED_FOLDER_EVENTS:
-        emit_typed(
-            investigation_id, FolderCreatedPayload(folder_id=fid, name=name),
-            role="write_repository",
-        )
     return fid
 
 
@@ -160,12 +147,6 @@ def add_block_to_folder(
         "INSERT INTO write_folder_members (folder_id, node_id) VALUES (?, ?)",
         [folder_id, node_id],
     )
-    if _TYPED_FOLDER_EVENTS:
-        emit_typed(
-            investigation_id,
-            FolderBlockAddedPayload(folder_id=folder_id, node_id=node_id),
-            role="write_repository",
-        )
     return True
 
 
@@ -187,12 +168,6 @@ def remove_block_from_folder(
         "DELETE FROM write_folder_members WHERE folder_id = ? AND node_id = ?",
         [folder_id, node_id],
     )
-    if _TYPED_FOLDER_EVENTS:
-        emit_typed(
-            investigation_id,
-            FolderBlockRemovedPayload(folder_id=folder_id, node_id=node_id),
-            role="write_repository",
-        )
     return True
 
 

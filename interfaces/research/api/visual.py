@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from roles.visual import (
@@ -45,6 +46,8 @@ from substrate.schemas.events import (
     VisualFrameIdentifiedPayload,
     VisualRoleFailedPayload,
 )
+
+from .broadcast import EventBroadcaster
 
 _LOG = logging.getLogger(__name__)
 
@@ -196,12 +199,12 @@ def frame_identified_event(
 
 
 def make_visual_handler(
-    broadcaster,  # type: ignore[no-untyped-def]
+    broadcaster: EventBroadcaster,
     *,
     provider: VisionProvider,
     model: str = DEFAULT_VISION_MODEL,
-    context_builder,  # callback (event) → VisualContext
-):
+    context_builder: Callable[[Event], VisualContext],
+) -> Callable[[Event], Awaitable[None]]:
     """Build an async handler that subscribes to
     ``visual.frame_identified`` events. Matches the existing
     decomposer/synthesizer/cross_doc bridge pattern.
@@ -214,7 +217,7 @@ def make_visual_handler(
     pre-canned VisualContext.
     """
 
-    async def _handle(event) -> None:  # type: ignore[no-untyped-def]
+    async def _handle(event: Event) -> None:
         try:
             context = context_builder(event)
         except Exception as exc:  # noqa: BLE001 — defensive
@@ -249,6 +252,9 @@ def make_visual_handler(
         if failure_evt is not None:
             await broadcaster.broadcast(failure_evt)
             return
+        # dispatch_visual_role's contract pairs (result, failure_event):
+        # failure_event is not None exactly when result is None.
+        assert result is not None
         await broadcaster.broadcast(claims_extracted_event(
             document_id=document_id,
             investigation_id=event.investigation_id,
@@ -261,11 +267,11 @@ def make_visual_handler(
 
 
 def register_handlers(
-    broadcaster,  # type: ignore[no-untyped-def]
+    broadcaster: EventBroadcaster,
     *,
     provider: VisionProvider,
     model: str = DEFAULT_VISION_MODEL,
-    context_builder=None,
+    context_builder: Callable[[Event], VisualContext] | None = None,
 ) -> None:
     """Wire the visual bridge into the broadcaster. Called once at
     app startup from ``app.create_app``.

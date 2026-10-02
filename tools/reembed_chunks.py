@@ -44,7 +44,10 @@ from processing.embedding.embed import (  # noqa: E402
     HashEmbedding,
     default_embedding_provider,
 )
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    connect_read,
+    connect_write,
+)
 from substrate.graph import default_db_path  # noqa: E402
 from substrate.graph.embedding_meta import record_chunk_embedding_meta  # noqa: E402
 from substrate.graph.schema import init_database  # noqa: E402
@@ -108,9 +111,8 @@ def run(
     provider_is_hash = isinstance(provider, HashEmbedding)
 
     # ── BEFORE: counts + a sample vector's dimension (read-only) ──────────
-    import duckdb
 
-    con_ro = duckdb.connect(db_path, read_only=True)
+    con_ro = connect_read(db_path)
     try:
         total_row = con_ro.execute("SELECT count(*) FROM chunks").fetchone()
         embedded_row = con_ro.execute(
@@ -152,7 +154,7 @@ def run(
         )
 
     # ── APPLY: single-writer transaction, rewrite every embedding ─────────
-    rows = duckdb.connect(db_path, read_only=True).execute(
+    rows = connect_read(db_path).execute(
         "SELECT chunk_id, text FROM chunks"
         + (f" LIMIT {int(limit)}" if limit else "")
     ).fetchall()

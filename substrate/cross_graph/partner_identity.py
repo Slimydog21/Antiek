@@ -37,6 +37,7 @@ specified here.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import hashlib
 import hmac
@@ -81,7 +82,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class PartnerTrustState(str, enum.Enum):
+class PartnerTrustState(enum.StrEnum):
     """Three-state machine for a partner-substrate identity record."""
 
     PENDING_HANDSHAKE = "pending_handshake"
@@ -346,8 +347,8 @@ def verify_partner_token(
     )
     try:
         key = bytes.fromhex(shared_secret_hex)
-    except ValueError:
-        raise PartnerIdentityError("shared_secret_hex is not valid hex")
+    except ValueError as exc:
+        raise PartnerIdentityError("shared_secret_hex is not valid hex") from exc
     expected_sig = hmac.new(key, sig_input, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected_sig, sig_hex):
         return None
@@ -387,7 +388,7 @@ def ensure_table(con: Any) -> None:
     ``substrate/graph/schema.py`` and runs at boot via ``init_database``;
     this is a no-op on a fully-initialized DB. Read-only connections
     fail silently — matching the federation_config_store posture."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS federation_partners (
@@ -407,8 +408,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _ts(s: str) -> str:
@@ -432,7 +431,7 @@ def save_record(con: Any, record: PartnerSubstrate) -> str:
         [record.partner_id, record.state.value, _ts(record.last_state_change_at)],
     ).fetchone()
     if existing is not None:
-        return existing[0]
+        return str(existing[0])
 
     attempt_id = f"prtrec-{uuid.uuid4().hex[:12]}"
     con.execute(

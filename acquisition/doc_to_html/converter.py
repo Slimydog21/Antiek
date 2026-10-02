@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -33,8 +34,10 @@ from urllib.parse import urlsplit
 from acquisition.snapshot.reader_html import markdown_to_safe_html
 from runtime.db_lock import connect_write
 from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_markers
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import insert_document
+from substrate.legal_gate.registry import BANNED_DOMAINS
 from substrate.memory import write_memory_item
 from substrate.reader_html.store import store_reader_html
 
@@ -60,30 +63,10 @@ PYPDF_THIN_WORD_THRESHOLD = int(os.environ.get("ANTIEK_PYPDF_THIN_WORDS", "15"))
 
 # Fair-use blocked domains — known non-fair-use sources.
 # Acquisition from these is REFUSED (Bartz v. Anthropic / Hachette v. IA).
-BLOCKED_DOMAINS: frozenset[str] = frozenset({
-    "libgen.is",
-    "libgen.rs",
-    "libgen.li",
-    "libgen.me",
-    "libgen.org",
-    "libgen.io",
-    "annas-archive.org",
-    "annas-archive.cc",
-    "annas-archive.se",
-    "z-lib.org",
-    "zlib.org",
-    "z-lib.is",
-    "z-lib.cc",
-    "singlelogin.re",
-    "singlelogin.site",
-    "1lib.sk",
-    "1lib.domains",
-    "b-ok.cc",
-    "b-ok.org",
-    "bookfi.net",
-    "book4you.org",
-    "book4you.se",
-})
+# The list itself lives in ``substrate.legal_gate.registry.BANNED_DOMAINS``
+# (one source of truth, cite comment per entry); this name is kept for
+# the re-exports in ``acquisition.doc_to_html`` and its tests.
+BLOCKED_DOMAINS: frozenset[str] = frozenset(BANNED_DOMAINS)
 
 
 class FairUseError(ValueError):
@@ -148,12 +131,22 @@ def convert_to_markdown_with_engine(
 ) -> tuple[str, str]:
     """Like ``convert_to_markdown`` but also returns the engine name used.
 
-    Engine is one of: ``anydoc`` | ``docling`` | ``pypdf`` | ``deepseek_ocr`` | ``ocrmypdf`` |
+    Engine is one of: ``anydoc_binding`` | ``anydoc`` | ``docling`` | ``pypdf`` | ``deepseek_ocr`` | ``ocrmypdf`` |
     ``tesseract``.
     """
     path = Path(asset_path)
     if not path.exists():
         raise FileNotFoundError(f"asset not found: {path}")
+
+    # Binding first: it is what the deploy actually installs. The CLI arm
+    # stays as a fallback so a developer machine with `anydoc` on PATH keeps
+    # working, and the two stamp different engines so rows remain
+    # distinguishable after the fact.
+    md = _nonempty_markdown(
+        _run_anydoc_binding(path, fmt=fmt, max_output=max_output_bytes)
+    )
+    if md is not None:
+        return md, "anydoc_binding"
 
     md = _nonempty_markdown(
         _run_anydoc(path, fmt=fmt, timeout=timeout, max_output=max_output_bytes)
@@ -271,6 +264,60 @@ def _run_pdf_ocr(
     except Exception as exc:
         logger.warning("PDF OCR failed for %s: %s", path.name, exc)
         return None
+
+
+def _run_anydoc_binding(
+    path: Path,
+    *,
+    fmt: str | None,
+    max_output: int,
+) -> str | None:
+    """Convert in-process through the firecrawl-anydoc Python binding.
+
+    The CLI arm below shells out to ``ANYDOC_BIN``, which resolves to the bare
+    string ``"anydoc"`` when nothing is on PATH — and nothing is, on the
+    production host. ``infrastructure/ansible/playbooks/deploy.yml:108``
+    installs the *binding* via the ``docs`` extra and never the CLI, so every
+    Office/ODF/RTF/CSV upload fell through this arm in production while working
+    on any developer machine that happens to have ``anydoc`` in ``~/.local/bin``.
+    That is why the defect was invisible locally.
+
+    The format map is imported from ``substrate/research_bridge/extractors``
+    rather than duplicated: that module already proves this exact call shape
+    against the same binding, and two copies of a format table drift.
+    The import is lazy to keep ``acquisition`` free of an import-time
+    dependency on ``substrate``.
+    """
+    try:
+        from substrate.research_bridge.extractors import _ANYDOC_FORMAT_BY_EXTENSION
+    except ImportError:  # pragma: no cover - substrate always present in-tree
+        return None
+
+    extension = path.suffix.lstrip(".").lower()
+    format_hint = _ANYDOC_FORMAT_BY_EXTENSION.get(fmt or extension) or (
+        _ANYDOC_FORMAT_BY_EXTENSION.get(extension)
+    )
+    if format_hint is None:
+        return None
+
+    try:
+        anydoc = import_module("anydoc")
+        markdown = anydoc.to_markdown_bytes(path.read_bytes(), format_hint)
+    except ModuleNotFoundError:
+        logger.warning(
+            "anydoc binding not installed; install the 'docs' extra "
+            "(firecrawl-anydoc) to ingest Office/ODF/RTF/CSV"
+        )
+        return None
+    except Exception as exc:  # the binding raises vendor-specific errors
+        logger.debug("anydoc binding failed for %s: %s", path.name, type(exc).__name__)
+        return None
+
+    if not isinstance(markdown, str):
+        return None
+    if len(markdown.encode("utf-8")) > max_output:
+        markdown = markdown.encode("utf-8")[:max_output].decode("utf-8", errors="ignore")
+    return markdown
 
 
 def _run_anydoc(
@@ -510,7 +557,27 @@ def ingest_asset(
             investigation_id=None,
             raw_text=md,
             metadata=metadata,
-            content_class=provenance["fair_use_class"],
+            # `fair_use_class` is NOT a content_class. The two vocabularies are
+            # DISJOINT: fair_use_class is {public, licensed, personal} (validated
+            # in _check_fair_use), while SERVABLE_CONTENT_CLASSES is
+            # {public_domain, user_owned, user_public_contribution,
+            # opt_in_licensed, source_declared_open}. Their intersection is
+            # EMPTY, so passing one through as the other wrote a value no read
+            # path can ever serve — every asset ingested here was permanently
+            # dark, silently, because insert_document takes `str | None` and
+            # validates nothing.
+            #
+            # Landing on the deny-by-default gate states that outcome instead of
+            # stumbling into it. Behaviour is unchanged (these documents were
+            # already unservable); what changes is that the column now holds a
+            # REAL content_class, and the fair-use claim stays in `metadata`
+            # (above) where it belongs until someone maps it.
+            #
+            # Do NOT "fix" this by guessing a mapping. `public` (fair use) is not
+            # `public_domain` (no copyright) — that pairing fails OPEN and is a
+            # rights violation, strictly worse than the outage it would cure.
+            # The mapping is an owner decision; see the disjointness proof above.
+            content_class=GATED_DEFAULT_CONTENT_CLASS,
             on_conflict="ignore",
         )
         store_reader_html(

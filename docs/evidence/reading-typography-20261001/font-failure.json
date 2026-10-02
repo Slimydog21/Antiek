@@ -1,0 +1,17 @@
+{
+  "state": {
+    "status": "This font could not load. Your reading continues in a system font. Reload this page or choose another font.",
+    "body": "The best place to think is one where you can forget the page and follow the thought. A quiet sentence leaves room for an unexpected idea. A familiar word can gather new meaning when there is time to read it carefully.",
+    "computedFont": "Literata, Georgia, serif"
+  },
+  "platform": {
+    "fonts": [
+      {
+        "familyName": "Georgia",
+        "postScriptName": "Georgia",
+        "isCustomFont": false,
+        "glyphCount": 217
+      }
+    ]
+  }
+}

@@ -10,7 +10,6 @@ const ELIGIBLE: ResearchWaitArcadePolicyInput = {
   hasAuthoritativeSnapshot: true,
   researchCount: 3,
   allTerminal: false,
-  reducedMotion: false,
   offerReady: false,
   optedIn: false,
 };
@@ -21,7 +20,6 @@ describe("deriveResearchWaitArcadeMode", () => {
     ["unobserved", { hasAuthoritativeSnapshot: false }],
     ["empty", { researchCount: 0 }],
     ["terminal", { allTerminal: true }],
-    ["reduced motion", { reducedMotion: true }],
   ])("hides for %s sessions", (_name, patch) => {
     expect(deriveResearchWaitArcadeMode({ ...ELIGIBLE, ...patch })).toBe(
       "hidden",

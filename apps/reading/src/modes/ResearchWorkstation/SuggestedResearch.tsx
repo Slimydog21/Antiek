@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import { getSuggestions, type Suggestion } from "../../api/research";
 import { startInvestigation, ApiError } from "../../lib/api";
@@ -90,7 +90,7 @@ export default function SuggestedResearch({
   canLaunch = true,
   limit = 8,
 }: Props) {
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   // Keys chased in this session — dropped from the offered list so a thread
   // the user just pulled isn't offered again before the next server refresh.
@@ -203,7 +203,7 @@ function Frame({
         <h2 className="font-serif text-sm text-ink dark:text-bright">
           {variant === "beside" ? "Threads worth chasing" : "Suggested next"}
         </h2>
-        <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
           {variant === "beside"
             ? "open questions the loop found across your research"
             : "from the open questions across your research"}
@@ -271,11 +271,11 @@ function SuggestionCard({
       className="rounded-md border border-dashed border-rule bg-ice-1/40 px-3 py-2.5 dark:border-charcoal-1 dark:bg-charcoal-1/30"
     >
       <div className="mb-1.5 flex items-center gap-2">
-        <LemonTag colour="muted" className="text-[10px]">
+        <LemonTag colour="muted" className="text-xxs">
           could chase
         </LemonTag>
         {suggestion.seen_in_research_count > 1 && (
-          <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+          <span className="font-mono text-xxs text-shadow-1 dark:text-moonlight">
             found across {suggestion.seen_in_research_count} of your researches
           </span>
         )}
@@ -284,7 +284,7 @@ function SuggestionCard({
         {suggestion.question}
       </p>
       {suggestion.suggested_retrieval && (
-        <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight">
           worth looking at: {suggestion.suggested_retrieval}
         </p>
       )}

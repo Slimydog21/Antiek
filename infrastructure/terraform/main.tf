@@ -101,24 +101,26 @@ resource "hcloud_server" "antiek" {
 # proxied works — but verify before flipping).
 # ──────────────────────────────────────────────────────────────────────────────
 
-resource "cloudflare_record" "api_a" {
+# DNS for api.antiek.ai is a PROXIED CNAME to the Cloudflare Tunnel, not
+# A/AAAA records to the origin. Measured 2026-09-21 (D9 in #3328): the state
+# file still recorded `A 167.235.202.98, proxied=false` while live DNS
+# answered Cloudflare anycast via a CNAME to <tunnel-id>.cfargotunnel.com,
+# and the origin's :443 is firewalled (ufw allows only 22/tcp). A
+# `terraform apply` on the old resources would have re-asserted a grey-cloud
+# A record pointing at a closed port and taken the API down.
+#
+# Adopting the live record instead of recreating it (no DNS flap):
+#   terraform import cloudflare_record.api_cname <zone_id>/<record_id>
+# (record id for api.antiek.ai as of 2026-09-21: b5977fd86657e3215c1a71cd8431479f)
+# then `terraform state rm cloudflare_record.api_a cloudflare_record.api_aaaa`.
+resource "cloudflare_record" "api_cname" {
   zone_id = var.cloudflare_zone_id
   name    = var.api_subdomain
-  value   = hcloud_server.antiek.ipv4_address
-  type    = "A"
-  ttl     = 300 # 5 min — short so DNS changes propagate fast during deploys
-  proxied = false
-  comment = "api.antiek.ai → Antiek substrate VM (managed by Terraform)"
-}
-
-resource "cloudflare_record" "api_aaaa" {
-  zone_id = var.cloudflare_zone_id
-  name    = var.api_subdomain
-  value   = hcloud_server.antiek.ipv6_address
-  type    = "AAAA"
-  ttl     = 300
-  proxied = false
-  comment = "api.antiek.ai IPv6 (managed by Terraform)"
+  value   = "${var.cloudflared_tunnel_id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1 # Cloudflare requires ttl=1 ("automatic") on proxied records
+  comment = "api.antiek.ai → Cloudflare Tunnel → Caddy on the VM (managed by Terraform)"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -223,7 +223,7 @@ class SkillRuleAccumulator:
         runs (e.g., a nightly job that scans for newly-promotable
         rules)."""
         verdicts: list[PromotionDecision] = []
-        for rule_id in self._digests_by_rule.keys():
+        for rule_id in self._digests_by_rule:
             v = self.evaluate(rule_id)
             if v is not None:
                 verdicts.append(v)

@@ -72,7 +72,7 @@ export default function Attribution({ body }: AttributionProps) {
   return (
     <section
       aria-label="Attribution"
-      className="flex flex-wrap items-center gap-2 text-[12px] font-mono text-shadow-1 dark:text-moonlight border-t border-rule dark:border-charcoal-1 pt-3"
+      className="flex flex-wrap items-center gap-2 text-xs font-mono text-shadow-1 dark:text-moonlight border-t border-rule dark:border-charcoal-1 pt-3"
     >
       <a
         href={canonicalUrl}
@@ -82,7 +82,7 @@ export default function Attribution({ body }: AttributionProps) {
       >
         via arXiv ↗
       </a>
-      <LemonTag colour={tier === "T1" ? "aurora" : "muted"} dot>
+      <LemonTag colour={tier === "T1" ? "success" : "muted"} dot>
         {tierLabel(tier)}
       </LemonTag>
       {body.license && <LemonTag colour="muted">{licenseLabel(body.license)}</LemonTag>}

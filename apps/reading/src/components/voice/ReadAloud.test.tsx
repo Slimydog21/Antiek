@@ -60,9 +60,14 @@ describe("ReadAloud control", () => {
   it("plays for given text: clicking Read aloud synthesizes + plays the audio", async () => {
     mockFetch.mockResolvedValue(okAudioResponse());
     const fake = makeFakeAudio();
+    const onPlaybackStarted = vi.fn();
 
     const { getByRole } = render(
-      <ReadAloud text="a model sentence" makeAudio={() => fake} />,
+      <ReadAloud
+        text="a model sentence"
+        makeAudio={() => fake}
+        onPlaybackStarted={onPlaybackStarted}
+      />,
     );
 
     await act(async () => {
@@ -77,6 +82,7 @@ describe("ReadAloud control", () => {
     // Now playing → control offers Pause + Stop.
     expect(getByRole("button", { name: "Pause" })).toBeTruthy();
     expect(getByRole("button", { name: "Stop" })).toBeTruthy();
+    expect(onPlaybackStarted).toHaveBeenCalledOnce();
   });
 
   it("LOAD-BEARING §9.0: a withheld chunk surfaces the honest 'withheld' state, distinct from error, and the synthesis call never fires", async () => {
@@ -118,8 +124,15 @@ describe("ReadAloud control", () => {
   it("pause pauses the playing audio without re-synthesizing", async () => {
     mockFetch.mockResolvedValue(okAudioResponse());
     const fake = makeFakeAudio();
+    const onPlaybackStarted = vi.fn();
 
-    const { getByRole } = render(<ReadAloud text="x" makeAudio={() => fake} />);
+    const { getByRole } = render(
+      <ReadAloud
+        text="x"
+        makeAudio={() => fake}
+        onPlaybackStarted={onPlaybackStarted}
+      />,
+    );
 
     await act(async () => {
       fireEvent.click(getByRole("button", { name: "Read aloud" }));
@@ -137,6 +150,112 @@ describe("ReadAloud control", () => {
     });
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(fake.play).toHaveBeenCalledTimes(2);
+    expect(onPlaybackStarted).toHaveBeenCalledOnce();
+  });
+
+  it("does not resurrect playing state when Stop wins a pending resume", async () => {
+    mockFetch.mockResolvedValue(okAudioResponse());
+    let resolveResume!: () => void;
+    const fake = makeFakeAudio();
+    fake.play
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(new Promise<void>((resolve) => { resolveResume = resolve; }));
+    const onPlaybackStarted = vi.fn();
+    const { getByRole, container } = render(
+      <ReadAloud text="x" makeAudio={() => fake} onPlaybackStarted={onPlaybackStarted} />,
+    );
+    fireEvent.click(getByRole("button", { name: "Read aloud" }));
+    await waitFor(() => expect(getByRole("button", { name: "Pause" })).toBeTruthy());
+    fireEvent.click(getByRole("button", { name: "Pause" }));
+    fireEvent.click(getByRole("button", { name: "Resume" }));
+    fireEvent.click(getByRole("button", { name: "Stop" }));
+
+    await act(async () => { resolveResume(); });
+
+    expect(container.querySelector(".read-aloud")?.getAttribute("data-state")).toBe("idle");
+    expect(onPlaybackStarted).toHaveBeenCalledOnce();
+  });
+
+  it("does not update state after unmount wins a pending resume", async () => {
+    mockFetch.mockResolvedValue(okAudioResponse());
+    let resolveResume!: () => void;
+    const fake = makeFakeAudio();
+    fake.play
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(new Promise<void>((resolve) => { resolveResume = resolve; }));
+    const onPlaybackStarted = vi.fn();
+    const view = render(
+      <ReadAloud text="x" makeAudio={() => fake} onPlaybackStarted={onPlaybackStarted} />,
+    );
+    fireEvent.click(view.getByRole("button", { name: "Read aloud" }));
+    await waitFor(() => expect(view.getByRole("button", { name: "Pause" })).toBeTruthy());
+    fireEvent.click(view.getByRole("button", { name: "Pause" }));
+    fireEvent.click(view.getByRole("button", { name: "Resume" }));
+    view.unmount();
+
+    await act(async () => { resolveResume(); });
+
+    expect(onPlaybackStarted).toHaveBeenCalledOnce();
+    expect(fake.pause).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not announce playback when audio.play rejects", async () => {
+    mockFetch.mockResolvedValue(okAudioResponse());
+    const fake = makeFakeAudio();
+    fake.play.mockRejectedValue(new Error("autoplay blocked"));
+    const onPlaybackStarted = vi.fn();
+    const { getByRole, container } = render(
+      <ReadAloud text="x" makeAudio={() => fake} onPlaybackStarted={onPlaybackStarted} />,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Read aloud" }));
+
+    await waitFor(() =>
+      expect(container.querySelector(".read-aloud")?.getAttribute("data-state")).toBe("error"),
+    );
+    expect(onPlaybackStarted).not.toHaveBeenCalled();
+  });
+
+  it("does not create audio or announce playback after unmount during synthesis", async () => {
+    let resolveResponse!: (response: Response) => void;
+    mockFetch.mockReturnValue(new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    }));
+    const fake = makeFakeAudio();
+    const makeAudio = vi.fn(() => fake);
+    const onPlaybackStarted = vi.fn();
+    const view = render(
+      <ReadAloud text="x" makeAudio={makeAudio} onPlaybackStarted={onPlaybackStarted} />,
+    );
+    fireEvent.click(view.getByRole("button", { name: "Read aloud" }));
+    view.unmount();
+
+    await act(async () => {
+      resolveResponse(okAudioResponse());
+      await Promise.resolve();
+    });
+
+    expect(makeAudio).not.toHaveBeenCalled();
+    expect(onPlaybackStarted).not.toHaveBeenCalled();
+  });
+
+  it("keeps playing when the playback observer throws", async () => {
+    mockFetch.mockResolvedValue(okAudioResponse());
+    const fake = makeFakeAudio();
+    const { getByRole, container } = render(
+      <ReadAloud
+        text="x"
+        makeAudio={() => fake}
+        onPlaybackStarted={() => { throw new Error("observer failed"); }}
+      />,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Read aloud" }));
+
+    await waitFor(() =>
+      expect(container.querySelector(".read-aloud")?.getAttribute("data-state")).toBe("playing"),
+    );
+    expect(fake.pause).not.toHaveBeenCalled();
   });
 
   it("PROVENANCE: the control carries the model-generated source-kind attribute (never user)", () => {

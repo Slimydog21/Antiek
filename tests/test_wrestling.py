@@ -637,11 +637,16 @@ def test_normalize_confidence_coerces_unknown_values(raw, expected):
 def _read_graph_row(table: str, where: str, params: list) -> tuple | None:
     """Read one row from the test-isolated graph DB. Inline DuckDB
     connect so the test doesn't depend on import order."""
-    import duckdb
+    from runtime.db_lock import connect_read
+
     db_path = os.environ["ANTIEK_DUCKDB_PATH"]
     if not os.path.exists(db_path):
         return None
-    con = duckdb.connect(db_path, read_only=True)
+    # Shared, env-derived path that the app under test holds read-write in
+    # this process, so a raw `read_only=True` connect can be refused with
+    # "same database file with a different configuration". connect_read
+    # absorbs that conflict and re-raises anything else.
+    con = connect_read(db_path)
     try:
         return con.execute(f"SELECT * FROM {table} WHERE {where}", params).fetchone()
     finally:

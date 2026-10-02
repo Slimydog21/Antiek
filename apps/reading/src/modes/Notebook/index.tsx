@@ -127,7 +127,7 @@ export default function Notebook() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {loading && (
           <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
@@ -159,7 +159,7 @@ export default function Notebook() {
 
 function NotebookEmpty() {
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 flex items-center justify-center bg-ice-0 dark:bg-charcoal-2 px-8 py-12">
         <div className="max-w-md text-center space-y-3">
           <h2 className="text-lg font-serif text-ink dark:text-bright">Notebook</h2>

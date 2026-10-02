@@ -15,11 +15,20 @@ function statusLabel(row: ToolConnection): string {
   }
   if (row.status === "degraded") return "Needs attention";
   if (row.status === "configured_unverified") {
+    // A stored key that no research surface reads is not "configured" in
+    // any sense the user cares about; say what is true instead.
+    if (!row.searchable) return "Connected, not yet used";
     return row.credential_kind === "contact"
       ? "Contact stored · not yet verified"
       : "Credential stored · not yet verified";
   }
   return "Not configured";
+}
+
+/** Why a stored credential is labelled unused, or null when it is in use. */
+function unusedNote(row: ToolConnection): string | null {
+  if (row.status !== "configured_unverified" || row.searchable) return null;
+  return "Stored and scoped to your account, but no Antiek research surface reads this provider yet.";
 }
 
 function quotaText(row: ToolConnection): string {
@@ -36,6 +45,20 @@ function quotaText(row: ToolConnection): string {
     return `${quota.remaining.toLocaleString()} of ${quota.limit.toLocaleString()} local units remain${reset}`;
   }
   return quota.note ?? "Quota unavailable";
+}
+
+/**
+ * What a search on this provider costs the user, or null when the provider
+ * does not bill per call. Kept separate from {@link quotaText} on purpose: a
+ * rate ceiling is Antiek's own brake and says nothing about money, and showing
+ * only the ceiling for a pay-per-use vendor reads as an allowance the user
+ * does not have.
+ */
+function costText(row: ToolConnection): string | null {
+  const { estimated_cost_usd: estimate, cost_note: note } = row.quota;
+  if (note === null) return null;
+  if (estimate === null) return note;
+  return `Costs you up to $${estimate.toFixed(3)} per full-size search. ${note}`;
 }
 
 export default function ToolConnectionsPanel() {
@@ -138,6 +161,8 @@ export default function ToolConnectionsPanel() {
           reset_at: null,
           hard_exhausted: null,
           note: "Connect a credential to start local quota tracking",
+          estimated_cost_usd: null,
+          cost_note: null,
         } : item.quota,
       } : item) ?? null);
       setAction(null);
@@ -164,7 +189,7 @@ export default function ToolConnectionsPanel() {
           mean the provider has been reached yet.
         </p>
 
-        {loadError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{loadError}</p>}
+        {loadError && <p role="alert" className="text-sm text-danger">{loadError}</p>}
         {rows === null && !loadError && <p role="status" className="text-sm text-ink-soft dark:text-starlight">Loading tool connections…</p>}
 
         {rows && (
@@ -179,7 +204,7 @@ export default function ToolConnectionsPanel() {
                 <li key={row.vendor} className="relative border-b border-ink/10 py-5 last:border-b-0 dark:border-bright/10">
                   <span
                     aria-hidden="true"
-                    className={`absolute -left-[1.72rem] top-7 h-3 w-3 rounded-full border-2 ${row.credential_present ? "border-emerald-700 bg-ice-2 dark:border-emerald-300 dark:bg-space-2" : row.status === "degraded" ? "border-red-700 bg-red-100 dark:border-red-300 dark:bg-red-950" : "border-ink/30 bg-ice-2 dark:border-bright/30 dark:bg-space-2"}`}
+                    className={`absolute -left-[1.72rem] top-7 h-3 w-3 rounded-full border-2 ${row.credential_present ? "border-success bg-ice-2 dark:bg-space-2" : row.status === "degraded" ? "border-danger bg-danger/15" : "border-ink/30 bg-ice-2 dark:border-bright/30 dark:bg-space-2"}`}
                   />
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                     <div className="min-w-0">
@@ -199,7 +224,15 @@ export default function ToolConnectionsPanel() {
                           aria-label="YouTube local quota remaining"
                         />
                       )}
-                      {row.status_note && <p className="mt-1 text-xs text-red-700 dark:text-red-300">{row.status_note}</p>}
+                      {costText(row) && (
+                        <p className="mt-1 text-xs text-ink-soft dark:text-starlight">
+                          <span className="font-medium text-ink dark:text-bright">Cost</span>
+                          <span aria-hidden="true"> · </span>
+                          {costText(row)}
+                        </p>
+                      )}
+                      {unusedNote(row) && <p className="mt-1 text-xs text-ink-soft dark:text-starlight">{unusedNote(row)}</p>}
+                      {row.status_note && <p className="mt-1 text-xs text-danger">{row.status_note}</p>}
                       <a className="mt-2 block w-fit text-xs font-semibold underline underline-offset-4" href={row.docs_url} target="_blank" rel="noreferrer">Provider setup guide</a>
                     </div>
                     <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -284,7 +317,7 @@ export default function ToolConnectionsPanel() {
                           }
                         }
                       }}
-                      className="mt-4 border border-red-700/40 p-3 dark:border-red-300/40"
+                      className="mt-4 border border-danger/40 p-3"
                     >
                       <p id={`disconnect-${row.vendor}-title`} className="font-semibold">Disconnect {row.display_name}?</p>
                       <p id={`disconnect-${row.vendor}-description`} className="mt-1 text-sm">Antiek will delete the stored value and stop resolving this tool.</p>
@@ -298,7 +331,7 @@ export default function ToolConnectionsPanel() {
                     <p
                       role={message.kind === "error" ? "alert" : "status"}
                       aria-live={message.kind === "error" ? "assertive" : "polite"}
-                      className={`mt-3 ${message.kind === "error" ? "text-sm text-red-700 dark:text-red-300" : "text-sm text-ink-soft dark:text-starlight"}`}
+                      className={`mt-3 ${message.kind === "error" ? "text-sm text-danger" : "text-sm text-ink-soft dark:text-starlight"}`}
                     >
                       {message.text}
                     </p>

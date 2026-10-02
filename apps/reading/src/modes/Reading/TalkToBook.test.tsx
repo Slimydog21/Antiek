@@ -124,7 +124,7 @@ afterEach(cleanup);
 
 
 async function openModelPicker() {
-  const trigger = screen.getByRole("button", { name: "Model for this answer" });
+  const trigger = await screen.findByRole("button", { name: "Model for this answer" });
   await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
   fireEvent.click(trigger);
 }
@@ -149,7 +149,7 @@ describe("TalkToBook (M2)", () => {
     askBookMock.mockResolvedValue(answer());
     await openAndAsk();
 
-    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
+    expect((await screen.findByRole("button", { name: "Model for this answer" })).textContent).toContain("Default");
     expect(askBookMock.mock.calls[0][2]).toEqual({ history: [], researchTier: "deep" });
     expect(screen.getByTestId("talk-model-receipt").textContent).toBe(
       "Used system-provider · system-model",
@@ -232,7 +232,7 @@ describe("TalkToBook (M2)", () => {
     await openModelPicker();
     const option = await screen.findByRole("menuitem", { name: /Old model/ });
     fireEvent.click(option);
-    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
+    expect((await screen.findByRole("button", { name: "Model for this answer" })).textContent).toContain("Default");
     expect(screen.queryByText(/Requested:/)).toBeNull();
   });
 
@@ -293,7 +293,7 @@ describe("TalkToBook (M2)", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("no longer available");
     await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("button", { name: "Model for this answer" }).textContent).toContain("Default");
+    expect((await screen.findByRole("button", { name: "Model for this answer" })).textContent).toContain("Default");
     await waitFor(() => expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Model for this answer" }),
     ));
@@ -470,7 +470,9 @@ describe("TalkToBook (M2)", () => {
     const panel = screen.getByTestId("talk-to-book");
     expect(panel.className).toContain("left-3");
     expect(panel.className).toContain("right-3");
-    expect(panel.className).toContain("sm:w-96");
+    // The panel's width answers to the READER's container (it lives in a
+    // cockpit pane, cockpit R2-H4), not the viewport.
+    expect(panel.className).toContain("reader-md:w-96");
     expect(screen.getByRole("button", { name: "Close" }).className).toContain("min-h-11");
     expect(screen.getByRole("button", { name: "Ask" }).className).toContain("min-h-11");
   });

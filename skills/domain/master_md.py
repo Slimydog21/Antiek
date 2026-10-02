@@ -29,23 +29,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-try:
-    from ...constants import ANTIEK_PARAM_VERSION
-    from ...event_log import emit_typed
-    from ...schemas import (
-        MasterMdSkippedPayload,
-        MasterMdWrittenPayload,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import ANTIEK_PARAM_VERSION  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
-        MasterMdSkippedPayload,
-        MasterMdWrittenPayload,
-    )
-
+from substrate.constants import ANTIEK_PARAM_VERSION
+from substrate.event_log import emit_typed
+from substrate.schemas import (
+    MasterMdSkippedPayload,
+    MasterMdWrittenPayload,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -387,7 +376,7 @@ def generate_master_md(
         ) or slugify(investigation_id or "") or "untitled"
         base = research_base if research_base is not None else default_research_base()
         out_dir = Path(base) / slug
-        resolved_slug = slug
+        resolved_slug: str | None = slug
     else:
         out_dir = Path(output_dir)
         resolved_slug = topic_slug  # may be None; passed through for traceability

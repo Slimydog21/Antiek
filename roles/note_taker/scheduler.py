@@ -19,6 +19,7 @@ cannot ignore the dispatch budget. This scheduler:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -26,12 +27,10 @@ from typing import Any
 
 try:
     from .distill import Distiller
-    from .document_pass import PassResult, run_document_pass
+    from .document_pass import run_document_pass
 except ImportError:  # pragma: no cover
-    from roles.note_taker.distill import Distiller  # type: ignore[no-redef]
-    from roles.note_taker.document_pass import (  # type: ignore[no-redef]
-        run_document_pass,
-    )
+    from roles.note_taker.distill import Distiller
+    from roles.note_taker.document_pass import run_document_pass
 
 
 DEFAULT_DEBOUNCE_S = 2.0
@@ -42,7 +41,7 @@ class _Job:
     document_id: str
     text: str
     investigation_id: str
-    chunk_ids: tuple
+    chunk_ids: tuple[str, ...]
     submitted_at: float
     enqueued_seq: int
 
@@ -74,7 +73,7 @@ class AsyncNoteScheduler:
         self._events_dir = events_dir
         self._pending: dict[str, _Job] = {}     # doc_id -> latest job (coalesces)
         self._cond = asyncio.Condition()
-        self._worker: asyncio.Task | None = None
+        self._worker: asyncio.Task[None] | None = None
         self._stop = False
         self._seq = 0
         self.stats = SchedulerStats()
@@ -116,10 +115,8 @@ class AsyncNoteScheduler:
         while not self._stop:
             async with self._cond:
                 if not self._pending:
-                    try:
+                    with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(self._cond.wait(), timeout=self._debounce_s)
-                    except TimeoutError:
-                        pass
                 if self._stop:
                     return
             await asyncio.sleep(0)  # let debounce window accrue coalescing

@@ -1,0 +1,1676 @@
+---
+# Antiek atomic release deploy.
+#
+# Phase A builds the frontend on the control node.  Phase B builds an
+# immutable, exact-SHA backend/frontend release while the old release keeps
+# serving, then migrates the shared DuckDB during the required database
+# quiescence, makes one public-path cutover, and verifies the public runtime.
+# Failure after cutover restores the previous release pointer.  Database
+# rollback is explicitly bounded by the pre-migration snapshot; this playbook
+# does not pretend that code rollback reverses committed schema changes.
+
+- name: Antiek frontend — build locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [frontend, build]
+
+  tasks:
+    - name: build apps/reading (vite production bundle)
+      ansible.builtin.command:
+        cmd: npm run build
+        chdir: "{{ playbook_dir }}/../../../apps/reading"
+      changed_when: true
+
+    - name: confirm dist artifact exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../../apps/reading/dist/index.html"
+      register: dist_stat
+
+    - name: fail if dist/index.html missing
+      ansible.builtin.fail:
+        msg: Vite build did not produce apps/reading/dist/index.html.
+      when: not dist_stat.stat.exists
+
+- name: Antiek substrate — build, cut over, and verify exact release
+  hosts: antiek_prod
+  become: true
+  gather_facts: false
+
+  vars:
+    antiek_public_dir: "{{ antiek_install_dir }}"
+    # Single source of truth for the release-path consumers, and WHY (prod
+    # incident 2026-10-01). The deploy stops these before schema migrate and
+    # starts them again afterwards. The pause loop and the "require complete
+    # consumer pause" post-condition both read THIS list, so the post-condition
+    # cannot drift from what was actually paused. The 2026-10-01 deploy died on
+    # a later assert whose conditional raised `object of type 'dict' has no
+    # attribute 'skipped'`; its rescue raised the same error, so the box was
+    # left with backups, the health probe, backup-freshness and
+    # continuous-research all stopped. Nothing in the play noticed.
+    release_path_consumers:
+      - antiek-continuous-research.service
+      - antiek-arxiv-oai-sync.timer
+      - antiek-arxiv-oai-sync.service
+      - antiek-backup.timer
+      - antiek-backup.service
+      - antiek-health-probe.service
+      - antiek-health-probe.timer
+      - antiek-backup-freshness.service
+      - antiek-backup-freshness.timer
+    antiek_release_root: "/opt/antiek-releases"
+    antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
+    antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
+    antiek_previous_sha: ""
+    antiek_release_min_free_gb: 12
+    antiek_release_retention_count: 4
+    # The pre-migration DuckDB snapshot is ~940 MB per deploy and NOTHING
+    # pruned it until this task existed: measured 2026-10-01 on prod, 46
+    # copies / 40.6 GB across six days (17 in one day, 14.9 GB) on a 150 GB
+    # disk with 72 GB free. The release directories were already pruned to
+    # `antiek_release_retention_count`; the database copies the same playbook
+    # created were not. Retention keeps the newest N, and the task always
+    # protects the three the playbook can still need.
+    antiek_duckdb_snapshot_retention_count: 4
+
+  pre_tasks:
+    # The gate is tagged `always`, and only `always`. Every --tags selection
+    # runs it, and no --skip-tags of a working tag (gate, deploy, frontend,
+    # code) can drop it while the release still runs; the one override is
+    # antiek_force_deploy. --start-at-task and `--skip-tags always` do skip
+    # it, so the release itself refuses unless this run recorded the cleared
+    # ref: the build block and the live phase each start with a guard.
+    - name: require an exact 40-hex release identity
+      ansible.builtin.assert:
+        that:
+          - antiek_target_sha is defined
+          - antiek_target_sha | length == 40
+          - antiek_target_sha is match('^[0-9a-f]{40}$')
+        fail_msg: Refusing a non-exact release identity.
+      tags: [always]
+
+    - name: require every main-required check green for the target SHA
+      ansible.builtin.command:
+        cmd: >-
+          bash {{ playbook_dir }}/../../../tools/deploy/require_green.sh
+          {{ antiek_repo_url }} {{ antiek_target_sha }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: required_checks_gate
+      when: not (antiek_force_deploy | default(false) | bool)
+      tags: [always]
+
+    - name: warn that the required-check gate is deliberately bypassed
+      ansible.builtin.debug:
+        msg: Emergency override is deploying {{ antiek_target_sha }} without green checks.
+      when: antiek_force_deploy | default(false) | bool
+      tags: [always]
+
+    - name: record the gate-cleared release identity
+      ansible.builtin.set_fact:
+        antiek_gate_cleared_ref: "{{ antiek_target_sha }}"
+      # A full SHA or nothing: the force override skips require_green.sh
+      # (which validates the SHA), so an empty or malformed target leaves
+      # the ref undefined and both release guards refuse.
+      when: >-
+        (antiek_target_sha is match('^[0-9a-f]{40}$'))
+        and ((antiek_force_deploy | default(false) | bool)
+             or (required_checks_gate.rc | default(1)) == 0)
+      tags: [always]
+
+    - name: prepare the release root
+      ansible.builtin.file:
+        path: "{{ antiek_release_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: [code]
+
+    - name: require the control-node frontend source to be at the gated SHA
+      ansible.builtin.command:
+        cmd: git -C {{ playbook_dir }}/../../.. rev-parse HEAD
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: frontend_source_head
+      tags: [frontend, gate]
+
+    - name: assert the frontend build source is exact
+      ansible.builtin.assert:
+        that:
+          - frontend_source_head.stdout | trim == antiek_target_sha
+        fail_msg: The frontend source HEAD differs from the gated release SHA.
+      tags: [frontend, gate]
+
+    - name: require a clean frontend source tree
+      ansible.builtin.command:
+        cmd: git -C {{ playbook_dir }}/../../.. status --porcelain -- apps/reading
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: frontend_source_status
+      tags: [frontend, gate]
+
+    - name: assert no uncommitted frontend source changes
+      ansible.builtin.assert:
+        that:
+          - frontend_source_status.stdout | trim | length == 0
+        fail_msg: Refusing to ship uncommitted frontend changes in an exact-SHA release.
+      tags: [frontend, gate]
+
+    - name: set the runtime SHA from the exact release identity
+      ansible.builtin.set_fact:
+        antiek_build_sha: "{{ antiek_target_sha }}"
+      tags: [code, systemd]
+
+    - name: require headroom for candidate, snapshot, and retained releases
+      ansible.builtin.shell: |
+        set -euo pipefail
+        available_kb=$(df -Pk "{{ antiek_release_root }}" | awk 'NR == 2 {print $4}')
+        required_kb={{ (antiek_release_min_free_gb | int) * 1024 * 1024 }}
+        if [ "$available_kb" -lt "$required_kb" ]; then
+          echo "Only $available_kb kB free; require $required_kb kB before release build" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+      tags: [code]
+
+  tasks:
+    # A receipt is written only after every candidate artifact and dependency
+    # check succeeds.  If it is absent, the exact-name directory is an
+    # unfinished candidate and is safe to replace.
+    - name: read the candidate release receipt
+      ansible.builtin.stat:
+        path: "{{ antiek_release_receipt }}"
+      register: candidate_receipt
+      tags: [code]
+
+    - name: build and validate the exact-SHA release
+      when: not candidate_receipt.stat.exists
+      block:
+        - name: require the gate to have cleared this exact SHA before building it
+          ansible.builtin.assert:
+            that:
+              - antiek_gate_cleared_ref is defined
+              - antiek_gate_cleared_ref == antiek_target_sha
+            fail_msg: >-
+              The required-checks gate did not run or did not clear
+              {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+              selection or --start-at-task skipped it); refusing to build it. Run the
+              whole play, or pass antiek_force_deploy=true deliberately.
+          tags: [code]
+
+        - name: remove an interrupted unpublished candidate
+          ansible.builtin.file:
+            path: "{{ antiek_release_dir }}"
+            state: absent
+          tags: [code]
+
+        - name: check out the gated SHA at its final release path
+          ansible.builtin.git:
+            repo: "{{ antiek_repo_url }}"
+            dest: "{{ antiek_release_dir }}"
+            version: "{{ antiek_target_sha }}"
+            force: true
+          tags: [code]
+
+        - name: confirm the checked-out release is clean and exact
+          ansible.builtin.command:
+            argv:
+              - git
+              - diff
+              - --quiet
+            chdir: "{{ antiek_release_dir }}"
+          changed_when: false
+          tags: [code]
+
+        - name: create the release virtual environment
+          ansible.builtin.command:
+            cmd: python{{ python_version }} -m venv .venv
+            chdir: "{{ antiek_release_dir }}"
+            creates: "{{ antiek_release_dir }}/.venv/bin/python"
+          tags: [code]
+
+        # Keep the established exact dependency contract unchanged.  uv is a
+        # build tool and is removed before this release can receive a receipt.
+        - name: bootstrap the pinned lock reader into the service venv
+          ansible.builtin.pip:
+            name: uv==0.11.15
+            virtualenv: "{{ antiek_release_dir }}/.venv"
+          tags: [code]
+
+        - name: record the deploy-time lock-check receipt
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/uv"
+              - lock
+              - --check
+            chdir: "{{ antiek_release_dir }}"
+          changed_when: false
+          tags: [code]
+
+        - name: exact-sync the service venv from the gated SHA's lock
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/uv"
+              - sync
+              - --frozen
+              - --no-dev
+              - --no-default-groups
+              - --extra
+              - pdf
+              - --extra
+              - urls
+              - --extra
+              - embedding
+              - --extra
+              - docs
+              - --extra
+              - turbopuffer_shadow
+            chdir: "{{ antiek_release_dir }}"
+          tags: [code]
+
+        - name: remove the bootstrap lock reader from the service venv
+          ansible.builtin.pip:
+            name: uv
+            state: absent
+            virtualenv: "{{ antiek_release_dir }}/.venv"
+          tags: [code]
+
+        - name: verify the locked closure has no bootstrap uv
+          ansible.builtin.command:
+            cmd: >-
+              {{ antiek_release_dir }}/.venv/bin/python -c
+              'import importlib.util; raise SystemExit(1 if importlib.util.find_spec("uv") else 0)'
+          changed_when: false
+          tags: [code]
+
+        - name: publish the frontend into the immutable release
+          ansible.posix.synchronize:
+            src: "{{ playbook_dir }}/../../../apps/reading/dist/"
+            dest: "{{ antiek_release_dir }}/frontend-dist/"
+            delete: true
+            recursive: true
+            rsync_opts:
+              - "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r"
+          become: true
+          become_user: root
+          tags: [frontend]
+
+        - name: assert the release frontend entrypoint exists
+          ansible.builtin.stat:
+            path: "{{ antiek_release_dir }}/frontend-dist/index.html"
+          register: built_frontend_index
+          tags: [frontend]
+
+        - name: refuse a release without a public frontend entrypoint
+          ansible.builtin.assert:
+            that:
+              - built_frontend_index.stat.exists
+              - built_frontend_index.stat.mode == '0644'
+          tags: [frontend]
+
+        - name: record the dependency and artifact release receipt
+          ansible.builtin.copy:
+            dest: "{{ antiek_release_receipt }}"
+            content: |
+              source_sha={{ antiek_target_sha }}
+              lock_check=pass
+              exact_sync=pass
+              bootstrap_uv_removed=pass
+              frontend_index_present=pass
+            owner: root
+            group: root
+            mode: "0644"
+          tags: [code]
+
+        - name: freeze release permissions after all writes
+          ansible.builtin.command:
+            argv:
+              - chmod
+              - -R
+              - a-w
+              - "{{ antiek_release_dir }}"
+          tags: [code]
+
+    - name: require a valid release receipt before publication
+      ansible.builtin.stat:
+        path: "{{ antiek_release_receipt }}"
+      register: release_receipt
+      tags: [code]
+
+    - name: assert the candidate release is complete
+      ansible.builtin.assert:
+        that:
+          - release_receipt.stat.exists
+        fail_msg: >-
+          {{ antiek_release_dir }} has no release receipt; refusing to publish
+          an incomplete release.
+      tags: [code]
+
+    - name: stat the frozen frontend entrypoint and root
+      ansible.builtin.stat:
+        path: "{{ antiek_release_dir }}/frontend-dist/index.html"
+      register: release_frontend_index
+      tags: [frontend]
+
+    - name: stat the frozen frontend root
+      ansible.builtin.stat:
+        path: "{{ antiek_release_dir }}/frontend-dist"
+      register: release_frontend_root
+      tags: [frontend]
+
+    - name: assert the frozen frontend is readable and traversable
+      ansible.builtin.assert:
+        that:
+          - release_frontend_index.stat.exists
+          - release_frontend_index.stat.readable
+          - release_frontend_index.stat.mode == '0444'
+          - release_frontend_root.stat.exists
+          - release_frontend_root.stat.readable
+          - release_frontend_root.stat.mode == '0555'
+        fail_msg: The frozen frontend is missing, unreadable, or has an unsafe post-freeze mode.
+      tags: [frontend]
+
+    # ── Edge configuration ─────────────────────────────────────────────
+    # Render tunnel and reverse-proxy configuration from the same gated
+    # checkout; otherwise a Caddy/tunnel-only commit would silently leave the
+    # live edge stale while the API and SPA advanced.
+    - name: read existing tunnel ID from VM
+      ansible.builtin.shell: |
+        set -o pipefail
+        ls /etc/cloudflared/ | grep -E '^[0-9a-f-]+\.json$' | sed 's/\.json$//'
+      args:
+        executable: /bin/bash
+      register: tunnel_id_lookup
+      changed_when: false
+      failed_when: false
+      tags: [cloudflared]
+
+    - name: set cloudflared tunnel ID fact
+      ansible.builtin.set_fact:
+        cloudflared_tunnel_id: >-
+          {{ (tunnel_id_lookup.stdout | default('') | trim)
+             or (cloudflared_tunnel_id | default('')) }}
+      tags: [cloudflared]
+
+    - name: assert the resolved tunnel ID is a UUID before rendering
+      ansible.builtin.assert:
+        that:
+          - cloudflared_tunnel_id | default('') | length > 0
+          - cloudflared_tunnel_id is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+        fail_msg: Refusing to render an invalid Cloudflare tunnel identity.
+      tags: [cloudflared]
+
+    - name: render cloudflared config
+      ansible.builtin.template:
+        src: ../templates/cloudflared-config.yml.j2
+        dest: /etc/cloudflared/config.yml
+        owner: root
+        group: root
+        mode: "0644"
+      register: cloudflared_config
+      tags: [cloudflared]
+
+    - name: restart cloudflared if config changed
+      ansible.builtin.systemd:
+        name: cloudflared
+        state: restarted
+      when: cloudflared_config.changed
+      tags: [cloudflared]
+
+    # The candidate routes are named by the SHA and go live in the cutover.
+    # This guard carries [caddy] alone: a task is skipped when any one of its
+    # tags is skipped, so a guard shared with another group would vanish under
+    # that group's --skip-tags while these routes still rendered.
+    - name: require the gate to have cleared this exact SHA before routing it
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to route it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [caddy]
+
+    - name: render the candidate Caddyfile for post-cutover activation
+      ansible.builtin.template:
+        src: ../templates/Caddyfile.j2
+        dest: "/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+        owner: root
+        group: caddy
+        mode: "0644"
+      register: candidate_caddyfile
+      tags: [caddy]
+
+    - name: validate the candidate Caddyfile without changing live routing
+      ansible.builtin.command:
+        cmd: >-
+          caddy validate --config
+          /etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}
+          --adapter caddyfile
+      changed_when: false
+      tags: [caddy]
+
+    # The unit stamps ANTIEK_BUILD_SHA (antiek.service.j2), and the exact-SHA
+    # /health check reads it as release evidence, so an ungated stamp is false
+    # evidence. [systemd] alone, for the same reason as the caddy guard.
+    - name: require the gate to have cleared this exact SHA before stamping it into the units
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to stamp it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [systemd]
+
+    - name: render antiek.service
+      ansible.builtin.template:
+        src: ../templates/antiek.service.j2
+        dest: /etc/systemd/system/antiek.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_unit
+      tags: [systemd]
+
+    - name: render background and probe units
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - src: ../templates/antiek-continuous-research.service.j2
+          dest: /etc/systemd/system/antiek-continuous-research.service
+        - src: ../templates/antiek-arxiv-oai-sync.service.j2
+          dest: /etc/systemd/system/antiek-arxiv-oai-sync.service
+        - src: ../templates/antiek-arxiv-oai-sync.timer.j2
+          dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer
+        - src: ../templates/antiek-health-probe.service.j2
+          dest: /etc/systemd/system/antiek-health-probe.service
+        - src: ../templates/antiek-health-probe.timer.j2
+          dest: /etc/systemd/system/antiek-health-probe.timer
+        - src: ../templates/antiek-backup.service.j2
+          dest: /etc/systemd/system/antiek-backup.service
+        - src: ../templates/antiek-backup.timer.j2
+          dest: /etc/systemd/system/antiek-backup.timer
+        - src: ../templates/antiek-backup-freshness.service.j2
+          dest: /etc/systemd/system/antiek-backup-freshness.service
+        - src: ../templates/antiek-backup-freshness.timer.j2
+          dest: /etc/systemd/system/antiek-backup-freshness.timer
+      register: auxiliary_units
+      tags: [systemd]
+
+    - name: render scripts consumed through the stable release path
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      loop:
+        - src: ../templates/antiek-health-probe.sh.j2
+          dest: /usr/local/bin/antiek-health-probe
+        - src: ../templates/backup.sh.j2
+          dest: /usr/local/bin/antiek-backup
+        - src: ../templates/antiek-backup-freshness-probe.sh.j2
+          dest: /usr/local/bin/antiek-backup-freshness-probe
+      tags: [systemd]
+
+    - name: verify all rendered systemd units
+      ansible.builtin.command:
+        argv:
+          - systemd-analyze
+          - verify
+          - /etc/systemd/system/antiek.service
+          - /etc/systemd/system/antiek-continuous-research.service
+          - /etc/systemd/system/antiek-arxiv-oai-sync.service
+          - /etc/systemd/system/antiek-arxiv-oai-sync.timer
+          - /etc/systemd/system/antiek-health-probe.service
+          - /etc/systemd/system/antiek-health-probe.timer
+          - /etc/systemd/system/antiek-backup.service
+          - /etc/systemd/system/antiek-backup.timer
+          - /etc/systemd/system/antiek-backup-freshness.service
+          - /etc/systemd/system/antiek-backup-freshness.timer
+      changed_when: false
+      tags: [systemd]
+
+    # A candidate with a receipt skips the build block and its guard, so the
+    # live phase checks again before anything is stopped, migrated or cut over.
+    - name: require the gate to have cleared this exact SHA before the release goes live
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to publish it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [code]
+
+    - name: quiesce, migrate, cut over, and verify
+      block:
+        - name: record the current release identity
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ -L "{{ antiek_public_dir }}" ]; then
+              basename "$(readlink "{{ antiek_public_dir }}")"
+            elif [ -d "{{ antiek_public_dir }}" ]; then
+              git -C "{{ antiek_public_dir }}" rev-parse HEAD
+            else
+              echo ""
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: false
+          register: current_release_lookup
+          tags: [code]
+
+        - name: set the rollback release identity
+          ansible.builtin.set_fact:
+            antiek_previous_sha: "{{ current_release_lookup.stdout | trim }}"
+          tags: [code]
+
+        - name: stop the arxiv timer before observing its service
+          ansible.builtin.shell: |
+            set -euo pipefail
+            policy=$(systemctl show antiek-arxiv-oai-sync.timer --property=UnitFileState,ActiveState)
+            unit_file_state=$(sed -n 's/^UnitFileState=//p' <<< "$policy")
+            active_state=$(sed -n 's/^ActiveState=//p' <<< "$policy")
+            case "$unit_file_state:$active_state" in
+              enabled:active|enabled:inactive|disabled:active|disabled:inactive) ;;
+              *) echo 'Unknown arXiv timer policy; refusing to stop it' >&2; exit 1 ;;
+            esac
+            printf 'UnitFileState=%s\nActiveState=%s\n' "$unit_file_state" "$active_state"
+            systemctl disable --now antiek-arxiv-oai-sync.timer
+          args:
+            executable: /bin/bash
+          register: arxiv_timer_pause_result
+          tags: [code]
+
+        - name: remember arxiv timer policy before pause
+          ansible.builtin.set_fact:
+            arxiv_timer_was_enabled: "{{ 'UnitFileState=enabled' in arxiv_timer_pause_result.stdout_lines }}"
+            arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
+          tags: [code]
+
+        - name: capture arxiv service and timer before pause
+          ansible.builtin.shell: |
+            set -euo pipefail
+            # v255 show prints Job= for no job and a numeric positive ID otherwise.
+            # --all retains empty fields; reject missing/duplicate/malformed properties.
+            # list-jobs exposes JOB UNIT TYPE STATE. Match ID/unit and re-read.
+            export SYSTEMD_COLORS=0 LC_ALL=C
+            valid_snapshot() {
+              awk '
+                /^ActiveState=(active|activating|inactive|failed|deactivating|reloading)$/ {state++; next}
+                /^Job=([1-9][0-9]*)?$/ {job++; next}
+                /^ExecMainStartTimestampMonotonic=[0-9]*$/ {stamp++; next}
+                {bad++}
+                END {exit !(state == 1 && job == 1 && stamp == 1 && bad == 0)}
+              ' <<< "$1"
+            }
+            for attempt in {1..5}; do
+              before=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$before"; then
+                echo 'Malformed arXiv service snapshot; refusing service pause' >&2
+                exit 1
+              fi
+              job=$(sed -n 's/^Job=//p' <<< "$before")
+              pending_type=none
+              if [[ "$job" =~ ^[1-9][0-9]*$ ]]; then
+                jobs=$(systemctl list-jobs --no-legend --no-pager --plain --full)
+                pending_type=$(awk -v id="$job" '$1 == id && $2 == "antiek-arxiv-oai-sync.service" {print $3}' <<< "$jobs")
+              elif [ -n "$job" ]; then
+                echo 'Invalid arXiv job identity; refusing service pause' >&2
+                exit 1
+              fi
+              after=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$after"; then
+                echo 'Malformed arXiv service recapture; refusing service pause' >&2
+                exit 1
+              fi
+              if [ "$before" = "$after" ] && [[ "$pending_type" =~ ^(none|start|stop)$ ]]; then
+                printf '%s\nPendingJobType=%s\n' "$after" "$pending_type"
+                break
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo 'Ambiguous arXiv pending job; refusing service pause' >&2
+                exit 1
+              fi
+              sleep 1
+            done
+            printf 'TimerLastTrigger=%s\n' "$(systemctl show antiek-arxiv-oai-sync.timer --property=LastTriggerUSecMonotonic --value)"
+          args:
+            executable: /bin/bash
+          register: arxiv_before_pause
+          changed_when: false
+          tags: [code]
+
+        - name: remember whether an arxiv run was interrupted
+          ansible.builtin.set_fact:
+            arxiv_was_running: "{{ arxiv_before_pause.stdout is search('ActiveState=(active|activating)|PendingJobType=start') }}"
+            arxiv_timer_before: "{{ (arxiv_before_pause.stdout | regex_findall('TimerLastTrigger=(.*)') | first) | default('unknown') }}"
+            arxiv_service_start_before: "{{ (arxiv_before_pause.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first) | default('unknown', true) }}"
+          tags: [code]
+
+        - name: pause the arxiv service before cutover
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ "$ARXIV_TIMER_STOP_OK" != 1 ]; then
+              echo 'arXiv timer stop did not complete; refusing to pause its service' >&2
+              exit 1
+            fi
+            printf 'ServicePauseAttempted=1\n'
+            systemctl stop antiek-arxiv-oai-sync.service
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_STOP_OK: "{{ '1' if (arxiv_timer_pause_result | default({})).rc | default(1) == 0 else '0' }}"
+          register: arxiv_service_pause_result
+          tags: [code]
+
+        - name: pause every release-path consumer before cutover
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop: "{{ release_path_consumers }}"
+          when:
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+            - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
+            - (arxiv_service_pause_result | default({})).rc | default(1) == 0
+          register: arxiv_pause_result
+          tags: [code]
+
+        - name: observe every release-path consumer state after the pause
+          # Ask the BOX what happened rather than parsing the bookkeeping of a
+          # loop result. `selectattr('skipped', ...)` over loop results is
+          # version-coupled (a result for a non-skipped item carries no
+          # `skipped` key) and it is what killed the 2026-10-01 deploy. A state
+          # probe is both safer and strictly stronger: it proves the pause
+          # happened, not that the task reported it.
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - "{{ item }}"
+              - --property=ActiveState
+          loop: "{{ release_path_consumers }}"
+          register: consumer_pause_states
+          changed_when: false
+          failed_when: false
+          tags: [code]
+
+        - name: require complete consumer pause before schema or cutover
+          ansible.builtin.assert:
+            that:
+              - arxiv_timer_was_enabled is defined
+              - arxiv_timer_was_active is defined
+              - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
+              - (arxiv_service_pause_result | default({})).rc | default(1) == 0
+              - (consumer_pause_states | default({})).results | default([]) | length
+                == (release_path_consumers | length)
+              # Every consumer must be affirmatively inactive (or failed, which
+              # is still stopped): an empty or unknown ActiveState does not pass.
+              - >-
+                (consumer_pause_states.results | map(attribute='stdout') | map('trim')
+                 | reject('equalto', 'ActiveState=inactive')
+                 | reject('equalto', 'ActiveState=failed') | list | length) == 0
+            fail_msg: >-
+              Release-path consumers are not all stopped: {{ consumer_pause_states.results
+              | map(attribute='stdout') | map('trim') | list }}.
+              Refusing to migrate the schema or cut over while a consumer is live.
+          tags: [code]
+
+        - name: stop antiek before schema migrate
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: stopped
+          tags: [code]
+
+        - name: wait for the DuckDB write lock to release
+          ansible.builtin.shell: |
+            set -e
+            LOCK="{{ antiek_state_dir }}/antiek.duckdb.write.lock"
+            for i in $(seq 1 30); do
+              if ! lsof "$LOCK" >/dev/null 2>&1; then
+                echo "lock_free after ${i}s"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "lock still held after 30s" >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          changed_when: false
+          tags: [code]
+
+        - name: checkpoint the quiesced previous database before snapshot
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_public_dir }}/.venv/bin/python"
+              - -c
+              - >-
+                import duckdb;
+                duckdb.connect("{{ antiek_state_dir }}/antiek.duckdb").execute("CHECKPOINT")
+          become: true
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+          tags: [code]
+
+        - name: snapshot the quiesced DuckDB before migration
+          ansible.builtin.copy:
+            src: "{{ antiek_state_dir }}/antiek.duckdb"
+            dest: "{{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}"
+            remote_src: true
+            owner: "{{ antiek_user }}"
+            group: "{{ antiek_group }}"
+            mode: "0644"
+          register: duckdb_snapshot
+          tags: [code]
+
+        - name: initialize graph schema in the candidate release
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/python"
+              - -m
+              - substrate.graph.schema
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_release_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+          tags: [code]
+
+        - name: verify candidate release against the migrated graph
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/python"
+              - "{{ item }}"
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_release_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          loop:
+            - tools/verify_write_event_outbox_schema.py
+            - tools/verify_event_consumer_schema.py
+            - tools/verify_note_taker_schema.py
+          changed_when: false
+          tags: [code]
+
+        - name: make the one public API/SPA cutover
+          ansible.builtin.shell: |
+            set -euo pipefail
+            PUBLIC="{{ antiek_public_dir }}"
+            ROOT="{{ antiek_release_root }}"
+            TARGET="{{ antiek_release_dir }}"
+            if [ -L "$PUBLIC" ]; then
+              LINK="$PUBLIC.next.$$"
+              ln -s "$TARGET" "$LINK"
+              mv -Tf "$LINK" "$PUBLIC"
+            elif [ -d "$PUBLIC" ]; then
+              OLD="$ROOT/{{ antiek_previous_sha }}"
+              if [ -e "$OLD" ]; then
+                echo "refusing to overwrite legacy release $OLD" >&2
+                exit 1
+              fi
+              mv "$PUBLIC" "$OLD"
+              ln -s "$TARGET" "$PUBLIC"
+            else
+              ln -s "$TARGET" "$PUBLIC"
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: true
+          register: release_cutover
+          tags: [code]
+
+        - name: atomically activate the validated Caddyfile on the release chain
+          ansible.builtin.shell: |
+            set -euo pipefail
+            LIVE="/etc/caddy/Caddyfile"
+            CANDIDATE="/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+            BACKUP="/etc/caddy/Caddyfile.pre-atomic-{{ antiek_target_sha }}"
+            if cmp -s "$LIVE" "$CANDIDATE"; then
+              rm -f "$CANDIDATE"
+              exit 0
+            fi
+            if [ ! -e "$BACKUP" ]; then
+              cp -a "$LIVE" "$BACKUP"
+            fi
+            mv -Tf "$CANDIDATE" "$LIVE"
+            echo changed
+          args:
+            executable: /bin/bash
+          changed_when: caddyfile_activation.stdout == "changed"
+          register: caddyfile_activation
+          tags: [caddy]
+
+        - name: synchronously reload Caddy onto the candidate routes
+          ansible.builtin.command:
+            cmd: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+            chdir: /etc/caddy
+          when: caddyfile_activation.changed
+          changed_when: true
+          tags: [caddy]
+
+        - name: stamp the exact runtime SHA into the release drop-in
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+            content: |
+              [Service]
+              Environment=ANTIEK_BUILD_SHA={{ antiek_target_sha }}
+            owner: root
+            group: root
+            mode: "0644"
+          register: build_sha_dropin
+          tags: [systemd]
+
+        - name: keep the legacy EnvironmentFile SHA aligned
+          ansible.builtin.lineinfile:
+            path: "{{ antiek_secrets_file }}"
+            regexp: "^ANTIEK_BUILD_SHA="
+            line: "ANTIEK_BUILD_SHA={{ antiek_target_sha }}"
+            create: false
+          tags: [systemd]
+
+        - name: daemon reload after release unit changes
+          ansible.builtin.systemd:
+            daemon_reload: true
+          tags: [systemd]
+
+        - name: assert the public path resolves to the candidate
+          ansible.builtin.command:
+            cmd: readlink -f {{ antiek_public_dir }}
+          register: resolved_public
+          changed_when: false
+          tags: [code]
+
+        - name: assert resolution before startup
+          ansible.builtin.assert:
+            that:
+              - resolved_public.stdout | trim == antiek_release_dir
+            fail_msg: Public path did not resolve to the validated candidate.
+          tags: [code]
+
+        - name: start antiek into the candidate release
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: started
+          tags: [code]
+
+        - name: wait for systemd active
+          ansible.builtin.command:
+            cmd: systemctl is-active antiek.service
+          register: systemd_status
+          retries: 6
+          delay: 5
+          until: systemd_status.stdout == "active"
+          changed_when: false
+          tags: [verify]
+
+        - name: resume background consumers after candidate is active
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          tags: [code]
+
+        - name: GET public health from the candidate
+          ansible.builtin.uri:
+            url: "https://{{ api_domain }}/health"
+            return_content: true
+            status_code: 200
+          register: candidate_health
+          retries: 12
+          delay: 5
+          until:
+            - candidate_health.status == 200
+            - candidate_health.json.status == 'ok'
+            - candidate_health.json.build_sha == antiek_target_sha
+            - candidate_health.json.registered_providers | length > 0
+          delegate_to: localhost
+          become: false
+          tags: [verify]
+
+        # antiek_target_sha is validated as a full commit SHA in the pre_tasks,
+        # then used as the release identity this play checks out and publishes.
+        # The post-cutover /health check above and this parity check both require
+        # production to report that same SHA; use check.py's exact-equality mode
+        # (its default when --max-lag-hours is omitted).
+        #
+        # Do NOT resolve or compare against a moving origin/main tip here. Main
+        # may advance after this release was gated, and a tip comparison would
+        # make an unrelated merge fail a healthy deploy and enter rollback. The
+        # scheduled prod_parity.yml alarm owns the lag budget; this deploy gate
+        # verifies only that the release this play pulled is the release served.
+        - name: run blocking public parity on the candidate
+          ansible.builtin.command:
+            cmd: >-
+              python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py
+              --url https://{{ api_domain }}
+              --expected-sha {{ antiek_target_sha }}
+          delegate_to: localhost
+          become: false
+          changed_when: false
+          register: candidate_parity
+          tags: [verify]
+
+        - name: resume the arxiv timer after candidate verification
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          register: arxiv_candidate_timer_resume
+          when:
+            - candidate_health is defined
+            - candidate_health is not skipped
+            - candidate_parity is defined
+            - candidate_parity is not skipped
+            - arxiv_timer_pause_result is defined
+            - arxiv_timer_pause_result is not skipped
+            - arxiv_pause_result is defined
+            - arxiv_pause_result is not skipped
+            - arxiv_service_pause_result is defined
+            - arxiv_service_pause_result is not skipped
+          tags: [code]
+
+        - name: observe arxiv timer after candidate verification
+          ansible.builtin.shell: |
+            set -euo pipefail
+            for attempt in {1..10}; do
+              timer=$(systemctl show antiek-arxiv-oai-sync.timer --property=ActiveState,SubState,LastTriggerUSecMonotonic,NextElapseUSecRealtime)
+              last_trigger=$(sed -n 's/^LastTriggerUSecMonotonic=//p' <<< "$timer")
+              if [ "$last_trigger" != "$ARXIV_TIMER_BEFORE" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              next_elapse=$(sed -n 's/^NextElapseUSecRealtime=//p' <<< "$timer")
+              next_epoch=$(date -u -d "$next_elapse" +%s 2>/dev/null || true)
+              if grep -qx 'ActiveState=active' <<< "$timer" &&
+                 grep -qx 'SubState=waiting' <<< "$timer" &&
+                 [ -n "$next_epoch" ] && [ "$next_epoch" -gt "$(($(date -u +%s) + 5))" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              if [ "$attempt" -lt 10 ]; then sleep 1; fi
+            done
+            echo 'arXiv timer trigger state remained ambiguous after 10 seconds' >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_BEFORE: "{{ arxiv_timer_before }}"
+          register: arxiv_candidate_timer
+          changed_when: false
+          when:
+            - arxiv_pause_result is defined
+            - arxiv_pause_result is not skipped
+            - arxiv_timer_pause_result is defined
+            - arxiv_timer_pause_result is not skipped
+            - candidate_health is defined
+            - candidate_health is not skipped
+            - candidate_parity is defined
+            - candidate_parity is not skipped
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - arxiv_timer_was_active | bool
+          tags: [code]
+
+        - name: resume the interrupted arxiv run on the verified candidate
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: started
+            no_block: true
+          register: arxiv_candidate_resume
+          when:
+            - arxiv_was_running | default(false) | bool
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - >-
+              not (arxiv_timer_was_active | bool)
+              or (arxiv_candidate_timer is defined and arxiv_candidate_timer is not skipped
+                  and arxiv_timer_before == (arxiv_candidate_timer.stdout | default('') | trim))
+          tags: [code]
+
+        - name: observe the candidate arxiv run started by timer or deploy
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - antiek-arxiv-oai-sync.service
+              - --property=ActiveState,MainPID,Result,ExecMainStartTimestampMonotonic
+          register: arxiv_candidate_status
+          changed_when: false
+          retries: 12
+          delay: 1
+          until:
+            - "arxiv_candidate_status.stdout is search('ExecMainStartTimestampMonotonic=[1-9]')"
+            - "(arxiv_candidate_status.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first | default('unknown', true)) != arxiv_service_start_before"
+            - "'Result=success' in arxiv_candidate_status.stdout"
+            - >-
+              (arxiv_candidate_status.stdout is search('ActiveState=activating')
+              and arxiv_candidate_status.stdout is search('MainPID=[1-9][0-9]*'))
+              or arxiv_candidate_status.stdout is search('ActiveState=(active|inactive)')
+          when:
+            - arxiv_candidate_timer_resume is defined
+            - arxiv_candidate_timer_resume is not skipped
+            - >-
+              (arxiv_candidate_resume is defined and arxiv_candidate_resume is changed)
+              or (arxiv_timer_was_active | bool
+                  and arxiv_candidate_timer is defined and arxiv_candidate_timer is not skipped
+                  and arxiv_timer_before != (arxiv_candidate_timer.stdout | default('') | trim))
+          tags: [code]
+
+      rescue:
+        - name: classify arxiv service pause stage
+          # This task is the RESCUE's classifier: if it raises, no rollback task
+          # runs at all and the paused consumers stay dark (prod 2026-10-01).
+          # `rejectattr('skipped', ...)` is what raised: a loop result for an
+          # item that RAN carries no `skipped` key, and strict undefined makes
+          # that an error rather than a miss. `map(attribute=..., default=...)`
+          # supplies the missing key explicitly, so "ran" and "skipped" are
+          # both values and neither can raise.
+          #
+          # The semantics are deliberately precise, not merely safe: these two
+          # facts answer "was THIS unit actually stopped", not "did the loop
+          # run". The loop pauses nine units; an arxiv item that was skipped
+          # must not read as attempted.
+          #
+          # Idiom and the stdout_lines guard below came from the sibling lane's
+          # PR #3585 (2026-10-01T05:43Z), which diagnosed the same deploy
+          # failure independently; they are folded in here so the two fixes
+          # cannot lose each other.
+          ansible.builtin.set_fact:
+            arxiv_service_pause_attempted: >-
+              {{ (arxiv_service_pause_result | default({})).stdout | default('')
+                 is search('(?m)^ServicePauseAttempted=1$')
+                 or ((arxiv_pause_result | default({})).results | default([])
+                     | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service')
+                     | map(attribute='skipped', default=false)
+                     | select('equalto', false) | list | length > 0) }}
+            arxiv_loop_timer_pause_attempted: >-
+              {{ (arxiv_pause_result | default({})).results | default([])
+                 | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.timer')
+                 | map(attribute='skipped', default=false)
+                 | select('equalto', false) | list | length > 0 }}
+          tags: [rollback]
+
+        - name: recover arxiv timer policy from attempted stop
+          ansible.builtin.set_fact:
+            arxiv_timer_was_enabled: "{{ 'UnitFileState=enabled' in arxiv_timer_pause_result.stdout_lines }}"
+            arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
+          when:
+            - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
+            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
+            - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
+            - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
+          tags: [rollback]
+
+        - name: restore arxiv timer policy before service pause
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          when:
+            - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
+            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
+            - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
+            - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
+            - not (arxiv_service_pause_attempted | default(false) | bool)
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+          tags: [rollback]
+
+        - name: disable the arxiv timer before rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          when: >-
+            arxiv_service_pause_attempted | default(false) | bool
+            or arxiv_loop_timer_pause_attempted | default(false) | bool
+          tags: [rollback]
+
+        - name: report that candidate verification failed
+          ansible.builtin.debug:
+            msg: Candidate release failed verification; restoring {{ antiek_previous_sha }}.
+          tags: [rollback]
+
+        - name: re-quiesce candidate consumers before rollback
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-backup.service
+            - antiek-health-probe.service
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.service
+            - antiek-backup-freshness.timer
+          failed_when: false
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
+          tags: [rollback]
+
+        - name: re-quiesce arxiv service before rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
+          tags: [rollback]
+
+        - name: stop a failing candidate before rollback
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: stopped
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restore an interrupted first legacy public-directory move
+          ansible.builtin.shell: |
+            set -euo pipefail
+            PUBLIC="{{ antiek_public_dir }}"
+            MOVED="{{ antiek_release_root }}/{{ antiek_previous_sha }}"
+            if [ -e "$PUBLIC" ] || [ -L "$PUBLIC" ] || [ ! -d "$MOVED" ]; then
+              exit 0
+            fi
+            actual=$(git -C "$MOVED" rev-parse HEAD)
+            if [ "$actual" != "{{ antiek_previous_sha }}" ]; then
+              echo "Refusing recovery: moved release is $actual, expected {{ antiek_previous_sha }}" >&2
+              exit 1
+            fi
+            mv "$MOVED" "$PUBLIC"
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [rollback]
+
+        - name: restore the previous release pointer
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ {{ antiek_previous_sha | length }} -eq 0 ]; then
+              echo "No previous release exists; automatic rollback is impossible" >&2
+              exit 1
+            fi
+            PUBLIC="{{ antiek_public_dir }}"
+            if [ -L "$PUBLIC" ]; then
+              LINK="$PUBLIC.rollback.$$"
+              ln -s "{{ antiek_release_root }}/{{ antiek_previous_sha }}" "$LINK"
+              mv -Tf "$LINK" "$PUBLIC"
+            elif [ -d "$PUBLIC" ]; then
+              actual=$(git -C "$PUBLIC" rev-parse HEAD)
+              if [ "$actual" != "{{ antiek_previous_sha }}" ]; then
+                echo "Refusing rollback: public directory is $actual, expected {{ antiek_previous_sha }}" >&2
+                exit 1
+              fi
+            else
+              echo "No public release path exists for rollback" >&2
+              exit 1
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [rollback]
+
+        - name: bind the rollback Caddyfile identity after pointer rollback
+          ansible.builtin.set_fact:
+            antiek_rollback_caddy_backup: "/etc/caddy/Caddyfile.pre-atomic-{{ antiek_target_sha }}"
+          tags: [rollback]
+
+        - name: detect candidate Caddy route changes to undo
+          ansible.builtin.stat:
+            path: "{{ antiek_rollback_caddy_backup }}"
+          register: rollback_caddy_backup
+          tags: [rollback]
+
+        - name: restore the previous Caddyfile after pointer rollback
+          ansible.builtin.copy:
+            src: "{{ antiek_rollback_caddy_backup }}"
+            dest: /etc/caddy/Caddyfile
+            remote_src: true
+            owner: root
+            group: caddy
+            mode: "0644"
+          when: rollback_caddy_backup.stat.exists
+          register: rollback_caddyfile
+          tags: [rollback]
+
+        - name: reload the previous Caddy routes
+          ansible.builtin.command:
+            cmd: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+            chdir: /etc/caddy
+          when: rollback_caddyfile.changed
+          changed_when: true
+          tags: [rollback]
+
+        - name: remove the unactivated candidate Caddyfile
+          ansible.builtin.file:
+            path: "/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+            state: absent
+          tags: [rollback]
+
+        - name: restore rollback runtime SHA drop-in
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+            content: |
+              [Service]
+              Environment=ANTIEK_BUILD_SHA={{ antiek_previous_sha }}
+            owner: root
+            group: root
+            mode: "0644"
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restore rollback EnvironmentFile SHA
+          ansible.builtin.lineinfile:
+            path: "{{ antiek_secrets_file }}"
+            regexp: "^ANTIEK_BUILD_SHA="
+            line: "ANTIEK_BUILD_SHA={{ antiek_previous_sha }}"
+            create: false
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: daemon reload before rollback restart
+          ansible.builtin.systemd:
+            daemon_reload: true
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restart the previous release
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: started
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: resume consumers on the previous release
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: verify public health after rollback
+          ansible.builtin.uri:
+            url: "https://{{ api_domain }}/health"
+            return_content: true
+            status_code: 200
+          register: rollback_health
+          retries: 12
+          delay: 5
+          until:
+            - rollback_health.status == 200
+            - rollback_health.json.status == 'ok'
+            - rollback_health.json.build_sha == antiek_previous_sha
+            - rollback_health.json.registered_providers | length > 0
+          delegate_to: localhost
+          become: false
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: prove the previous arxiv parser can read the current cursor and source
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_public_dir }}/.venv/bin/python"
+              - -c
+              - |
+                import sys
+                from runtime.db_lock import connect_read
+                from substrate.graph.schema import load_arxiv_bulk_progress
+                from tools.arxiv_bulk_resume import assert_physical_boundary, verify_snapshot
+
+                with connect_read(sys.argv[1], external_lock_timeout_s=45) as con:
+                    progress = load_arxiv_bulk_progress(con)
+                if progress is not None and progress['phase'] in {'bulk', 'tail'}:
+                    source = verify_snapshot(progress['source_path'])
+                    if (source.path != progress['source_path'] or
+                            source.sha256 != progress['source_sha256'] or
+                            source.size != progress['source_size_bytes']):
+                        raise ValueError('current source does not match persisted cursor')
+                    assert_physical_boundary(
+                        source, progress['next_byte_offset'], progress['physical_line_count']
+                    )
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_public_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          register: arxiv_rollback_compatibility
+          changed_when: false
+          failed_when: false
+          when:
+            - antiek_previous_sha | length > 0
+            - arxiv_service_pause_attempted | default(false) | bool
+            - arxiv_timer_was_enabled is defined
+            - arxiv_timer_was_active is defined
+            - rollback_health is defined
+            - rollback_health is not skipped
+          tags: [rollback]
+
+        - name: resume the arxiv timer on a compatible previous release
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            enabled: "{{ arxiv_timer_was_enabled }}"
+            state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
+          register: arxiv_rollback_timer_resume
+          ignore_errors: true
+          when:
+            - arxiv_rollback_compatibility is defined
+            - arxiv_rollback_compatibility.rc | default(1) == 0
+          tags: [rollback]
+
+        - name: observe arxiv timer after compatible rollback
+          ansible.builtin.shell: |
+            set -euo pipefail
+            for attempt in {1..10}; do
+              timer=$(systemctl show antiek-arxiv-oai-sync.timer --property=ActiveState,SubState,LastTriggerUSecMonotonic,NextElapseUSecRealtime)
+              last_trigger=$(sed -n 's/^LastTriggerUSecMonotonic=//p' <<< "$timer")
+              if [ "$last_trigger" != "$ARXIV_TIMER_BEFORE" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              next_elapse=$(sed -n 's/^NextElapseUSecRealtime=//p' <<< "$timer")
+              next_epoch=$(date -u -d "$next_elapse" +%s 2>/dev/null || true)
+              if grep -qx 'ActiveState=active' <<< "$timer" &&
+                 grep -qx 'SubState=waiting' <<< "$timer" &&
+                 [ -n "$next_epoch" ] && [ "$next_epoch" -gt "$(($(date -u +%s) + 5))" ]; then
+                printf '%s\n' "$last_trigger"
+                exit 0
+              fi
+              if [ "$attempt" -lt 10 ]; then sleep 1; fi
+            done
+            echo 'arXiv rollback timer trigger state remained ambiguous after 10 seconds' >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          environment:
+            ARXIV_TIMER_BEFORE: "{{ arxiv_timer_before }}"
+          register: arxiv_rollback_timer
+          changed_when: false
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_rollback_compatibility is defined
+            - arxiv_rollback_compatibility.rc | default(1) == 0
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - arxiv_timer_was_active | bool
+          tags: [rollback]
+
+        - name: disable an ambiguous arxiv timer after rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer is defined
+            - arxiv_rollback_timer is failed
+          tags: [rollback]
+
+        - name: stop an ambiguous arxiv service after rollback
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          when:
+            - arxiv_rollback_timer is defined
+            - arxiv_rollback_timer is failed
+          tags: [rollback]
+
+        - name: resume the interrupted arxiv run on the compatible previous release
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: started
+            no_block: true
+          register: arxiv_rollback_resume
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_was_running | default(false) | bool
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - >-
+              not (arxiv_timer_was_active | bool)
+              or (arxiv_rollback_timer is defined and arxiv_rollback_timer is not skipped
+                  and arxiv_rollback_timer.rc | default(1) == 0
+                  and arxiv_timer_before == (arxiv_rollback_timer.stdout | default('') | trim))
+          tags: [rollback]
+
+        - name: observe the rollback arxiv run started by timer or deploy
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - antiek-arxiv-oai-sync.service
+              - --property=ActiveState,MainPID,Result,ExecMainStartTimestampMonotonic
+          register: arxiv_rollback_status
+          changed_when: false
+          retries: 12
+          delay: 1
+          until:
+            - "arxiv_rollback_status.stdout is search('ExecMainStartTimestampMonotonic=[1-9]')"
+            - "(arxiv_rollback_status.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first | default('unknown', true)) != arxiv_service_start_before"
+            - "'Result=success' in arxiv_rollback_status.stdout"
+            - >-
+              (arxiv_rollback_status.stdout is search('ActiveState=activating')
+              and arxiv_rollback_status.stdout is search('MainPID=[1-9][0-9]*'))
+              or arxiv_rollback_status.stdout is search('ActiveState=(active|inactive)')
+          ignore_errors: true
+          when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not skipped
+            - >-
+              (arxiv_rollback_resume is defined and arxiv_rollback_resume is changed)
+              or (arxiv_timer_was_active | bool
+                  and arxiv_rollback_timer is defined and arxiv_rollback_timer is not skipped
+                  and arxiv_rollback_timer.rc | default(1) == 0
+                  and arxiv_timer_before != (arxiv_rollback_timer.stdout | default('') | trim))
+          tags: [rollback]
+
+        - name: disable arxiv timer after failed rollback continuation
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.timer
+            state: stopped
+            enabled: false
+          register: arxiv_rollback_timer_cleanup
+          ignore_errors: true
+          when:
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
+          tags: [rollback]
+
+        - name: stop arxiv service after failed rollback continuation
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: stopped
+          register: arxiv_rollback_service_cleanup
+          ignore_errors: true
+          when:
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
+          tags: [rollback]
+
+        - name: fail the deploy after a verified rollback
+          ansible.builtin.fail:
+            msg: >-
+              Candidate {{ antiek_target_sha }} failed verification. Production was
+              restored to {{ antiek_previous_sha }}; the DuckDB snapshot is
+              {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}.
+              Code rollback does not reverse database writes.
+              {% if (arxiv_rollback_resume | default({})) is failed or (arxiv_rollback_timer_resume | default({})) is failed %}
+              arXiv timer restoration or async enqueue failed. Timer disable and service
+              stop were attempted; verify both units before any operator restart.
+              {% endif %}
+              {% if (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) and arxiv_rollback_compatibility.rc | default(1) != 0 %}
+              The arXiv timer is disabled and no automatic sync restart was
+              permitted: original timer policy or previous parser/source compatibility
+              was not proven. Inspect the timer, cursor, and source before restarting it.
+              {% endif %}
+              {% if not (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) %}
+              The arXiv service was not paused; its original timer policy was retained
+              or restored before rollback.
+              {% endif %}
+              {% if (arxiv_rollback_timer_cleanup | default({})) is failed or (arxiv_rollback_service_cleanup | default({})) is failed %}
+              arXiv fail-closed cleanup failed. The timer or service may remain enabled
+              or active; operator action is required before further deployment.
+              {% endif %}
+              {% if arxiv_rollback_status is defined and arxiv_rollback_status is failed %}
+              The resumed arXiv run did not reach a successful new execution;
+              its timer was disabled and service stopped for operator investigation.
+              {% endif %}
+              {% if arxiv_rollback_timer is defined and arxiv_rollback_timer is failed %}
+              The arXiv timer catch-up state stayed ambiguous; its service was
+              stopped and timer disabled for operator investigation.
+              {% endif %}
+          tags: [rollback]
+
+      always:
+        # THE INVARIANT THIS ENCODES (prod incident 2026-10-01): a deploy
+        # attempt must never end with the operator's data protection dark. That
+        # day the play died before cutover and its rescue died on the same
+        # conditional, leaving antiek-backup.timer, antiek-backup-freshness.timer,
+        # antiek-health-probe.timer and antiek-continuous-research.service all
+        # stopped with no further task to notice. `always` runs after a
+        # successful block AND after a rescue that itself failed, so no failure
+        # path can skip it. Each unit is started with the policy the design
+        # intends (enabled), and `failed_when: false` keeps a wedged unit from
+        # masking the real failure the rescue is about to report.
+        #
+        # The arXiv timer is deliberately NOT here: its post-deploy policy is
+        # release-dependent (enabled only when the candidate or the rollback
+        # target proved compatibility), and both the success path and the rescue
+        # already set it explicitly.
+        - name: never leave release-path monitoring or backups stopped
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          failed_when: false
+          tags: [code, rollback]
+
+    - name: prune only unreferenced complete releases beyond retention
+      ansible.builtin.shell: |
+        set -euo pipefail
+        current=$(readlink -f "{{ antiek_public_dir }}")
+        previous="{{ antiek_release_root }}/{{ antiek_previous_sha }}"
+        count=0
+        while IFS= read -r release; do
+          count=$((count + 1))
+          if [ "$release" = "$current" ] || [ "$release" = "$previous" ]; then
+            continue
+          fi
+          if [ "$count" -gt "{{ antiek_release_retention_count }}" ]; then
+            rm -rf --one-file-system "$release"
+          fi
+        done < <(find "{{ antiek_release_root }}" -mindepth 1 -maxdepth 1 -type d           -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%T@ %p\n'           | sort -nr | cut -d' ' -f2-)
+      args:
+        executable: /bin/bash
+      changed_when: true
+      tags: [code]
+
+    - name: prune DuckDB pre-migration snapshots beyond retention
+      # WHY THIS EXISTS (measured 2026-10-01): `snapshot the quiesced DuckDB
+      # before migration` writes {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-<sha>
+      # on every deploy and nothing ever removed one. Prod held 46 of them
+      # (40.6 GB across six days, one day alone 17 copies / 14.9 GB) on a 150 GB
+      # disk with 72 GB free, i.e. ~6.6 GB/day against a nightly backup that
+      # also writes to this host. The same playbook already prunes RELEASE
+      # directories to a retention count; the database copies it created were
+      # the untracked half of the same leak. This task closes it with the same
+      # discipline: sort by mtime, keep the newest
+      # `antiek_duckdb_snapshot_retention_count`, and always protect the three
+      # SHAs the playbook can still reach for -- the snapshot it just took
+      # (`keep`), the one that predates the release being replaced
+      # (`previous`, the operator's before-state for a release rollback), and
+      # the release currently pointed at by the public path (`current`).
+      #
+      # Safety: `-name 'antiek.duckdb.pre-atomic-*'` can only match that one
+      # family, `--one-file-system` keeps rm on this filesystem, and an EMPTY
+      # match is a no-op. The find error abort under `set -euo pipefail` means
+      # a missing state directory fails the task rather than silently
+      # pretending the disk was swept.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        state="{{ antiek_state_dir }}"
+        keep="{{ antiek_target_sha }}"
+        previous="{{ antiek_previous_sha }}"
+        current=$(basename "$(readlink -f "{{ antiek_public_dir }}")")
+        count=0
+        while IFS= read -r snapshot; do
+          sha="${snapshot##*antiek.duckdb.pre-atomic-}"
+          count=$((count + 1))
+          if [ "$sha" = "$keep" ] || [ "$sha" = "$previous" ] || [ "$sha" = "$current" ]; then
+            continue
+          fi
+          if [ "$count" -gt "{{ antiek_duckdb_snapshot_retention_count }}" ]; then
+            rm -f --one-file-system "$snapshot"
+          fi
+        done < <(find "$state" -mindepth 1 -maxdepth 1 \
+                   -name 'antiek.duckdb.pre-atomic-*' -type f \
+                   -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2-)
+      args:
+        executable: /bin/bash
+      changed_when: true
+      tags: [code]

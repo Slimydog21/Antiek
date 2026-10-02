@@ -13,7 +13,7 @@
 id = "db_lock.connect_write_open_early_return"
 target = "runtime/db_lock.py"
 op = "early_return"
-anchor = { qualname = "connect_write", match = "con = duckdb.connect(db_path)" }
+anchor = { qualname = "_connect_write_after_process_gate", match = "con = duckdb.connect(db_path)" }
 test_selector = ["tests/test_retrieval_time_gate.py"]
 rationale = """
 connect_write is the sole sanctioned write-side entry: it acquires the flock and
@@ -24,42 +24,28 @@ seeds state through connect_write and then asserts retrieval-gate behavior; if
 the connection is never opened the test must fail. A surviving mutant here would
 mean the write path is exercised only through mocks — a fake gate over the
 single-writer invariant. (NB: the same statement text appears in the best-effort
-_log_write_event logger at line 154; the AST anchor scopes the match to
-connect_write's span, so only the load-bearing open is mutated.)"""
+_log_write_event logger; the AST anchor scopes the match to the target
+function's span, so only the load-bearing open is mutated.)
+
+ANCHOR REPOINTED 2026-09-20: commit 38171a350 (the in-process write gate,
+#3162) extracted connect_write's body into _connect_write_after_process_gate,
+so the open no longer lives inside connect_write's span and this anchor had
+been dead — scanning zero tests — while the detector reported a 100% kill
+rate. Verified repointed: inserting `return None` before the open makes the
+committed selector produce 7 errors, so the line is genuinely guarded."""
 added = "2026-06-04"
 added_by = "abt-02 fake-gate-detector seed"
 
-[[mutant]]
-id = "db_lock.stale_pid_liveness_noop"
-target = "runtime/db_lock.py"
-op = "noop"
-anchor = { qualname = "_stale_pid_check", match = "os.kill(pid, 0)" }
-test_selector = ["tests/test_retrieval_time_gate.py"]
-rationale = """
-_stale_pid_check is the acquire()-side STALE-LOCK-FILE HYGIENE helper. Before
-opening the lock, connect_write calls it to read the sidecar's stamped PID and,
-if that process is DEAD (``os.kill(pid, 0)`` raises ProcessLookupError /
-PermissionError), unlink the ORPHANED LOCK FILE the dead holder left behind —
-the file plus its stamped PID/purpose/timestamp (runtime/db_lock.py:68-94). Its
-own docstring is explicit: "The OS releases the flock on process death, but the
-lock file and its PID stamp persist. This is a best-effort hygiene helper ... the
-real serialization still happens via flock." No-op-ing the ``os.kill(pid, 0)``
-probe makes the dead-holder branch never fire, so the orphaned lock file + its
-stale stamp are NEVER cleaned up. The OBSERVABLE EFFECT is exactly that: a stale
-``<db>.write.lock`` (still naming the crashed PID/purpose) lingers on disk and
-``cat``-ing it for diagnosis points at a dead process. It is NOT a deadlock — the
-OS auto-released the flock on death and connect_write re-creates the file via
-``os.open(lock_path, O_CREAT | O_WRONLY)`` at line 280, so a NEW writer acquires
-the flock on the persisted file whether or not the stale one was unlinked. The
-selector points at tests/test_retrieval_time_gate.py, a clean, collectable suite
-that exercises connect_write (so it imports + uses db_lock for real, not via
-mocks) — but NO test in the tree drives a DEAD-PID stale-file cleanup (grep for
-_stale_pid_check / orphan-lock found none). EXPECTED: this SURVIVES — the finding
-is an under-tested HYGIENE path, NOT a tool bug. The worklist item is a real
-stale-lock-FILE-cleanup behavior test: stamp the sidecar lock file with a DEAD
-pid, call connect_write, and assert the orphaned lock file is RECLAIMED/cleaned
-(unlinked then re-created with this writer's stamp) — NOT "assert the pipeline
-doesn't deadlock" (it never would). Do NOT write it here (out of scope — it is a
-product-test owner's call)."""
-added = "2026-06-04"
-added_by = "abt-02 fake-gate-detector seed"
+# REMOVED 2026-09-20 — db_lock.stale_pid_liveness_noop.
+#
+# The mutant probed `_stale_pid_check`'s `os.kill(pid, 0)` liveness test, the
+# helper that unlinked an orphaned lock file left by a dead holder. That helper
+# no longer exists: runtime/db_lock.py now states the opposite doctrine at the
+# sidecar open — "Never unlink the sidecar. flock authority belongs to its
+# inode ... the permanent file needs no stale-file cleanup." Unlinking is the
+# inode race the module now explicitly refuses to commit.
+#
+# So this is not lost coverage. The behaviour the mutant documented was removed
+# DELIBERATELY, and its seeded expectation (EXPECTED: this SURVIVES — an
+# under-tested hygiene path) no longer describes anything in the tree. Its
+# entry in mutants/survivors_baseline.json is dropped with it.

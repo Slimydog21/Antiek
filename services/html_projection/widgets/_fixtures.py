@@ -3,7 +3,7 @@
 Two fixture sets, both deterministic (no wall-clock, no randomness — every
 value is a literal or a pure comprehension over ``range``):
 
-``FIXTURES`` — the golden shapes. For each of the seven widgets, three
+``FIXTURES`` — the golden shapes. For each of the eight widgets, three
 size-shapes the sprint's rigor names as the places SVG layout actually
 breaks:
 
@@ -16,7 +16,7 @@ breaks:
                       truncation (the ``+N more`` marker), never an unreadable
                       smear.
 
-These 21 (7 × 3) are what the golden-file tests freeze and the gallery renders.
+These 24 (8 × 3) are what the golden-file tests freeze and the gallery renders.
 All values are BENIGN — golden bytes must be stable and reviewable.
 
 ``HOSTILE_FIXTURES`` — adversarial inputs (markup injection, ``javascript:``
@@ -168,6 +168,24 @@ FIXTURES: dict[str, dict[str, dict]] = {
             "accessed": "2026-06-29",
         },
     },
+    "sketch": {
+        # empty: no series -> the seeded generative composition, never a crash.
+        "empty": {"title": "No series", "seed": 7},
+        "typical": {
+            "title": "Qubit counts",
+            "seed": 42,
+            "data": [127.0, 1121.0, 105.0, 433.0, 72.0, 980.0],
+        },
+        # degenerate: 600 values (-> the first 500), negatives (zero-aware
+        # baseline), a non-numeric (dropped), a small canvas. Bounded output.
+        "degenerate": {
+            "title": "Per-shard write latency",
+            "seed": 3,
+            "width": 320,
+            "height": 160,
+            "data": [((i * 37) % 211) - 40 for i in range(600)] + ["nan"],
+        },
+    },
 }
 
 
@@ -191,6 +209,7 @@ HOSTILE_FIXTURES: list[tuple[str, dict]] = [
     ("dep_graph", {"nodes": [{"id": _XSS, "label": _IMG}],
                    "edges": [{"from": _XSS, "to": _XSS}]}),
     ("cite_block", {"title": _XSS, "url": _JS_URL, "quote": _IMG}),
+    ("sketch", {"title": _XSS, "data": [1, 2, _IMG], "seed": _JS_URL}),
 ]
 
 # Active-tag openings that must NEVER appear raw in output: correct escaping

@@ -86,12 +86,12 @@ export default function SubAgentProposal({
   return (
     <div
       data-testid="sub-agent-proposal"
-      className="rounded-md border border-ocean/50 bg-ocean/5 p-3 text-sm"
+      className="rounded-md border border-sun-deep/50 bg-sun-deep/5 p-3 text-sm"
     >
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ocean">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sun-deep">
         Strengthen this claim
       </p>
-      <blockquote className="mb-2 border-l-2 border-sun pl-2 text-[13px] italic text-ink dark:text-bright line-clamp-2">
+      <blockquote className="mb-2 border-l-2 border-sun pl-2 text-sm italic text-ink dark:text-bright line-clamp-2">
         "{claimText}"
       </blockquote>
 
@@ -108,7 +108,7 @@ export default function SubAgentProposal({
           {hits && hits.length > 0 ? (
             <ul className="mb-2 space-y-1">
               {hits.map((h) => (
-                <li key={h.node_id} className="text-[12px] text-ink dark:text-bright">
+                <li key={h.node_id} className="text-xs text-ink dark:text-bright">
                   <span className="text-ink-mute dark:text-moonlight">
                     {h.document_title ?? "your note"}
                   </span>{" "}
@@ -117,7 +117,7 @@ export default function SubAgentProposal({
               ))}
             </ul>
           ) : (
-            <p className="mb-2 text-[12px] italic text-ink-mute dark:text-moonlight">
+            <p className="mb-2 text-xs italic text-ink-mute dark:text-moonlight">
               Nothing in the corpus yet — spin a sub-agent to go find support.
             </p>
           )}

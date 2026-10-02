@@ -54,6 +54,9 @@ export default function AddModelPanel() {
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [displayName, setDisplayName] = useState("");
   const [modelId, setModelId] = useState("");
+  // Extra preset variants registered under the SAME key as `modelId` (one
+  // credential, one ledger row — SPR-03 Task 2). Empty means single-variant.
+  const [extraVariantIds, setExtraVariantIds] = useState<string[]>([]);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,6 +158,7 @@ export default function AddModelPanel() {
     providerChoiceTouchedRef.current = true;
     clearEditorTransientState();
     setProvider(next);
+    setExtraVariantIds([]);
     const nextPreset = catalog?.find((item) => item.catalog_id === next);
     if (nextPreset) {
       setKind(nextPreset.provider_kind);
@@ -173,9 +177,17 @@ export default function AddModelPanel() {
   function selectModel(nextModelId: string) {
     clearEditorTransientState();
     setModelId(nextModelId);
+    // The primary cannot also be an extra.
+    setExtraVariantIds((prev) => prev.filter((id) => id !== nextModelId));
     const model = preset?.models.find((item) => item.id === nextModelId);
     if (model) setDisplayName(model.label);
     queueMicrotask(() => keyRef.current?.focus());
+  }
+
+  function toggleExtraVariant(variantId: string) {
+    setExtraVariantIds((prev) =>
+      prev.includes(variantId) ? prev.filter((id) => id !== variantId) : [...prev, variantId],
+    );
   }
 
   async function onAdd(event: FormEvent<HTMLFormElement>) {
@@ -189,10 +201,18 @@ export default function AddModelPanel() {
     const key = apiKey;
     clearSecret();
     try {
+      // Extras ride under the same key as `model_ids` (primary first); a
+      // single-variant registration sends exactly the pre-variant body.
+      const extras = preset
+        ? extraVariantIds.filter(
+            (id) => id !== modelId && preset.models.some((model) => model.id === id),
+          )
+        : [];
       await addUserModel({
         provider_kind: kind,
         ...(preset ? { provider_catalog_id: preset.catalog_id } : {}),
         model_id: modelId,
+        ...(extras.length > 0 ? { model_ids: [modelId, ...extras] } : {}),
         display_name: displayName.trim(),
         api_key: key,
         ...(preset?.provider_kind === "openai_compat"
@@ -272,7 +292,7 @@ export default function AddModelPanel() {
 
         {loadError && (
           <p
-            className="text-sm text-red-700 dark:text-red-300 font-mono"
+            className="text-sm text-danger font-mono"
             role="alert"
           >
             {loadError}
@@ -289,7 +309,7 @@ export default function AddModelPanel() {
           </p>
         )}
         {staleRegistered.length > 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-300 font-mono">
+          <p className="text-xs text-sun-deep dark:text-sun font-mono">
             Stale registrations (registry record lost):{" "}
             {staleRegistered.join(", ")} — they cannot resolve keys and clear at
             the next restart.
@@ -300,7 +320,7 @@ export default function AddModelPanel() {
             {models.map((m) => (
               <li
                 key={m.id}
-                className="flex min-w-0 flex-col gap-2 border-b border-ink/10 pb-2 font-mono text-[13px] dark:border-bright/10 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between"
+                className="flex min-w-0 flex-col gap-2 border-b border-ink/10 pb-2 font-mono text-sm dark:border-bright/10 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between"
               >
                 <span className="min-w-0 break-words text-ink dark:text-bright font-semibold">
                   {m.display_name}
@@ -313,8 +333,8 @@ export default function AddModelPanel() {
                   <span
                     className={
                       m.key_present
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-amber-700 dark:text-amber-300"
+                        ? "text-success"
+                        : "text-sun-deep dark:text-sun"
                     }
                   >
                     {m.key_present ? "key stored" : "no key"}
@@ -322,8 +342,8 @@ export default function AddModelPanel() {
                   <span
                     className={
                       m.registered
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-amber-700 dark:text-amber-300"
+                        ? "text-success"
+                        : "text-sun-deep dark:text-sun"
                     }
                   >
                     {m.registered ? "registered" : "not registered"}
@@ -332,7 +352,7 @@ export default function AddModelPanel() {
                     {EXECUTION_LABELS[m.execution_status]}
                   </span>
                   {usageByKey[m.id]?.remaining_cents != null && (
-                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                    <span className="text-xs text-success">
                       remaining {formatCents(usageByKey[m.id].remaining_cents!)}
                     </span>
                   )}
@@ -371,7 +391,7 @@ export default function AddModelPanel() {
             Add a provider model
           </h3>
           <fieldset className="space-y-2">
-            <legend className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+            <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
               Provider
             </legend>
             {catalogLoading && (
@@ -386,7 +406,7 @@ export default function AddModelPanel() {
             {catalogError && (
               <div
                 role="alert"
-                className="flex flex-wrap items-center gap-2 text-xs text-red-700 dark:text-red-300"
+                className="flex flex-wrap items-center gap-2 text-xs text-danger"
               >
                 <span>{catalogError}</span>
                 <LemonButton
@@ -409,7 +429,7 @@ export default function AddModelPanel() {
               ].map(({ value, label }) => (
                 <label
                   key={value}
-                  className="min-h-11 flex items-center gap-2 px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 font-mono text-[13px] cursor-pointer"
+                  className="min-h-11 flex items-center gap-2 px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 font-mono text-sm cursor-pointer"
                 >
                   <input
                     type="radio"
@@ -435,7 +455,7 @@ export default function AddModelPanel() {
               className="flex flex-col gap-1"
               htmlFor="custom-provider-kind"
             >
-              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                 Adapter
               </span>
               <select
@@ -446,7 +466,7 @@ export default function AddModelPanel() {
                   setKind(event.target.value as ProviderKind);
                   setBaseUrl("");
                 }}
-                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-[13px]"
+                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-sm"
               >
                 <option value="openai_compat">OpenAI-compatible</option>
                 <option value="anthropic">Anthropic</option>
@@ -456,14 +476,14 @@ export default function AddModelPanel() {
 
           {preset && (
             <label className="flex flex-col gap-1" htmlFor="preset-model">
-              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                 Model
               </span>
               <select
                 id="preset-model"
                 value={modelId}
                 onChange={(event) => selectModel(event.target.value)}
-                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-[13px]"
+                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-sm"
               >
                 {preset.models.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -474,11 +494,40 @@ export default function AddModelPanel() {
             </label>
           )}
 
+          {preset && preset.models.length > 1 && (
+            <fieldset className="flex flex-col gap-1">
+              <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                Also drive with this key
+              </legend>
+              <p className="text-xxs text-ink-mute dark:text-moonlight">
+                One credential, one usage ledger; each checked variant becomes a
+                sub-row of this key in every model dropdown.
+              </p>
+              {preset.models
+                .filter((model) => model.id !== modelId)
+                .map((model) => (
+                  <label
+                    key={model.id}
+                    className="flex items-center gap-2 text-sm text-ink dark:text-bright"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={extraVariantIds.includes(model.id)}
+                      onChange={() => toggleExtraVariant(model.id)}
+                      aria-label={`Also drive ${model.label} with this key`}
+                    />
+                    <span>{model.label}</span>
+                    <span className="font-mono text-xxs text-ink-mute">{model.id}</span>
+                  </label>
+                ))}
+            </fieldset>
+          )}
+
           <div className="space-y-3">
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="model-display-name"
-                className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
               >
                 Display name
               </label>
@@ -495,7 +544,7 @@ export default function AddModelPanel() {
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="custom-model-id"
-                  className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                  className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
                 >
                   Model id
                 </label>
@@ -505,7 +554,7 @@ export default function AddModelPanel() {
                   wrapperClassName="w-full"
                   value={modelId}
                   onChange={(e) => setModelId(e.target.value)}
-                  placeholder="deepseek-chat"
+                  placeholder="deepseek-flash"
                 />
               </div>
             )}
@@ -513,7 +562,7 @@ export default function AddModelPanel() {
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="custom-base-url"
-                  className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                  className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
                 >
                   Base URL (full, including version prefix)
                 </label>
@@ -531,7 +580,7 @@ export default function AddModelPanel() {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="provider-api-key"
-                className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
               >
                 API key (write-only)
               </label>
@@ -591,7 +640,7 @@ export default function AddModelPanel() {
           <p
             className={
               messageKind === "error"
-                ? "text-xs text-red-700 dark:text-red-300"
+                ? "text-xs text-danger"
                 : "text-xs text-ink-soft dark:text-starlight"
             }
             role={messageKind === "error" ? "alert" : "status"}

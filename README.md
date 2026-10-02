@@ -80,7 +80,7 @@ the notebook block-canvas with auto-notebook, the float menu, the
 research home with plan mode, the library feed and in-book reader,
 talk-to-book with shared ASR-in/TTS-out voice infrastructure, the Write
 X-ray, biography templates, a personal doc space with
-auto-categorization, and one penguin mascot we're rather fond of.
+auto-categorization, and one brain mascot we're rather fond of.
 
 **The paranoia, as code.** This is where the craft lives:
 

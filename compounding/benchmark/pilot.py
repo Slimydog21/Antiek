@@ -180,7 +180,9 @@ def run_pilot(
         "warm": {m: [] for m in PILOT_CV_METRICS},
         "irrelevant": {m: [] for m in PILOT_CV_METRICS},
     }
-    seeds = {"cold": ColdSeed(), "warm": WarmSeed(), "irrelevant": IrrelevantSeed()}
+    seeds: dict[str, ColdSeed | WarmSeed | IrrelevantSeed] = {
+        "cold": ColdSeed(), "warm": WarmSeed(), "irrelevant": IrrelevantSeed(),
+    }
 
     # run_arm already namespaces user_id by question_id + arm, so run_index need
     # only be unique within a (question, arm) cell — range(runs_per_cell) is that.

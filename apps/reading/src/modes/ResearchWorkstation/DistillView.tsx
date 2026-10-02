@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { ModeLink } from "../../workspace/ModeLink";
 
 import {
   getDistillation,
@@ -7,7 +7,9 @@ import {
   ApiError,
 } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
+import { openWindow, readerWindowId } from "../../components/windows/openWindow";
 import AIActionFailure from "../../shared/AIActionFailure";
+import FlagForDiligence from "../../shared/FlagForDiligence";
 import Thinking from "../../shared/Thinking";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 
@@ -125,7 +127,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
     <div id="distill" data-testid="distill-view" className="flex flex-col gap-5 px-4 py-4">
       <OpenAutoNotebookLink investigationId={investigationId} />
       {running && (
-        <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
           still working — this is what’s distilled so far
         </p>
       )}
@@ -144,7 +146,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
         <Section heading="Open questions">
           <ul className="space-y-2.5">
             {questions.map((q) => (
-              <QuestionRow key={q.node_id} node={q} onChase={onChase} />
+              <QuestionRow key={q.node_id} node={q} investigationId={investigationId} onChase={onChase} />
             ))}
           </ul>
         </Section>
@@ -158,7 +160,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+      <h3 className="mb-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {heading}
       </h3>
       {children}
@@ -211,11 +213,11 @@ function InsightRow({
       <div className="flex items-start gap-2.5">
         <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+          <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
             {node.text}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
-            <Grounding node={node} />
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
+            <Grounding node={node} investigationId={investigationId} />
             {node.refinement_count > 0 && (
               <span className="font-mono">changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}</span>
             )}
@@ -231,22 +233,22 @@ function InsightRow({
             {outcome === "busy" && <span className="font-mono italic" role="status">weighing…</span>}
           </div>
           {outcome === "changed" && (
-            <p className="mt-1 font-mono text-[11px] text-emerald-700" role="status">
+            <p className="mt-1 font-mono text-xs text-success" role="status">
               the note changed in light of your challenge
             </p>
           )}
           {outcome === "unchanged" && (
-            <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+            <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               a newer revision already settled this — unchanged
             </p>
           )}
           {outcome === "escalated" && (
-            <p className="mt-1 font-mono text-[11px] text-sun-deep dark:text-sun" role="status">
+            <p className="mt-1 font-mono text-xs text-sun-deep dark:text-sun" role="status">
               this needs more research — saved as an open question
             </p>
           )}
           {outcome === "noSource" && (
-            <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+            <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               this note isn’t grounded in a source yet, so it can’t be challenged
             </p>
           )}
@@ -265,13 +267,13 @@ function InsightRow({
   );
 }
 
-function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: DistilledNode) => void }) {
+function QuestionRow({ node, investigationId, onChase }: { node: DistilledNode; investigationId: string; onChase?: (q: DistilledNode) => void }) {
   return (
     <li className="flex items-start gap-2.5">
-      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-sun-deep dark:bg-sun" aria-hidden="true" />
+      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">{node.text}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">{node.text}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
           {node.escalated ? (
             <span className="font-mono text-sun-deep dark:text-sun">this needs more research</span>
           ) : null}
@@ -284,6 +286,7 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
               chase this
             </button>
           )}
+          <FlagForDiligence node={node} sourceInvestigationId={investigationId} />
         </div>
       </div>
     </li>
@@ -293,12 +296,41 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
 /** The named source that grounds an insight, in human terms. We show the
  *  document the insight came from; a raw id is never a label, so when only an
  *  id is on record we say "grounded in a source" rather than print the id.
- *  (SPR-04 wires the source's title via the named-source rendering.) */
-function Grounding({ node }: { node: DistilledNode }) {
+ *  (SPR-04 wires the source's title via the named-source rendering.)
+ *
+ *  Reading-global SPR-02: when the node carries a source, the line gains the
+ *  quiet "open in reader" action — the reader floats (the ONE window-eligible
+ *  surface) with the stable per-document id and the research origin context.
+ *  A node WITHOUT a source renders the same inert line as always — never a
+ *  dead affordance. */
+function Grounding({ node, investigationId }: { node: DistilledNode; investigationId: string }) {
   if (!node.source_document_id) {
     return <span className="font-mono italic">no source on record</span>;
   }
-  return <span className="font-mono">grounded in a source</span>;
+  const documentId = node.source_document_id;
+  return (
+    <>
+      <span className="font-mono">grounded in a source</span>
+      <button
+        type="button"
+        data-open-in-reader
+        onClick={() =>
+          openWindow(
+            "reader",
+            {
+              documentId,
+              origin: { from: "research", id: investigationId },
+            },
+            { id: readerWindowId(documentId) },
+          )
+        }
+        className="font-mono underline decoration-dotted underline-offset-2 transition-colors hover:text-ink dark:hover:text-bright"
+        title="Open the grounding source in the reader"
+      >
+        open in reader
+      </button>
+    </>
+  );
 }
 
 
@@ -306,13 +338,13 @@ function Grounding({ node }: { node: DistilledNode }) {
 function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) {
   return (
     <p className="px-0 pt-1">
-      <Link
+      <ModeLink
         to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
         data-testid="open-auto-notebook"
-        className="font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+        className="font-mono text-xs uppercase tracking-wider text-sun-deep dark:text-sun underline-offset-2 hover:underline"
       >
         Open auto-notebook →
-      </Link>
+      </ModeLink>
     </p>
   );
 }

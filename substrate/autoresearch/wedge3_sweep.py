@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from .proposal import CohortWindow, ConfigProposal, SweepAxes
 
@@ -31,16 +32,16 @@ COHORT_MIN_OUTCOMES = 500  # per §14.1
 # ScoringFunction maps a (config_dict, cohort_outcomes_payload) tuple to
 # a scalar score. Higher = better. Caller supplies; substrate doesn't
 # choose. The scoring function name lives in SweepAxes for replay.
-ScoringFunction = Callable[[dict, object], float]
+ScoringFunction = Callable[[dict[str, Any], object], float]
 
 
 @dataclass(frozen=True)
 class SweepCandidate:
     """One config + its score."""
 
-    config: dict
+    config: dict[str, Any]
     score: float
-    delta_against_baseline: dict
+    delta_against_baseline: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ class SweepInput:
     """The full input envelope to a sweep run."""
 
     cohort: CohortWindow
-    baseline_config: dict
+    baseline_config: dict[str, Any]
     axes: SweepAxes
     cohort_outcomes: object  # opaque payload; scoring function understands it
     scoring_function: ScoringFunction
@@ -65,9 +66,9 @@ class SweepResult:
 
 
 def _candidate_configs(
-    baseline: dict,
+    baseline: dict[str, Any],
     axes: SweepAxes,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Enumerate cartesian product of (context_pack_composition × dispatch_tier).
 
     A candidate config is the baseline with the chosen axis values
@@ -79,7 +80,7 @@ def _candidate_configs(
     routes = list(axes.dispatch_tier_routes) or [
         baseline.get("dispatch_tier_route", "default"),
     ]
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for comp in compositions:
         for route in routes:
             cfg = dict(baseline)
@@ -89,9 +90,9 @@ def _candidate_configs(
     return out
 
 
-def _diff_against_baseline(baseline: dict, candidate: dict) -> dict:
+def _diff_against_baseline(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     """Minimal delta — keys where candidate differs from baseline."""
-    delta: dict = {}
+    delta: dict[str, Any] = {}
     for k, v in candidate.items():
         if baseline.get(k) != v:
             delta[k] = v

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { ModeNavLink } from "../../workspace/ModeLink";
 
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
@@ -50,7 +51,7 @@ export default function InvestigationSidebar() {
         <div className="text-ink-mute dark:text-moonlight italic font-mono">Loading…</div>
       )}
       {error && (
-        <div className="text-emperor font-mono text-[10px]">{error}</div>
+        <div className="text-emperor font-mono text-xxs">{error}</div>
       )}
       {!loading && investigations.length === 0 && !error && (
         <div className="text-ink-mute dark:text-moonlight italic font-serif">
@@ -98,7 +99,7 @@ function TreeRow({
         {node.children.length > 0 ? (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors w-3 text-center text-[10px] mt-1 shrink-0"
+            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors w-3 text-center text-xxs mt-1 shrink-0"
             aria-label={expanded ? "Collapse" : "Expand"}
           >
             {expanded ? "▾" : "▸"}
@@ -106,7 +107,7 @@ function TreeRow({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <NavLink
+        <ModeNavLink
           to={`/inv/${node.investigationId}`}
           className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
             isActive
@@ -132,7 +133,7 @@ function TreeRow({
               >
                 {truncate(summary?.question ?? node.investigationId, 60)}
               </div>
-              <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
+              <div className="font-mono text-xxs text-ink-mute dark:text-moonlight mt-0.5">
                 {summary?.cost_usd_total
                   ? `$${summary.cost_usd_total.toFixed(4)}`
                   : "$0"}
@@ -140,7 +141,7 @@ function TreeRow({
               </div>
             </div>
           </div>
-        </NavLink>
+        </ModeNavLink>
       </div>
       {expanded && node.children.length > 0 && (
         <ul className="space-y-1 mt-1">

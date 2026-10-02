@@ -69,7 +69,7 @@ export default function BlockDetail({
   return (
     <div className="flex flex-col h-full text-ink dark:text-bright p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <span className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           {node.kind} · block detail
         </span>
         {onClose && (

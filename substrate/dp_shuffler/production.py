@@ -184,7 +184,7 @@ def record_telemetry(
 def daily_epsilon_used(
     *,
     surface_name: str,
-    events: list[dict],
+    events: list[dict[str, Any]],
     day_iso: str | None = None,
 ) -> float:
     """Sum the per-event ε for one surface on one day.

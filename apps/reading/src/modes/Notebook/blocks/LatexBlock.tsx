@@ -21,7 +21,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
     <NodeViewWrapper className="my-3" data-block="latex">
       <div className="border-edge border-sun bg-ice-1 dark:bg-charcoal-2 rounded-hog shadow-z1 dark:shadow-z1-night relative">
         <div className="px-3 py-2 border-b-edge border-sun flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-sun-deep dark:text-sun">
+          <span className="font-mono text-xxs uppercase tracking-wider text-sun-deep dark:text-sun">
             LaTeX · raw source (display-only)
           </span>
           <span className="flex items-center gap-2">
@@ -33,7 +33,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
                 }
                 setEditing((v) => !v);
               }}
-              className="text-[11px] text-ink dark:text-bright hover:underline"
+              className="text-xs text-ink dark:text-bright hover:underline"
             >
               {editing ? "save" : "edit"}
             </button>
@@ -57,7 +57,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
                     },
                   );
                 }}
-                className="text-[11px] text-ink dark:text-bright hover:underline"
+                className="text-xs text-ink dark:text-bright hover:underline"
                 title="Open in a dedicated editor panel"
               >
                 open
@@ -67,7 +67,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
               type="button"
               onClick={() => deleteNode()}
               aria-label="Remove block"
-              className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+              className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
             >
               ✕
             </button>
@@ -77,11 +77,11 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            className="w-full min-h-[80px] px-4 py-3 font-mono text-[13px] bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright outline-none resize-y"
+            className="w-full min-h-[80px] px-4 py-3 font-mono text-sm bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright outline-none resize-y"
             placeholder="\\sum_{i=1}^{n} \\binom{n}{i}…"
           />
         ) : (
-          <pre className="px-4 py-3 font-mono text-[13px] text-ink dark:text-bright whitespace-pre-wrap break-words m-0">
+          <pre className="px-4 py-3 font-mono text-sm text-ink dark:text-bright whitespace-pre-wrap break-words m-0">
             {source || (
               <span className="text-ink-mute dark:text-moonlight italic">
                 (empty — click "edit" to add math source)

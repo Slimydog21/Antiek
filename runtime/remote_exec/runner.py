@@ -36,14 +36,17 @@ recorded the teardown.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 try:
-    from ...event_log import log_event, seal_investigation
-    from ...schemas.events import ActionType
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
+
     from ..research_runner.budget import BudgetManager
     from ..research_runner.protocol import (
         BudgetExceeded,
@@ -67,16 +70,16 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.remote_exec.cost import record_remote_dispatch  # type: ignore[no-redef]
-    from runtime.remote_exec.provider import (  # type: ignore[no-redef]
+    from runtime.remote_exec.cost import record_remote_dispatch
+    from runtime.remote_exec.provider import (
         RemoteCommand,
         RemoteExecProvider,
         RemoteExecProviderError,
         RemoteSignal,
         Sandbox,
     )
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.protocol import (
         BudgetExceeded,
         Command,
         CommandKind,
@@ -87,8 +90,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         Status,
         StepEvent,
     )
-    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
 
 
 logger = logging.getLogger("antiek.remote_exec")
@@ -102,7 +105,11 @@ DEFAULT_MAX_CONCURRENCY = 20
 
 # Sentinel pushed onto a research's stream queue to end iteration. Same idiom
 # as the host-local runner.
-_STREAM_DONE = object()
+class _StreamDone:
+    pass
+
+
+_STREAM_DONE = _StreamDone()
 
 # Signal map: protocol CommandKind → provider RemoteSignal. One place so the
 # mapping is auditable.
@@ -120,8 +127,8 @@ class _RemoteState:
         self.plan = plan
         self.state = RunState.PENDING
         self.sandbox: Sandbox | None = None
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.task: asyncio.Task | None = None
+        self.queue: asyncio.Queue[StepEvent | _StreamDone] = asyncio.Queue()
+        self.task: asyncio.Task[None] | None = None
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
@@ -262,7 +269,15 @@ class RemoteResearchRunner:
         if self._on_emit is not None and ev.kind in ("note", "question"):
             await self._on_emit(ev)
 
-    async def _finish(self, st, action, payload, *, halted=False, already_logged=False) -> None:
+    async def _finish(
+        self,
+        st: _RemoteState,
+        action: str | None,
+        payload: dict[str, Any] | None,
+        *,
+        halted: bool = False,
+        already_logged: bool = False,
+    ) -> None:
         iid = st.plan.investigation_id
         # ALWAYS tear the sandbox down — completion, halt, failure, cancel.
         # A leaf that finishes any way must not leak a sandbox.
@@ -278,12 +293,11 @@ class RemoteResearchRunner:
                     outbox_db_path=self._outbox_db_path,
                 )
             except Exception as e:  # seal is best-effort
-                try:
+                with contextlib.suppress(Exception):
+                    # A broken log channel must not break the finish path.
                     logger.warning(
-                        "investigation seal failed (best-effort): iid=%s "
-                        "events_dir=%s: %r", iid, self._events_dir, e)
-                except Exception:
-                    pass  # a broken log channel must not break the finish path
+                    "investigation seal failed (best-effort): iid=%s "
+                    "events_dir=%s: %r", iid, self._events_dir, e)
         # BYOT wall-time ACU top-up (#3139/#3140/#3184) — best-effort.
         if getattr(st, "started", False):
             try:
@@ -309,22 +323,21 @@ class RemoteResearchRunner:
         try:
             await self._provider.teardown(st.sandbox)
         except Exception as e:  # teardown is best-effort
-            try:
+            with contextlib.suppress(Exception):
+                # A broken log channel must not break teardown isolation.
                 logger.warning(
                     "sandbox teardown failed (best-effort, NOT retried — "
                     "st.torn_down already set): sandbox_id=%s "
                     "investigation_id=%s: %r",
                     st.sandbox.sandbox_id, st.plan.investigation_id, e)
-            except Exception:
-                pass  # a broken log channel must not break teardown isolation
 
     # -- protocol: stream ----------------------------------------------
 
-    async def stream(self, handle: Handle):
+    async def stream(self, handle: Handle) -> AsyncIterator[StepEvent]:
         st = self._states[handle.investigation_id]
         while True:
             item = await st.queue.get()
-            if item is _STREAM_DONE:
+            if isinstance(item, _StreamDone):
                 return
             yield item
 
@@ -356,12 +369,10 @@ class RemoteResearchRunner:
         if st.sandbox is not None:
             signal = _SIGNAL_MAP.get(command.kind)
             if signal is not None:
-                try:
+                with contextlib.suppress(Exception):  # pragma: no cover — steer is best-effort
                     await self._provider.steer(
                         st.sandbox, RemoteCommand(signal=signal, payload=dict(command.payload))
                     )
-                except Exception:  # pragma: no cover — steer is best-effort
-                    pass
 
     # -- protocol: status / cost / cancel ------------------------------
 
@@ -398,12 +409,10 @@ class RemoteResearchRunner:
         # task and tear the sandbox down. Teardown is unconditional — a
         # cancelled leaf never leaks a sandbox (rigor: the negative test).
         if st.sandbox is not None:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover
                 await self._provider.steer(
                     st.sandbox, RemoteCommand(signal=RemoteSignal.STOP)
                 )
-            except Exception:  # pragma: no cover
-                pass
         if st.task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(st.task), timeout=5.0)

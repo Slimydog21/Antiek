@@ -100,7 +100,7 @@ class Dag:
     planning_latency_s: float = 0.0
 
     @classmethod
-    def from_plan_json(cls, plan: dict[str, Any], **meta) -> Dag:
+    def from_plan_json(cls, plan: dict[str, Any], **meta: Any) -> Dag:
         nodes = [DagNode.from_dict(n) for n in plan.get("nodes", [])]
         return cls(
             nodes=nodes,
@@ -223,7 +223,7 @@ def plan_dag(
     llm_query_fn: Callable[[str], str],
     *,
     context: str = "",
-    decomposition_examples: list[dict] | None = None,
+    decomposition_examples: list[dict[str, Any]] | None = None,
     model: str = "deepseek/deepseek-v4-pro",
     prime_backend: PrimeAgentRLMBackend | None = None,
     evidence_sink: Callable[[PrimeAgentOutcome], None] | None = None,
@@ -317,7 +317,7 @@ def execute_dag(
 
     _raw_verify = verify_fn
 
-    def _verify(claim: str, ctx: str, cid: str):
+    def _verify(claim: str, ctx: str, cid: str) -> Any:
         return _raw_verify(
             claim=claim, context=ctx,
             llm_batch_fn=llm_batch_fn, claim_id=cid,
@@ -480,7 +480,7 @@ def classify_complexity(question: str, dag: Dag) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _cmd_plan(args) -> int:
+def _cmd_plan(args: argparse.Namespace) -> int:
     if args.dry_run:
         dag = Dag(
             nodes=[
@@ -504,7 +504,7 @@ def _cmd_plan(args) -> int:
     return 0
 
 
-def _cmd_layers(args) -> int:
+def _cmd_layers(args: argparse.Namespace) -> int:
     if os.path.isfile(args.dag_json):
         with open(args.dag_json) as f:
             plan = json.load(f)
@@ -519,7 +519,7 @@ def _cmd_layers(args) -> int:
     return 0
 
 
-def _cmd_complexity(args) -> int:
+def _cmd_complexity(args: argparse.Namespace) -> int:
     if os.path.isfile(args.dag_json):
         with open(args.dag_json) as f:
             plan = json.load(f)
@@ -555,7 +555,7 @@ def main() -> int:
     sp.set_defaults(func=_cmd_complexity)
 
     args = p.parse_args()
-    return args.func(args)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":

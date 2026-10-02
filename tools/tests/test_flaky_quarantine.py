@@ -215,7 +215,19 @@ def test_quarantined_always_failing_still_surfaces(tmp_path: Path):
 
 
 def _collection_count(summary_line: str) -> int:
-    token = summary_line.strip().split()[0]
+    """First token of pytest's ``-q --collect-only`` summary, as an int.
+
+    ``subprocess.run`` inherits the environment, so ``FORCE_COLOR`` makes
+    pytest colour the summary and the first token becomes
+    ``\x1b[32m\x1b[32m5`` — ``int()`` then raises ValueError. This passed in
+    CI (no FORCE_COLOR) and failed on any developer machine that sets it, which
+    is the same blindness the detector had in ``_parse_pytest_output``. Strip
+    the escapes rather than trusting the environment.
+    """
+    import re
+
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", summary_line)
+    token = plain.strip().split()[0]
     return int(token)
 
 
@@ -223,7 +235,7 @@ def test_default_run_collection_count_unchanged_without_plugin():
     """Plugin is opt-in: importing it must not register hooks on default pytest runs."""
     target = _FIXTURE_PATH
     without = subprocess.run(
-        [_PYTHON, "-m", "pytest", "--collect-only", "-q", target],
+        [_PYTHON, "-m", "pytest", "--collect-only", "-q", "--color=no", target],
         cwd=_REPO,
         capture_output=True,
         text=True,
@@ -234,7 +246,7 @@ def test_default_run_collection_count_unchanged_without_plugin():
     import tools.pytest_quarantine_plugin  # noqa: F401
 
     after = subprocess.run(
-        [_PYTHON, "-m", "pytest", "--collect-only", "-q", target],
+        [_PYTHON, "-m", "pytest", "--collect-only", "-q", "--color=no", target],
         cwd=_REPO,
         capture_output=True,
         text=True,

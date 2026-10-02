@@ -41,6 +41,8 @@ class SecretStr:
 
     __slots__ = ("_secret",)
 
+    _secret: str
+
     def __init__(self, secret: str) -> None:
         if not isinstance(secret, str):
             raise TypeError("SecretStr wraps a str")
@@ -72,7 +74,7 @@ class SecretStr:
     def __ne__(self, other: Any) -> bool:
         result = self.__eq__(other)
         if result is NotImplemented:
-            return result
+            return True  # unequal types: SecretStr != non-SecretStr/non-str
         return not result
 
     def __hash__(self) -> int:

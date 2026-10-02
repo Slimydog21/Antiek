@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
 import LemonButton from "../../components/lemon/LemonButton";
-import WernerThinking from "../../brand/werner/animated/WernerThinking";
+import BrainThinking from "../../brand/mascot/animated/BrainThinking";
 import CelebrateBurst from "./CelebrateBurst";
 import { useCelebrate } from "./useCelebrate";
 
@@ -21,7 +21,7 @@ const meta = {
 export default meta;
 type Story = StoryObj;
 
-/** The bare primitive: Werner's one-shot celebrate, armed by a button. */
+/** The bare primitive: Brain's one-shot celebrate, armed by a button. */
 export const CelebratePrimitive: Story = {
   render: () => {
     const { celebrating, celebrate } = useCelebrate();
@@ -71,7 +71,7 @@ export const ResearchStarts: Story = {
               className="absolute inset-0 items-center justify-center"
             />
           )}
-          <WernerThinking size={48} label="The investigation is working" />
+          <BrainThinking size={48} label="The investigation is working" />
         </div>
         <p className="text-sm font-serif text-ink dark:text-bright">
           Starting your research…

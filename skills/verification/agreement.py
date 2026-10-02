@@ -21,9 +21,10 @@ Three functions ship:
 from __future__ import annotations
 
 import json
+from typing import Any
 
 
-def default_agreement_synthesizer(a: dict, b: dict) -> bool:
+def default_agreement_synthesizer(a: dict[str, Any], b: dict[str, Any]) -> bool:
     """Synthesizer outputs agree iff:
 
     - ``implicit_recommendation`` matches exactly, AND
@@ -55,7 +56,7 @@ def default_agreement_synthesizer(a: dict, b: dict) -> bool:
     return (overlap / union) >= 0.5
 
 
-def default_agreement_evidence(a: dict, b: dict) -> bool:
+def default_agreement_evidence(a: dict[str, Any], b: dict[str, Any]) -> bool:
     """Evidence Retriever outputs agree iff:
 
     - ``insufficient_evidence`` flag matches exactly, AND
@@ -63,10 +64,10 @@ def default_agreement_evidence(a: dict, b: dict) -> bool:
     """
     if a.get("insufficient_evidence") != b.get("insufficient_evidence"):
         return False
-    ca: set = set()
+    ca: set[str] = set()
     for claim in a.get("supporting_claims") or []:
         ca.update(claim.get("chunk_ids") or [])
-    cb: set = set()
+    cb: set[str] = set()
     for claim in b.get("supporting_claims") or []:
         cb.update(claim.get("chunk_ids") or [])
     if not ca and not cb:
@@ -78,7 +79,7 @@ def default_agreement_evidence(a: dict, b: dict) -> bool:
     return (overlap / union) >= 0.5
 
 
-def default_agreement_strict(a: dict, b: dict) -> bool:
+def default_agreement_strict(a: dict[str, Any], b: dict[str, Any]) -> bool:
     """Full structural equality via ``json.dumps(sort_keys=True)``
     fingerprint. For outcome records and gating decisions where any
     divergence is itself a bug."""

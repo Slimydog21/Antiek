@@ -1,12 +1,11 @@
-"""The RLM bridge's one live call site must actually supply a Prime backend.
+"""The RLM bridge's one live call site supplies a Prime backend — and only that.
 
 WHY THIS FILE EXISTS
 ────────────────────
 Eight RLM sites accept a ``prime_backend`` parameter. Until this wiring, **no
 non-test code anywhere constructed one**, so ``_bridge_executor(None)`` returned
-"dispatch" unconditionally and the whole Prime lane was unreachable at runtime while
-looking fully wired at the module level. Every unit test passed, because every unit
-test passed a backend in by hand.
+"dispatch" unconditionally. Every unit test passed, because every unit test passed a
+backend in by hand.
 
 That is the defect this file pins, and it is a defect about an ARGUMENT NOT BEING
 PASSED — so the honest test is one that reads the call site. A behavioural test here
@@ -18,13 +17,18 @@ WHAT THIS PROVES, AND WHAT IT DOES NOT
 ──────────────────────────────────────
 Proves: the live ``document.loaded`` call site passes ``prime_backend`` with a value
 that is not the literal ``None``, and that the factory honours the documented flag in
-both directions. Does NOT prove that a Prime session runs end to end — that needs the
-operator's ratification plus an installed binary, and
-``tests/test_rlm_bridge.py::test_above_threshold_ratified_prime_backend_switches_root_executor``
-already covers the bridge's own behaviour once a backend is supplied.
+both directions.
 
-The two together are the chain: the bridge does the right thing with a backend, and
-the call site actually hands it one.
+Does NOT prove — and an earlier version of this docstring wrongly claimed — that the
+wiring closes the Prime lane's unreachability gap. It does not. ``_bridge_executor``
+consumes the backend as a truthiness token to select the label
+``root_executor="prime_agent"``; the bridge never calls ``.run()`` or
+``.run_session()`` on it and nothing iterates the session it creates. With both flags
+set and a binary installed, ``document.loaded`` spawns no Prime process. The wiring
+changed a label, not an execution path.
+``tests/test_rlm_bridge.py::test_above_threshold_ratified_prime_backend_switches_root_executor``
+pins exactly that label selection and nothing more. Real execution from this call site
+is SPR-01 Task 3, whose proof is a spawn count read from a witness file, not a label.
 """
 
 from __future__ import annotations

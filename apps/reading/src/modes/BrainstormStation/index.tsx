@@ -120,7 +120,7 @@ ${text}`,
         },
       ]}
     >
-      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+      <main className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
         {selected ? (
           <ParkedQuestion
             question={selected}

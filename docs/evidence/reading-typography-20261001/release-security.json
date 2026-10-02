@@ -1,0 +1,365 @@
+{
+  "path": "/Users/slimydog/Antiek/worktrees/reading-typography-20261001",
+  "git_repo": true,
+  "raw_score": 100,
+  "raw_band": "CRITICAL",
+  "hardenx_band": "LOW",
+  "framework": "fastapi",
+  "ai_providers": [
+    "OpenAI Whisper",
+    "HuggingFace",
+    "HuggingFace",
+    "Anthropic",
+    "PyTorch",
+    "HuggingFace"
+  ],
+  "dep_meta": {
+    "installed_source": "uv.lock",
+    "osv_used": true,
+    "conservative": 0
+  },
+  "real": [],
+  "advisory": [
+    {
+      "kind": "secret",
+      "ref": "services/antiek_format/signature.py:209",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "substrate/book_acquisition/authorization.py:90",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "substrate/graph/schema.py:1083",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "substrate/multimedia/execution_authorization.py:504",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "substrate/multimedia/provider_execution.py:163",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tools/reachability/probes/usability_keystone.py:167",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tools/synquery/client.py:76",
+      "detail": "high_entropy_string",
+      "reason": "untyped high-entropy string \u2014 usually a hash/constant, verify by eye",
+      "severity": "medium"
+    },
+    {
+      "kind": "dep",
+      "ref": "python-multipart",
+      "detail": "installed 0.0.32 (floor 0.0.20) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "orjson",
+      "detail": "installed 3.11.9 (floor 3.10) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "requests",
+      "detail": "installed 2.33.1 (floor 2.31) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "pillow",
+      "detail": "installed 12.3.0 (floor 11.0) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "pynacl",
+      "detail": "installed 1.6.2 (floor 1.5) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "cryptography",
+      "detail": "installed 50.0.1 (floor 42.0) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "pypdf",
+      "detail": "installed 6.19.0 (floor 4.3) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "sentence-transformers",
+      "detail": "installed 5.6.0 (floor 3.0) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "yt-dlp",
+      "detail": "installed 2026.8.19 (floor 2024.8.6) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "jinja2",
+      "detail": "installed 3.1.6 (floor 3.1) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    },
+    {
+      "kind": "dep",
+      "ref": "pytest",
+      "detail": "installed 9.1.1 (floor 8.3) \u2014 patched",
+      "reason": "manifest floor flagged but the installed version is clean per OSV",
+      "severity": "low"
+    }
+  ],
+  "allowed": [],
+  "quirked": [],
+  "dropped_count": 29,
+  "dropped": [
+    {
+      "kind": "secret",
+      "ref": "tests/api/test_settings_models_user_scoping.py:21",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/api/test_settings_models_user_scoping.py:67",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/byot/test_byot_provider_catalog.py:175",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/byot/test_byot_provider_catalog.py:197",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/settings/test_models_admin_variants.py:39",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_agent_work_routes.py:78",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_cascade_api.py:906",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_connectors_chassis.py:50",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_connectors_fred_alpha_vantage.py:34",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_connectors_fred_alpha_vantage.py:122",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_decision_doc_paths_exist.py:61",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_fmp_client.py:49",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_get_chunk_personal_reading.py:72",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_graph.py:525",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_krea_routes.py:88",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_krea_smoke.py:43",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_owner_namespace_isolation.py:54",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_polygon_client.py:51",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_retrieval_gate_matrix.py:176",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_settings_models_admin.py:38",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_settings_models_admin.py:622",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_settings_models_admin.py:931",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_source_merge_draft_confinement.py:45",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_source_merge_retired.py:46",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_talk_to_book_owner_byot.py:225",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/test_turbopuffer_shadow.py:221",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "tests/tools/test_migrate_owner_namespace.py:61",
+      "detail": "high_entropy_string",
+      "reason": "high-entropy string in test/example (canary/placeholder)",
+      "severity": "medium"
+    },
+    {
+      "kind": "secret",
+      "ref": "apps/reading/.env.example:0",
+      "detail": "env_file_present",
+      "reason": "env-file-present is informational, not a leak",
+      "severity": "medium"
+    },
+    {
+      "kind": "risk",
+      "ref": "\u2014",
+      "detail": "Missing health endpoints",
+      "reason": "a /health* route exists in source (FP)",
+      "severity": "medium"
+    }
+  ],
+  "allow_warnings": [],
+  "counts": {
+    "real": 0,
+    "advisory": 18,
+    "allowed": 0,
+    "dropped": 29
+  }
+}

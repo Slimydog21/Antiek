@@ -2,8 +2,10 @@
 
 ``PrimeExecProvider`` is a dormant ``RemoteExecProvider`` implementation.  It
 starts one ``prime-agent --mode rpc`` subprocess per provisioned research leaf
-and translates the v0.7.0 JSONL event stream into ``RemoteStepEvent`` values.
+and translates the JSONL event stream into ``RemoteStepEvent`` values.
 The subprocess is never started unless ``ANTIEK_PRIME_EXEC_ENABLED`` is truthy.
+The admitted prime-agent version window and CLI capability probe live in
+``runtime/prime_agent/installation.py``; this module holds no pin of its own.
 
 The scope is deliberately narrow.  This module is not registered by the
 remote-exec factory, is never a dispatch/inference provider, and never launches
@@ -26,12 +28,17 @@ import json
 import math
 import os
 import shutil
-import subprocess
 import tempfile
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
+
+from runtime.prime_agent.installation import (
+    PrimeAgentUnavailable,
+    resolve_prime_agent_binary,
+    verify_prime_agent_installation,
+)
 
 from .provider import (
     RemoteCommand,
@@ -49,7 +56,6 @@ PRIME_AGENT_BINARY_ENV = "ANTIEK_PRIME_AGENT_BIN"
 PRIME_AGENT_PROVIDER_ENV = "ANTIEK_PRIME_AGENT_PROVIDER"
 PRIME_AGENT_MODEL_ENV = "ANTIEK_PRIME_AGENT_MODEL"
 DEFAULT_PRIME_AGENT_BINARY = "prime-agent"
-PINNED_PRIME_AGENT_VERSION = "0.7.0"
 DEFAULT_MAX_RECORD_BYTES = 8 * 1024 * 1024
 
 _TRUTHY = frozenset({"1", "true", "yes"})
@@ -63,7 +69,9 @@ _RESEARCH_ONLY_PREAMBLE = (
 
 _ProcessFactory = Callable[..., Awaitable[asyncio.subprocess.Process]]
 _BinaryResolver = Callable[[str], str | None]
-_VersionResolver = Callable[[str], str]
+# (resolved binary path, dotted version) for an executable that passed the one
+# version window + capability probe in runtime/prime_agent/installation.py.
+_InstallationVerifier = Callable[[str], tuple[str, str]]
 
 
 @dataclass
@@ -333,26 +341,27 @@ def _map_event(state: _SessionState, event: Mapping[str, object]) -> RemoteStepE
     )
 
 
-def _read_binary_version(binary: str) -> str:
+def _verify_installation(binary: str) -> tuple[str, str]:
+    """Admit ``binary`` through the repo's one version authority.
+
+    ``runtime/prime_agent/installation.py`` owns the ``[MINIMUM_VERSION,
+    MAXIMUM_VERSION)`` window and the ``--help`` capability probe. This lane
+    used to carry its own exact-equality pin (``0.7.0``) that contradicted
+    that window and rejected the very release the ceiling was raised to
+    admit, surfacing as a ``RemoteExecUnavailable`` indistinguishable from a
+    missing binary. Resolution follows symlinks (npm installs ``prime-agent``
+    as a link to ``dist/bundle/cli.js``) so the bundle-hashing path applies.
+    """
     try:
-        result = subprocess.run(
-            [binary, "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5.0,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise RemoteExecUnavailable(
-            f"could not verify prime-agent version: {type(exc).__name__}"
-        ) from exc
-    if result.returncode != 0:
-        raise RemoteExecUnavailable(f"prime-agent --version exited with status {result.returncode}")
-    return result.stdout.strip()
+        resolved = resolve_prime_agent_binary(binary=binary)
+        installation = verify_prime_agent_installation(resolved)
+    except PrimeAgentUnavailable as exc:
+        raise RemoteExecUnavailable(str(exc)) from exc
+    return str(resolved), ".".join(map(str, installation.version))
 
 
 class PrimeExecProvider:
-    """Prime Agent v0.7.0 JSONL-RPC implementation of ``RemoteExecProvider``.
+    """Prime Agent JSONL-RPC implementation of ``RemoteExecProvider``.
 
     Construction is side-effect free.  ``probe`` and ``provision`` both enforce
     the dedicated default-off gate, so injecting an instance into the generic
@@ -374,7 +383,7 @@ class PrimeExecProvider:
         subprocess_env: Mapping[str, str] | None = None,
         process_factory: _ProcessFactory | None = None,
         binary_resolver: _BinaryResolver = shutil.which,
-        version_resolver: _VersionResolver = _read_binary_version,
+        installation_verifier: _InstallationVerifier = _verify_installation,
         shutdown_timeout_s: float = 5.0,
         max_record_bytes: int = DEFAULT_MAX_RECORD_BYTES,
     ) -> None:
@@ -389,7 +398,7 @@ class PrimeExecProvider:
         self._subprocess_env = dict(subprocess_env or {})
         self._process_factory = process_factory
         self._binary_resolver = binary_resolver
-        self._version_resolver = version_resolver
+        self._installation_verifier = installation_verifier
         self._shutdown_timeout_s = shutdown_timeout_s
         if max_record_bytes < 1:
             raise ValueError("max_record_bytes must be positive")
@@ -411,19 +420,17 @@ class PrimeExecProvider:
             )
         return resolved
 
-    def _resolve_and_validate_binary(self) -> str:
-        binary = self._resolve_binary()
-        output = self._version_resolver(binary)
-        version = output.split()[-1].removeprefix("v") if output.split() else ""
-        if version != PINNED_PRIME_AGENT_VERSION:
-            raise RemoteExecUnavailable(
-                "prime-agent version mismatch: "
-                f"required {PINNED_PRIME_AGENT_VERSION}, got {version or 'unknown'}"
-            )
-        return binary
+    def _resolve_and_validate_binary(self) -> tuple[str, str]:
+        """Return ``(binary, version)`` for an executable inside the admitted window.
+
+        The window itself is not consulted here: ``installation_verifier``
+        (``runtime.prime_agent.installation`` by default) is the single
+        authority, so this lane can no longer disagree with it.
+        """
+        return self._installation_verifier(self._resolve_binary())
 
     def probe(self) -> None:
-        """Validate the gate, executable, and pinned RPC version without network."""
+        """Validate the gate, executable, and admitted RPC version without network."""
 
         _require_enabled()
         self._resolve_and_validate_binary()
@@ -463,7 +470,7 @@ class PrimeExecProvider:
 
     async def provision(self, plan: Any) -> Sandbox:
         _require_enabled()
-        binary = self._resolve_and_validate_binary()
+        binary, _version = self._resolve_and_validate_binary()
         investigation_id = getattr(plan, "investigation_id", "unknown")
         if not isinstance(investigation_id, str) or not investigation_id:
             investigation_id = "unknown"

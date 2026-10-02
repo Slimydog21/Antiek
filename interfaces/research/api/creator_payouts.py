@@ -11,12 +11,11 @@ render "you have $X accrued; $Y paid out; KYC status: COMPLETED".
 
 from __future__ import annotations
 
-from typing import Optional
-
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from runtime.db_lock import ReadConnection, connect_read
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -24,7 +23,7 @@ from pydantic import BaseModel
 class TransferSummaryResponse(BaseModel):
     transfer_attempt_id: str
     decision_id: str
-    stripe_transfer_id: Optional[str]
+    stripe_transfer_id: str | None
     amount_usd_cents: int
     status: str  # 'transferred' | 'skipped_escrow' | 'skipped_platform' | 'failed' | 'pending'
     note: str
@@ -33,7 +32,7 @@ class TransferSummaryResponse(BaseModel):
 
 class CreatorPayoutsResponse(BaseModel):
     recipient_ref: str
-    kyc_state: Optional[str]
+    kyc_state: str | None
     rollover_balance_cents: int
     total_paid_cents: int
     total_skipped_escrow_cents: int
@@ -57,7 +56,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:
+def _load_kyc_state(con: ReadConnection, recipient_ref: str) -> str | None:
     """Read the latest kyc_status row for the recipient."""
     try:
         row = con.execute(
@@ -65,8 +64,14 @@ def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:
             "ORDER BY row_inserted_at DESC LIMIT 1",
             [recipient_ref],
         ).fetchone()
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        # A read FAILURE is not "this recipient never started KYC". Returning
+        # None here made schema drift indistinguishable from an honest absence.
+        raise _refuse(
+            503,
+            "kyc_ledger_unavailable",
+            "KYC state could not be read; this is not a statement that none exists.",
+        ) from exc
     return row[0] if row else None
 
 
@@ -84,8 +89,16 @@ def _load_transfers(con, recipient_ref: str) -> list[tuple]:
             "ORDER BY initiated_at DESC",
             [recipient_ref],
         ).fetchall()
-    except duckdb.Error:
-        return []
+    except duckdb.Error as exc:
+        # A read FAILURE is not "this creator was never paid". payout_transfers
+        # is created with CREATE TABLE IF NOT EXISTS and never widened, so a
+        # table predating a column makes this SELECT raise forever — and the
+        # creator-facing surface would report $0 over real, present transfers.
+        raise _refuse(
+            503,
+            "payout_ledger_unavailable",
+            "Payout ledger could not be read; this is not a statement that no payouts exist.",
+        ) from exc
     return rows
 
 
@@ -101,7 +114,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
         recipient_ref: str,
     ) -> CreatorPayoutsResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             kyc_state = _load_kyc_state(con, recipient_ref)
             rows = _load_transfers(con, recipient_ref)
@@ -140,7 +153,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
             load_balance_cents,
         )
 
-        con2 = duckdb.connect(db, read_only=True)
+        con2 = connect_read(db)
         try:
             rollover_balance_cents = load_balance_cents(
                 con2, recipient_ref,

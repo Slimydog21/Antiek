@@ -35,36 +35,49 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
+# Hoisted OUT of the try below. ``..runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead — while mypy read
+# the dead branch and typed the write-lock API as Any.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+# SPR-08 T1: the ip_holder resolver is stdlib-only (no substrate import), so
+# this is a leaf import with no cycle back into the graph package.
+from middleware.ip_holder_resolver import (  # noqa: E402
+    isbn_from_metadata,
+    resolve_and_apply,
+)
+from runtime.db_lock import LockedConnection  # noqa: E402
+
 try:
-    from ...constants import (
+    from ..constants import (
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
-    from ...event_log import emit_typed
-    from ...runtime.db_lock import LockedConnection
-    from ...schemas import (
+    from ..event_log import emit_typed
+    from ..schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
     )
-    from ...schemas.events import DocumentContentClassDefaultedPayload
+    from ..schemas.events import DocumentContentClassDefaultedPayload
     from .embedding_meta import record_chunk_embedding_meta
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.constants import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.constants import (
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.graph.embedding_meta import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.graph.embedding_meta import (
         record_chunk_embedding_meta,
     )
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
     )
-    from substrate.schemas.events import (  # type: ignore[no-redef]
+    from substrate.schemas.events import (
         DocumentContentClassDefaultedPayload,
     )
 
@@ -241,6 +254,20 @@ def insert_document(
             twin_source_envelope,
         ],
     )
+
+    # SPR-08 T1 — populate ``ip_holder_id`` on the persist path, on THIS locked
+    # connection (never a second connect). The resolver is conservative (ISBN →
+    # domain → author, exact matches only) and leaves NULL on no match. An
+    # explicit ``ip_holder_id`` from the caller is authoritative and is never
+    # re-resolved; ``apply_resolved_ip_holder`` also refuses to overwrite.
+    if ip_holder_id is None:
+        resolve_and_apply(
+            con,
+            document_id=document_id,
+            source_uri=source_uri,
+            isbn=isbn_from_metadata(metadata),
+            author=author,
+        )
 
     # Typed event AFTER the row commits (and only on a real insert) — records the
     # deny-by-default classification so it is reconstructable. The Event envelope
@@ -689,12 +716,30 @@ def attach_block_to_section(
 _PRESERVE_PROVENANCE: Any = object()
 
 
+class ProseRevisionConflict(Exception):
+    """The stored prose no longer matches the baseline this edit was made against.
+
+    Raised by :func:`update_section_prose` when the caller supplied
+    ``based_on_prose_text`` and the section has moved on since. Nothing is
+    written: the caller is expected to map this to a conflict status so the
+    editor can offer a reload instead of silently destroying the newer draft.
+    """
+
+    def __init__(
+        self, current_prose_text: str | None, current_updated_at: Any = None
+    ) -> None:
+        super().__init__("prose revision conflict")
+        self.current_prose_text = current_prose_text
+        self.current_updated_at = current_updated_at
+
+
 def update_section_prose(
     con: LockedConnection,
     *,
     section_id: str,
     prose_text: str,
     prose_provenance: Any = _PRESERVE_PROVENANCE,
+    based_on_prose_text: str | None = None,
 ) -> None:
     """Persist generated/edited prose for a section.
 
@@ -706,8 +751,33 @@ def update_section_prose(
     explicitly (including ``None`` to clear it) REPLACES the stored map — the
     inverse asymmetry: preserve by default, replace only when told to. This is
     why a one-paragraph typo fix no longer destroys the whole section's
-    X-ray / citation map."""
+    X-ray / citation map.
+
+    ``based_on_prose_text`` is a compare-and-set guard, additive and optional.
+    Absent (the default) preserves the long-standing blind write, so every
+    existing caller is unchanged. Supplied, it must equal the stored prose or
+    nothing is written and :class:`ProseRevisionConflict` is raised. Text is
+    compared rather than ``updated_at`` because ``CURRENT_TIMESTAMP`` has second
+    granularity, so two writes inside one second are indistinguishable and a
+    replayed client can match a timestamp while carrying different text.
+
+    A section with no prose yet stores NULL, while a client that has never
+    loaded one naturally sends "". They are the same state to the user, so they
+    compare equal rather than failing the first write on a JSON
+    null-versus-empty-string difference.
+    """
     _assert_write_locked(con)
+    if based_on_prose_text is not None:
+        current = con.execute(
+            "SELECT prose_text, updated_at FROM deliverable_sections "
+            "WHERE section_id = ?",
+            [section_id],
+        ).fetchone()
+        current_text = None if current is None else current[0]
+        if (current_text or "") != (based_on_prose_text or ""):
+            raise ProseRevisionConflict(
+                current_text, None if current is None else current[1]
+            )
     if prose_provenance is _PRESERVE_PROVENANCE:
         # Prose-only edit: touch prose_text, leave the provenance column intact.
         con.execute(

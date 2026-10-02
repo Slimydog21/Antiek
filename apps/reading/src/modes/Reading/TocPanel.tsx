@@ -16,7 +16,7 @@ export interface TocPanelProps {
 export default function TocPanel({ toc, currentPageIndex, onJump }: TocPanelProps) {
   if (toc.length === 0) {
     return (
-      <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight italic px-2">
+      <p className="text-xs font-mono text-ink-mute dark:text-moonlight italic px-2">
         No table of contents in this book.
       </p>
     );
@@ -33,9 +33,9 @@ export default function TocPanel({ toc, currentPageIndex, onJump }: TocPanelProp
             disabled={!resolvable}
             onClick={() => resolvable && onJump(entry.page_index as number)}
             style={{ paddingLeft: `${8 + entry.level * 14}px` }}
-            className={`w-full text-left pr-2 py-1 rounded text-[13px] font-serif truncate transition-colors ${
+            className={`w-full text-left pr-2 py-1 rounded text-sm font-serif truncate transition-colors ${
               active
-                ? "bg-ink text-white"
+                ? "bg-ink text-white dark:bg-bright dark:text-ink"
                 : resolvable
                   ? "text-ink dark:text-bright hover:bg-ice-3 dark:hover:bg-charcoal-1"
                   : "text-ink-mute dark:text-moonlight cursor-default"

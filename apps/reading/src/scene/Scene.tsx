@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
-import { moodFromTheme, prefersDark, type SceneMood } from "./mood";
+import { useTheme } from "../design/useTheme";
+import { moodFromTheme, type SceneMood } from "./mood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
@@ -8,7 +9,7 @@ import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
-import { PenguinJourney } from "./layers/PenguinJourney";
+import { BrainJourney } from "./layers/BrainJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
 import { SceneStatusBadge } from "./SceneStatusBadge";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
@@ -25,9 +26,9 @@ import "./scene.css";
  *                           mood change; renders nothing in fallback
  *   z-2  Clouds             parallax cloud drift (canvas, off the scene clock)
  *   z-3  Snow               wind-driven snow flurry (canvas, scene clock)
- *   z-4  PenguinJourney     scenery penguin walking toward the horizon
+ *   z-4  BrainJourney     scenery mascot walking toward the horizon
  * ─────────────────────────────────────────────────────────────────────────
- * Peaks render FIRST (furthest back) and the penguin LAST so it walks in front
+ * Peaks render FIRST (furthest back) and the mascot LAST so it walks in front
  * of the ridge but behind the glass content above the whole Scene.
  *
  * MOUNTING: the Scene is `position:absolute inset-0 z-0 pointer-events-none` —
@@ -35,9 +36,9 @@ import "./scene.css";
  * mounts it as the FIRST child of the shell frame (see AppShell.tsx); the glass
  * working surfaces float over it.
  *
- * THEME → MOOD: the mood comes from the app's EXISTING day/night signal (OS
- * prefers-color-scheme, the same `media` darkMode Tailwind uses) via
- * moodFromTheme(). Change the OS theme → the sky palette AND the Krea mood
+ * THEME → MOOD: the mood comes from the app's one theme signal (useTheme:
+ * <html data-theme>, the same attribute Tailwind's dark: keys on) via
+ * moodFromTheme(). Change the theme → the sky palette AND the Krea mood
  * prompt follow, in lockstep. No parallel theme mechanism. (mood.ts documents
  * the full mapping table.)
  *
@@ -60,10 +61,12 @@ export interface SceneProps {
 }
 
 export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps) {
-  // Derive the mood from the app theme unless overridden. Memoize on the dark
-  // signal so the object identity is stable across renders (the art hook keys
-  // its fetch on the mood KEY, but a stable ref avoids needless effect churn).
-  const dark = prefersDark();
+  // Derive the mood from the app theme unless overridden. useTheme is
+  // reactive: switching the theme (Settings or the OS) re-renders the sky, so
+  // night chrome never sits over a day scene. Memoize on the dark signal so the
+  // object identity is stable across renders (the art hook keys its fetch on
+  // the mood KEY, but a stable ref avoids needless effect churn).
+  const dark = useTheme().isDark;
   const derivedMood = useMemo(() => moodFromTheme(dark), [dark]);
   const mood = moodProp ?? derivedMood;
 
@@ -97,8 +100,8 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       <Clouds mood={mood} reducedMotion={frozen} />
       {/* z-3 snow (canvas) */}
       <Snow mood={mood} reducedMotion={frozen} />
-      {/* z-4 scenery penguin */}
-      <PenguinJourney mood={mood} />
+      {/* z-4 scenery mascot */}
+      <BrainJourney mood={mood} />
       <SceneStatusBadge
         status={kreaStatus.data}
         error={kreaStatus.status === "error" ? kreaStatus.error : null}

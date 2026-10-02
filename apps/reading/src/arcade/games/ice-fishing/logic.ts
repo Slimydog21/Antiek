@@ -1,5 +1,5 @@
 /**
- * Ice Fishing — pure rules (Club Penguin–inspired catch loop).
+ * Ice Fishing — pure rules (Club Mascot–inspired catch loop).
  *
  * Drop line → fish spawn / swim → catch when hook overlaps fish → score.
  * Headless and deterministic under a seeded RNG.

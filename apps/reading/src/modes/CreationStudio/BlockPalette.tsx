@@ -93,7 +93,7 @@ export default function BlockPalette() {
               <p className="text-xs font-medium text-ink dark:text-bright truncate">
                 {h.label}
               </p>
-              <p className="text-[10px] text-shadow-1 dark:text-moonlight truncate">
+              <p className="text-xxs text-shadow-1 dark:text-moonlight truncate">
                 {h.block_kind}
                 {h.source_tier ? ` · Tier ${h.source_tier}` : ""}
                 {h.document_title ? ` · ${h.document_title}` : ""}

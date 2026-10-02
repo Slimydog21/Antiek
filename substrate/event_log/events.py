@@ -131,7 +131,7 @@ def default_events_dir() -> str:
     if explicit:
         return explicit
     return os.path.join(
-        os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
+        os.environ.get("ANTIEK_HOME", "").strip() or os.path.expanduser("~/.antiek"),
         "research_events",
     )
 
@@ -670,8 +670,8 @@ def _seal_investigation_unlocked(
         raise PhysicalTrajectoryError("cannot seal an incomplete JSONL append")
 
     try:
-        import pyarrow as pa  # type: ignore[import-not-found]
-        import pyarrow.parquet as pq_writer  # type: ignore[import-not-found]
+        import pyarrow as pa  # type: ignore[import-not-found, import-untyped, unused-ignore]
+        import pyarrow.parquet as pq_writer  # type: ignore[import-not-found, import-untyped, unused-ignore]
     except ImportError:
         print(
             "events.seal_investigation: pyarrow not installed; "

@@ -1,8 +1,9 @@
 name: CI
 
 # Substrate test gate. Runs the full pytest suite on every push to
-# main and on every PR. Failure blocks the deploy webhook (when
-# wired); for now the deploy stays manual but the gate exists.
+# main and on every PR. Failure blocks the deploy: deploy_backend.yml
+# fires on this workflow's completion and refuses to ship unless every
+# required context on the SHA is green. The deploy is no longer manual.
 #
 # Why pytest only (not lint / typecheck / coverage gates): start
 # with the test that catches regressions and add stricter checks
@@ -14,20 +15,33 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # merge_group: REQUIRED for the merge queue. A queued PR is tested as a
+  # temporary merge commit of (main + PR) delivered as a `merge_group` event,
+  # NOT as a `pull_request` event. Without this trigger the 8 required checks
+  # would never report for a queue entry and every PR would hang in the queue
+  # forever — so this must land BEFORE the merge_queue rule is enabled.
+  # Concurrency needs no change: for a non-pull_request event the group keys
+  # on github.sha with cancel-in-progress false, so each merge group gets its
+  # own run and nothing cancels it.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
   # One CI run per PR branch: a new push to a PR cancels the previous run,
-  # because only the latest head of a PR is worth testing.
+  # because only the latest head of a PR is worth testing. The hostage case
+  # this used to cause (#3425, runs 36227075895 and 36230596484: GitHub left
+  # the dependency-only rollup queued after cancelling the matrix shards, and
+  # the branch-scoped group then blocked every later push) is closed by the
+  # rollup's `if: !cancelled()` below, not by giving every superseded head a
+  # group of its own. Keying PRs by SHA with cancel-in-progress off (12:18Z,
+  # 2026-09-26) let every superseded head run to completion: with a merge
+  # train that updates heads on every main move, 25 CI runs across 15 refs
+  # sat queued behind ~10 obsolete duplicates while 3 jobs ran.
   #
   # main is different. Every commit on main is a release candidate — the
-  # ansible deploy pulls main HEAD — so its verification must run to
-  # completion. Keying main by `github.ref` with cancel-in-progress meant
-  # each merge cancelled the previous merge's run: in the 24h to
-  # 2026-09-19, 52 merges landed at a ~4-minute median cadence against a
-  # 45-minute pytest job and CI completed on main exactly zero times.
-  # Keying main by `github.sha` gives every commit its own group, so runs
-  # never cancel each other and each merged SHA gets a real verdict.
+  # deploy gates pull the exact SHA — so its verification must run to
+  # completion; keying main by `github.sha` gives every commit its own group.
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -39,13 +53,40 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # A declaration can pass every runtime test while the lock still describes
+  # the old closure; #3461 passed CI but made the next deploy fail at
+  # `uv lock --check`. Catch that drift before paying for four pytest shards.
+  dependency-lock:
+    name: dependency lock
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install the deploy-pinned lock reader
+        run: python -m pip install uv==0.11.15
+
+      - name: Require manifest and lock agreement
+        run: uv lock --check
+
   pytest-suite:
     name: pytest shard ${{ matrix.shard_index }} of 4
+    needs: dependency-lock
     runs-on: ubuntu-latest
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # Each hosted runner starts with limited free disk. The full ML/PDF
       # dependency set is large; retaining downloaded wheels alongside the
@@ -77,8 +118,16 @@ jobs:
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -104,14 +153,21 @@ jobs:
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
           ANTIEK_OPERATOR_TOKEN: ""
+          # Hosted runners cancel a step that prints nothing for ~10 minutes.
+          # -v prints each node id as it starts so a slow file cannot look hung.
+          PYTHONUNBUFFERED: "1"
         run: |
-          python -m pytest tests/ -q -m "not integration" \
+          python -u -m pytest tests/ -v -m "not integration" \
             -p tools.pytest_file_shard
 
   pytest:
     name: pytest
-    needs: pytest-suite
-    if: ${{ always() }}
+    needs: [dependency-lock, pytest-suite]
+    # `always()` is unsafe for this dependency shape: after a newer push
+    # cancels all four shards, GitHub still schedules the rollup, and that
+    # queued rollup can keep the run non-terminal. Skip it when upstream was
+    # cancelled; it still runs after ordinary shard success or failure.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # The full tests/ gate runs in the four pytest-suite shards above. This job
     # retains the stable required-check name and runs the service suites plus
@@ -119,10 +175,17 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Require every pytest shard
+
+      - name: Fail closed unless the lock gate and shards succeeded
         env:
-          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
-        run: test "$PYTEST_SUITE_RESULT" = success
+          LOCK_RESULT: ${{ needs.dependency-lock.result }}
+          SHARD_RESULT: ${{ needs.pytest-suite.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$LOCK_RESULT" != "success" || "$SHARD_RESULT" != "success" ]]; then
+            echo "::error::required upstream result is not success (lock=$LOCK_RESULT shards=$SHARD_RESULT)"
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -159,8 +222,16 @@ jobs:
           # test_krea_routes on every PR (the #81 fix). `-c` only pins a
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -202,6 +273,27 @@ jobs:
           OPENAI_API_KEY: ""
         run: |
           python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ \
+            -q -p no:cacheprovider
+
+      - name: Previously-uncollected test suites
+        # A 2026-09-20 sweep found nine test files (115 test functions) that
+        # NO runner collected: pytest's `testpaths` is overridden by the
+        # explicit paths every CI invocation passes, so anything outside
+        # `tests/`, `services/*`, `compounding/` and `tools/faultinject/`
+        # executed zero times. Two were failing at the time of the sweep --
+        # including tools/tests/test_fake_gate_detector.py, the suite for the
+        # tool that certifies other gates are not fake.
+        #
+        # fixtures/ is excluded deliberately: it is the corpus the meta-tests
+        # consume (test_always_fails.py etc. are MEANT to fail when executed
+        # directly) and is not a test suite of its own.
+        #
+        # tests/test_test_collection_coverage.py keeps this list honest -- it
+        # fails if a new test file lands outside every invocation here.
+        run: |
+          python -m pytest tools/tests/ runtime/notdiamond/ \
+            interfaces/research/api/test_krea_stream.py \
+            --ignore=tools/tests/fixtures \
             -q -p no:cacheprovider
 
       - name: Substrate/dispatch boundary check
@@ -386,6 +478,32 @@ jobs:
         # See docs/decisions/unified-integration-health.md.
         run: |
           python tools/codegen/check_conformance.py
+      # MOVED TO LAST (was the FIRST step of this job).
+      #
+      # This job carries ~17 boundary/invariant gates — substrate/dispatch,
+      # one-owner-per-layer, serve-guard, arXiv egress + serve-invariants,
+      # retrieval-gate drift, owner-privilege, contact-guard, merge-age
+      # (anti-stranding), reachability x2, invariant-registry meta-check,
+      # source-gate, codegen staleness, contract-conformance — plus the
+      # html-projection and previously-uncollected suites.
+      #
+      # As the FIRST step this assertion skipped every one of them whenever a
+      # shard was cancelled, which `concurrency: cancel-in-progress` does
+      # routinely. Measured over 40 recent ci.yml runs: the boundary gates
+      # EXECUTED on 8 and were SKIPPED on 27 (the remaining 5 never reached
+      # this job). So the gates ran on roughly one CI run in five, and of 12
+      # sampled active PRs with a red `pytest`, 12 of 12 failed on THIS step —
+      # not on any gate.
+      #
+      # The job is `if: always()`, so it runs even when the suite is cancelled.
+      # Asserting last means the gates execute every time and their results are
+      # visible in the log, while a failed or cancelled suite still reds the
+      # job exactly as before. Order changed; verdict unchanged.
+      - name: Require every pytest shard
+        if: always()
+        env:
+          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
+        run: test "$PYTEST_SUITE_RESULT" = success
 
   keystone:
     name: keystone
@@ -413,6 +531,100 @@ jobs:
         with:
           python-version: '3.14'
           cache: 'pip'
+      # ── write-lock async floor, ENFORCED ────────────────────────────────
+      # These three lints used to also run in write_lock_async_floor.yml, which emitted
+      # the `write-lock-async-gate` context. That workflow is PATH-FILTERED,
+      # and a required check behind `paths:` is never reported on a PR that
+      # misses the filter and so stays permanently pending — which is why it
+      # could never be added to the ruleset and has sat in
+      # `emitted_but_not_required` as "a candidate for the fence".
+      #
+      # `keystone` IS required and ci.yml carries no path filter, so running
+      # the same assertions here is what actually enforces them. They are
+      # stdlib-only (ast/dataclasses/pathlib) and need no install, so they sit
+      # BEFORE the dependency install and fail fast — a few seconds on a job
+      # that already runs, rather than a new runner on every PR while runner
+      # starvation is the throughput bottleneck.
+      #
+      # Verified under 3.14 (the standalone workflow pins 3.12) by mutation:
+      # an injected raw read-only connect in runtime/ reds with
+      # "1 NEW violation(s)", and removing it returns exit 0.
+      #
+      # That standalone workflow and its parity test were retired in #3349 once
+      # this required copy made them redundant; tests/test_write_lock_gate_enforced.py
+      # asserts the workflow stays gone, and tests/test_baseline_lints_are_required.py
+      # asserts the stronger invariant that NO baselined lint may live only in an
+      # advisory workflow.
+      - name: Enforce — write-lock async floor (required copy)
+        env:
+          SCOPE_DIRS: >-
+            acquisition compounding interfaces middleware orchestration
+            processing roles runtime services substrate tools
+        run: |
+          python -m tools.lints.cli_with_baseline enforce raw_read_only_connect \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_raw_read_only_connect.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce blocking_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_blocking_write_in_async.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce indirect_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_indirect_write_in_async.json \
+            --check-stale
+      # SPR-03 timeout discipline, promoted from resilience_floor.yml.
+      #
+      # The floor that owns this lint is advisory AND paths-filtered, so it
+      # neither blocks a merge nor runs on main. Measured consequence: seven
+      # PRs (#124, #125, #134, #148, #3127, #3135, #3182) merged with this
+      # exact step red on their merged head sha, and the floor has not run on
+      # main since 2026-07-02. main passes the lint today, so promoting it
+      # into the required keystone costs nothing and closes the hole.
+      #
+      # Verified by mutation: an injected `requests.get(url)` (no timeout) in
+      # substrate/ reds with "1 NEW violation(s)"; removing it returns exit 0.
+      #
+      # Stdlib-only (ast/json/pathlib/tomllib), so it runs before the dep
+      # install like the write-lock copy above.
+      #
+      # tests/test_timeout_discipline_required.py reads both this file and
+      # resilience_floor.yml and fails if the scope, baseline or lint name
+      # drift apart, so this copy cannot silently diverge from its source.
+      - name: Enforce — resilience floor (required copy)
+        env:
+          SCOPE_DIRS: >-
+            acquisition substrate interfaces roles runtime tools middleware
+        run: |
+          python -m tools.lints.cli_with_baseline enforce unbounded_external_call \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_unbounded_external_call.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce seam_under_write_lock \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_seam_call_under_write_lock.json \
+            --check-stale
+      # The Wave-1 substrate floor's two lints, promoted from substrate_floor.yml
+      # for the same reason: that workflow is advisory and paths-filtered, so
+      # `no_raise` and `bypass` were enforced nowhere that blocks a merge.
+      # Their scope is three files, so this costs a few seconds.
+      #
+      # Mutation-verified: an appended `raise ValueError` in substrate/results.py
+      # reds with "NEW raise:ValueError", and an unwrapped `duckdb.connect` in
+      # substrate/errors.py reds with "NEW bypass:duckdb.connect".
+      - name: Enforce — Wave-1 substrate floor (required copy)
+        env:
+          SCOPE_FILES: >-
+            substrate/results.py substrate/errors.py substrate/escape_hatch.py
+        run: |
+          python -m tools.lints.cli_with_baseline enforce no_raise \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/no_raise.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce bypass \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/bypass.json \
+            --check-stale
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
@@ -423,8 +635,55 @@ jobs:
           # test_krea_routes on every PR (the #81 fix). `-c` only pins a
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
+      # ACV SPR-06 ratified-scoring gate. docs/decisions/ratified-scoring-gate.md
+      # carried "NOT WIRED — the tool exists, the CI step does not" since its
+      # 2026-09-20 correction: the record claimed this step lived in the `pytest`
+      # job, but `git log -S ratified_gate -- .github/workflows/` returns zero
+      # commits. It never existed.
+      #
+      # It lands in keystone rather than `pytest` because `pytest` is NOT a
+      # required context — a deny-by-default gate in a job that cannot block a
+      # merge reproduces the gap the record describes.
+      #
+      # Mutation-verified: a correctly-shaped scored artifact (mock_run=false)
+      # with no `parameters_ratified` / `ratification_ref` reds it with
+      # "RATIFIED-SCORING GATE: BLOCKED"; removing it returns exit 0. It reports
+      # OK over zero scored artifacts today because none exist — deny-by-default
+      # working, and only the mutation distinguishes that from a dead gate.
+      - name: Ratified-scoring gate (ACV SPR-06)
+        run: python tools/ratified_gate.py
+      # SPR-08 usability keystone. docs/decisions/usability-keystone.md has read
+      # "NOT INSTALLED — the probe is written; nothing runs it" since its
+      # 2026-09-20 correction, which found none of the four artifacts it cited
+      # existed.
+      #
+      # It asserts the CONJUNCTION no other probe covers — login, launch,
+      # compound, read and §9 attribution as ONE journey through the real
+      # create_app() factory. Every other probe asserts a single leg, so "all
+      # five green individually" never proved the journey worked.
+      #
+      # ~13s, and needs NO credentials: verified REACHABLE twice with all seven
+      # provider keys unset, which is exactly CI's posture.
+      #
+      # Mutation-verified: injecting a 404 into the GET /chunks/{chunk_id}
+      # handler flips it to "BLOCKED ... read — GET /chunks", exit 1, naming the
+      # failing leg; reverting returns exit 0.
+      #
+      # --only keeps this to the one probe. `compounding` measures cost_cold vs
+      # cost_warm and both read 0 without provider credentials, so running the
+      # whole suite here would wire a permanently-red gate.
+      - name: Usability keystone probe (SPR-08)
+        run: python -m tools.reachability.probe_runner --only usability_keystone
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
@@ -583,6 +842,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # tools/specs/verify_spec_refs.test.ts is a GROUND-TRUTH suite: it
+          # resolves paths with `git cat-file -e origin/main:<path>` rather
+          # than mocking existence. A default checkout creates
+          # refs/remotes/origin/<checked-out-branch>, which on a PR is the
+          # merge ref -- so `origin/main` does not resolve, every lookup
+          # returns false, and the 5 ground-truth cases fail while the same
+          # job is green on a push to main (where origin/main DOES exist).
+          # Same reason the tsc/pytest jobs already pin this.
+          fetch-depth: 0
 
       - name: Set up Node 20
         uses: actions/setup-node@v6

@@ -2,14 +2,14 @@
  * Scene.test.tsx — SPR-04 milestone 1 + 6 (compositor + freeze).
  *
  *   - The Scene mounts at z-0, pointer-events-none, with all layers in the
- *     documented order (peaks → krea → clouds → snow → penguin).
+ *     documented order (peaks → krea → clouds → snow → mascot).
  *   - reducedMotion → the Scene reports frozen (a single static frame).
- *   - the scenery penguin is marked scenery (distinct from SPR-05's mascot).
+ *   - the scenery mascot is marked scenery (distinct from SPR-05's mascot).
  *   - the offline/fallback path renders procedural-only (no live Krea art),
  *     which is the path CI takes (the default Krea mock returns fallback).
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 
 import { Scene } from "./Scene";
 import type { SceneResult, SceneState } from "../api/krea";
@@ -80,7 +80,7 @@ describe("Scene — compositor", () => {
       "krea-art-layer",
       "clouds-layer",
       "snow-layer",
-      "penguin-journey",
+      "brain-journey",
     ];
     const found = Array.from(
       container.querySelectorAll("[data-testid]"),
@@ -100,9 +100,9 @@ describe("Scene — compositor", () => {
     expect(root.getAttribute("data-scene-frozen")).toBe("true");
   });
 
-  it("the scenery penguin is marked scenery (NOT the interactive mascot)", () => {
+  it("the scenery mascot is marked scenery (NOT the interactive mascot)", () => {
     const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
-    const peng = container.querySelector('[data-testid="penguin-journey"]') as HTMLElement;
+    const peng = container.querySelector('[data-testid="brain-journey"]') as HTMLElement;
     expect(peng.getAttribute("data-scenery")).toBe("true");
     // pointer-events-none ⇒ it cannot be interactive.
     expect(peng.className).toContain("pointer-events-none");
@@ -124,5 +124,43 @@ describe("Scene — compositor", () => {
     const badge = getByTestId("scene-status-badge");
     expect(badge.getAttribute("data-reason")).toBe("no_key");
     expect(badge.textContent).toContain("scene: procedural / no key");
+  });
+});
+
+describe("Scene — follows the theme without a reload (audit colour M7)", () => {
+  it("switches the sky from day to night when the OS turns dark mid-session", () => {
+    // A matchMedia whose answer can change, with real change listeners.
+    let dark = false;
+    const listeners = new Set<() => void>();
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        get matches() {
+          return query.includes("prefers-color-scheme: dark") ? dark : false;
+        },
+        media: query,
+        onchange: null,
+        addEventListener: (_: string, cb: () => void) => listeners.add(cb),
+        removeEventListener: (_: string, cb: () => void) => listeners.delete(cb),
+        addListener: (cb: () => void) => listeners.add(cb),
+        removeListener: (cb: () => void) => listeners.delete(cb),
+        dispatchEvent: () => false,
+      }),
+    });
+    try {
+      const { getByTestId } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
+      expect(getByTestId("scene-root").getAttribute("data-scene-mood")).toBe("day");
+      act(() => {
+        dark = true;
+        for (const cb of [...listeners]) cb();
+      });
+      expect(getByTestId("scene-root").getAttribute("data-scene-mood")).toBe("night");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { writable: true, configurable: true, value: original });
+      document.documentElement.removeAttribute("data-theme");
+      document.documentElement.removeAttribute("data-theme-pref");
+    }
   });
 });

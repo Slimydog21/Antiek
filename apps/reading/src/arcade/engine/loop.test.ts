@@ -24,7 +24,7 @@ function loopHarness(options?: { reducedMotion?: boolean }) {
   const render = vi.fn();
   const cartridge: Cartridge = {
     id: "harness",
-    meta: { title: "Harness", blurb: "", style: "demo" },
+    meta: { title: "Harness", blurb: "", instructions: "", style: "demo" },
     init: vi.fn(),
     update,
     render,

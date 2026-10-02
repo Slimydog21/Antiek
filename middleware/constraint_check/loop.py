@@ -45,6 +45,7 @@ remain valid terminal values when a future preflight pass lands.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Callable, Iterable
@@ -52,13 +53,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from ...constants import CONSTRAINT_MAX_ITERATIONS
-    from ...schemas import Claim, ConstraintSpec, Parameter
+    from substrate.constants import CONSTRAINT_MAX_ITERATIONS
+    from substrate.schemas import Claim, ConstraintSpec, Parameter
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import CONSTRAINT_MAX_ITERATIONS  # type: ignore[no-redef]
-    from substrate.schemas import Claim, ConstraintSpec, Parameter  # type: ignore[no-redef]
+    from substrate.constants import CONSTRAINT_MAX_ITERATIONS
+    from substrate.schemas import Claim, ConstraintSpec, Parameter
 
 from .constraints import Constraint, Violation
 from .evaluation import evaluate_constraints
@@ -82,7 +83,7 @@ class ConstraintLoopResult:
     total_iterations: int
     final_claims: list[Claim]
     final_violations: list[Violation]
-    iteration_history: list[dict] = field(default_factory=list)
+    iteration_history: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -114,12 +115,10 @@ def spec_to_constraint(spec: ConstraintSpec) -> Constraint:
     if spec.kind == "numeric_range":
         for k in ("min", "max"):
             if k in config and not isinstance(config[k], (int, float)):
-                try:
+                # Leave as-is; the evaluator will surface a
+                # descriptive violation rather than crash.
+                with contextlib.suppress(TypeError, ValueError):
                     config[k] = float(config[k])
-                except (TypeError, ValueError):
-                    # Leave as-is; the evaluator will surface a
-                    # descriptive violation rather than crash.
-                    pass
     elif spec.kind == "must_include_term":
         cs = config.get("case_sensitive")
         if isinstance(cs, str):
@@ -178,7 +177,7 @@ def _count_hard(violations: Iterable[Violation]) -> int:
     return sum(1 for v in violations if v.strictness == "hard")
 
 
-def _violations_to_history_dicts(violations: Iterable[Violation]) -> list[dict]:
+def _violations_to_history_dicts(violations: Iterable[Violation]) -> list[dict[str, Any]]:
     """Project violations to the JSON-serializable dict shape the
     archive metadata stores. Used by both the per-iteration history
     and the final-violations list."""
@@ -247,7 +246,7 @@ def run_constraint_loop(
     )
 
     claims: list[Claim] = list(initial_claims)
-    iteration_history: list[dict] = []
+    iteration_history: list[dict[str, Any]] = []
     last_hard_count: int | None = None
     total_iterations = 0
 

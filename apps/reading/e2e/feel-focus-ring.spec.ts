@@ -11,6 +11,17 @@ test.describe("FEEL-S5 — focus ring", () => {
       `${STORYBOOK_URL}/iframe.html?args=&id=design-primitives-showcase--showcase&viewMode=story`,
       { waitUntil: "domcontentloaded" },
     );
+    // The showcase mounts asynchronously AFTER `load`: measured at this
+    // commit, `domcontentloaded` and `load` both see only 3 buttons while the
+    // settled story has 23. Tabbing at either point leaves document.body
+    // focused, so `:focus` matches nothing and the ring assertion never runs.
+    // Wait on the condition the test actually needs -- focusable content
+    // present -- rather than on a load event that does not imply it.
+    await page.waitForFunction(
+      () => document.querySelectorAll("button").length > 5,
+      null,
+      { timeout: 10_000 },
+    );
     await page.keyboard.press("Tab");
     const active = page.locator(":focus");
     await expect(active).toBeVisible({ timeout: 5_000 });

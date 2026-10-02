@@ -5,6 +5,7 @@ import {
   sunLight,
   surface,
   type,
+  type Mode,
 } from "../../../design/tokens";
 import type { Zombie, ZombiesPhase, ZombiesState } from "./logic";
 
@@ -51,16 +52,17 @@ export function drawZombiesScene(
   state: ZombiesState,
   width: number,
   height: number,
+  mode: Mode,
 ): void {
   const layout = zombiesVisualLayout(width, height);
-  drawField(c2d, width, height, layout);
-  drawEvidenceTraces(c2d, state, width, layout);
-  drawFort(c2d, state, layout);
-  drawHud(c2d, state, width);
-  drawStatusPlate(c2d, state.phase, width, height, layout);
+  drawField(c2d, width, height, layout, mode);
+  drawEvidenceTraces(c2d, state, width, layout, mode);
+  drawFort(c2d, state, layout, mode);
+  drawHud(c2d, state, width, mode);
+  drawStatusPlate(c2d, state.phase, width, height, layout, mode);
   // Targets render above chrome because their authoritative hitboxes may enter
   // the HUD/status bands; visual position must never drift from hit-testing.
-  for (const zombie of state.zombies) drawPaperclip(c2d, zombie);
+  for (const zombie of state.zombies) drawPaperclip(c2d, zombie, mode);
 }
 
 function drawField(
@@ -68,11 +70,12 @@ function drawField(
   width: number,
   height: number,
   layout: ZombiesVisualLayout,
+  mode: Mode,
 ): void {
-  c2d.fillStyle = surface.night[2];
+  c2d.fillStyle = surface[mode][2];
   c2d.fillRect(0, 0, width, height);
 
-  c2d.fillStyle = surface.night[3];
+  c2d.fillStyle = surface[mode][3];
   const fieldHeight = Math.max(0, layout.fieldBottom - layout.fieldTop);
   c2d.beginPath();
   c2d.moveTo(0, layout.fieldBottom);
@@ -84,7 +87,7 @@ function drawField(
   c2d.closePath();
   c2d.fill();
 
-  c2d.strokeStyle = surface.night[5];
+  c2d.strokeStyle = surface[mode][5];
   c2d.lineWidth = 1;
   for (let y = layout.fieldTop + 22; y < layout.fieldBottom; y += 24) {
     c2d.beginPath();
@@ -100,9 +103,10 @@ function drawEvidenceTraces(
   state: ZombiesState,
   width: number,
   layout: ZombiesVisualLayout,
+  mode: Mode,
 ): void {
   c2d.strokeStyle =
-    state.phase === "gameover" ? accent.emperor.night : sunLight.deep;
+    state.phase === "gameover" ? accent.emperor[mode] : sunLight.deep;
   c2d.lineWidth = 1;
   const traces =
     state.zombies.length > 0
@@ -127,14 +131,15 @@ function drawFort(
   c2d: CanvasRenderingContext2D,
   state: ZombiesState,
   layout: ZombiesVisualLayout,
+  mode: Mode,
 ): void {
   const top = layout.fieldTop + 12;
   const bottom = layout.fieldBottom - 8;
   const fortHeight = Math.max(0, bottom - top);
-  c2d.fillStyle = surface.night[5];
+  c2d.fillStyle = surface[mode][5];
   c2d.fillRect(0, top, layout.fortRight, fortHeight);
   c2d.strokeStyle =
-    state.phase === "gameover" ? accent.emperor.night : sun.base;
+    state.phase === "gameover" ? accent.emperor[mode] : sun.base;
   c2d.lineWidth = 2;
   c2d.strokeRect(1, top + 1, layout.fortRight - 3, Math.max(0, fortHeight - 2));
 
@@ -149,7 +154,7 @@ function drawFort(
   c2d.closePath();
   c2d.fill();
 
-  c2d.strokeStyle = surface.night[7];
+  c2d.strokeStyle = surface[mode][7];
   c2d.lineWidth = 1;
   for (let y = top + 8; y < bottom - 12; y += 18) {
     c2d.strokeRect(7, y, layout.fortRight - 14, 11);
@@ -160,12 +165,16 @@ function drawFort(
   }
 }
 
-function drawPaperclip(c2d: CanvasRenderingContext2D, zombie: Zombie): void {
+function drawPaperclip(
+  c2d: CanvasRenderingContext2D,
+  zombie: Zombie,
+  mode: Mode,
+): void {
   const cx = zombie.x + zombie.w / 2;
   const cy = zombie.y + zombie.h / 2;
   c2d.save();
   c2d.translate(cx, cy);
-  c2d.strokeStyle = surface.night[8];
+  c2d.strokeStyle = surface[mode][8];
   c2d.lineWidth = 2.25;
   c2d.beginPath();
   c2d.ellipse(0, 0, zombie.w * 0.34, zombie.h * 0.38, 0, 0, Math.PI * 2);
@@ -174,7 +183,7 @@ function drawPaperclip(c2d: CanvasRenderingContext2D, zombie: Zombie): void {
   c2d.ellipse(1, 0, zombie.w * 0.2, zombie.h * 0.34, 0, 0, Math.PI * 2);
   c2d.stroke();
 
-  c2d.strokeStyle = accent.aurora.night;
+  c2d.strokeStyle = accent.aurora[mode];
   c2d.lineWidth = 1.5;
   c2d.beginPath();
   c2d.moveTo(-zombie.w * 0.3, -1);
@@ -197,32 +206,34 @@ function drawHud(
   c2d: CanvasRenderingContext2D,
   state: ZombiesState,
   width: number,
+  mode: Mode,
 ): void {
-  c2d.fillStyle = surface.night[4];
+  c2d.fillStyle = surface[mode][4];
   c2d.fillRect(0, 0, width, HUD_HEIGHT);
-  c2d.strokeStyle = rule.night;
+  c2d.strokeStyle = rule[mode];
   c2d.lineWidth = 1;
   c2d.beginPath();
   c2d.moveTo(0, HUD_HEIGHT - 0.5);
   c2d.lineTo(width, HUD_HEIGHT - 0.5);
   c2d.stroke();
 
+  // Canvas text floors at the token scale's 10px (xxs) minimum in every layout.
   if (width < 240) {
-    c2d.font = `600 6px ${type.mono}`;
-    c2d.fillStyle = surface.night[9];
+    c2d.font = `600 10px ${type.mono}`;
+    c2d.fillStyle = surface[mode][9];
     c2d.fillText(`W${String(state.wave).padStart(2, "0")}`, 4, 13);
     c2d.fillText(`S${String(state.score).padStart(4, "0")}`, width * 0.3, 13);
     for (let life = 0; life < state.startingLives; life += 1) {
-      c2d.fillStyle = life < state.lives ? sun.base : surface.night[6];
+      c2d.fillStyle = life < state.lives ? sun.base : surface[mode][6];
       c2d.fillRect(width - 34 + life * 10, 8, 6, 5);
     }
     return;
   }
 
   c2d.font = `600 10px ${type.mono}`;
-  c2d.fillStyle = surface.night[7];
+  c2d.fillStyle = surface[mode][8];
   c2d.fillText("NIGHT FILE", 10, 14);
-  c2d.fillStyle = surface.night[9];
+  c2d.fillStyle = surface[mode][9];
   c2d.fillText(`WAVE ${String(state.wave).padStart(2, "0")}`, width * 0.25, 14);
   c2d.fillText(
     `SCORE ${String(state.score).padStart(4, "0")}`,
@@ -230,11 +241,10 @@ function drawHud(
     14,
   );
 
-  c2d.fillStyle = surface.night[7];
-  c2d.font = `600 9px ${type.mono}`;
+  c2d.fillStyle = surface[mode][8];
   c2d.fillText("FORT", width - 76, 14);
   for (let life = 0; life < state.startingLives; life += 1) {
-    c2d.fillStyle = life < state.lives ? sun.base : surface.night[6];
+    c2d.fillStyle = life < state.lives ? sun.base : surface[mode][6];
     c2d.fillRect(width - 42 + life * 12, 8, 8, 6);
   }
 }
@@ -245,14 +255,15 @@ function drawStatusPlate(
   width: number,
   height: number,
   layout: ZombiesVisualLayout,
+  mode: Mode,
 ): void {
-  c2d.fillStyle = surface.night[4];
+  c2d.fillStyle = surface[mode][4];
   c2d.fillRect(0, layout.statusTop, width, height - layout.statusTop);
-  c2d.fillStyle = phase === "gameover" ? accent.emperor.night : sun.base;
+  c2d.fillStyle = phase === "gameover" ? accent.emperor[mode] : sun.base;
   c2d.fillRect(0, layout.statusTop, 4, height - layout.statusTop);
-  c2d.fillStyle = surface.night[9];
+  c2d.fillStyle = surface[mode][9];
   const compact = width < 240;
-  c2d.font = `600 ${compact ? 6 : 10}px ${type.mono}`;
+  c2d.font = `600 10px ${type.mono}`;
   c2d.fillText(
     compact ? ZOMBIES_COMPACT_PHASE_COPY[phase] : ZOMBIES_PHASE_COPY[phase],
     compact ? 7 : 12,

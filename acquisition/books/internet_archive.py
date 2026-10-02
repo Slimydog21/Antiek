@@ -31,7 +31,9 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 from __future__ import annotations
 
 import logging
-import re
+from typing import Any
+
+from acquisition.books.rights_denial import pd_denied_reason
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -63,31 +65,12 @@ _PD_RIGHTS_TOKENS = (
 # token can accept it. Broad on purpose — a false negation only conservatively
 # GATES a genuinely-PD item (chunked/embedded for private search, body
 # withheld), the §9.0-safe direction; the catastrophic error is the reverse.
-_NEGATIVE_TOKENS = (
-    "all rights reserved",
-    "rights reserved",
-    "in copyright",
-    "in-copyright",
-    "copyrighted",
-    "under copyright",
-    "permission required",
-    "not in the public domain",
-    "not in public domain",
-    "not public domain",
-)
-_NEGATED_PD_RE = re.compile(
-    r"\b(?:not|no|isn't|is not)\s+(?:in\s+(?:the\s+)?)?public\s+domain"
-)
 # Any ©/(c) symbol, "copyright <year>", or a hedged copyright assertion
 # ("may be / still / possibly under/protected by copyright") denies PD even if
 # a "public domain" substring is also present — the higher-cost false positive.
-_COPYRIGHT_CLAIM_RE = re.compile(
-    r"©|\bcopyright\s+(?:\(c\)\s*)?\d{4}|\(c\)\s*\d{4}"
-    r"|\b(?:may\s+be|still|possibly|likely)\s+(?:in\s+|under\s+|protected\s+by\s+)?copyright"
-)
 
 
-def _as_list(value) -> list[str]:
+def _as_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, list):
@@ -95,7 +78,7 @@ def _as_list(value) -> list[str]:
     return []
 
 
-def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
+def ia_rights_input(meta: dict[str, Any]) -> tuple[str | None, str | None]:
     """THE one IA-status → classify-input mapping. Returns (license_uri,
     pd_signal); both None when PD is NOT established → classify() gates.
 
@@ -109,11 +92,9 @@ def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
     status_fields = _as_list(meta.get("possible-copyright-status"))
     haystack = " ".join(license_urls + rights_fields + status_fields).lower()
 
-    if any(tok in haystack for tok in _NEGATIVE_TOKENS):
-        return None, None
-    if _NEGATED_PD_RE.search(haystack):
-        return None, None
-    if _COPYRIGHT_CLAIM_RE.search(haystack):
+    # Deny-first, from the ONE shared rule (negatives, negated PD, copyright
+    # claims incl. hedges, non-serving jurisdiction) — see rights_denial.py.
+    if pd_denied_reason(haystack) is not None:
         return None, None
 
     # 1. A concrete PD license URL → hand it to classify() (resolves PDM/CC0).
@@ -128,7 +109,8 @@ def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
             "NOT_IN_COPYRIGHT"
         )
 
-    # 3. A free-text rights field that explicitly asserts PD.
+    # 3. A free-text rights field that explicitly asserts PD (the
+    # jurisdiction rule already ran in the deny-first block above).
     if any(tok in haystack for tok in _PD_RIGHTS_TOKENS):
         asserted = "; ".join(f for f in (rights_fields + license_urls) if f)
         return None, (
@@ -140,7 +122,7 @@ def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _pdf_download_url(identifier: str, files) -> str | None:
+def _pdf_download_url(identifier: str, files: Any) -> str | None:
     for f in files or []:
         name = f.get("name", "")
         if isinstance(name, str) and name.lower().endswith(".pdf"):

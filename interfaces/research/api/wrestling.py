@@ -29,6 +29,7 @@ import hashlib
 import os
 import sys
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
@@ -42,8 +43,14 @@ from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
-from runtime.db_lock import connect_write  # noqa: E402
-from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    connect_read,
+    connect_write,  # noqa: E402
+)
+from substrate.constants import (  # noqa: E402
+    ANTIEK_PARAM_VERSION,
+    PERSONAL_READING_CONTENT_CLASS,
+)
 from substrate.context_pack import (  # noqa: E402
     LayerSource,
     WorkingMemoryIntegrityError,
@@ -125,7 +132,7 @@ def _new_claim_id() -> str:
     return "c-" + uuid.uuid4().hex[:12]
 
 
-def _extract_json_object(text: str) -> dict | None:
+def _extract_json_object(text: str) -> dict[str, Any] | None:
     """Back-compat alias for ``roles._json_decode.extract_json_object``.
     The body moved to a shared module in Sprint 4 day 4-5 because
     three role-side parsers needed it and importing from wrestling.py
@@ -216,8 +223,8 @@ def _resolve_region_text_from_db(
     init the DB)."""
     chunk_id = _region_to_chunk_id(region_id)
     try:
-        import duckdb
-        con = duckdb.connect(db_path, read_only=True)
+
+        con = connect_read(db_path)
     except Exception:
         return None
     try:
@@ -291,7 +298,7 @@ def make_distillation_handler(
     broadcaster: EventBroadcaster,
     *,
     db_path: str | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the async handler closed over a broadcaster. The handler
     is registered against ``ActionType.DISTILLATION_REQUESTED``; on
     fire it dispatches a synthesizer call and emits the delivered
@@ -440,7 +447,7 @@ def make_document_loaded_handler(
     *,
     db_path: str | None = None,
     broadcaster: EventBroadcaster | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler that mirrors ``document.loaded`` events into a
     row in the documents table. Sprint 3 Day 2-3: the wrestling bridge
     populates the graph organically as the user works.
@@ -481,6 +488,11 @@ def make_document_loaded_handler(
                     source_uri=p.source_uri,
                     title=p.title,
                     investigation_id=event.investigation_id,
+                    # A Wrestle-loaded file is the OPERATOR's reading material of
+                    # anyone's authorship: owner-readable, never publicly
+                    # servable. Left NULL it was grandfathered PUBLIC by the
+                    # chunk-search gate (audit wave 3, #13 residual).
+                    content_class=PERSONAL_READING_CONTENT_CLASS,
                     metadata={
                         "content_hash": p.content_hash,
                         "size_bytes": p.size_bytes,
@@ -508,6 +520,7 @@ def make_document_loaded_handler(
         # documents stay on the existing single-call path.
         try:
             from orchestration.rlm.bridge import (
+                RLMBridgeDecision,
                 estimate_tokens_from_bytes,
                 maybe_escalate_to_rlm,
             )
@@ -515,39 +528,51 @@ def make_document_loaded_handler(
                 prime_agent_backend_from_environment,
             )
 
-            # Supply the backend so the documented flags become the real switch.
+            # This is the one live call site of the Prime lane. When
+            # ANTIEK_PRIME_AGENT_RLM_ENABLED=1 AND ANTIEK_RLM_RATIFIED=1 AND a
+            # binary resolves, ``_bridge_executor`` selects root_executor=
+            # "prime_agent" and the bridge then DRIVES the session: one
+            # ``run_session`` spawn and one recorded iteration
+            # (bridge.py:_drive_prime_session). An earlier version of this
+            # comment claimed the flags were a real switch while the bridge
+            # consumed the backend as a truthiness token and spawned nothing;
+            # tests/test_rlm_prime_bridge_executes.py now pins the spawn count.
             #
-            # Every RLM site accepts a ``prime_backend`` and, until now, no non-test
-            # code anywhere constructed one — so `_bridge_executor(None)` returned
-            # "dispatch" unconditionally and the entire Prime lane was unreachable at
-            # runtime while looking wired at the module level. This is the one RLM site
-            # with a live entry point (document.loaded), which makes it the honest place
-            # to close that gap first; the other seven have no route at all and wiring
-            # them without a consumer is what produced eight inert parameters.
+            # The drive is BLOCKING (a subprocess wait of up to the backend's
+            # 120s timeout), and this handler runs on the uvicorn event loop,
+            # so the whole decision hops to a worker thread exactly like
+            # ``_sync`` above. Below-threshold and unratified documents pay
+            # only the thread hop; the decision itself is in-memory.
             #
-            # The default path is unchanged. `_bridge_executor` requires ALL THREE of a
-            # non-None backend, ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1
-            # (bridge.py:103-110), and the factory itself returns a backend with
-            # enabled=False unless the first flag is set. Neither flag is set anywhere in
-            # the deployment config, so behaviour is byte-identical until the operator
-            # ratifies — which is exactly the gate session.py:36-40 says is deliberate.
-            decision = maybe_escalate_to_rlm(
-                document_id=event.document_id,
-                investigation_id=event.investigation_id or "__no_investigation__",
-                estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
-                root_role="wrestler",
-                prime_backend=prime_agent_backend_from_environment(),
-            )
+            # The default path is unchanged: the factory returns a backend with
+            # enabled=False unless the first flag is set, and neither flag is
+            # set in any deployment config.
+            def _decide() -> RLMBridgeDecision:
+                return maybe_escalate_to_rlm(
+                    document_id=document_id,
+                    investigation_id=event.investigation_id or "__no_investigation__",
+                    estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
+                    root_role="wrestler",
+                    prime_backend=prime_agent_backend_from_environment(),
+                )
+
+            decision = await asyncio.to_thread(_decide)
             if decision.above_threshold:
                 # Surface the decision for the wrestling driver +
                 # observability — escalated or deferred, both informative.
+                # ``iterations``/``prime_state`` are the execution facts: a
+                # Prime-rooted session that spawned nothing shows
+                # iterations=0 prime_state=-, which is the failure mode this
+                # lane silently lived in.
                 print(
                     f"wrestling.document_loaded[rlm-bridge]: "
                     f"document_id={event.document_id} "
                     f"estimated_tokens={decision.estimated_tokens} "
                     f"escalated={decision.escalated} "
                     f"session_id={decision.session_id or '-'} "
-                    f"reason={decision.reason}",
+                    f"reason={decision.reason} "
+                    f"iterations={decision.iteration_count} "
+                    f"prime_state={decision.prime_state or '-'}",
                     flush=True,
                 )
                 # Emit the typed rlm.bridge.decided event so the
@@ -600,7 +625,7 @@ def make_region_selected_handler(
     broadcaster: EventBroadcaster,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler that mirrors ``document.region_selected``
     events into the graph: writes a chunks row (with embedding for the
     text excerpt) and a nodes row anchored to that chunk. Emits
@@ -653,6 +678,7 @@ def make_region_selected_handler(
                     source_tier=4,
                     document_type="pdf",
                     investigation_id=event.investigation_id,
+                    content_class=PERSONAL_READING_CONTENT_CLASS,  # same lane as the load
                     on_conflict="ignore",
                 )
                 insert_chunk(
@@ -663,6 +689,7 @@ def make_region_selected_handler(
                     section_path=f"page {p.page}" if p.page is not None else None,
                     text=p.text_excerpt,
                     embedding=vec,
+                    embedding_provider=emb,
                     token_count=len(p.text_excerpt.split()),
                 )
                 # Anchor the chunk as a graph node so traversal-side

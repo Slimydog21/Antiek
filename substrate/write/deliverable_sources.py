@@ -40,7 +40,7 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
-import duckdb
+from runtime.db_lock import ReadConnection
 
 # The canonical §9.0 predicate covers restricted_pending_opt_in and
 # personal_reading. Calling it rather than importing its private backing set or
@@ -65,7 +65,7 @@ def _paragraph_sort_key(key: str) -> tuple[int, Any]:
 
 
 def _resolve_blocks_to_documents(
-    con: duckdb.DuckDBPyConnection,
+    con: ReadConnection,
     block_ids: list[str],
 ) -> dict[str, str]:
     """Resolve many block IDs without an export-time N+1 query cascade.
@@ -109,7 +109,7 @@ def _resolve_blocks_to_documents(
 
 
 def resolve_deliverable_sources(
-    con: duckdb.DuckDBPyConnection, deliverable_id: str
+    con: ReadConnection, deliverable_id: str
 ) -> list[str]:
     """Ordered, de-duplicated list of §9.0-gated source-document titles
     grounding a deliverable's prose.

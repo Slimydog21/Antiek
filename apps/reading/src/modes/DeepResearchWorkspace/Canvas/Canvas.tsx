@@ -46,6 +46,7 @@ import Thinking from "../../../shared/Thinking";
 
 import BlockCard from "./BlockCard";
 import Edges from "./Edges";
+import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 import {
   BLOCK_HEIGHT,
   BLOCK_WIDTH,
@@ -60,6 +61,8 @@ export interface CanvasProps {
   /** Click-to-detail seam for SPR-04 (anchors the float-menu in block detail).
    *  Optional. */
   onOpenDetail?: (node: DistilledNode) => void;
+  /** Opens the exact source document in the host's canonical reader. */
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }
 
 type LoadState =
@@ -72,7 +75,7 @@ type LoadState =
       positions: Map<string, BlockPosition>;
     };
 
-export default function Canvas({ investigationId, onOpenDetail }: CanvasProps) {
+export default function Canvas({ investigationId, onOpenDetail, onCiteSource }: CanvasProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
@@ -131,6 +134,7 @@ export default function Canvas({ investigationId, onOpenDetail }: CanvasProps) {
       questions={state.questions}
       initialPositions={state.positions}
       onOpenDetail={onOpenDetail}
+      onCiteSource={onCiteSource}
     />
   );
 }
@@ -141,12 +145,14 @@ function LoadedCanvas({
   questions,
   initialPositions,
   onOpenDetail,
+  onCiteSource,
 }: {
   investigationId: string;
   insights: DistilledNode[];
   questions: DistilledNode[];
   initialPositions: Map<string, BlockPosition>;
   onOpenDetail?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
 }) {
   const nodes = useMemo(() => [...insights, ...questions], [insights, questions]);
   // Position state seeds from the replayed events, then tracks live drags.
@@ -159,10 +165,10 @@ function LoadedCanvas({
   if (nodes.length === 0) {
     return (
       <div className="px-4 py-10 text-center" data-testid="canvas-empty">
-        <p className="font-serif text-[14px] text-ink dark:text-bright">
+        <p className="font-serif text-sm text-ink dark:text-bright">
           Nothing to lay out yet.
         </p>
-        <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight">
           This research distilled no insights or open questions — when it does,
           they’ll appear here as blocks.
         </p>
@@ -207,6 +213,7 @@ function LoadedCanvas({
               pos={p}
               investigationId={investigationId}
               onOpenDetail={onOpenDetail}
+              onCiteSource={onCiteSource}
               onCommit={(next) =>
                 setPositions((prev) => {
                   const m = new Map(prev);
@@ -236,12 +243,14 @@ function DraggableBlock({
   pos,
   investigationId,
   onOpenDetail,
+  onCiteSource,
   onCommit,
 }: {
   node: DistilledNode;
   pos: BlockPosition;
   investigationId: string;
   onOpenDetail?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
   onCommit: (next: BlockPosition) => void;
 }) {
   // Live drag state lives in refs (no re-render churn mid-drag) + a local
@@ -335,7 +344,12 @@ function DraggableBlock({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <BlockCard node={node} onOpenDetail={onOpenDetail} />
+      <BlockCard
+        node={node}
+        onOpenDetail={onOpenDetail}
+        onCiteSource={onCiteSource}
+        sourceInvestigationId={investigationId}
+      />
     </div>
   );
 }

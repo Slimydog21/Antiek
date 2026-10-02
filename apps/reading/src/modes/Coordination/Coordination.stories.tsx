@@ -20,7 +20,7 @@ import type { RoadmapView } from "./Roadmap";
 
 // ── The accuracy snapshot: canonical gate states ─────────────────────────────
 
-export const CANONICAL_GATES: GateView[] = [
+const CANONICAL_GATES: GateView[] = [
   {
     gate_id: "G1",
     title: "Retrieval-time legal gating in production",
@@ -147,7 +147,7 @@ const drwSprints = [
 
 const CRITICAL = ["drw:1", "drw:3", "drw:10"];
 
-export const CANONICAL_ROADMAP: RoadmapView = {
+const CANONICAL_ROADMAP: RoadmapView = {
   total_sprints: 45,
   superseded_count: 6,
   superseded_note: "five-surface portfolio-shell prototype, superseded by unified's 8",
@@ -256,6 +256,9 @@ const gateMeta = {
   component: GateLedger,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
+  // The SCREAMING_CASE exports are data fixtures shared with tests, not
+  // stories; without this Storybook renders each one as a crashing story.
+  excludeStories: /^[A-Z0-9_]+$/,
 } satisfies Meta<typeof GateLedger>;
 
 export default gateMeta;
@@ -270,6 +273,6 @@ export const CanonicalGates: GateStory = {
   },
 };
 
-export const RoadmapView_: StoryObj<typeof Roadmap> = {
+export const CanonicalRoadmap: StoryObj<typeof Roadmap> = {
   render: () => <Roadmap roadmap={CANONICAL_ROADMAP} />,
 };

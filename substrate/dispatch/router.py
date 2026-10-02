@@ -20,19 +20,25 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import logging
 import os
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:
     from ..event_log import emit_typed
-    from ..schemas import DispatchCallPayload
+    from ..schemas import (
+        DispatchCallPayload,
+        RouteReceipt,
+        RouteReceiptCandidate,
+        RouteReceiptSelection,
+    )
     from .base import (
         NormalizedUsage,
         Provider,
@@ -50,7 +56,14 @@ except ImportError:  # pragma: no cover
     )
     from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]
     from event_log import emit_typed  # type: ignore[import-not-found, no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[import-not-found, no-redef]
+    from schemas import (  # type: ignore[import-not-found, no-redef]
+        DispatchCallPayload,
+        RouteReceipt,
+        RouteReceiptCandidate,
+        RouteReceiptSelection,
+    )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +212,15 @@ class DispatchConfig:
 
 
 _PROVIDER_REGISTRY: dict[str, Provider] = {}
+_RouteOverrideKind = Literal["none", "manual", "fallback"]
+_RouteReasonCode = Literal[
+    "primary",
+    "operator_override",
+    "fallback_after_error",
+    "provider_unregistered",
+    "circuit_breaker_open",
+    "provider_error",
+]
 
 
 def register_provider(provider: Provider) -> None:
@@ -240,6 +262,7 @@ class DispatchResult:
     finish_reason: str | None
     fallback_chain_index: int  # 0 = primary, 1 = first fallback, etc.
     event_id: str | None  # the DispatchCall event_id for this success
+    route_receipt: RouteReceipt | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +272,97 @@ class DispatchResult:
 
 def _sha256_prefix(s: str, n: int = 12) -> str:
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()[:n]
+
+
+def _pricing_known(pricing: TierPricing) -> bool:
+    """Return whether tier pricing is known enough to trust cost fields."""
+    return any(
+        value > 0.0
+        for value in (
+            pricing.input_per_mtok,
+            pricing.output_per_mtok,
+            pricing.cached_input_per_mtok,
+        )
+    )
+
+
+def _route_receipt_id(
+    *,
+    prompt_hash: str,
+    role: str,
+    provider: str,
+    model: str,
+    fallback_chain_index: int,
+) -> str:
+    material = "|".join((prompt_hash, role, provider, model, str(fallback_chain_index)))
+    return _sha256_prefix(material)
+
+
+def _candidate_models(tier: TierConfig) -> tuple[RouteReceiptCandidate, ...]:
+    candidates: list[RouteReceiptCandidate] = []
+    current: TierConfig | None = tier
+    chain_index = 0
+    while current is not None:
+        if current.provider is not None and current.model is not None:
+            candidates.append(
+                RouteReceiptCandidate(
+                    provider=current.provider,
+                    model=current.model,
+                    tier=current.name,
+                    fallback_chain_index=chain_index,
+                    pricing_known=_pricing_known(current.pricing),
+                )
+            )
+        current = current.fallback
+        chain_index += 1
+    return tuple(candidates)
+
+
+def _override_kind(*, manual_override: bool, fallback_chain_index: int) -> _RouteOverrideKind:
+    if fallback_chain_index > 0:
+        return "fallback"
+    if manual_override:
+        return "manual"
+    return "none"
+
+
+def _route_receipt(
+    *,
+    prompt_hash: str,
+    role: str,
+    selected_tier_name: str,
+    provider: str,
+    model: str,
+    pricing: TierPricing,
+    fallback_chain_index: int,
+    candidate_models: tuple[RouteReceiptCandidate, ...],
+    reason_code: _RouteReasonCode,
+    manual_override: bool,
+) -> RouteReceipt:
+    return RouteReceipt(
+        route_receipt_id=_route_receipt_id(
+            prompt_hash=prompt_hash,
+            role=role,
+            provider=provider,
+            model=model,
+            fallback_chain_index=fallback_chain_index,
+        ),
+        task_kind=role,
+        objective="operator_selected" if manual_override and fallback_chain_index == 0 else "balanced",
+        override=_override_kind(
+            manual_override=manual_override,
+            fallback_chain_index=fallback_chain_index,
+        ),
+        candidate_models=candidate_models,
+        selected=RouteReceiptSelection(
+            provider=provider,
+            model=model,
+            tier=selected_tier_name,
+            fallback_chain_index=fallback_chain_index,
+            reason_code=reason_code,
+            pricing_known=_pricing_known(pricing),
+        ),
+    )
 
 
 # Anthropic prompt-caching pricing multiplier: a 5-minute cache WRITE
@@ -377,6 +491,7 @@ def _emit_dispatch_call(
     prompt_hash: str,
     finish_reason: str | None,
     context_pack_event_id: str | None,
+    route_receipt: RouteReceipt | None = None,
     nd_scope: object | None = None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
@@ -405,6 +520,7 @@ def _emit_dispatch_call(
             prompt_hash=prompt_hash,
             finish_reason=finish_reason,  # type: ignore[arg-type]
             context_pack_event_id=context_pack_event_id,
+            route_receipt=route_receipt,
             nd_session_id=nd_session_id,
             nd_recommended_provider=nd_recommended_provider,
             nd_recommended_model=nd_recommended_model,
@@ -432,6 +548,7 @@ def _dispatch_authoritative(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    operator_lineup: bool = True,
     nd_scope: object | None = None,
 ) -> DispatchResult:
     """Route an LLM call.
@@ -470,6 +587,12 @@ def _dispatch_authoritative(
             present (a half-specified override is a caller bug, so we
             refuse to guess the missing half and fall back to config).
         model_override: see ``provider_override``.
+        operator_lineup: consult the operator's AI Role Lineup registry
+            (``lineup_override.py``) when the caller passes no explicit
+            override. Owner-paid callers (``PayerPolicy.BYOT_ONLY``) pass
+            ``False``: there the payer decides the provider, and an
+            operator preference must never re-route the call onto a
+            house key the owner is not paying for.
 
     Returns:
         DispatchResult for the first successful call.
@@ -502,7 +625,9 @@ def _dispatch_authoritative(
     # caller did not. Explicit caller overrides win; an unregistered
     # override provider falls through the tier's fallback chain exactly
     # like any primary failure (preference, not a single point of failure).
-    if provider_override is None or model_override is None:
+    # ``operator_lineup=False`` skips the registry entirely: the tier's
+    # primary is then the route, and the receipt says so (no override).
+    if operator_lineup and (provider_override is None or model_override is None):
         from .lineup_override import effective_override_for_dispatch_role
 
         lineup = effective_override_for_dispatch_role(role)
@@ -512,6 +637,8 @@ def _dispatch_authoritative(
     tier = _override_primary(
         config.tiers[tier_name], provider_override, model_override
     )
+    manual_override = bool(provider_override and model_override)
+    candidates = _candidate_models(tier)
     chain_index = 0
     last_error: ProviderError | None = None
 
@@ -526,9 +653,8 @@ def _dispatch_authoritative(
         # mypy --strict: bind the guard-narrowed fields once. TierConfig's
         # provider/model are Optional by design (placeholder tiers), and
         # attribute narrowing does not survive the calls below.
-        provider_name: str = current.provider
-        model_name: str = current.model
-
+        provider_name = current.provider
+        model_name = current.model
 
         # An unregistered provider (e.g. a route-override pointing at a
         # provider whose API key isn't set, so bootstrap never registered
@@ -563,6 +689,18 @@ def _dispatch_authoritative(
                 provider=provider_name, model=model_name or "<none>",
                 latency_ms=0, retryable=True,
             )
+            receipt = _route_receipt(
+                prompt_hash=prompt_hash,
+                role=role,
+                selected_tier_name=tier_name,
+                provider=provider_name,
+                model=model_name,
+                pricing=current.pricing,
+                fallback_chain_index=chain_index,
+                candidate_models=candidates,
+                reason_code="circuit_breaker_open",
+                manual_override=manual_override,
+            )
             _emit_dispatch_call(
                 investigation_id=investigation_id,
                 parent_event_id=parent_event_id,
@@ -578,6 +716,7 @@ def _dispatch_authoritative(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=receipt,
                 nd_scope=nd_scope,
             )
             current = current.fallback
@@ -598,6 +737,18 @@ def _dispatch_authoritative(
             # Emit a failure event so the error is queryable too. Use the
             # latency the provider reported on the exception if available.
             latency_ms = e.latency_ms or int((time.monotonic() - t_start) * 1000)
+            receipt = _route_receipt(
+                prompt_hash=prompt_hash,
+                role=role,
+                selected_tier_name=tier_name,
+                provider=provider_name,
+                model=model_name,
+                pricing=current.pricing,
+                fallback_chain_index=chain_index,
+                candidate_models=candidates,
+                reason_code="provider_error",
+                manual_override=manual_override,
+            )
             _emit_dispatch_call(
                 investigation_id=investigation_id,
                 parent_event_id=parent_event_id,
@@ -613,6 +764,7 @@ def _dispatch_authoritative(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=receipt,
                 nd_scope=nd_scope,
             )
             # Count this genuine provider-call failure toward the breaker. Config
@@ -627,8 +779,53 @@ def _dispatch_authoritative(
         # Success: normalize, cost, emit, return.
         default_breaker.record_success(provider_name)
         usage = provider.normalize_usage(raw.raw_usage)
+        if usage.reported and usage.cache_unknown:
+            logger.warning(
+                "dispatch: %s/%s reported no valid cache split; billing all input "
+                "at the full rate", provider_name, model_name,
+            )
+        if not raw.raw_usage or not usage.reported:
+            # A paid 200 with no usage is not a free call. Bill the ceiling the
+            # call could have cost (one input token per prompt byte, the full
+            # output budget), the same bound owner-BYOT reserves, so no ledger
+            # settles an unmetered response at a definite 0.
+            logger.warning(
+                "dispatch: %s/%s reported no usage; billing the call ceiling",
+                provider_name, model_name,
+            )
+            ceiling_input = max(1, len(prompt.encode("utf-8")))
+            # A ceiling must bound what this provider can actually charge. An
+            # adapter that can bill prompt-cache writes (Anthropic: 1.25x base
+            # input) has its whole input term priced as writes; the others
+            # have no write premium, so base input is already their bound.
+            usage = NormalizedUsage(
+                input_tokens=ceiling_input,
+                output_tokens=effective_max_tokens,
+                cache_creation_input_tokens=(
+                    ceiling_input if getattr(provider, "bills_cache_writes", False) else 0
+                ),
+                reported=False,
+            )
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
+        receipt = _route_receipt(
+            prompt_hash=prompt_hash,
+            role=role,
+            selected_tier_name=tier_name,
+            provider=provider_name,
+            model=model_name,
+            pricing=current.pricing,
+            fallback_chain_index=chain_index,
+            candidate_models=candidates,
+            reason_code=(
+                "operator_override"
+                if manual_override and chain_index == 0
+                else "primary"
+                if chain_index == 0
+                else "fallback_after_error"
+            ),
+            manual_override=manual_override,
+        )
         eid = _emit_dispatch_call(
             investigation_id=investigation_id,
             parent_event_id=parent_event_id,
@@ -644,6 +841,7 @@ def _dispatch_authoritative(
             prompt_hash=prompt_hash,
             finish_reason=finish,
             context_pack_event_id=context_pack_event_id,
+            route_receipt=receipt,
             nd_scope=nd_scope,
         )
         return DispatchResult(
@@ -657,6 +855,7 @@ def _dispatch_authoritative(
             finish_reason=finish,
             fallback_chain_index=chain_index,
             event_id=eid,
+            route_receipt=receipt,
         )
 
     # All tiers exhausted.
@@ -711,6 +910,7 @@ def dispatch(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    operator_lineup: bool = True,
 ) -> DispatchResult:
     """Evaluate optional ND shadow evidence, then run authoritative dispatch unchanged."""
     if config is None:
@@ -765,6 +965,7 @@ def dispatch(
             config=config,
             provider_override=provider_override,
             model_override=model_override,
+            operator_lineup=operator_lineup,
             nd_scope=nd_scope,
         )
     finally:

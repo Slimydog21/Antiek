@@ -39,7 +39,7 @@ from typing import (
 )
 
 
-class RunState(str, enum.Enum):
+class RunState(enum.StrEnum):
     """Lifecycle states of a single research. ``stopped`` and
     ``budget_halted`` are both terminal-by-steering / terminal-by-policy;
     ``done`` is terminal-by-completion; ``failed`` is terminal-by-error."""
@@ -57,7 +57,7 @@ class RunState(str, enum.Enum):
         return self in {RunState.DONE, RunState.STOPPED, RunState.FAILED, RunState.BUDGET_HALTED}
 
 
-class CommandKind(str, enum.Enum):
+class CommandKind(enum.StrEnum):
     PAUSE = "pause"
     RESUME = "resume"
     STOP = "stop"

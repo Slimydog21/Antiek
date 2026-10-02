@@ -60,10 +60,10 @@ export const PdfPerfTarget: Story = {
         style={{ width: 1200, height: 900 }}
       >
         <header className="h-9 shrink-0 px-3 flex items-center justify-between border-b-edge border-sun bg-ice-1 dark:bg-charcoal-1">
-          <span className="font-mono text-[12px] font-semibold">
+          <span className="font-mono text-xs font-semibold">
             PDF perf target · 200-page synthetic
           </span>
-          <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+          <span className="font-mono text-xxs text-ink-mute dark:text-moonlight">
             bench target
           </span>
         </header>
@@ -81,7 +81,7 @@ export const PdfPerfTarget: Story = {
               {Array.from({ length: 40 }, (__, row) => (
                 <div
                   key={row}
-                  className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright"
+                  className="font-serif text-sm leading-relaxed text-ink dark:text-bright"
                 >
                   Lorem ipsum dolor sit amet, consectetur adipiscing
                   elit. Sed do eiusmod tempor incididunt ut labore et

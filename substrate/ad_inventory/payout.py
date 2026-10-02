@@ -14,16 +14,21 @@ publisher verification."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from substrate.anti_gaming.verdict import FraudVerdict
+    from substrate.billing.kyc import KycRegistry
+
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 CREATOR_REV_SHARE = Decimal("0.70")  # per master-spec §13.5 + §13.9
@@ -31,7 +36,7 @@ PLATFORM_CUT = Decimal("0.30")  # per master-spec §9.0.1 (80/20 Perplexity benc
 DEFAULT_PER_DOCUMENT_DAILY_CAP_USD = Decimal("50.00")  # per §9.7 anti-gaming
 
 
-class RevShareKind(str, enum.Enum):
+class RevShareKind(enum.StrEnum):
     CREATOR = "creator"  # user-as-IP-holder
     PUBLISHER = "publisher"  # pre-onboarded IP holder (§9.10)
     PLATFORM = "platform"  # Antiek's 30% cut
@@ -46,7 +51,7 @@ class RevShareDecision:
     kind: RevShareKind
     recipient_ref: str  # user_id, ip_holder_id, or "__platform__"
     amount_usd_cents: int
-    document_id: Optional[str]
+    document_id: str | None
     requires_escrow: bool  # True if publisher is pre_onboarded / invited
     capped_to_daily_limit: bool  # True if the §9.7 cap reduced the payout
     decided_at: str = field(default_factory=_now_iso)
@@ -159,9 +164,9 @@ def distribute_with_gates(
     impression_id: str,
     ad_revenue_usd_cents: int,
     attribution_shares: dict[str, float],
-    document_to_recipient: dict[str, tuple["RevShareKind", str, bool]],
-    kyc_registry=None,  # type: Optional[KycRegistry]
-    fraud_verdict=None,  # type: Optional[FraudVerdict]
+    document_to_recipient: dict[str, tuple[RevShareKind, str, bool]],
+    kyc_registry: KycRegistry | None = None,
+    fraud_verdict: FraudVerdict | None = None,
 ) -> list[RevShareDecision]:
     """Distribute revenue + apply §9.5 KYC settlement gate + §9.7
     anti-gaming gate.
@@ -186,7 +191,8 @@ def distribute_with_gates(
     impressions were blocked from settlement and why."""
     # Defer imports to avoid hard coupling at module-load time.
     from substrate.billing.kyc import (
-        KYC_PAYOUT_FLOOR_USD_CENTS, KycState, can_settle,
+        KYC_PAYOUT_FLOOR_USD_CENTS,
+        can_settle,
     )
 
     fraud_blocked = False
@@ -216,14 +222,13 @@ def distribute_with_gates(
         if d.amount_usd_cents <= KYC_PAYOUT_FLOOR_USD_CENTS:
             router.gates_by_decision_id[d.decision_id] = "rolled_over"
             continue
-        if kyc_registry is not None:
-            if not can_settle(
-                kyc_registry,
-                recipient_ref=d.recipient_ref,
-                amount_usd_cents=d.amount_usd_cents,
-            ):
-                router.gates_by_decision_id[d.decision_id] = "gated_kyc"
-                continue
+        if kyc_registry is not None and not can_settle(
+            kyc_registry,
+            recipient_ref=d.recipient_ref,
+            amount_usd_cents=d.amount_usd_cents,
+        ):
+            router.gates_by_decision_id[d.decision_id] = "gated_kyc"
+            continue
         router.gates_by_decision_id[d.decision_id] = "admitted"
 
     return decisions

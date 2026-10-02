@@ -17,12 +17,12 @@ import { durationMs } from "../../design/motion";
  * own state update or navigation. The payoff (the id, the draft, the
  * opened book) is already available; the beat just decorates it. Under
  * reduced-motion the <CelebrateBurst> render collapses to a static frame
- * (Werner's own animations.css fallback), so the hook needs no branch for
+ * (Brain's own animations.css fallback), so the hook needs no branch for
  * it — the timing is the same, only the pixels stop moving.
  *
  * Fires once per trigger: a second `celebrate()` while one is in flight
  * restarts the window rather than stacking, so a double-event can't queue
- * two penguins.
+ * two mascots.
  */
 export interface CelebrateState {
   /** True while the beat is in its window. Drives <CelebrateBurst>. */
@@ -45,7 +45,7 @@ export function useCelebrate(): CelebrateState {
   const celebrate = useCallback(() => {
     clear();
     setCelebrating(true);
-    // Auto-retire at the slow-token ceiling — Werner's celebrate one-shot
+    // Auto-retire at the slow-token ceiling — Brain's celebrate one-shot
     // is 800 ms (== the slow token), so the boolean and the keyframe
     // finish together.
     timer.current = window.setTimeout(() => {

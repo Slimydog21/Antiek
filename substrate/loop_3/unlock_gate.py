@@ -5,9 +5,10 @@ from __future__ import annotations
 import enum
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 
-class Loop3UnlockCriterion(str, enum.Enum):
+class Loop3UnlockCriterion(enum.StrEnum):
     """The five criteria from `docs/loop_3_unlock_criteria.md`."""
 
     TRAJECTORY_VOLUME = "trajectory_volume"
@@ -42,7 +43,7 @@ class UnlockChecklist:
     validated_reward: bool = False
     open_weight_justification: bool = False
     eval_headroom: bool = False
-    notes: dict = field(default_factory=dict)
+    notes: dict[str, Any] = field(default_factory=dict[str, Any])
 
     def all_met(self) -> bool:
         return all([

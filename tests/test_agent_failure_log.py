@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -282,3 +283,41 @@ def test_rotation_appends_to_existing_archive_if_present(tmp_path: Path) -> None
     assert "preexisting" in text and "yesterday-new" in text
     # Active contains today.
     assert "today-fresh" in p.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "tz", ["Asia/Riyadh", "Pacific/Kiritimati", "America/Los_Angeles"]
+)
+def test_rotation_compares_utc_not_local_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tz: str
+) -> None:
+    """Appends survive where the LOCAL date differs from the UTC date.
+
+    `observed_at` is UTC. `_maybe_rotate` compared it against
+    `date.today()` — LOCAL — so during the window where the two disagree,
+    every write rotated the log: the earlier record was archived off and the
+    active file kept only the newest. To any operator not on UTC that reads as
+    data loss.
+
+    CI runs UTC and is therefore STRUCTURALLY unable to catch this, which is
+    why the timezone is forced here rather than inherited. Measured on the
+    unfixed code at 2026-09-20T22:40Z, same commit and interpreter:
+    TZ=UTC 17 pass, TZ=Asia/Riyadh 2 fail.
+    """
+    monkeypatch.setenv("TZ", tz)
+    time.tzset()
+    try:
+        p = tmp_path / "log.jsonl"
+        record(AgentFailure(failure_id="first"), path=p)
+        record(AgentFailure(failure_id="second"), path=p)
+        lines = [
+            json.loads(ln)
+            for ln in p.read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
+        assert [r["failure_id"] for r in lines] == ["first", "second"], (
+            f"rotation dropped a record under TZ={tz}"
+        )
+    finally:
+        monkeypatch.delenv("TZ", raising=False)
+        time.tzset()

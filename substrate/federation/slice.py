@@ -97,7 +97,7 @@ def build_manifest(
     )
 
 
-class NegotiationStatus(str, enum.Enum):
+class NegotiationStatus(enum.StrEnum):
     PROPOSED = "proposed"
     APPROVED = "approved"
     REJECTED = "rejected"

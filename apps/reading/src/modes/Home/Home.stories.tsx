@@ -10,7 +10,7 @@ import Home from "./Home";
  * label for the unbuilt SPR-11 guided flow. The global preview wraps every
  * story in a router, so navigation in the cards is harmless here.
  *
- * Visual baseline coverage: the home in light + dark (the top-left Werner
+ * Visual baseline coverage: the home in light + dark (the top-left Brain
  * mark renders with the M4 alpha-cut pose, so there is no white box behind
  * it in the hero either).
  */

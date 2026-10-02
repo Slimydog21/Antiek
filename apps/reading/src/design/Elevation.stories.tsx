@@ -27,7 +27,7 @@ function DepthSwatch({
   const isGlass = mode === "glass-scene";
   return (
     <div className="flex flex-col gap-2">
-      <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight">
+      <span className="font-mono text-xs text-ink-mute dark:text-moonlight">
         {label}
       </span>
       <div
@@ -41,7 +41,7 @@ function DepthSwatch({
       >
         depth {depth}
       </div>
-      <code className="text-[10px] break-all">{shadow}</code>
+      <code className="text-xxs break-all">{shadow}</code>
     </div>
   );
 }
@@ -85,7 +85,7 @@ export const CascadeSteps: Story = {
         const w = cascadeOffset(i, "windows");
         const p = cascadeOffset(i, "panels");
         return (
-          <div key={i} className="absolute font-mono text-[10px]">
+          <div key={i} className="absolute font-mono text-xxs">
             <div
               style={{ left: 40 + w.x, top: 24 + w.y }}
               className="w-20 h-14 border border-glass bg-glass/80 rounded text-center pt-4"

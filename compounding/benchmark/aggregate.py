@@ -138,10 +138,7 @@ def bootstrap_ci(
     # method when every resample is identical (degenerate, zero-variance data).
     below = sum(1 for m in means if m < point)
     prop = below / resamples
-    if prop <= 0.0 or prop >= 1.0:
-        z0 = 0.0
-    else:
-        z0 = _normal_ppf(prop)
+    z0 = 0.0 if prop <= 0.0 or prop >= 1.0 else _normal_ppf(prop)
 
     alpha = 1.0 - confidence
     z_lo = _normal_ppf(alpha / 2.0)

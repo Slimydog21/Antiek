@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
-import { useStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
+import { useStationInstrumentSuspended } from "../../mascot/stationInstrumentSuspension";
 import ResearchWaitArcade from "./ResearchWaitArcade";
 
 const meta = {
@@ -66,7 +66,7 @@ function CursorPolicyPreview({
 function CursorPolicyStatus() {
   const suspended = useStationInstrumentSuspended();
   return (
-    <p className="mb-4 font-mono text-[11px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+    <p className="mb-4 font-mono text-xs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
       Cursor owner · {suspended ? "game control — native canvas" : "research lens — route"}
     </p>
   );

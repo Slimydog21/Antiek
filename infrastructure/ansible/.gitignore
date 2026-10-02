@@ -10,3 +10,6 @@ r2-creds.yml
 
 # Cached fact-gathering output.
 *.cache
+
+# Cloudflare Tunnel credentials passed via --extra-vars. Copy OFF the VM.
+cloudflared-creds.yml

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { surface } from "../../../design/tokens";
 import { createZombiesState, startZombies, type ZombiesState } from "./logic";
 import { drawZombiesScene, zombiesVisualLayout } from "./zombiesVisuals";
 
@@ -32,6 +33,31 @@ function recordingContext() {
   return { context, calls };
 }
 
+/** Records the fillStyle active at each fillRect — the paint each band gets. */
+function fillSpyingContext() {
+  const fills: string[] = [];
+  const state: Record<string, unknown> = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+    font: "",
+  };
+  const context = new Proxy(state, {
+    get(target, prop) {
+      if (prop === "fillRect") {
+        return () => fills.push(target.fillStyle as string);
+      }
+      if (prop in target) return target[prop as string];
+      return () => undefined;
+    },
+    set(target, prop, value) {
+      target[prop as string] = value;
+      return true;
+    },
+  }) as unknown as CanvasRenderingContext2D;
+  return { context, fills };
+}
+
 function scene(phase: ZombiesState["phase"]): ZombiesState {
   const base = startZombies(
     createZombiesState({ width: 480, height: 300, lives: 3 }),
@@ -54,7 +80,7 @@ describe("Paperclip Zombies field-station visuals", () => {
     "renders the exact %s phase plate",
     (phase) => {
       const { context, calls } = recordingContext();
-      drawZombiesScene(context, scene(phase), 480, 300);
+      drawZombiesScene(context, scene(phase), 480, 300, "night");
       expect(calls).toContainEqual([
         "fillText",
         {
@@ -71,7 +97,7 @@ describe("Paperclip Zombies field-station visuals", () => {
 
   it("draws the archival fort, evidence trace, paperclip loops, hp pips, and HUD", () => {
     const { context, calls } = recordingContext();
-    drawZombiesScene(context, scene("playing"), 480, 300);
+    drawZombiesScene(context, scene("playing"), 480, 300, "night");
     expect(calls).toContainEqual(["strokeRect", 7, 40, 14, 11]);
     expect(calls).toContainEqual(["lineTo", 298, 129]);
     expect(calls.filter(([name]) => name === "ellipse")).toHaveLength(2);
@@ -101,7 +127,7 @@ describe("Paperclip Zombies field-station visuals", () => {
     });
 
     const { context, calls } = recordingContext();
-    drawZombiesScene(context, scene("ready"), 96, 80);
+    drawZombiesScene(context, scene("ready"), 96, 80, "night");
     expect(calls).toContainEqual(["fillText", "W04", 4, 13]);
     expect(calls).toContainEqual(["fillText", "S0137", 28.799999999999997, 13]);
     expect(calls).toContainEqual(["fillText", "READY · ENTER", 7, 70]);
@@ -121,7 +147,7 @@ describe("Paperclip Zombies field-station visuals", () => {
       ],
     };
     const { context, calls } = recordingContext();
-    drawZombiesScene(context, state, 480, 300);
+    drawZombiesScene(context, state, 480, 300, "night");
     const statusIndex = calls.findIndex(
       ([name, text]) =>
         name === "fillText" && text === "ARCHIVE HOLDING · ESC EXITS",
@@ -147,7 +173,7 @@ describe("Paperclip Zombies field-station visuals", () => {
       ],
     };
     const { context, calls } = recordingContext();
-    drawZombiesScene(context, state, 96, 80);
+    drawZombiesScene(context, state, 96, 80, "night");
     expect(calls.filter(([name]) => name === "rotate")).toHaveLength(0);
     expect(calls.filter(([name]) => name === "translate")).toEqual([
       ["translate", 87, 29],
@@ -170,7 +196,7 @@ describe("Paperclip Zombies field-station visuals", () => {
       zombies: [{ id: 1, x: 78, y: 20, hp: 99, speed: 0, w: 18, h: 18 }],
     };
     const { context, calls } = recordingContext();
-    drawZombiesScene(context, state, 96, 80);
+    drawZombiesScene(context, state, 96, 80, "night");
     const pips = calls.filter(
       ([name, , y, width, height]) =>
         name === "fillRect" &&
@@ -190,10 +216,20 @@ describe("Paperclip Zombies field-station visuals", () => {
     const before = structuredClone(state);
     const first = recordingContext();
     const second = recordingContext();
-    drawZombiesScene(first.context, state, 480, 300);
-    drawZombiesScene(second.context, state, 480, 300);
+    drawZombiesScene(first.context, state, 480, 300, "night");
+    drawZombiesScene(second.context, state, 480, 300, "night");
     expect(first.calls).toEqual(second.calls);
     expect(state).toEqual(before);
+  });
+
+  it("follows the app light/dark mode instead of pinning a fixed scene", () => {
+    const day = fillSpyingContext();
+    drawZombiesScene(day.context, scene("playing"), 480, 300, "day");
+    expect(day.fills[0]).toBe(surface.day[2]);
+
+    const night = fillSpyingContext();
+    drawZombiesScene(night.context, scene("playing"), 480, 300, "night");
+    expect(night.fills[0]).toBe(surface.night[2]);
   });
 
   it("derives color and typography from tokens without raw visual literals", () => {
@@ -203,6 +239,8 @@ describe("Paperclip Zombies field-station visuals", () => {
     );
     expect(source).not.toMatch(/#[\da-f]{3,8}\b/i);
     expect(source).not.toContain("system-ui");
+    // Canvas text floors at the token scale's 10px (xxs) minimum.
+    expect(source).not.toMatch(/\b[1-9]px \$\{type\.mono\}/);
     expect(source).not.toMatch(
       /state\.elapsed|Date\.|performance\.|Math\.random|requestAnimationFrame|setTimeout|setInterval|drawImage|createImageBitmap|fetch\(|localStorage|sessionStorage/,
     );

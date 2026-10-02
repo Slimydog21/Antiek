@@ -40,15 +40,26 @@ Invariant-Labs rug-pull defense from §13.8.
       "args": [
         "-i", "/Users/<you>/.ssh/antiek_ed25519",
         "root@167.235.202.98",
-        "cd /opt/antiek && /opt/antiek/.venv/bin/python -m tools.antiek_memory.server"
+        "cd /opt/antiek && ANTIEK_MEMORY_OWNER=<your-user-id> /opt/antiek/.venv/bin/python -m tools.antiek_memory"
       ]
     }
   }
 }
 ```
 
-Replace `<you>` with your username. The Claude Desktop client
-will spawn the server over SSH when it needs to call a tool.
+Replace `<you>` with your username and `<your-user-id>` with the
+`documents.owner_user_id` your own documents carry. The Claude Desktop
+client will spawn the server over SSH when it needs to call a tool.
+
+`ANTIEK_MEMORY_OWNER` is the only identity the stdio server trusts: the
+client writes every byte of a JSON-RPC request, so an owner claimed in
+the request proves nothing. Unset, `search_personal` refuses every call;
+a request naming a different owner is refused too. Deployment sentinels
+such as `__operator__` are rejected as owners.
+
+Launch the package (`-m tools.antiek_memory`), not
+`-m tools.antiek_memory.server`: the latter module has no entry point,
+so it imports and exits without answering.
 
 3. Restart Claude Desktop.
 4. In a conversation, ask Claude to "search my private notes for X".
@@ -108,7 +119,7 @@ For ad-hoc use without a chat client:
 
 ```bash
 ssh -i ~/.ssh/antiek_ed25519 root@167.235.202.98 \
-    cd /opt/antiek && /opt/antiek/.venv/bin/python -m tools.antiek_memory.server
+    cd /opt/antiek && ANTIEK_MEMORY_OWNER=<your-user-id> /opt/antiek/.venv/bin/python -m tools.antiek_memory
 ```
 
 Then pipe JSON-RPC frames in via stdin. The server speaks JSON-RPC 2.0

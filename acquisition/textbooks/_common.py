@@ -163,14 +163,18 @@ class ThrottledClient:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict:
+    def get_json(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         resp = self._request(url, params=params)
-        return resp.json()
+        payload: dict[str, Any] = resp.json()
+        return payload
 
     def get_bytes(self, url: str) -> bytes:
-        return self._request(url).content
+        content: bytes = self._request(url).content
+        return content
 
-    def _request(self, url: str, *, params: dict | None = None) -> requests.Response:
+    def _request(self, url: str, *, params: dict[str, Any] | None = None) -> requests.Response:
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             self._throttle()
@@ -183,7 +187,10 @@ class ThrottledClient:
             if resp.status_code == 429 or resp.status_code >= 500:
                 if self._persistent is not None and resp.status_code in (429, 503):
                     self._persistent.note_response(
-                        self._source, resp.status_code, dict(resp.headers)
+                        self._source,
+                        resp.status_code,
+                        dict(resp.headers),
+                        url=str(resp.url),
                     )
                 last_exc = SourceError(f"{url} returned {resp.status_code}")
                 self._backoff(attempt, reason=f"HTTP {resp.status_code}")

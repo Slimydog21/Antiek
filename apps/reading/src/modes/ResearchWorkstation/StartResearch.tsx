@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
@@ -8,10 +8,15 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import LemonSelect from "../../components/lemon/LemonSelect";
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { ErrorState } from "../../components/states";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
-import type { ResearchTier, UserModelChoice } from "../../lib/api";
+import type {
+  ResearchSourcePolicy,
+  ResearchTier,
+  UserModelChoice,
+} from "../../lib/api";
 import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
@@ -113,6 +118,18 @@ function readPendingOwnerLaunch(): PendingOwnerLaunch | null {
   }
 }
 
+const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
+  value: ResearchSourcePolicy;
+  label: string;
+  hint: string;
+}> = [
+  { value: "operator_corpus", label: "Corpus", hint: "your imported notes, books, and saved sources" },
+  { value: "web", label: "Web", hint: "public web discovery when the runner supports it" },
+  { value: "arxiv", label: "arXiv", hint: "papers and preprints" },
+  { value: "substack", label: "Substack", hint: "newsletter feeds and essays" },
+];
+const DEFAULT_SOURCE_POLICY: ResearchSourcePolicy[] = ["operator_corpus", "web"];
+
 /** Grace period before navigating even if no event has streamed yet, so a
  *  slow WS connection doesn't strand the operator on the start surface. */
 const NAVIGATE_GRACE_MS = 1500;
@@ -146,11 +163,16 @@ type AttachState =
   | { kind: "failed"; reason: string | null };
 
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const start = useStartInvestigation();
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
+  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
+  // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>("deep");
+  const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
+    DEFAULT_SOURCE_POLICY,
+  );
   const [models, setModels] = useState<UserModelRow[]>([]);
   const [modelsState, setModelsState] = useState<"loading" | "ready" | "error">("loading");
   const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(
@@ -171,7 +193,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const [promptDerived, setPromptDerived] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // The research-starts signature beat (U-05 M2) — Werner's one-shot
+  // The research-starts signature beat (U-05 M2) — Brain's one-shot
   // celebrate the moment a research is genuinely under way. Non-blocking:
   // it only arms a timer; navigation + the live banner below are driven by
   // their own effects and don't wait on it.
@@ -218,13 +240,22 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       : null;
     if (pending) window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
     const id = await submit(modelChoice && selectedModel
-      ? { question, modelChoice, operationId }
-      : { question, researchTier: tier });
+      ? { question, modelChoice, operationId, sourcePolicy }
+      : { question, researchTier: tier, sourcePolicy });
     if (id) {
       window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
       setQuestion("");
     }
-  }, [submit, question, modelChoice, operationId, selectedModel, tier]);
+  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy]);
+
+  const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
+    setSourcePolicy((current) => {
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value];
+      return next.length > 0 ? next : current;
+    });
+  }, []);
 
   const selectModel = useCallback((value: string) => {
     const model = models.find((row) => modelKey(row.id, row.model_id) === value);
@@ -427,7 +458,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 live status is the two centered lines below (richer than a
                 single inline string), so we use Thinking for the brain
                 mark and pass the live label through; the same accessible
-                name (via WernerThinking) is preserved. */}
+                name (via BrainThinking) is preserved. */}
             <Thinking
               size={48}
               label={
@@ -537,7 +568,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             disabled={busy}
             minRows={3}
             maxRows={10}
-            className="font-serif text-[15px] leading-relaxed"
+            className="font-serif text-base leading-relaxed"
             aria-label="Research question"
           />
 
@@ -546,7 +577,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               editable above; this only labels its provenance. */}
           {promptDerived && (
             <p
-              className="text-[11px] font-mono text-ink-mute dark:text-moonlight"
+              className="text-xs font-mono text-ink-mute dark:text-moonlight"
               role="status"
             >
               Prompt suggested from your attachment — edit it or ask as is.
@@ -586,7 +617,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               placeholder="…or paste a link"
               aria-label="Attach a link"
               disabled={busy || attach.kind === "absorbing"}
-              className="min-w-0 flex-1 rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1 text-[12px] font-mono text-ink dark:text-bright disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1 text-xs font-mono text-ink dark:text-bright disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
                 const v = (e.target as HTMLInputElement).value.trim();
@@ -601,13 +632,13 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           {/* Attach result — absorbed / rejected / failed, surfaced not silent
               (rigor #3). A failed ingest reuses the shared AIActionFailure. */}
           {attach.kind === "absorbed" && (
-            <p className="text-[11px] font-mono text-aurora" role="status">
+            <p className="text-xs font-mono text-success" role="status">
               Added “{attach.title}” to your corpus.
             </p>
           )}
           {attach.kind === "rejected" && (
             <p
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight"
+              className="text-xs font-mono text-shadow-1 dark:text-moonlight"
               role="status"
             >
               {attach.why}
@@ -635,13 +666,26 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             />
           )}
 
-          {error && (
-            <div className="text-xs font-mono text-emperor">{error}</div>
-          )}
+          {/* A failed POST says what failed and what is safe; the raw
+              "Submit failed: POST … HTTP 500" goes to Copy error details. A
+              validation or capacity message is already a sentence for the
+              reader, set in the interface face. */}
+          {error &&
+            (error.startsWith("Submit failed") ? (
+              <ErrorState
+                variant="inline"
+                title="Couldn’t start the research"
+                body="Your question is still here, so you can send it again."
+                detail={error}
+                onRetry={() => void onSubmit()}
+              />
+            ) : (
+              <p className="text-sm text-danger">{error}</p>
+            ))}
 
           <div className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1/80 dark:bg-charcoal-1/40 p-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <label className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
+              <label className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
                 Model for Ask
               </label>
               <LemonSelect
@@ -666,20 +710,20 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               />
             </div>
             {modelsState === "error" ? (
-              <p className="text-[11px] font-mono text-emperor" role="alert">
+              <p className="text-sm text-danger" role="alert">
                 Can’t load executable models. Check Settings, then retry inventory.
               </p>
             ) : selectedModel ? (
               <div className="space-y-1" aria-live="polite">
-                <p className="text-[11px] font-serif text-ink dark:text-bright">
+                <p className="text-xs font-serif text-ink dark:text-bright">
                   Ask uses this model for the root investigation’s paid Loop One roles. Later chases choose their own route.
                 </p>
-                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight break-all">
+                <p className="text-xxs font-mono text-ink-mute dark:text-moonlight break-all">
                   Pricing authority: {selectedModel.rate_snapshot ?? "server-verified executable route"}
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+              <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
                 Only routes the server reports as eligible and executable appear here.
               </p>
             )}
@@ -688,22 +732,59 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 {RESEARCH_TIER_OPTIONS.map((option) => (
                   <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
                     title={option.hint} onClick={() => setTier(option.value)}
-                    className={`px-3 py-1 rounded-hog text-[11px] font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+                    className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
                     {option.label}
                   </button>
                 ))}
               </div>
             )}
             {modelsState !== "loading" && (
-              <button type="button" onClick={() => void refreshModels()} className="text-[11px] font-mono underline text-ink dark:text-bright">
+              <button type="button" onClick={() => void refreshModels()} className="text-xs font-mono underline text-ink dark:text-bright">
                 Retry inventory
               </button>
             )}
           </div>
 
+          <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label="Source policy"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Sources
+              </span>
+              {SOURCE_POLICY_OPTIONS.map((opt) => {
+                const active = sourcePolicy.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleSourcePolicy(opt.value)}
+                    disabled={busy}
+                    title={opt.hint}
+                    className={
+                      "rounded-hog border px-2.5 py-1 text-xs font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
+                      (active
+                        ? "border-sun-deep bg-sun/15 text-ink dark:text-bright"
+                        : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-ink-mute dark:text-moonlight hover:bg-sun/10")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
+              Recorded as source-pack intent for this research; connector
+              execution still happens only inside the approved runner path.
+            </p>
+          </div>
+
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
-              <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
+            <div className="text-xs font-mono text-ink-mute dark:text-moonlight">
+              <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
               to ask · charges follow the selected model’s server pricing authority
@@ -737,7 +818,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
         </div>
 
         <div className="mt-7">
-          <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2 text-center">
+          <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2 text-center">
             Try one of these
           </p>
           <div className="flex flex-col gap-2">
@@ -748,7 +829,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                   onClick={() => fillExample(prompt)}
                   disabled={busy}
                   className={
-                    "w-full text-left text-[13px] font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
+                    "w-full text-left text-sm font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
                     "border-edge border-sun bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night " +
                     "hover:border-sun dark:hover:border-sun hover:bg-sun/10 disabled:opacity-50 disabled:pointer-events-none " +
                     cardLift

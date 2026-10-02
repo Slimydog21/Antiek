@@ -2,7 +2,9 @@
  * S12 bundle-budget enforcement.
  *
  * Runs after `vite build`. Fails the build if any of the named chunks
- * exceeds its gzipped size budget. Budgets are programme-wide ceilings
+ * exceeds its gzipped size budget, OR when a budgeted chunk is missing
+ * entirely (an unenforced ceiling is not a passing one). Budgets are
+ * programme-wide ceilings
  * documented in `docs/ui_redesign_posthog/sprint_12_visual_regression_release.html`
  * WP-12.2.
  *
@@ -12,15 +14,12 @@
  * Invoked at the end of `npm run build:check`. Exits non-zero on
  * over-budget so CI fails.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
-type BudgetEntry = {
-  chunk: string;
-  /** Hard gzipped ceiling in bytes. */
-  maxBytes: number;
-};
+import { type BudgetEntry, resolveChunk } from "./bundle_budget";
+
 
 /**
  * Programme-wide budgets from spec WP-12.2. The `chunk` value is a
@@ -30,7 +29,7 @@ type BudgetEntry = {
 const BUDGETS: BudgetEntry[] = [
   // The main entry chunk — the only one that ships on every page load.
   // S12 ceiling is 700 KB gzipped.
-  { chunk: "index", maxBytes: 700_000 },
+  { chunk: "index", maxBytes: 700_000, entry: true },
   // S1 acceptance: the design-system primitive chunk is split out via
   // vite manualChunks. The original spec target was ≤ 12 KB gz, which
   // turns out to be unhittable in practice — Vite chunk metadata +
@@ -47,19 +46,20 @@ const BUDGETS: BudgetEntry[] = [
 
 const ASSETS_DIR = join(process.cwd(), "dist", "assets");
 
-function findChunk(prefix: string): string | null {
-  let matches: string[];
+function listAssets(): string[] {
   try {
-    matches = readdirSync(ASSETS_DIR).filter(
-      (f) => f.endsWith(".js") && f.startsWith(prefix + "-"),
-    );
+    return readdirSync(ASSETS_DIR);
   } catch {
     console.error(
       `[check_bundle] no dist/assets directory at ${ASSETS_DIR} — run \`npm run build\` first.`,
     );
     process.exit(2);
   }
-  return matches[0] ?? null;
+}
+
+function readIndexHtml(): string | null {
+  const path = join(process.cwd(), "dist", "index.html");
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
 function gzippedSize(filename: string): number {
@@ -72,11 +72,34 @@ function fmtKB(bytes: number): string {
 }
 
 let failed = 0;
+let missing = 0;
 console.log("== bundle budget check ==");
+const assets = listAssets();
+const indexHtml = readIndexHtml();
 for (const b of BUDGETS) {
-  const f = findChunk(b.chunk);
+  const r = resolveChunk(b, assets, indexHtml);
+  const f = "file" in r ? r.file : null;
   if (!f) {
-    console.warn(`[?] no chunk for prefix \`${b.chunk}\` (skipping)`);
+    // A budgeted chunk that cannot be found is a FAILURE, not a skip.
+    //
+    // This used to `continue`, so the script printed a warning nobody reads
+    // and exited 0. Rename an entry, change vite's manualChunks, or break the
+    // split, and that chunk's ceiling silently stopped being enforced while
+    // the job stayed green and the log still ended "All chunks within
+    // budget." — a gate that reports success precisely because it lost track
+    // of what it was measuring.
+    //
+    // Both budgets here are unconditional: `index` ships on every page load
+    // and `lemon` is split out via manualChunks. So an absent chunk means
+    // either the budget needs repointing at the new name, or the build is
+    // broken. Both need a human; neither is "within budget".
+    const reason = "error" in r ? r.error : "";
+    console.error(
+      `[✗] ${b.chunk.padEnd(12)} ${reason} Its ${fmtKB(b.maxBytes)} ceiling ` +
+        `is unenforced.`,
+    );
+    failed += 1;
+    missing += 1;
     continue;
   }
   const gz = gzippedSize(f);
@@ -91,7 +114,11 @@ for (const b of BUDGETS) {
 }
 
 if (failed > 0) {
-  console.error(`\n${failed} chunk(s) over budget. See spec WP-12.2.`);
+  const over = failed - missing;
+  const parts: string[] = [];
+  if (over > 0) parts.push(`${over} chunk(s) over budget`);
+  if (missing > 0) parts.push(`${missing} budgeted chunk(s) unresolved`);
+  console.error(`\n${parts.join(", ")}. See spec WP-12.2.`);
   process.exit(1);
 }
 

@@ -282,6 +282,36 @@ def _run_script(harness: Harness) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_missing_arxiv_progress_table_never_certifies_v2_backup(tmp_path: Path) -> None:
+    """A wrong-schema source cannot upload a bundle labeled cursor-restorable."""
+    harness = _make_harness(tmp_path)
+    with connect_write(
+        str(harness.state_dir / "antiek.duckdb"), purpose="test_drop_progress"
+    ) as con:
+        con.execute("DROP TABLE arxiv_bulk_progress")
+
+    result = _run_script(harness)
+    assert result.returncode != 0
+    assert "arXiv progress table is missing or invalid" in result.stderr
+    assert not harness.rclone_log.exists()
+    assert not harness.marker.exists()
+
+
+def test_wrong_shape_arxiv_progress_never_certifies_v2_backup(tmp_path: Path) -> None:
+    harness = _make_harness(tmp_path)
+    with connect_write(
+        str(harness.state_dir / "antiek.duckdb"), purpose="test_wrong_progress_shape"
+    ) as con:
+        con.execute("DROP TABLE arxiv_bulk_progress")
+        con.execute("CREATE TABLE arxiv_bulk_progress (stream_id VARCHAR PRIMARY KEY)")
+
+    result = _run_script(harness)
+    assert result.returncode != 0
+    assert "arXiv progress table is missing or invalid" in result.stderr
+    assert not harness.rclone_log.exists()
+    assert not harness.marker.exists()
+
+
 def _run_freshness_tool(
     args: list[str], env_overrides: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -307,6 +337,22 @@ def _iso_utc(dt: datetime) -> str:
 # ---------------------------------------------------------------------------
 # a. Happy path: exit 0, upload happened, marker written with sane counts
 # ---------------------------------------------------------------------------
+def test_backup_template_sets_marker_owner_and_mode_before_replace() -> None:
+    """A root-run backup must not leave the freshness marker unreadable to the
+    antiek health probe. Ownership is set on the temp file before atomic
+    replace so there is no unreadable-window regression."""
+    source = TEMPLATE_PATH.read_text()
+    assert 'tmp = "${STATE_DIR}/backup_freshness.json.tmp"' in source
+    assert 'os.chown(tmp, owner.pw_uid, owner.pw_gid)' in source
+    assert 'os.chmod(tmp, 0o640)' in source
+    assert source.index('os.chown(tmp, owner.pw_uid, owner.pw_gid)') < source.index(
+        'os.replace(tmp, "${STATE_DIR}/backup_freshness.json")'
+    )
+    assert source.index('os.chmod(tmp, 0o640)') < source.index(
+        'os.replace(tmp, "${STATE_DIR}/backup_freshness.json")'
+    )
+
+
 def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     harness = _make_harness(tmp_path)
     proc = _run_script(harness)
@@ -329,7 +375,11 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     assert any("/research_events/" in n for n in names), names
     assert not any("verify-scratch" in n for n in names), names
 
-    # Freshness marker written with the real row counts.
+    # Freshness marker written with the real row counts. The substrate's
+    # health probe runs as antiek, so a root-run backup must leave the marker
+    # readable after an atomic replace.
+    marker_mode = harness.marker.stat().st_mode & 0o777
+    assert marker_mode == 0o640, oct(marker_mode)
     marker = json.loads(harness.marker.read_text())
     assert {table: marker["counts"][table] for table in _SEED_COUNTS} == _SEED_COUNTS
     assert len(marker["counts"]) > len(_SEED_COUNTS)
@@ -612,3 +662,53 @@ def test_freshness_tool_rejects_non_finite_or_negative_threshold(tmp_path: Path)
     control = _run_freshness_tool(["--marker", str(marker), "--max-age-hours", "26.0"])
     assert control.returncode == 1
     assert control.stdout.startswith("STALE:")
+
+
+def _systemctl_stub(stub_bin: Path, log: Path, active: bool = True) -> None:
+    """Fake systemd on PATH: `is-active` reflects `active`; every call is logged."""
+    _write_stub(
+        stub_bin / "systemctl",
+        "#!/usr/bin/env bash\n"
+        f"echo \"$*\" >> {log}\n"
+        "case \"$1\" in\n"
+        f"  is-active) exit {0 if active else 3} ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n",
+    )
+
+
+def test_free_flock_never_stops_the_service(tmp_path: Path) -> None:
+    """The nightly outage came from an unconditional stop. With the flock free
+    the backup must complete WITHOUT ever calling `systemctl stop`."""
+    harness = _make_harness(tmp_path, lock_timeout_s="5")
+    log = tmp_path / "systemctl.log"
+    _systemctl_stub(tmp_path / "stub-bin", log, active=True)
+    proc = _run_script(harness)
+    assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    calls = log.read_text().splitlines() if log.exists() else []
+    assert not any(c.startswith("stop") for c in calls), calls
+    assert not any(c.startswith("start") for c in calls), calls
+    assert "attempt 1" in proc.stdout and "attempt 2" not in proc.stdout
+    assert harness.marker.exists()
+
+
+def test_held_flock_falls_back_to_stop_then_restarts(tmp_path: Path) -> None:
+    """Last-resort path: attempt 1 times out, the service is stopped ONCE for
+    attempt 2, and it is restarted even though the lock stays held and the
+    backup still fails loudly. Never a silent miss, never a stranded stop."""
+    harness = _make_harness(tmp_path, lock_timeout_s="1")
+    log = tmp_path / "systemctl.log"
+    _systemctl_stub(tmp_path / "stub-bin", log, active=True)
+    fd = os.open(harness.lock_file, os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        proc = _run_script(harness)
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+    assert proc.returncode == 3, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    calls = log.read_text().splitlines()
+    assert sum(c.startswith("stop antiek") for c in calls) == 1, calls
+    assert sum(c.startswith("start antiek") for c in calls) == 1, calls
+    assert "attempt 2" in proc.stdout
+    assert not harness.marker.exists()

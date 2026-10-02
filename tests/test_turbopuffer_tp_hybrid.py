@@ -192,3 +192,39 @@ def test_probe_never_claims_production_default_mount(monkeypatch, tmp_path):
     assert snap["shadow_enabled"] is True
     assert snap["duckdb_is_sot"] is True
 
+
+
+def test_production_default_mount_mirrors_env(monkeypatch, tmp_path):
+    """The formal promote declaration is env-driven on every success surface.
+
+    Failure branches deliberately stay False regardless (false is the safe
+    answer when nothing was verified) — covered by the existing default tests.
+    """
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SERVABLE", "1")
+    monkeypatch.setenv("TURBOPUFFER_API_KEY", "test-key")
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_MANIFEST_DIR", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", "1")
+    snap = probe_turbopuffer_health()
+    assert snap["production_default_mount"] is True
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", "0")
+    snap = probe_turbopuffer_health()
+    assert snap["production_default_mount"] is False
+
+
+def test_readiness_production_default_mount_mirrors_env(monkeypatch):
+    from substrate.graph.retrieval_adapters.turbopuffer import (
+        TurbopufferSubstrate,
+    )
+
+    sub = TurbopufferSubstrate.__new__(TurbopufferSubstrate)
+    sub._api_key = "x"
+    sub._namespace_name = "ns"
+    monkeypatch.setattr(TurbopufferSubstrate, "active_pointer", lambda self: None)
+    monkeypatch.setattr(TurbopufferSubstrate, "skipped", property(lambda self: False))
+    monkeypatch.setattr(
+        TurbopufferSubstrate, "query_status_label", lambda self: "shadow"
+    )
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", "1")
+    assert sub.readiness()["production_default_mount"] is True
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT", "0")
+    assert sub.readiness()["production_default_mount"] is False

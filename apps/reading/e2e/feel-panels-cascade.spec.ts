@@ -48,18 +48,30 @@ test.describe("FEEL-S2 — floating panel cascade", () => {
       }
     }
 
-    const shadowRank = (cls: string) => {
-      if (cls.includes("shadow-z3")) return 3;
-      if (cls.includes("shadow-z2")) return 2;
-      if (cls.includes("shadow-z1")) return 1;
-      return 0;
-    };
-
+    // The callback below is serialised and executed in the BROWSER context,
+    // so it cannot close over anything defined here in Node. Ranking used to
+    // live in a `shadowRank` helper out here and every run died with
+    // `ReferenceError: shadowRank is not defined` -- undetected because no
+    // workflow ever executed this spec. Keep the ranking inline.
     const stacks = await regions.evaluateAll((nodes) =>
-      nodes.map((n) => ({
-        z: Number.parseInt(getComputedStyle(n).zIndex, 10) || 0,
-        rank: shadowRank(n.className),
-      })),
+      nodes.map((n) => {
+        const cls =
+          typeof n.className === "string"
+            ? n.className
+            : ((n as unknown as { className: { baseVal: string } }).className
+                ?.baseVal ?? "");
+        const rank = cls.includes("shadow-z3")
+          ? 3
+          : cls.includes("shadow-z2")
+            ? 2
+            : cls.includes("shadow-z1")
+              ? 1
+              : 0;
+        return {
+          z: Number.parseInt(getComputedStyle(n).zIndex, 10) || 0,
+          rank,
+        };
+      }),
     );
     stacks.sort((a, b) => a.z - b.z);
     expect(stacks[0].rank).toBeLessThan(stacks[stacks.length - 1].rank);

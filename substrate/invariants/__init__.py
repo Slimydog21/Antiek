@@ -45,6 +45,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # The registry directory is this package's own directory.
 REGISTRY_DIR = Path(__file__).resolve().parent
@@ -139,7 +140,7 @@ class Invariant:
         return self.guard.split("::", 1)[0] if self.guard else ""
 
 
-def _require(data: dict, key: str, src: Path) -> object:
+def _require(data: dict[str, Any], key: str, src: Path) -> object:
     if key not in data:
         raise RegistryError(f"{src.name}: missing required key {key!r}")
     return data[key]

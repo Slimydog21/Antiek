@@ -1,6 +1,6 @@
 /* BrainMascot living animation — breathing sway + blink overlay.
    All motion collapses under prefers-reduced-motion (U-02 parity with
-   Werner's animations.css). */
+   Brain's animations.css). */
 .brain-idle {
   animation: brain-breathe 2.6s ease-in-out infinite;
   transform-origin: 50% 80%;

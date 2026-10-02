@@ -25,8 +25,14 @@ export interface CartridgeMeta {
   title: string;
   /** Short blurb for cabinet / wait host. */
   blurb: string;
-  /** Club-Penguin style tag for discovery UI. */
-  style: "club-penguin" | "zombies-arcade" | "demo";
+  /**
+   * Screen-reader instructions announced via the mount's sr-only block —
+   * per cartridge, so a player never hears another game's controls. Escape
+   * is owned by the host shell (see ResearchWaitArcade), not the engine.
+   */
+  instructions: string;
+  /** Neutral genre tag for discovery UI — never a borrowed franchise name. */
+  style: "fishing" | "defense" | "demo";
 }
 
 export interface GameContext {

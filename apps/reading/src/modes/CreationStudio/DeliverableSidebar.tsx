@@ -7,6 +7,7 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import { LemonButton } from "../../components/lemon/LemonButton";
 import { VoiceNoteCapture } from "./VoiceNoteCapture";
 
 const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
@@ -93,13 +94,15 @@ export default function DeliverableSidebar() {
             ),
           )}
         </select>
-        <button
+        <LemonButton
+          variant="primary"
+          size="sm"
+          fullWidth
           type="submit"
           disabled={creating || !newTitle.trim()}
-          className="w-full px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs font-medium rounded transition-colors"
         >
           {creating ? "Creating…" : "New deliverable"}
-        </button>
+        </LemonButton>
       </form>
       <ul className="flex-1 overflow-y-auto space-y-1 min-h-0">
         {deliverables.map((d) => (

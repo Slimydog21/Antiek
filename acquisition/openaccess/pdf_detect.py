@@ -77,7 +77,7 @@ def _parses_as_pdf(content: bytes) -> bool:
     import io
 
     try:
-        from pypdf import PdfReader  # type: ignore[import-not-found]
+        from pypdf import PdfReader
     except ImportError:  # pragma: no cover - pypdf is the [pdf] extra
         # If the parser is unavailable we cannot run layer 3; layers 1+2 stand
         # on their own. Treat as "parseable" so we do not reject a real PDF

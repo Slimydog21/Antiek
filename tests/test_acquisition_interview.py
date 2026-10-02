@@ -53,6 +53,8 @@ class _StubEmbedder:
     """Deterministic 4-dim embedding stub. Avoids loading
     sentence-transformers in the test path."""
 
+    dimension = 4  # the EmbeddingProvider Protocol requires it; producers now pin it
+
     def encode(self, text):  # noqa: ARG002 (signature compat)
         return [0.1, 0.2, 0.3, 0.4]
 

@@ -20,7 +20,7 @@ import { MemoryRouter } from "react-router-dom";
 
 // SPR-08 — the real NavRail (kept un-mocked here) now renders on-bar KeyChips,
 // which read usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia;
-// stub it as the hotkey/ad/penguin suites already do. No new assertion — it
+// stub it as the hotkey/ad/mascot suites already do. No new assertion — it
 // only lets the real rail render its real children.
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -44,7 +44,7 @@ beforeAll(() => {
 // Heavy / separately-tested children → lightweight honest stand-ins. The PDF
 // worker import lives behind PanelLayout; mocking it keeps the env happy while
 // preserving the prop contract (PanelLayout renders its mainSlot).
-vi.mock("./shell/PenguinMascot", () => ({ PenguinMascot: () => null }));
+vi.mock("./shell/MascotStation", () => ({ MascotStation: () => null }));
 // SPR-07 — the always-on ad border mounts here too; it has its own suite
 // (components/ad/*.test.*) and pulls usePrefersReducedMotion (matchMedia,
 // which jsdom lacks), so stub it to null exactly as the other heavy children.
@@ -72,6 +72,9 @@ vi.mock("./workspace/PanelLayout", () => ({
 // installer is the only thing stubbed.
 vi.mock("./workspace/shortcuts", () => ({
   useWorkspaceShortcuts: () => {},
+  // SceneChrome's "Ask" verb + CommandPalette import the real toggle; stub
+  // it so the mock module still satisfies their imports.
+  toggleAISidecar: () => {},
   SHORTCUT_EVENTS: {
     PALETTE_TOGGLE: "antiek:palette:toggle",
     AISIDECAR_TOGGLE: "antiek:aisidecar:toggle",
@@ -116,6 +119,20 @@ describe("AppShell SPR-06 M3 — symmetric full-width region + edge seam", () =>
     // box-sizing:border-box so the band is painted INTO the frame's padding,
     // not pushing the column off-screen.
     expect(frame!.style.boxSizing).toBe("border-box");
+  });
+
+  it("mounts no ambient brain watermark, and contains what it positions (design wave 3)", () => {
+    // BrainPresence was a 420px, 8%-opacity brain anchored right:-6% /
+    // bottom:-12% behind every route: it bled past the frame (77px of sideways
+    // scroll at 1280, 23px at 390) and tinted the content. The spec keeps the
+    // mascot to hero, empty and error states.
+    const { container } = mountShell();
+    expect(container.querySelector(".brain-presence")).toBeNull();
+    const frame = container.querySelector("[data-akb-shell-frame]") as HTMLElement;
+    // relative + overflow-hidden: an absolute child is clipped by the frame
+    // instead of widening the page.
+    expect(frame.className).toMatch(/\brelative\b/);
+    expect(frame.className).toMatch(/\boverflow-hidden\b/);
   });
 
   it("renders the nav BELOW the working region (bottom rail, no left gutter)", () => {

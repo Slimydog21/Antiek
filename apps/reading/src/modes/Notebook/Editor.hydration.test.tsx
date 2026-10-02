@@ -70,8 +70,16 @@ describe("NotebookEditor — substrate hydration (M5)", () => {
     await waitFor(() =>
       expect(container.textContent).toContain("HYDRATED-FROM-SUBSTRATE"),
     );
-    const root = container.querySelector("[data-notebook-editor]");
-    expect(root?.getAttribute("data-hydrated")).toBe("true");
+    // `data-hydrated` is React state, but TipTap's setContent writes the text
+    // into the DOM synchronously BEFORE that state commits — measured 50/50 at
+    // the mutation boundary. The text appearing does NOT imply the flag flipped;
+    // asserting it bare passes only while act() happens to flush React first,
+    // which a loaded CI runner does not guarantee. Retry, as the sibling tests
+    // below already do.
+    await waitFor(() => {
+      const root = container.querySelector("[data-notebook-editor]");
+      expect(root?.getAttribute("data-hydrated")).toBe("true");
+    });
     // It called the hydration GET for this notebook.
     expect(getNotebookContentMock).toHaveBeenCalledWith("nb-1");
   });

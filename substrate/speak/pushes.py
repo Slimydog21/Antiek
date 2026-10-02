@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from runtime.db_lock import DEFAULT_TIMEOUT_S, ReadLockTimeout
 from substrate.speak import async_interview
 from substrate.speak.schema import ensure_speak_schema
 
@@ -212,6 +213,12 @@ def list_public_opportunities(
     """
     if ensure:
         ensure_speak_schema(con)
+    # An active takedown means STOP PUBLISHING, whatever its target. This list
+    # is served to logged-out visitors with each project's title and subject,
+    # so it agrees with the gate that governs publication
+    # (substrate/speak/publish_gate.py refuses to publish under any active
+    # takedown) and with /speak/feed, which hides the same projects with the
+    # same predicate. A finer per-target rule needs a signed rights clause.
     rows = con.execute(
         """
         SELECT p.project_id, ip.title, p.subject_ref,
@@ -222,6 +229,10 @@ def list_public_opportunities(
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
         WHERE p.publish_intent = 'will_be_public'
+          AND NOT EXISTS (
+              SELECT 1 FROM speak_takedowns t
+              WHERE t.project_id = p.project_id AND t.status = 'active'
+          )
         """
     ).fetchall()
     has_interest = bool(tokenize_interest(interest))
@@ -261,11 +272,17 @@ def list_public_opportunities(
     return scored[:limit]
 
 
-def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateReping]:
-    """Invitees still in flight; fills pending_question_count via resume()."""
+def list_private_repings_at(
+    db_path: str, *, limit: int = 50, timeout_s: float = DEFAULT_TIMEOUT_S
+) -> list[PrivateReping]:
+    """Invitees still in flight; fills pending_question_count via resume().
+
+    ``timeout_s`` bounds the write lease and the later read open."""
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.list_private") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.list_private", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         rows = con.execute(
             """
@@ -289,8 +306,12 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
         interview_id = r[2]
         token = r[5]
         try:
-            session = async_interview.resume(db_path, interview_id)
+            session = async_interview.resume(
+                db_path, interview_id, external_lock_timeout_s=timeout_s
+            )
             pending = len(session.pending_questions())
+        except ReadLockTimeout:
+            raise
         except Exception:
             pending = 0
         # Surface invitees who still owe answers OR are merely invited
@@ -312,17 +333,28 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
     return out
 
 
-def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False) -> RepingResult:
+def prepare_reping(
+    db_path: str,
+    *,
+    interview_id: str,
+    send_email: bool = False,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> RepingResult:
     """Consent-scoped continuous ping: generate followups + return invite door.
 
     Skips declined interviews. Reuses ``async_interview.next_followups``.
     Optionally delivers the invite door by email via ``reping_mail``
     (AgentMail/Resend/Mock) when ``send_email`` is True, consent allows,
     and ``ANTIEK_SPEAK_REPING_EMAIL`` is set. Never emails declined invitees.
+
+    ``timeout_s`` bounds every write-lock wait here, including the one inside
+    ``next_followups`` (see ``async_interview``).
     """
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.reping_gate") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.reping_gate", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         row = con.execute(
             "SELECT i.status, s.token, "
@@ -364,7 +396,9 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
 
     before = async_interview.resume(db_path, interview_id)
     before_pending = {q["id"] for q in before.pending_questions()}
-    fus = async_interview.next_followups(db_path, interview_id=interview_id)
+    fus = async_interview.next_followups(
+        db_path, interview_id=interview_id, timeout_s=timeout_s
+    )
     after = async_interview.resume(db_path, interview_id)
     after_pending = after.pending_questions()
     added = sum(1 for q in after_pending if q["id"] not in before_pending)

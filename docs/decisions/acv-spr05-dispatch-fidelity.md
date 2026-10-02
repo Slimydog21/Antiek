@@ -1,7 +1,33 @@
-# §14.4 dispatch fidelity — the synthesizer Opus pin is REAL, FIXED, and now REACHABILITY-GUARDED
+# §14.4 dispatch fidelity — the synthesizer pin is REAL and FIXED (the pinned
+# model is now GLM-5.2, not Opus)
 
 **Date:** 2026-06-04
-**Status:** VERIFIED + GUARD INSTALLED (no routing change — verify-and-guard only)
+**Status:** VERIFIED (the pin holds) — but SUPERSEDED IN ONE PARTICULAR, and
+the guard named below is NOT wired.
+
+> **Corrected 2026-09-20.** Everything here about the §14.4 defect and the pin
+> MECHANISM is still accurate. Two things are not:
+>
+> 1. **The pinned model changed.** The operator's CLAUDE-LESS directive of
+>    2026-07-06 moved `tiers.synthesis` to `zai_reasoning` / `glm-5.2`; see
+>    `substrate/dispatch/config.yaml`, whose inline comment states "NOT Opus.
+>    The old Opus-4.7 primary ... retired." This record's title, and its
+>    citation of `config.yaml:64-89` for an "Opus pin", predate that and are
+>    wrong — the synthesis tier now lives at `config.yaml:98-113`. Reading
+>    this document as licence to propose Anthropic-dependent work would
+>    contradict a standing operator directive.
+>
+> 2. **The reachability guard is not installed.** No workflow references
+>    `tools/reachability/`; see `docs/decisions/reachability-gate.md`, also
+>    corrected. Until 2026-09-20 the probe additionally hardcoded the
+>    Anthropic pair while claiming to source it from config, so it asserted
+>    the opposite of the shipped configuration and nothing noticed, because
+>    nothing ran it. It now reads `tiers.synthesis` directly, and
+>    `tests/test_synthesis_pin_is_sourced.py` fails if it stops agreeing.
+>
+> What still guards the pin for real is
+> `tests/test_dispatch_synthesis_pin.py`, which runs in the pytest suite and
+> asserts the GLM pin.
 **Owner:** Antiek — Convergence SPR-05 (dispatch fidelity)
 **Surfaces:**
 `interfaces/research/api/synthesizer.py:192-278` (`_research_tier_override`, the

@@ -139,7 +139,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         raise HTTPException(
             status_code=503,
             detail=f"no model is configured to weigh this challenge: {exc}",
-        )
+        ) from exc
     except ValueError as exc:
         # ``note.refined`` / ``question.escalated_to_research`` require the
         # note's source document on the envelope (schema invariant §9.1). A
@@ -150,7 +150,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         raise HTTPException(
             status_code=422,
             detail=f"this note can't be challenged yet — it has no source on record: {exc}",
-        )
+        ) from exc
     if not result.applied and not result.escalated and not result.superseded:
         # The node id did not resolve to a note in the graph.
         raise HTTPException(status_code=404, detail="no such note")

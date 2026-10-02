@@ -76,14 +76,37 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 from tools.reachability.probe_runner import ProbeResult
 
-# The §14.4-pinned synthesis target. THE outcome this probe defends: a DEFAULT-
-# tier synthesizer dispatch resolves HERE, never to deepseek, while the pin
-# holds. Sourced from substrate/dispatch/config.yaml ``tiers.synthesis``.
-_PINNED_PROVIDER = "openrouter"
-_PINNED_MODEL = "anthropic/claude-opus-4.7"
+
+# The pinned synthesis target: a DEFAULT-tier synthesizer dispatch must
+# resolve HERE, never to deepseek.
+#
+# These were hardcoded to ``openrouter`` / ``anthropic/claude-opus-4.7`` under
+# a comment claiming they were "Sourced from substrate/dispatch/config.yaml
+# tiers.synthesis". They were not sourced, they were restated — so when the
+# operator's CLAUDE-LESS directive (2026-07-06) moved that tier to
+# ``zai_reasoning`` / ``glm-5.2``, the config moved, the invariant TOML moved,
+# the guard test moved, and this file silently kept asserting Anthropic. It
+# would have failed if anything ran it; nothing does (no workflow references
+# this package), so the contradiction sat unnoticed.
+#
+# Now actually sourced. A restated constant drifts; a read one cannot.
+# tests/test_synthesis_pin_is_sourced.py fails if this stops agreeing with
+# config.yaml.
+def _pinned_target() -> tuple[str, str]:
+    """``(provider, model)`` from ``substrate/dispatch/config.yaml``."""
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    cfg = yaml.safe_load((root / "substrate" / "dispatch" / "config.yaml").read_text())
+    tier = cfg["tiers"]["synthesis"]
+    return str(tier["provider"]), str(tier["model"])
+
+
+_PINNED_PROVIDER, _PINNED_MODEL = _pinned_target()
 
 # The provider the "deep" research tier maps to (research_tier.py). The §14.4
 # defect routed the SYNTHESIZER here on a schema-default "deep"; the probe
@@ -284,7 +307,8 @@ def _probe() -> ProbeResult:
 
         # ── OUTCOME assertion #1: the policy_id the dispatch returned ──
         # _dispatch_once returns f"{provider}/{model}" on success. The §14.4
-        # pin requires the human-read synthesis artifact to be produced by Opus.
+        # pin requires the human-read synthesis artifact to come from the tier
+        # config.yaml names.
         expected_policy = f"{_PINNED_PROVIDER}/{_PINNED_MODEL}"
         if policy_id != expected_policy:
             displaced = _DISPLACED_PROVIDER in (policy_id or "")
@@ -292,7 +316,7 @@ def _probe() -> ProbeResult:
                 ok=False,
                 reason=(
                     f"DEFAULT-tier synthesizer dispatch resolved to {policy_id!r}, "
-                    f"NOT the §14.4 Opus pin {expected_policy!r}"
+                    f"NOT the §14.4 pin {expected_policy!r}"
                     + (
                         " [displaced to deepseek]"
                         if displaced

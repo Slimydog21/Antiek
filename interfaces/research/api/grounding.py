@@ -103,9 +103,17 @@ def _search_chunks_for_claim(
     ensure_initialized(db_path)
     con = connect_read(db_path)
     try:
+        # The grounder verifies a claim against the document the OPERATOR
+        # loaded into their own investigation: an owner-side read, scoped to
+        # that document_id. Wrestle-loaded documents are personal_reading
+        # (owner-readable, never public), which the default
+        # 'attribution_eligible' tag excludes — the private-research tag is
+        # the owner's full-read path. Nothing found here is served; it feeds
+        # a grounding verdict.
         result = search(
             con, claim_text, model=embedder,
             top_k=top_k, document_id=document_id,
+            policy_tag="private_research",
         )
     finally:
         con.close()

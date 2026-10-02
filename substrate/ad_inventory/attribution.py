@@ -39,7 +39,7 @@ from dataclasses import dataclass
 ATTRIBUTION_ALGORITHM_VERSION = "attr-math-v1"
 
 
-class AttributionAlgorithm(str, enum.Enum):
+class AttributionAlgorithm(enum.StrEnum):
     """The three attribution options from master-spec §9.3."""
 
     OPTION_A_EQUAL_SPLIT = "equal_split_per_chunk_citation"

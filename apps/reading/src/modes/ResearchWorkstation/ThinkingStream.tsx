@@ -16,7 +16,7 @@ import TrajectoryView from "./TrajectoryView";
  * per substrate event (action_type / phase numbers / dispatch internals), it
  * narrates the run in the user's terms via narrateEvent — "Breaking your
  * question into parts… Looking for evidence on X… Found supporting points…
- * Writing the answer." Werner thinks while it runs.
+ * Writing the answer." Brain thinks while it runs.
  *
  * What this component is and is NOT:
  *   - It is a READ/DISPLAY layer over `useInvestigation` (which already
@@ -81,7 +81,7 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
   step: { dot: "bg-shadow-1 dark:bg-moonlight", text: "text-ink dark:text-bright" },
   finding: { dot: "bg-aurora", text: "text-ink dark:text-bright" },
   caution: { dot: "bg-sun-deep dark:bg-sun", text: "text-ink dark:text-bright" },
-  milestone: { dot: "bg-emperor", text: "text-ink dark:text-bright font-semibold" },
+  milestone: { dot: "bg-success", text: "text-ink dark:text-bright font-semibold" },
 };
 
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {
@@ -122,6 +122,20 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
   //    failure surface, never a perpetual "thinking…". `not_found` is the
   //    same shape (an id with no trajectory — also what a keyless start
   //    leaves behind). ──
+  // The trajectory fetch itself failed: nothing is known about the run, so
+  // say that and retry the fetch — never "the research didn't complete".
+  if (investigation.status === "error") {
+    return (
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <AIActionFailure
+          title="Couldn’t load this research"
+          code={investigation.loadError?.code ?? "unknown"}
+          retryable
+          onRetry={investigation.retry ?? onRetry ?? (() => window.location.reload())}
+        />
+      </div>
+    );
+  }
   if (investigation.status === "failed" || investigation.status === "not_found") {
     const reason =
       investigation.status === "failed"
@@ -179,7 +193,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
                     className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${TONE_STYLE[l.tone].dot}`}
                     aria-hidden="true"
                   />
-                  <span className={`font-serif text-[14px] leading-relaxed ${TONE_STYLE[l.tone].text}`}>
+                  <span className={`font-serif text-sm leading-relaxed ${TONE_STYLE[l.tone].text}`}>
                     {l.line}
                   </span>
                 </li>
@@ -187,7 +201,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
             </ol>
           )}
 
-          {/* While running, Werner thinks under the last line — the ongoing
+          {/* While running, Brain thinks under the last line — the ongoing
               "it's still working" signal. Sealed runs drop it. */}
           {running && lines.length > 0 && (
             <div className="mt-4 flex items-center gap-2" role="status" aria-live="polite">
@@ -200,7 +214,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
           )}
 
           {sealed && (
-            <p className="mt-4 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            <p className="mt-4 font-mono text-xs text-shadow-1 dark:text-moonlight">
               the answer is below
             </p>
           )}
@@ -243,7 +257,7 @@ function StreamHeader({
             investigation.status === "in_progress"
               ? "text-aurora"
               : investigation.status === "completed"
-                ? "text-emerald-700"
+                ? "text-success"
                 : "text-shadow-1 dark:text-moonlight"
           }`}
         >
@@ -287,7 +301,7 @@ function StreamHeader({
 export function SteerRefusal({ reason }: { reason: string | null | undefined }) {
   if (!reason) return null;
   return (
-    <p className="px-4 py-1 font-mono text-[11px] text-sun-deep dark:text-sun" role="status">
+    <p className="px-4 py-1 font-mono text-xs text-sun-deep dark:text-sun" role="status">
       {reason}
     </p>
   );
@@ -310,7 +324,7 @@ function ConnectingBeat({ status }: { status: InvestigationState["streamStatus"]
       <p className="font-serif text-sm text-ink dark:text-bright">
         {reconnecting ? "Connecting…" : "Getting started…"}
       </p>
-      <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+      <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
         the first step will appear here
       </p>
     </div>

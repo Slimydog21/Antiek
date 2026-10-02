@@ -1,9 +1,27 @@
 # Reachability gate — blocking, pre-merge, outcome-asserting
 
 **Decision date:** 2026-06-03
-**Status:** ✅ Active (blocking on `pull_request:[main]` + `push:[main]` via the
-`reachability` job in `.github/workflows/ci.yml`; the flywheel probe is
-intentionally known-red until SPR-02 — see the escape valve below)
+**Status:** ⚠️ PARTLY WIRED — reachability IS gated in CI, but not by the
+mechanism this record describes.
+
+> Corrected 2026-09-20. This line previously read
+> "✅ Active (blocking ... via the `reachability` job in
+> `.github/workflows/ci.yml`)". There is no `reachability` job in any
+> workflow, and there never was: `git log -S probe_runner --
+> .github/workflows/` returns **zero** commits. `tests/test_reachability_runner.py`,
+> named below as the self-test, does not exist.
+>
+> What IS wired, and is genuinely blocking, are two different tools:
+> `python tools/lint/reachability_gate.py` (`ci.yml:324`, reading surface) and
+> `python -m tools.lint.reachability_gate_py` (`ci.yml:333`, backend — its own
+> comment calls it "a hard CI gate"). Both live in the `pytest` job.
+>
+> So reachability is gated. The `tools/reachability/` probe-runner
+> architecture that THIS record ratifies — a dedicated job, outcome-asserting
+> probes, `known_red.json` as an escape valve — is not, and its nine modules
+> are unreferenced by any workflow or test. Read the rest of this document as
+> a design that was written and not installed, not as a description of
+> today's CI.
 **Owner:** Antiek — Convergence SPR-01 (keystone)
 **Scope:** a new `tools/reachability/` probe runner + a blocking CI job + the
 fifth done-bar convention. Does **not** touch the flywheel wire (that is SPR-02);

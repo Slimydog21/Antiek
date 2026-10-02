@@ -28,6 +28,7 @@ substrate.books cycle (``substrate.books.ingest`` imports this module).
 from __future__ import annotations
 
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 from runtime.db_lock import LockedConnection
@@ -35,6 +36,7 @@ from substrate import ip_holders
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
 )
 from substrate.graph.ops import update_document_gate_columns
 
@@ -47,6 +49,18 @@ class SourceKind(StrEnum):
     from any escrow/payout pool. Encoding that as a source-kind tag at the
     registration chokepoint makes the exclusion structural, not a downstream
     filter a future payout query could forget.
+
+    Ad-eligibility is NOT keyed on SourceKind: the kind is not persisted, and
+    substrate.books.ingest.register_book tags every Read-workflow book
+    LICENSED_PUBLISHER (arXiv papers and public-domain books included).
+    substrate.rights.ad_eligibility.ad_eligibility decides it from what IS
+    persisted (the licence tier in documents.metadata, else body servability).
+    The serve guard calls it for every document, and the reader-session
+    settlement (book_escrow.accrue_reading_session) and the per-author arXiv
+    ledger both ask it before their own gates.
+    tests/rights/test_ad_eligibility_agreement.py settles a paid fill on a
+    document of every member of this enum and checks the money accrues
+    exactly when serve time said ad-eligible.
     """
 
     LICENSED_PUBLISHER = "licensed_publisher"  # a book claimed via the §9.10 opt-in flow
@@ -77,6 +91,85 @@ VALID_CONTENT_CLASSES: frozenset[str] = frozenset({
 })
 
 
+class DerivationRefusedError(ValueError):
+    """The source class grants no right to transform the work at all."""
+
+
+# ── Derivation rule (SPR-07 task 3) ───────────────────────────────────────
+#
+# The rights half of fork / merge / compress / expand: what content_class a
+# USER-GENERATED TRANSFORMATION of a source document must carry. A decision
+# table, not a product — pure, no connection, no write. Every write still
+# goes one way, through ``register_source_document`` under the host lock; this
+# only tells the caller what class to hand that funnel.
+#
+# The rule is "the derivative inherits the source's rights basis, and a source
+# with NO rights basis cannot be transformed":
+#   public_domain            -> user_owned. The transformation is new expression
+#                               authored by the user; nothing upstream restricts
+#                               it, and a derivative of a PD work is NOT itself
+#                               public domain, so it lands as the user's own.
+#   user_owned               -> user_owned. Same owner on both sides.
+#   user_public_contribution -> user_public_contribution. Another user's public
+#                               posting (§13.9) keeps its terms; a fork may not
+#                               privatize or re-own it.
+#   opt_in_licensed          -> opt_in_licensed. The publisher's §9.10 licence,
+#                               attribution and rev-share follow the derivative.
+#   source_declared_open     -> source_declared_open. CC-BY needs attribution and
+#                               CC-BY-SA needs share-alike; inheriting the class
+#                               is the only stamp that honours both.
+#   restricted_pending_opt_in -> REFUSED. Body withheld, no rights basis; there is
+#                               nothing to transform (master-spec §9.0).
+#   personal_reading         -> REFUSED. Third-party content the owner fetched for
+#                               private reading; it never serves, earns or trains,
+#                               and a transformation would launder it.
+# Every derivable result is in SERVABLE_CONTENT_CLASSES and is a fixed point
+# (a fork of a fork carries the same class); both are asserted at import so a
+# future edit cannot silently break them. The table's key set must equal
+# VALID_CONTENT_CLASSES; a class added without a row here fails at import.
+DERIVED_CONTENT_CLASS_TABLE: MappingProxyType[str, str | None] = MappingProxyType({
+    "public_domain": "user_owned",
+    "user_owned": "user_owned",
+    "user_public_contribution": "user_public_contribution",
+    "opt_in_licensed": "opt_in_licensed",
+    "source_declared_open": "source_declared_open",
+    GATED_DEFAULT_CONTENT_CLASS: None,
+    PERSONAL_READING_CONTENT_CLASS: None,
+})
+assert frozenset(DERIVED_CONTENT_CLASS_TABLE) == VALID_CONTENT_CLASSES, (
+    "DERIVED_CONTENT_CLASS_TABLE must name every VALID_CONTENT_CLASSES member "
+    "exactly once — add a derivation row (or an explicit refusal) for the new class"
+)
+assert all(
+    v is None or (v in SERVABLE_CONTENT_CLASSES and DERIVED_CONTENT_CLASS_TABLE[v] == v)
+    for v in DERIVED_CONTENT_CLASS_TABLE.values()
+), "every derivable result must be servable and a fixed point of the table"
+
+
+def derived_content_class(source_content_class: str) -> str:
+    """Return the ``content_class`` a user-generated transformation (fork,
+    merge, compress, expand) of a document stamped ``source_content_class``
+    must carry. Pure: no connection, no DB, no write.
+
+    Raises :class:`DerivationRefusedError` for ``restricted_pending_opt_in``
+    and ``personal_reading`` — the source grants no right to transform — and
+    a plain ``ValueError`` for a class outside :data:`VALID_CONTENT_CLASSES`
+    (a typo is a rights hazard; raise, never default).
+    """
+    if source_content_class not in DERIVED_CONTENT_CLASS_TABLE:
+        raise ValueError(
+            f"unrecognised content_class {source_content_class!r}; expected one of "
+            f"{sorted(VALID_CONTENT_CLASSES)}"
+        )
+    derived = DERIVED_CONTENT_CLASS_TABLE[source_content_class]
+    if derived is None:
+        raise DerivationRefusedError(
+            f"a document of content_class {source_content_class!r} may not be "
+            "transformed: it carries no rights basis for a derivative work"
+        )
+    return derived
+
+
 def _require_locked(con: Any) -> None:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -99,6 +192,22 @@ def resolve_or_create_ip_holder(con: LockedConnection, display_name: str) -> str
         if holder.display_name == display_name:
             return str(holder.ip_holder_id)
     return str(ip_holders.create_pre_onboarded(con, display_name=display_name))
+
+
+def resolve_content_class(content_class: str | None) -> str:
+    """The class a source document is registered under: the gated default
+    when none is given, otherwise the given class — which must be a KNOWN
+    class (a typo raises rather than silently gating). Pure, so a producer
+    can resolve BEFORE its first write and insert the row already classed:
+    a document must never exist with content_class NULL between the insert
+    and the registration that classifies it."""
+    resolved_class = content_class or GATED_DEFAULT_CONTENT_CLASS
+    if resolved_class not in VALID_CONTENT_CLASSES:
+        raise ValueError(
+            f"unrecognised content_class {resolved_class!r}; expected one of "
+            f"{sorted(VALID_CONTENT_CLASSES)}"
+        )
+    return resolved_class
 
 
 def register_source_document(
@@ -160,12 +269,7 @@ def register_source_document(
             "registering its rights (acquisition inserts, then registers)."
         )
 
-    resolved_class = content_class or GATED_DEFAULT_CONTENT_CLASS
-    if resolved_class not in VALID_CONTENT_CLASSES:
-        raise ValueError(
-            f"unrecognised content_class {resolved_class!r}; expected one of "
-            f"{sorted(VALID_CONTENT_CLASSES)}"
-        )
+    resolved_class = resolve_content_class(content_class)
 
     # user_content is escrow-excluded BY CONSTRUCTION: the operator's own / -captured
     # media has no external rights holder to ever pay, so passing an explicit

@@ -18,11 +18,9 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Optional
-
-from substrate.event_log import emit_typed
+from typing import Any
 
 # Status state machine per master-spec §9.10.
 VALID_STATUSES: frozenset[str] = frozenset({
@@ -44,6 +42,10 @@ FIRST_COHORT_PUBLISHERS: tuple[str, ...] = (
 )
 
 
+class UnknownIpHolderError(LookupError):
+    """An escrow accrual named an ip_holder_id with no ip_holders row."""
+
+
 @dataclass
 class IpHolder:
     ip_holder_id: str
@@ -56,7 +58,7 @@ class IpHolder:
     claimed_at: str | None
     opted_out_at: str | None
     created_at: str
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _now_iso() -> str:
@@ -68,7 +70,7 @@ def create_pre_onboarded(
     *,
     display_name: str,
     legal_contact_email: str | None = None,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Create a pre-onboarded IP holder account.
 
@@ -169,14 +171,46 @@ def accrue_escrow(con: Any, ip_holder_id: str, amount_usd: Decimal) -> None:
     Connect transfer that runs only when status='claimed'."""
     if amount_usd <= 0:
         raise ValueError(f"accrue_escrow amount must be positive, got {amount_usd}")
-    con.execute(
+    # RETURNING, because an UPDATE matching zero rows succeeds silently: an
+    # unknown id (documents.ip_holder_id has no FK) would drop the money while
+    # the caller records it as accrued.
+    updated = con.execute(
         """
         UPDATE ip_holders
         SET escrow_balance_usd = escrow_balance_usd + ?
         WHERE ip_holder_id = ?
+        RETURNING ip_holder_id
         """,
         [str(amount_usd), ip_holder_id],
-    )
+    ).fetchall()
+    if len(updated) != 1:
+        raise UnknownIpHolderError(
+            f"accrue_escrow: no ip_holders row for {ip_holder_id!r}; "
+            f"{amount_usd} USD not accrued"
+        )
+
+
+def require_holders(con: Any, ip_holder_ids: set[str]) -> None:
+    """Raise ``UnknownIpHolderError`` unless every id has an ip_holders row.
+
+    For a writer that records a credit in its own ledger BEFORE calling
+    ``accrue_escrow``: checking first lets it fail before any row is written,
+    instead of leaving a ledger credit that escrow never received."""
+    if not ip_holder_ids:
+        return
+    ordered = sorted(ip_holder_ids)
+    placeholders = ",".join("?" for _ in ordered)
+    found = {
+        r[0]
+        for r in con.execute(
+            f"SELECT ip_holder_id FROM ip_holders "
+            f"WHERE ip_holder_id IN ({placeholders})",
+            ordered,
+        ).fetchall()
+    }
+    missing = [i for i in ordered if i not in found]
+    if missing:
+        raise UnknownIpHolderError(f"no ip_holders row for {missing!r}")
 
 
 def get(con: Any, ip_holder_id: str) -> IpHolder | None:
@@ -225,7 +259,7 @@ def list_all(con: Any, status: str | None = None) -> list[IpHolder]:
     return [_row_to_holder(r) for r in rows]
 
 
-def _row_to_holder(row: tuple) -> IpHolder:
+def _row_to_holder(row: tuple[Any, ...]) -> IpHolder:
     (
         ip_holder_id, display_name, legal_contact_email,
         status, escrow_balance_usd, escrow_account_ref,

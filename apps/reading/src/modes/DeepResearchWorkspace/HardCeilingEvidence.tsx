@@ -51,7 +51,7 @@ export default function HardCeilingEvidence({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+          <p className="text-xs font-mono uppercase text-shadow-1 dark:text-moonlight">
             Hard authorized-spend ceiling · {current.run_state.replaceAll("_", " ")}
           </p>
           <p className="mt-1 text-xs text-ink-mute dark:text-moonlight">
@@ -73,7 +73,7 @@ export default function HardCeilingEvidence({
           ["Available", current.available_cents],
         ].map(([label, cents]) => (
           <div key={label}>
-            <dt className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">{label}</dt>
+            <dt className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">{label}</dt>
             <dd className="font-mono text-sm text-ink dark:text-bright">{usd(cents as number)}</dd>
           </div>
         ))}

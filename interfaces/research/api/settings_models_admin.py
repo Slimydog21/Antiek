@@ -82,15 +82,15 @@ import re
 import stat
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from runtime.byok.store import (
     CredentialIntegrityError,
@@ -104,6 +104,7 @@ from runtime.research_runner.byot_provider_catalog import (
     BYOT_PROVIDER_PRESETS,
     ProviderCatalogId,
     canonical_catalog_id,
+    canonical_model_id,
     get_model_variant,
     get_provider_preset,
     route_authority_catalog_entries,
@@ -116,7 +117,7 @@ from runtime.research_runner.provider_route_authority import (
     RouteExecutionStatus,
     canonical_provider_endpoint,
 )
-from substrate.dispatch.base import Provider, ProviderError
+from substrate.dispatch.base import Provider, ProviderError, RawProviderResponse
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import get_provider, register_provider
@@ -127,6 +128,11 @@ _ENV_HOME = "ANTIEK_HOME"
 _PIPELINE_KIND = "model_provider"
 _ID_PREFIX = "user-"
 _LEGACY_OWNER_USER_ID = "__operator__"
+
+# Auth methods that prove no human: a service token or bearer credential must
+# never be resolved to a person through the e-mail fallback, even if a future
+# auth path attaches an address to them.
+_MACHINE_AUTH_METHODS = frozenset({"bearer_token", "cloudflare_service_token"})
 _REGISTRY_LOCK = threading.RLock()
 _PRIVATE_FILE_MODE = 0o600
 
@@ -165,12 +171,27 @@ class UserModelRecord(BaseModel):
     owner_user_id: str = Field(default=_LEGACY_OWNER_USER_ID, min_length=1, max_length=256)
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None = None
+    # ``model_id`` is the PRIMARY variant: the one the live adapter, the
+    # inventory row and every pre-variant caller name. ``model_ids`` is every
+    # variant this ONE key may be asked to drive (SPR-03 Task 2); it always
+    # contains ``model_id`` first, so a pre-variant registry row (no
+    # ``model_ids`` on disk) normalises to a single-variant record and its
+    # fingerprint stays a pure function of the record.
     model_id: str
+    model_ids: list[str] = Field(default_factory=list)
     display_name: str
     base_url: str | None = None
     cred_ref: str
     cred_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _normalise_variants(self) -> UserModelRecord:
+        # Normalise rather than reject: the registry-integrity read path must
+        # keep loading a row whose file was edited (that mismatch is caught by
+        # the registration fingerprint, which answers 409, not a 500 here).
+        self.model_ids = list(dict.fromkeys([self.model_id, *self.model_ids]))
+        return self
 
 
 def _owner_hash(owner_user_id: str) -> str:
@@ -207,10 +228,44 @@ def _registered_name_belongs_to(name: str, owner_user_id: str) -> bool:
 
 
 def request_owner_user_id(request: Request) -> str:
-    value = getattr(request.state, "user_id", _LEGACY_OWNER_USER_ID)
-    if not isinstance(value, str) or not value or len(value) > 256:
+    """Stable opaque owner for this request (namespace Option A).
+
+    A real per-user id is used as-is (Sprint 22+ multi-user). The shared
+    ``__operator__`` sentinel cannot name a person, so it derives from the
+    verified session e-mail — the same function account memory, ingest,
+    BYOT, and tool search already use. Two allowlisted operators therefore
+    get two owners instead of one shared credential pool.
+
+    Fail-closed: sentinel without a verified e-mail, or a malformed id →
+    401. Never invents an owner. No implicit read-fallback that would let
+    any derived owner claim legacy ``__operator__`` rows (the migration in
+    ``tools/migrate_owner_namespace.py`` re-owns those explicitly).
+    """
+    from .account_memory_identity import (
+        OPERATOR_STORAGE_SENTINEL,
+        derive_owner_from_verified_email,
+    )
+
+    value = getattr(request.state, "user_id", None)
+    if (
+        isinstance(value, str)
+        and value
+        and len(value) <= 256
+        and value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold()
+    ):
+        return value
+    if getattr(request.state, "auth_method", None) in _MACHINE_AUTH_METHODS:
+        # Defense in depth (the #3197 gate, narrowed): machine credentials
+        # never resolve to a person, even if a future auth path attaches an
+        # e-mail to them. Unreachable today — neither machine path sets
+        # user_email — so this changes no current behavior.
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return value
+    derived = derive_owner_from_verified_email(
+        getattr(request.state, "user_email", None)
+    )
+    if not isinstance(derived, str) or not derived or len(derived) > 256:
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
+    return derived
 
 
 def _registry_path() -> Path:
@@ -510,6 +565,42 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
         self._user_model_authority_fingerprint = _record_fingerprint(record)
+        self._provider_catalog_id = record.provider_catalog_id
+
+    def call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
+    ) -> RawProviderResponse:
+        """Send a catalog variant as the provider knows it: its wire model name
+        plus its mode switch, so a legacy or mode-split id keeps the behaviour
+        it was chosen and priced for. Custom endpoints send ``model`` as is."""
+        wire_model = model
+        body: dict[str, Any] = {}
+        if self._provider_catalog_id is not None:
+            try:
+                variant = get_model_variant(
+                    get_provider_preset(self._provider_catalog_id), model
+                )
+            except KeyError:
+                variant = None
+            if variant is not None:
+                wire_model = variant.request_model_id
+                if variant.thinking is not None:
+                    body["thinking"] = {"type": variant.thinking}
+        if extra_body:
+            body.update(extra_body)
+        return super().call(
+            model=wire_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extra_body=body or None,
+        )
 
 
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
@@ -605,6 +696,8 @@ class UserModelRow(BaseModel):
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None = None
     model_id: str
+    # Every selectable variant under this one key, primary first.
+    model_ids: list[str] = Field(default_factory=list)
     display_name: str
     base_url: str | None
     enabled: bool
@@ -683,6 +776,22 @@ class OwnerModelAuthority:
     credential_id: str
     credential_fingerprint: str
     registration_fingerprint: str
+    # The variant the caller chose, which is one of ``record.model_ids`` and
+    # may differ from ``record.model_id`` (the primary). Dispatch prices and
+    # sends THIS, so one key can drive V4 Pro on one call and V4 Flash on the
+    # next while the ledger stays keyed on ``record.id``.
+    model_id: str
+
+
+def _current_model_id(record: UserModelRecord, model_id: str) -> str:
+    """``model_id`` under the provider's current name when the record uses a
+    catalog preset; a custom endpoint's ids are left exactly as registered."""
+    if record.provider_catalog_id is None:
+        return model_id
+    try:
+        return canonical_model_id(get_provider_preset(record.provider_catalog_id), model_id)
+    except KeyError:
+        return model_id
 
 
 def resolve_owner_model_authority(
@@ -691,9 +800,14 @@ def resolve_owner_model_authority(
     """Resolve and revalidate an owner route without decrypting its credential."""
     validated = UserModelChoice.model_validate(choice.model_dump(mode="json"))
     registry = _load_registry()
+    # Compare under current provider names, so a record or a remembered
+    # choice saved under a retired name still resolves (and is sent as the
+    # current model).
     matches = [
         item for item in registry.values()
-        if item.id == validated.provider_id and item.model_id == validated.model_id
+        if item.id == validated.provider_id
+        and _current_model_id(item, validated.model_id)
+        in {_current_model_id(item, m) for m in item.model_ids}
     ]
     record = matches[0] if len(matches) == 1 else None
     metadata = _credential_metadata()
@@ -716,6 +830,7 @@ def resolve_owner_model_authority(
         credential_id=credential.cred_id,
         credential_fingerprint=credential.artifact_fingerprint or "",
         registration_fingerprint=registration,
+        model_id=_current_model_id(record, validated.model_id),
     )
 
 
@@ -729,11 +844,15 @@ class UserModelAuthoritySnapshot:
     rate_snapshot: str | None
 
 
-def _route_execution_authority(app: FastAPI, record: UserModelRecord) -> ProviderRouteAuthority:
+def _route_execution_authority(
+    app: FastAPI, record: UserModelRecord, *, model_id: str | None = None,
+) -> ProviderRouteAuthority:
+    # ``model_id`` picks the variant to price; the primary when not given.
+    chosen = _current_model_id(record, model_id or record.model_id)
     endpoint = record.base_url or "https://api.anthropic.com"
     identity = ProviderRouteIdentity(
         provider_kind=record.provider_kind,
-        model_id=record.model_id,
+        model_id=chosen,
         endpoint=endpoint,
         seam_id="user.prompt.generate",
         operation="generate",
@@ -742,7 +861,7 @@ def _route_execution_authority(app: FastAPI, record: UserModelRecord) -> Provide
     if record.provider_catalog_id is not None:
         try:
             preset = get_provider_preset(record.provider_catalog_id)
-            get_model_variant(preset, record.model_id)
+            get_model_variant(preset, chosen)
             preset_matches = (
                 record.provider_kind == preset.adapter_kind
                 and canonical_provider_endpoint(endpoint)
@@ -810,18 +929,22 @@ def resolve_user_model_choice(
         or record.owner_user_id != owner_user_id
         or not record.enabled
         or record.id != validated.provider_id
-        or record.model_id != validated.model_id
+        or _current_model_id(record, validated.model_id)
+        not in {_current_model_id(record, m) for m in record.model_ids}
         or not _credential_matches_record(record, metadata)
         or record.id not in _seam_names(app)
         or fingerprints.get(record.id) != _record_fingerprint(record)
         or not _live_adapter_matches(app, record.id)
     ):
         raise UserModelChoiceUnavailable("user model route is unavailable")
-    authority = _route_execution_authority(app, record)
+    # Resolve under the provider's current name, like the owner route, so a
+    # choice saved under a retired name is priced and sent as the same variant.
+    chosen = _current_model_id(record, validated.model_id)
+    authority = _route_execution_authority(app, record, model_id=chosen)
     return ResolvedUserModelRoute(
         authority="user_model",
         provider_id=record.id,
-        model_id=record.model_id,
+        model_id=chosen,
         credential_ref=record.cred_ref,
         pricing_status=authority.pricing_status,
         hard_ceiling_eligible=authority.hard_ceiling_eligible,
@@ -845,9 +968,25 @@ class _ValidatedCreate:
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None
     model_id: str
+    # Every variant the key may drive, primary first (see UserModelRecord).
+    model_ids: tuple[str, ...]
     display_name: str
     base_url: str | None
     api_key: str
+
+
+_MAX_VARIANTS = 16
+
+
+def _parse_model_id(value: object, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_MODEL_ID_LEN
+        or any(c.isspace() for c in value)
+    ):
+        raise _reject(f"{field} must be a non-empty string without whitespace")
+    return value
 
 
 def _reject(detail: str) -> HTTPException:
@@ -880,19 +1019,46 @@ def _parse_create(payload: object) -> _ValidatedCreate:
     else:
         raise _reject("provider_catalog_id must be a string when provided")
 
-    model_id = payload.get("model_id")
-    if (
-        not isinstance(model_id, str)
-        or not model_id
-        or len(model_id) > _MAX_MODEL_ID_LEN
-        or any(c.isspace() for c in model_id)
-    ):
-        raise _reject("model_id must be a non-empty string without whitespace")
+    # One key, many variants: ``model_ids`` lists every variant this ONE
+    # credential may drive; ``model_id`` (optional when ``model_ids`` is sent)
+    # names the primary. A single ``model_id`` alone is the pre-variant shape
+    # and still registers exactly as before.
+    raw_model_ids = payload.get("model_ids")
+    raw_model_id = payload.get("model_id")
+    if raw_model_ids is None:
+        model_ids: tuple[str, ...] = (_parse_model_id(raw_model_id, field="model_id"),)
+    else:
+        if (
+            not isinstance(raw_model_ids, list)
+            or not raw_model_ids
+            or len(raw_model_ids) > _MAX_VARIANTS
+        ):
+            raise _reject(f"model_ids must be a list of 1-{_MAX_VARIANTS} model ids")
+        variants = [_parse_model_id(item, field="model_ids[]") for item in raw_model_ids]
+        if len(set(variants)) != len(variants):
+            raise _reject("model_ids must not repeat a model id")
+        if raw_model_id is not None:
+            primary = _parse_model_id(raw_model_id, field="model_id")
+            if primary not in variants:
+                raise _reject("model_id must be one of model_ids when both are sent")
+            variants.remove(primary)
+            variants.insert(0, primary)
+        model_ids = tuple(variants)
     if preset is not None:
-        try:
-            get_model_variant(preset, model_id)
-        except KeyError as exc:
-            raise _reject("model_id is not available for the selected provider preset") from exc
+        # Store the provider's current names, never a retired alias.
+        current = tuple(dict.fromkeys(canonical_model_id(preset, v) for v in model_ids))
+        if len(current) != len(model_ids):
+            raise _reject("model_ids name the same model twice under old and new names")
+        model_ids = current
+    model_id = model_ids[0]
+    if preset is not None:
+        for variant_id in model_ids:
+            try:
+                get_model_variant(preset, variant_id)
+            except KeyError as exc:
+                raise _reject(
+                    "model_id is not available for the selected provider preset"
+                ) from exc
 
     display_name = payload.get("display_name")
     if (
@@ -967,6 +1133,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
         provider_kind=cast(ProviderKind, provider_kind),
         provider_catalog_id=provider_catalog_id,
         model_id=model_id,
+        model_ids=model_ids,
         display_name=display_name.strip(),
         base_url=base_url,
         api_key=api_key,
@@ -1008,6 +1175,7 @@ def _row(
         provider_kind=record.provider_kind,
         provider_catalog_id=record.provider_catalog_id,
         model_id=record.model_id,
+        model_ids=list(record.model_ids),
         display_name=record.display_name,
         base_url=record.base_url,
         enabled=record.enabled,
@@ -1119,6 +1287,7 @@ async def post_user_model(request: Request) -> UserModelRow:
             provider_kind=spec.provider_kind,
             provider_catalog_id=spec.provider_catalog_id,
             model_id=spec.model_id,
+            model_ids=list(spec.model_ids),
             display_name=spec.display_name,
             base_url=spec.base_url,
             cred_ref=cred_ref,

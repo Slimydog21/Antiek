@@ -31,6 +31,7 @@ table is the caller's responsibility (same posture as
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import uuid
 from collections.abc import Callable
@@ -65,7 +66,7 @@ def _now_unix() -> int:
     return int(time.time())
 
 
-class InboundRejection(str, enum.Enum):
+class InboundRejection(enum.StrEnum):
     """Concrete reasons an inbound citation is refused. The handler
     NEVER raises on rejection — it returns an ``InboundCitationOutcome``
     with ``accepted=False`` and a populated ``rejection`` so the caller
@@ -284,7 +285,7 @@ def accept_inbound_citation(
 def ensure_nonce_table(con: Any) -> None:
     """Defensive table-creation for the persistent nonce ledger.
     Canonical schema lives in ``substrate/graph/schema.py``."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS federation_nonces (
@@ -295,8 +296,6 @@ def ensure_nonce_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def prune_expired_nonces(

@@ -104,12 +104,21 @@ def _write_start(
 def test_section_7_4_caps_are_byte_unchanged_vs_origin_main():
     """The surface must not widen the daemon's §7.4 cost-runaway caps. Assert
     the cap-bearing daemon modules are byte-identical to origin/main (the
-    sprint page's gate: ``git diff origin/main -- …daemon.py``)."""
+    sprint page's gate: ``git diff origin/main -- …daemon.py``).
+
+    SUPERSEDED IN PART by autonomous-diligence SPR-02 (PR #3435's spec,
+    ``docs/htmlspec/research-thread-island``-era sibling
+    ``docs/htmlspec/autonomous-diligence/index.html``): the activation
+    sprint's contract EDITS ``daemon.py`` (spawn_fn wiring, flag priority,
+    the one new concurrency cap), so daemon.py leaves the byte-equality
+    list. What the guardrail still forbids — cap re-tuning — is now asserted
+    by value on the daemon's config defaults below, and budget.py /
+    scoring.py / research_topic.py stay byte-identical (the scorer and the
+    caps' mechanics are untouched, per the spec's invariant)."""
     import subprocess
 
     cap_files = [
         "orchestration/continuous/budget.py",
-        "orchestration/continuous/daemon.py",
         "orchestration/continuous/scoring.py",
         "orchestration/continuous/research_topic.py",
     ]
@@ -121,9 +130,26 @@ def test_section_7_4_caps_are_byte_unchanged_vs_origin_main():
     )
     assert diff.returncode == 0, diff.stderr
     assert diff.stdout == "", (
-        "SPR-09 surfaces the daemon's output read-only; it must not modify the "
-        f"§7.4 cap-bearing daemon code. Unexpected diff:\n{diff.stdout}"
+        "SPR-09 surfaces the daemon's output read-only and SPR-02 (diligence) "
+        "adopts the caps verbatim; neither may modify the cap-bearing "
+        f"mechanics. Unexpected diff:\n{diff.stdout}"
     )
+
+
+def test_daemon_config_caps_adopted_verbatim_plus_the_one_new_cap():
+    """Autonomous-diligence SPR-02: daemon.py is edited (wiring), but its
+    cap-bearing config defaults are the shipped §7.4 values VERBATIM — plus
+    exactly the one new cap the spec names (concurrency, default 2)."""
+    from orchestration.continuous.daemon import DaemonConfig
+
+    cfg = DaemonConfig()
+    assert cfg.expected_cost_per_spawn_usd == 0.50
+    assert cfg.max_spawns_per_iteration == 3
+    assert cfg.min_score_to_spawn == 0.05
+    assert cfg.spawn_policy_id == "continuous_daemon"
+    assert cfg.sleep_seconds == 60.0
+    # The ONE cap SPR-02 adds (the dimension no existing cap covers).
+    assert cfg.max_concurrent_daemon_investigations == 2
 
 
 def test_section_7_4_cap_constants_have_their_shipped_defaults():

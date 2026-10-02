@@ -18,7 +18,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class BiddingPolicy(str, enum.Enum):
+class BiddingPolicy(enum.StrEnum):
     """Per master-spec §9.4 phased approach."""
 
     MANUAL_SPONSOR = "manual_sponsor"      # Phase 1: single sponsor pays flat monthly

@@ -65,11 +65,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Callable, Optional
+from typing import Any
 
-from .contributor import AccrualLine, accrue_contributions, DEFAULT_SLOP_THRESHOLD
+from .contributor import DEFAULT_SLOP_THRESHOLD, AccrualLine, accrue_contributions
 from .events import SPEAK_INTERVIEW_GRADED, record_speak_event
 from .schema import ensure_speak_schema
 
@@ -129,7 +130,7 @@ class InterviewGrade:
 # ---------------------------------------------------------------------------
 
 
-def _transcript_text(turns: list[dict]) -> str:
+def _transcript_text(turns: list[dict[str, Any]]) -> str:
     """Concatenate an interviewee's answers (informant turns) into one
     string the rubric / verifier scores. Interviewer prompts are excluded
     — we grade what the PERSON said, not what we asked."""
@@ -163,7 +164,7 @@ def _verifier_prompt(goal: InterviewGoal, transcript: str) -> str:
     )
 
 
-def _parse_verifier_json(raw: str) -> dict:
+def _parse_verifier_json(raw: str) -> dict[str, Any]:
     """Parse the verifier's JSON reply, tolerating fenced/extra text. A
     malformed reply is a verifier failure, not a silent 0 — the caller's
     deterministic fallback handles a missing verifier, but a verifier
@@ -171,10 +172,13 @@ def _parse_verifier_json(raw: str) -> dict:
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if not m:
         raise ValueError(f"verifier reply contained no JSON object: {raw!r}")
-    return json.loads(m.group(0))
+    parsed = json.loads(m.group(0))
+    if not isinstance(parsed, dict):
+        raise ValueError("verifier reply was not a JSON object")
+    return parsed
 
 
-def _deterministic_grade(goal: InterviewGoal, transcript: str) -> dict:
+def _deterministic_grade(goal: InterviewGoal, transcript: str) -> dict[str, Any]:
     """The no-model, honest fallback rubric. NOT a trained grader (rigor
     #1) — a keyword-coverage + substance heuristic:
 
@@ -241,8 +245,8 @@ def grade_interview(
     project_id: str,
     interview_id: str,
     goal: InterviewGoal,
-    transcript_turns: Optional[list[dict]] = None,
-    dispatch_fn: Optional[Callable[..., Any]] = None,
+    transcript_turns: list[dict[str, Any]] | None = None,
+    dispatch_fn: Callable[..., Any] | None = None,
 ) -> InterviewGrade:
     """Grade one interview's transcript against the requester's goal.
 
@@ -339,7 +343,7 @@ def _persist_grade(con: Any, goal: InterviewGoal, grade: InterviewGrade) -> None
     )
 
 
-def get_grade(con: Any, interview_id: str) -> Optional[InterviewGrade]:
+def get_grade(con: Any, interview_id: str) -> InterviewGrade | None:
     row = con.execute(
         "SELECT interview_id, project_id, score, passed, honest, gamed_risk, "
         "rationale, graded_by FROM speak_interview_grades WHERE interview_id = ?",
@@ -384,8 +388,8 @@ def release_payout(
     project_id: str,
     goal: InterviewGoal,
     ad_revenue_usd: Decimal,
-    publication_id: Optional[str] = None,
-    impression_ref: Optional[str] = None,
+    publication_id: str | None = None,
+    impression_ref: str | None = None,
 ) -> PayoutRelease:
     """Release graded payout for a project's interviews, routed through §9.
 
@@ -439,9 +443,9 @@ def release_payout(
     # already bound what was written + escrowed, so spent_usd is just the sum
     # of the actual accrued amounts, and capped/exhausted are the flags
     # accrue_contributions set on the lines it wrote.
-    spent = sum((l.amount_usd for l in lines if not l.slop_gated), Decimal("0"))
-    capped = [l.interview_id for l in lines if l.capped]
-    exhausted = any(l.budget_clamped for l in lines)
+    spent = sum((line.amount_usd for line in lines if not line.slop_gated), Decimal("0"))
+    capped = [line.interview_id for line in lines if line.capped]
+    exhausted = any(line.budget_clamped for line in lines)
 
     return PayoutRelease(
         accrual_lines=tuple(lines),

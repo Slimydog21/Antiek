@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 VOICE_NOTE_FOLLOWUP_PROMPT_VERSION = "1.0.0"
 VOICE_NOTE_FOLLOWUP_TIER = "pro"
@@ -80,12 +81,12 @@ Return JSON in the shape specified above. 1-3 prompts only.
 @dataclass(frozen=True)
 class VoiceNoteFollowupContext:
     transcript: str
-    insights: list[dict] = field(default_factory=list)  # each: {id, text}
-    open_questions: list[dict] = field(default_factory=list)  # each: {id, text}
+    insights: list[dict[str, Any]] = field(default_factory=list)  # each: {id, text}
+    open_questions: list[dict[str, Any]] = field(default_factory=list)  # each: {id, text}
     prior_context: str = ""
 
 
-def _format_blocks(items: list[dict]) -> str:
+def _format_blocks(items: list[dict[str, Any]]) -> str:
     if not items:
         return "_None._"
     return "\n".join(

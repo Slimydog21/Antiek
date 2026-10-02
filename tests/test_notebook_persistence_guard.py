@@ -329,3 +329,65 @@ def test_hydration_get_empty_notebook_returns_empty_doc(isolated_db):
     got = client.get(f"/notebooks/{nb_id}/content")
     assert got.status_code == 200, got.text
     assert got.json()["doc"] == {"type": "doc", "content": []}
+
+
+def test_a_failure_midway_through_the_replace_does_not_destroy_the_notebook(
+    isolated_db, monkeypatch
+):
+    """The replace must be atomic, not merely serialized.
+
+    SPR-01 fixed the empty-doc TRIGGER of this data loss. It did not fix the
+    class: ``PUT /notebooks/{id}/content`` still runs
+    ``DELETE FROM notebook_blocks`` and then re-inserts in a loop with no
+    explicit transaction. DuckDB autocommits every statement, so the lock the
+    code cites gives mutual exclusion and NOT atomicity — if any re-insert
+    raises, the DELETE is already durable and every block is gone.
+
+    ``append_block`` raises ValueError on an unknown block_type and a SQL
+    CHECK constraint backs it, so a mid-loop failure is reachable from a
+    decomposer that emits a node type the schema does not accept. Inject that
+    failure and assert the operator's notes survive.
+    """
+    import substrate.notebooks as notebooks_mod
+
+    # raise_server_exceptions=False so the 500 comes back as a RESPONSE rather
+    # than propagating into the test — that is what a real HTTP client sees,
+    # and it lets us inspect the datastore afterwards.
+    client = TestClient(
+        create_app(register_wrestling=False), raise_server_exceptions=False
+    )
+    nb_id, texts = _seed_notebook_with_blocks(client, 3)
+
+    before = client.get(f"/notebooks/{nb_id}").json()["blocks"]
+    assert len(before) == 3, "fixture must persist 3 blocks for this to mean anything"
+
+    real_append = notebooks_mod.append_block
+    calls = {"n": 0}
+
+    def flaky_append(con, notebook_id, **kw):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise ValueError("injected: block_type rejected by schema")
+        return real_append(con, notebook_id, **kw)
+
+    monkeypatch.setattr(notebooks_mod, "append_block", flaky_append)
+
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": f"replacement {i}"}]}
+            for i in range(3)
+        ],
+    }
+    resp = client.put(f"/notebooks/{nb_id}/content", json={"doc": doc})
+
+    assert resp.status_code >= 400, (
+        f"the replace failed midway; the API must report it, got {resp.status_code}"
+    )
+
+    after = client.get(f"/notebooks/{nb_id}").json()["blocks"]
+    assert len(after) == 3, (
+        f"the operator's notebook lost {3 - len(after)} of 3 blocks because a "
+        "failed replace left the DELETE durable. The replace must roll back."
+    )
+    assert _block_texts(after) == texts, "the original block contents must survive"

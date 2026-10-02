@@ -4,12 +4,13 @@ import { AdBorder } from "./AdBorder";
 import type { BorderPosition, FillResult } from "./adFillClient";
 
 /**
- * AdBorder — the always-on, four-edge "Times-Square" ad border (SPR-07).
+ * AdBorder — the shell's one labelled house-ad slot (SPR-07; design wave 3).
  *
  * In the app it is mounted ONCE at the shell (AppShell → AdBorderMount) and
- * wraps every lens. These stories isolate it on a mock working surface so the
- * four edges, the wide-vs-narrow crossover, real-vs-house fill, and the
- * reduced-motion behaviour are all visible without booting the shell.
+ * serves every lens. These stories isolate it on a mock working surface so the
+ * slot, real-vs-house fill, and the reduced-motion behaviour are visible
+ * without booting the shell. (It was a four-edge border until the design
+ * spec §5 allowed one slot in one rail.)
  *
  * The 1 Hz attention sampler is disabled in every story (samplingEnabled=false)
  * so the stories are static render surfaces — the sampler is exercised by
@@ -20,9 +21,8 @@ import type { BorderPosition, FillResult } from "./adFillClient";
  * Toggle prefers-reduced-motion to confirm nothing moves (AdBorder.test.tsx
  * pins the static-creative invariant mechanically).
  *
- * Wide vs narrow is driven by the real useViewportTier (window width), so the
- * width-based stories set the Storybook viewport — at ≥1024 all four edges
- * render; below that only top/bottom (the reading column is never narrowed).
+ * The slot is the same one row at every width; the Wide and Narrow stories
+ * set the Storybook viewport to show it at both.
  */
 
 const HOUSE: (opts: { positions: BorderPosition[] }) => Promise<FillResult> = async ({
@@ -44,7 +44,9 @@ const NEUTRAL_HOUSE: (opts: { positions: BorderPosition[] }) => Promise<FillResu
   served: false,
 });
 
-const AD: (opts: { positions: BorderPosition[] }) => Promise<FillResult> = async ({ positions }) => ({
+type FillFn = (opts: { positions: BorderPosition[] }) => Promise<FillResult>;
+
+const AD: FillFn = async ({ positions }) => ({
   fills: positions.map((position) => ({
     position,
     kind: "ad",
@@ -58,6 +60,46 @@ const AD: (opts: { positions: BorderPosition[] }) => Promise<FillResult> = async
   })),
   served: true,
 });
+
+const ALL_POSITIONS: BorderPosition[] = ["top", "bottom", "left", "right"];
+
+/** The same fill its story's fetcher resolves to, synchronously. Lost-pixel
+ *  captures on the first stable frame, so the rails must paint on FIRST
+ *  render; waiting for the fetch effect leaves a blank-rail window and flakes
+ *  the CI screenshot (seen on SpeakHouseFill w768: side rails missing). */
+function firstPaintFill(fetcher: FillFn): FillResult {
+  if (fetcher === NEUTRAL_HOUSE) {
+    return {
+      fills: ALL_POSITIONS.map((position) => ({ position, kind: "house", house: null, revenue_usd_cents: 0 })),
+      served: false,
+    };
+  }
+  if (fetcher === AD) {
+    return {
+      fills: ALL_POSITIONS.map((position) => ({
+        position,
+        kind: "ad",
+        ad: {
+          inventory_id: "inv-1",
+          advertiser_display_name: "Vertical SaaS Inc.",
+          creative_url: "https://example.com/c.png",
+          landing_url: "https://example.com/?ref=antiek",
+        },
+        revenue_usd_cents: 120,
+      })),
+      served: true,
+    };
+  }
+  return {
+    fills: ALL_POSITIONS.map((position) => ({
+      position,
+      kind: "house",
+      house: { promoted_document_id: "doc-99", title: "The Order of Time", author: "Carlo Rovelli" },
+      revenue_usd_cents: 0,
+    })),
+    served: false,
+  };
+}
 
 /** A stand-in working surface the border wraps, so the reserved-inset band is
  *  legible against real content (the border sets the seam vars; this surface
@@ -93,10 +135,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 function withSurface(args: Parameters<typeof AdBorder>[0]) {
+  const initialFill = args.fillFetcher ? firstPaintFill(args.fillFetcher) : undefined;
   return (
     <>
       <MockWorkingRegion />
-      <AdBorder {...args} />
+      <AdBorder {...args} initialFill={initialFill} />
     </>
   );
 }
@@ -137,16 +180,16 @@ export const NeutralHouseCard: Story = {
   render: (args) => withSurface(args),
 };
 
-/** Wide viewport — all four edges render. */
-export const WideAllFourEdges: Story = {
+/** Wide viewport — one slot, on the top edge. */
+export const Wide: Story = {
   args: { lens: "read", fillFetcher: HOUSE },
   parameters: { viewport: { defaultViewport: "responsive" } },
   globals: { viewport: { value: undefined } },
   render: (args) => withSurface(args),
 };
 
-/** Narrow viewport — only top/bottom (the reading column is never narrowed). */
-export const NarrowTopBottomOnly: Story = {
+/** Narrow viewport — the same one slot; the link truncates, never clips. */
+export const Narrow: Story = {
   args: { lens: "read", fillFetcher: HOUSE },
   parameters: { viewport: { defaultViewport: "mobile2" } },
   globals: { viewport: { value: "mobile2" } },

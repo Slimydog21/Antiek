@@ -1,9 +1,13 @@
-"""Owner-private account-memory context for provider prompts.
+"""Owner-private account memory at the thought-partner boundary.
 
 This boundary deliberately accepts only middleware-authenticated request state.
 Recall uses ``connect_write`` because the memory store requires the canonical
 locked connection even for reads; the context manager is exited before the
 rendered string is returned, so no database lock can span provider dispatch.
+
+The current Thought Partner route supplies one raw mixed-trust prompt. Its
+signed session authenticates the caller, not every first-person sentence in
+that prompt. It never promotes that prompt into durable owner memory.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from runtime.db_lock import WriteLockTimeout, connect_write
 from substrate.context_pack.knowledge_reuse import reuse_token_budget
 from substrate.graph import default_db_path
 from substrate.memory import MemoryItem, format_memory_for_prompt, recall_memory
+from substrate.memory.interaction_extractor import EXTRACTOR_VERSION
 
 from .account_memory_identity import distinct_signed_owner
 
@@ -57,7 +62,13 @@ def account_memory_context(request: Request, query: str) -> str:
             default_db_path(),
             purpose="thought_partner_account_memory_recall",
         ) as con:
-            items = recall_memory(con, owner_user_id, query=query, limit=8)
+            items = recall_memory(
+                con,
+                owner_user_id,
+                query=query,
+                limit=8,
+                exclude_provenance=("thought_partner", EXTRACTOR_VERSION),
+            )
     except (WriteLockTimeout, OSError):
         _LOG.warning("account-memory recall unavailable")
         return ""

@@ -34,7 +34,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import (
         Command,
         CostState,
         Handle,
@@ -73,7 +73,7 @@ class DaytonaRunner:
     build. Present so the eventual swap is a provable drop-in (same
     protocol) with zero call-site changes."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         # Construction is allowed (so the type is importable / checkable),
         # but it records that the gate must be lifted before use.
         self._args, self._kwargs = args, kwargs

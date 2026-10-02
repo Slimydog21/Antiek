@@ -58,6 +58,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from runtime.db_lock import ReadLockTimeout, connect_read
+
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "baselines" / "graph_temporal.json"
 
 
@@ -186,8 +188,11 @@ def load_edges_from_duckdb(graph_path: str) -> list[Edge]:
     import duckdb
 
     try:
-        con = duckdb.connect(graph_path, read_only=True)
-    except duckdb.Error as exc:
+        con = connect_read(graph_path)
+    except (duckdb.Error, ReadLockTimeout) as exc:
+        # ReadLockTimeout is a RuntimeError, not a duckdb.Error: a
+        # cross-process lock conflict still fails the gate with the same
+        # clean "cannot open graph" signal instead of a traceback.
         raise SchemaDriftError(f"cannot open graph: {exc}") from exc
     try:
         try:

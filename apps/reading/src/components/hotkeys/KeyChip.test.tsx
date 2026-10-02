@@ -4,7 +4,7 @@ import { render } from "@testing-library/react";
 import { KeyChip } from "./KeyChip";
 
 // jsdom has no matchMedia; usePrefersReducedMotion needs it. (Matches the
-// pattern in AdBorder.test.tsx / PenguinMascot.test.tsx.)
+// pattern in AdBorder.test.tsx / MascotStation.test.tsx.)
 beforeAll(() => {
   if (!window.matchMedia) {
     Object.defineProperty(window, "matchMedia", {

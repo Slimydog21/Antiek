@@ -81,7 +81,7 @@ def _default_equivalence(a: str, b: str, *, jaccard_threshold: float = 0.6) -> b
 def _cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
@@ -132,9 +132,11 @@ def _union_find_clusters(
 
     for i in range(n):
         for j in range(i + 1, n):
-            if embeddings is not None:
-                if _cosine(embeddings[i], embeddings[j]) < similarity_threshold:
-                    continue  # embeddings say "not a candidate"
+            if (
+                embeddings is not None
+                and _cosine(embeddings[i], embeddings[j]) < similarity_threshold
+            ):
+                continue  # embeddings say "not a candidate"
             if equivalence(claims[i].text, claims[j].text):
                 union(i, j)
 

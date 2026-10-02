@@ -142,6 +142,28 @@ def _effective_grant(
     return _coerce_grant(catalog_grant)
 
 
+# Values a rights holder might plausibly write to mean "no, not withdrawn".
+# Everything else that is present and non-empty is treated as a revocation —
+# a withdrawal date, "yes", 1, "revoked". The previous check was
+# ``grant.get("withdrawn") is True``, so every one of those was silently
+# ignored and a revoked grant stayed servable. Revocation is the case where
+# a false negative is a rights violation, so ambiguity fails CLOSED.
+_WITHDRAWN_NEGATIVES: frozenset[str] = frozenset({"", "false", "no", "n", "0", "none", "null"})
+
+
+def _withdrawn_is_affirmative(value: object) -> bool:
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in _WITHDRAWN_NEGATIVES
+    # a dict/list/date object under "withdrawn" is someone recording a
+    # withdrawal, not asserting its absence
+    return True
+
 def validate_grant(
     entry: ManifestEntry,
     *,
@@ -185,7 +207,7 @@ def validate_grant(
             rights_holder=rights_holder,
         )
 
-    if grant.get("withdrawn") is True:
+    if _withdrawn_is_affirmative(grant.get("withdrawn")):
         return GrantValidation(
             valid=False,
             reason="grant flagged withdrawn -> gated (servability revoked)",

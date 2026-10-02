@@ -25,14 +25,14 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 try:
     from ..event_log import emit_typed
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed  # type: ignore[no-redef,unused-ignore]
 
 from substrate.schemas.events import EditCapturedPayload
 
@@ -81,7 +81,7 @@ class EditPair:
     emitted_at: str | None = None
 
     @classmethod
-    def from_event(cls, ev: dict) -> EditPair:
+    def from_event(cls, ev: dict[str, Any]) -> EditPair:
         p = ev.get("payload", {}) or {}
         return cls(
             locator=EditLocator(

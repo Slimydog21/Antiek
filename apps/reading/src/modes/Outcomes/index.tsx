@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { PanelHost } from "../../workspace/PanelHost";
+import { LoadingState } from "../../components/states";
 
 /**
  * Outcomes surface (master-spec §13.8 + Phase 8 input).
@@ -155,9 +157,9 @@ export default function Outcomes() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-4">
@@ -175,13 +177,13 @@ export default function Outcomes() {
                 label="Validated"
                 onClick={() => submit("validated")}
                 disabled={submitting}
-                accent="bg-emerald-700 hover:bg-emerald-600"
+                accent="bg-success hover:bg-success/90 dark:text-ink"
               />
               <GradeButton
                 label="Falsified"
                 onClick={() => submit("falsified")}
                 disabled={submitting}
-                accent="bg-rose-700 hover:bg-rose-600"
+                accent="bg-emperor hover:bg-emperor/90"
               />
               <GradeButton
                 label="Indeterminate"
@@ -193,15 +195,15 @@ export default function Outcomes() {
           </section>
 
           <section className="grid grid-cols-3 gap-4">
-            <CountCard label="Validated" count={counts.validated} accent="text-emerald-700" />
-            <CountCard label="Falsified" count={counts.falsified} accent="text-rose-700" />
+            <CountCard label="Validated" count={counts.validated} accent="text-success" />
+            <CountCard label="Falsified" count={counts.falsified} accent="text-danger" />
             <CountCard label="Indeterminate" count={counts.indeterminate} accent="text-ink dark:text-bright" />
           </section>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
             <h2 className="text-base font-serif text-ink dark:text-bright">History</h2>
             {loading ? (
-              <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+              <LoadingState variant="inline" label="Opening the outcome history" />
             ) : outcomes.length === 0 ? (
               <p className="text-sm text-shadow-1 dark:text-moonlight italic">
                 No outcomes recorded yet for this synthesis.
@@ -214,12 +216,12 @@ export default function Outcomes() {
                       {o.observed_at} · {o.observer}
                     </p>
                     {o.thesis_outcomes.map((t, i) => (
-                      <p key={`t-${i}`} className="text-sm text-emerald-700">
+                      <p key={`t-${i}`} className="text-sm text-success">
                         validated — {t.note}
                       </p>
                     ))}
                     {o.falsification_outcomes.map((f, i) => (
-                      <p key={`f-${i}`} className="text-sm text-rose-700">
+                      <p key={`f-${i}`} className="text-sm text-danger">
                         falsified — {f.note}
                       </p>
                     ))}
@@ -260,7 +262,7 @@ function GradeButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`px-3 py-2 rounded-md text-white text-sm font-medium transition-colors disabled:opacity-50 ${accent}`}
+      className={`px-3 py-2 rounded-md text-ice-0 text-sm font-medium transition-colors disabled:opacity-50 ${accent}`}
     >
       {label}
     </button>

@@ -15,6 +15,13 @@ acquires its OWN write lock — async_interview takes short-lived,
 *sequential* locks and interleaves them, never nesting (the single-
 writer invariant: one flock holder at a time).
 
+The functions an HTTP route reaches (``submit_answer``,
+``next_followups``, ``decline``) accept ``timeout_s`` and pass it to every
+lock they take, including the one inside ``ingest_voice_note``. The
+default is ``connect_write``'s own (300s); a route passes its bounded wait
+so a held writer turns into a fast ``WriteLockTimeout`` (503) instead of a
+request that waits out the whole hold.
+
 Explicitly out of scope: live spoken turn-taking. TTS still raises
 ``NotImplementedError`` (``acquisition/voice/openai_tts.py``); this is
 async voice NOTES, not a live conversation. The live path stays a
@@ -40,7 +47,7 @@ from typing import Any
 # Reused, NOT forked: the voice substrate + interviewer role.
 from acquisition.voice import ingest_voice_note  # noqa: E402
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import DEFAULT_TIMEOUT_S, connect_read, connect_write
 
 from .schema import ensure_speak_schema
 
@@ -94,8 +101,8 @@ class AsyncInterviewSession:
     interview_id: str
     project_id: str
     status: str
-    turns: list[dict] = field(default_factory=list)
-    must_cover: list[dict] = field(default_factory=list)
+    turns: list[dict[str, Any]] = field(default_factory=list)
+    must_cover: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def answered_question_ids(self) -> set[str]:
@@ -113,11 +120,11 @@ class AsyncInterviewSession:
             if t.get("role") == "interviewer" and t.get("question_id")
         }
 
-    def pending_questions(self) -> list[dict]:
+    def pending_questions(self) -> list[dict[str, Any]]:
         """Questions awaiting an answer: must-cover items not yet
         answered, plus interviewer follow-ups asked but not answered."""
         answered = self.answered_question_ids
-        pending: list[dict] = []
+        pending: list[dict[str, Any]] = []
         for q in self.must_cover:
             if q.get("id") and q["id"] not in answered:
                 pending.append({"id": q["id"], "text": q.get("text", "")})
@@ -141,7 +148,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _load_turns(con: Any, interview_id: str) -> list[dict]:
+def _load_turns(con: Any, interview_id: str) -> list[dict[str, Any]]:
     row = con.execute(
         "SELECT transcript_turns FROM interviews WHERE interview_id = ?",
         [interview_id],
@@ -151,12 +158,13 @@ def _load_turns(con: Any, interview_id: str) -> list[dict]:
     if not row[0]:
         return []
     try:
-        return json.loads(row[0])
+        parsed = json.loads(row[0])
     except (TypeError, ValueError):
         return []
+    return parsed if isinstance(parsed, list) else []
 
 
-def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: str | None = None) -> None:
+def _save_turns(con: Any, interview_id: str, turns: list[dict[str, Any]], *, status: str | None = None) -> None:
     if status is not None:
         con.execute(
             "UPDATE interviews SET transcript_turns = ?, status = ?, "
@@ -171,7 +179,7 @@ def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: str |
         )
 
 
-def _project_guide(con: Any, project_id: str) -> dict:
+def _project_guide(con: Any, project_id: str) -> dict[str, Any]:
     row = con.execute(
         "SELECT interview_guide FROM interview_projects WHERE project_id = ?",
         [project_id],
@@ -179,9 +187,10 @@ def _project_guide(con: Any, project_id: str) -> dict:
     if row is None or not row[0]:
         return {}
     try:
-        return json.loads(row[0])
+        parsed = json.loads(row[0])
     except (TypeError, ValueError):
         return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _consent_recorded(con: Any, interview_id: str) -> bool:
@@ -201,7 +210,7 @@ def start_async_interview(
     db_path: str,
     *,
     project_id: str,
-    interview_guide: dict | None = None,
+    interview_guide: dict[str, Any] | None = None,
     informant_handle: str | None = None,
     interview_id: str | None = None,
 ) -> AsyncInterviewSession:
@@ -211,28 +220,34 @@ def start_async_interview(
     iid = interview_id or f"interview-{uuid.uuid4().hex[:12]}"
     with connect_write(db_path, purpose="speak/async_interview.start") as con:
         ensure_speak_schema(con)
-        if interview_guide is not None and not _project_guide(con, project_id):
+        with con.transaction():
+            if interview_guide is not None and not _project_guide(con, project_id):
+                con.execute(
+                    "UPDATE interview_projects SET interview_guide = ? WHERE project_id = ?",
+                    [json.dumps(interview_guide), project_id],
+                )
             con.execute(
-                "UPDATE interview_projects SET interview_guide = ? WHERE project_id = ?",
-                [json.dumps(interview_guide), project_id],
+                "INSERT INTO interviews (interview_id, project_id, informant_handle, status) "
+                "VALUES (?, ?, ?, 'invited') ON CONFLICT (interview_id) DO NOTHING",
+                [iid, project_id, informant_handle],
             )
-        con.execute(
-            "INSERT INTO interviews (interview_id, project_id, informant_handle, status) "
-            "VALUES (?, ?, ?, 'invited') ON CONFLICT (interview_id) DO NOTHING",
-            [iid, project_id, informant_handle],
-        )
     return resume(db_path, iid)
 
 
-def resume(db_path: str, interview_id: str) -> AsyncInterviewSession:
+def resume(
+    db_path: str,
+    interview_id: str,
+    *,
+    external_lock_timeout_s: float = 0.0,
+) -> AsyncInterviewSession:
     """Reconstruct an interview's state from persisted storage — the
     whole point of an async interview is that you can leave and return.
 
     Read-only (``connect_read`` / LazyRW) — never takes the write flock.
-    Invite landing and other reconstruct paths must not hang behind
-    ``agent_work`` / write_log close contention (#3121 coexist).
+    HTTP callers can opt into a bounded external-writer wait off the event
+    loop. Other callers retain the immediate-open behavior.
     """
-    with connect_read(db_path) as con:
+    with connect_read(db_path, external_lock_timeout_s=external_lock_timeout_s) as con:
         row = con.execute(
             "SELECT project_id, status FROM interviews WHERE interview_id = ?",
             [interview_id],
@@ -290,6 +305,7 @@ def submit_answer(
     duration_seconds: float = 0.0,
     embedder: Any | None = None,
     min_word_count: int = 1,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> AnswerResult:
     """Submit a (corrected) transcript as the answer to ``question_id``.
 
@@ -303,7 +319,9 @@ def submit_answer(
     raw transcript.
     """
     # Consent + project lookup under a short read/write lock.
-    with connect_write(db_path, purpose="speak/async_interview.consent_check") as con:
+    with connect_write(
+        db_path, purpose="speak/async_interview.consent_check", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         prow = con.execute(
             "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
@@ -327,10 +345,13 @@ def submit_answer(
         db_path=db_path,
         embedder=embedder,
         min_word_count=min_word_count,
+        timeout_s=timeout_s,
     )
 
     # Now record the answer turn under our own (sequential) lock.
-    with connect_write(db_path, purpose="speak/async_interview.answer") as con:
+    with connect_write(
+        db_path, purpose="speak/async_interview.answer", timeout_s=timeout_s
+    ) as con:
         turns = _load_turns(con, interview_id)
         turns.append({
             "role": "informant",
@@ -363,6 +384,7 @@ def next_followups(
     interview_id: str,
     dispatch_fn: Callable[..., Any] | None = None,
     max_followups: int = 3,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> list[FollowupQuestion]:
     """Generate the next async follow-up question(s) from accumulated
     answers via the interviewer role, persist them as pending
@@ -426,7 +448,9 @@ def next_followups(
     # Persist generated questions as pending interviewer turns (dedupe
     # already-asked must-cover ids).
     if generated:
-        with connect_write(db_path, purpose="speak/async_interview.followups") as con:
+        with connect_write(
+            db_path, purpose="speak/async_interview.followups", timeout_s=timeout_s
+        ) as con:
             turns = _load_turns(con, interview_id)
             asked = {t["question_id"] for t in turns
                      if t.get("role") == "interviewer" and t.get("question_id")}
@@ -456,9 +480,13 @@ def mark_incomplete(db_path: str, interview_id: str) -> None:
         )
 
 
-def decline(db_path: str, interview_id: str) -> None:
+def decline(
+    db_path: str, interview_id: str, *, timeout_s: float = DEFAULT_TIMEOUT_S
+) -> None:
     """The invitee declines. Status → 'declined'."""
-    with connect_write(db_path, purpose="speak/async_interview.decline") as con:
+    with connect_write(
+        db_path, purpose="speak/async_interview.decline", timeout_s=timeout_s
+    ) as con:
         con.execute(
             "UPDATE interviews SET status = 'declined' WHERE interview_id = ?",
             [interview_id],

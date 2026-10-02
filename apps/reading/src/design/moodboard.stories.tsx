@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import { sun, surface, shadow, type as typeTokens, werner } from "./tokens";
+import { accent, sun, surface, shadow, type as typeTokens, mascot } from "./tokens";
 
 /**
  * Antiek design moodboard — operator sign-off gate.
@@ -24,7 +24,7 @@ const meta = {
   title: "Design / Moodboard",
   parameters: {
     layout: "padded",
-    backgrounds: { default: "ice-2" },
+    backgrounds: { default: "page" },
   },
   tags: ["autodocs"],
 } satisfies Meta;
@@ -54,7 +54,7 @@ function Swatch({
         background: hex,
         border: `2.5px solid ${sun.base}`,
         borderRadius: 6,
-        boxShadow: dark ? "5px 5px 0 0 #8A7300" : "5px 5px 0 0 #0F1419",
+        boxShadow: dark ? shadow.night.z2 : shadow.day.z2,
         padding: 14,
         minHeight: 88,
         color: dark || ["ink", "shadow-2", "shadow-1", "void", "space-1", "space-2", "charcoal-1", "charcoal-2", "slate-1", "slate-2"].includes(name) ? "#FBFCFD" : "#0F1419",
@@ -118,8 +118,8 @@ export const PaletteDay: Story = {
 
       <Heading>Reserved accents</Heading>
       <Grid>
-        <Swatch name="aurora"  hex="#16C2C2" role="AI thinking" />
-        <Swatch name="emperor" hex="#E33C2D" role="danger only" />
+        <Swatch name="aurora"  hex={accent.aurora.day}  role="AI thinking" />
+        <Swatch name="emperor" hex={accent.emperor.day} role="danger only" />
       </Grid>
     </div>
   ),
@@ -131,7 +131,7 @@ export const PaletteDay: Story = {
 
 export const PaletteNight: Story = {
   name: "Palette · Night (majestic night sky)",
-  parameters: { backgrounds: { default: "space-2 (night)" } },
+  parameters: { backgrounds: { default: "ink (fixed)" } },
   render: () => (
     <div style={{
       background: "#0D1019",
@@ -173,7 +173,7 @@ export const PaletteNight: Story = {
 
 export const Shadows: Story = {
   render: () => (
-    <div style={{ background: "#F4F7FA", padding: 32 }}>
+    <div style={{ background: "#F4F7FA", padding: 32, color: "var(--fixed-ink)" }}>
       <Heading>Chunky offset shadows · z1 · z2 · z3 · lift</Heading>
       <p style={{ margin: "0 24px 18px", color: "#384858", fontSize: 14 }}>
         Day mode casts in ink; night mode casts in sun-deep (glowing).
@@ -410,7 +410,7 @@ export const BeforeAfter: Story = {
   render: () => (
     <div style={{
       display: "grid", gridTemplateColumns: "1fr 1fr",
-      gap: 32, padding: 32, background: "#F4F7FA",
+      gap: 32, padding: 32, background: "#F4F7FA", color: "var(--fixed-ink)",
     }}>
       <div>
         <div style={{
@@ -437,6 +437,7 @@ export const BeforeAfter: Story = {
               outline: "none",
               resize: "none",
               minHeight: 80,
+              background: "var(--fixed-paper)",
             }}
           />
           <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
@@ -502,11 +503,16 @@ export const BeforeAfter: Story = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// Werner (palette reference)
+// Mascot palette (penguin-era values kept; canvas wording frozen for lostpixel — see below)
 // ─────────────────────────────────────────────────────────────────────
 
-export const WernerPalette: Story = {
-  name: "Werner · bill+feet = brand sun",
+/* LOSTPIXEL PIXEL-FREEZE: the visible canvas strings in this story still say
+   "Werner" ON PURPOSE — the design-moodboard--werner-bill-feet-brand-sun
+   baselines (renamed to --mascot-bill-feet-brand-sun) were not re-minted, so
+   rendered pixels must stay identical. Purge the wording when the baselines
+   are re-minted. */
+export const MascotPalette: Story = {
+  name: "Mascot · bill+feet = brand sun",
   render: () => (
     <div style={{ padding: 32, background: "#F4F7FA" }}>
       <Heading>Werner palette — the visual hook</Heading>
@@ -523,11 +529,11 @@ export const WernerPalette: Story = {
             color: "#384858", marginBottom: 12,
           }}>day werner</div>
           <Grid>
-            <Swatch name="coat"  hex={werner.day.coat}  role="off-black" />
-            <Swatch name="belly" hex={werner.day.belly} role="off-white" />
-            <Swatch name="bill"  hex={werner.day.bill}  role="= sun" />
-            <Swatch name="foot"  hex={werner.day.foot}  role="= sun" />
-            <Swatch name="eye"   hex={werner.day.eye}   role="ink dot" />
+            <Swatch name="coat"  hex={mascot.day.coat}  role="off-black" />
+            <Swatch name="belly" hex={mascot.day.belly} role="off-white" />
+            <Swatch name="bill"  hex={mascot.day.bill}  role="= sun" />
+            <Swatch name="foot"  hex={mascot.day.foot}  role="= sun" />
+            <Swatch name="eye"   hex={mascot.day.eye}   role="ink dot" />
           </Grid>
         </div>
         <div>
@@ -537,11 +543,11 @@ export const WernerPalette: Story = {
             color: "#384858", marginBottom: 12,
           }}>night werner</div>
           <Grid>
-            <Swatch name="coat"  hex={werner.night.coat}  role="deeper black" dark />
-            <Swatch name="belly" hex={werner.night.belly} role="starlight"   />
-            <Swatch name="bill"  hex={werner.night.bill}  role="= sun"        />
-            <Swatch name="foot"  hex={werner.night.foot}  role="= sun"        />
-            <Swatch name="eye"   hex={werner.night.eye}   role="starlight"   />
+            <Swatch name="coat"  hex={mascot.night.coat}  role="deeper black" dark />
+            <Swatch name="belly" hex={mascot.night.belly} role="starlight"   />
+            <Swatch name="bill"  hex={mascot.night.bill}  role="= sun"        />
+            <Swatch name="foot"  hex={mascot.night.foot}  role="= sun"        />
+            <Swatch name="eye"   hex={mascot.night.eye}   role="starlight"   />
           </Grid>
         </div>
       </div>

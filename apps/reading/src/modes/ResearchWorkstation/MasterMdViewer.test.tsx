@@ -24,6 +24,7 @@ import {
 
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
+import { resetReadingTypography, setReadingTypography } from "../../lib/readingTypography";
 
 const { getChunkMock, apiFetchMock } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
@@ -138,6 +139,21 @@ describe("MasterMdViewer — no static save-to-notebook in the research flow (SP
 });
 
 describe("MasterMdViewer — named-source read (M1)", () => {
+  it("tags a servable named source with its resolved document and chunk", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", document_id: "doc-servable" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    const source = await screen.findByRole("button", { name: /from On Growth and Form/ });
+    expect(source.getAttribute("data-akb-asset-id")).toBe("doc-servable");
+    expect(source.getAttribute("data-akb-chunk-id")).toBe("c1");
+  });
+
+  it("leaves a non-servable named source untagged", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", servable: false, servability: "restricted" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    const source = await screen.findByText(/not available to open/);
+    expect(source.parentElement?.hasAttribute("data-akb-asset-id")).toBe(false);
+  });
+
   it("renders the source as a named title + locator, never [N chunks]", async () => {
     getChunkMock.mockResolvedValue(
       chunk({ chunk_id: "c1", document_title: "On Growth and Form", section_path: "p.12" }),
@@ -361,9 +377,9 @@ describe("MasterMdViewer — quality cue (SPR-11 M3)", () => {
 // render (rigor #3).
 
 const SERVABLE_BUTTON_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
+  "text-xs text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
 const RESTRICTED_SPAN_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
+  "text-xs text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
 
 /** A synthesis with two claims: one cites a SERVABLE source, the other a
  *  NON-servable source — so a single render exercises both §9.0 branches. */
@@ -442,7 +458,7 @@ describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-
     // The inner "· not available to open" span carries its exact class.
     const inner = gatedSpan.querySelector("span");
     expect(inner?.getAttribute("class")).toBe(
-      "text-[10px] text-shadow-1 dark:text-moonlight",
+      "text-xxs text-shadow-1 dark:text-moonlight",
     );
 
     // §9.0: the withheld body never appears; the restricted source exposes
@@ -651,6 +667,41 @@ interface CapturedRO {
 }
 
 describe("MasterMdViewer — ResizeObserver recompute trigger (Living-Roadmap SPR-02 round 2)", () => {
+  it("remeasures after typography changes and font loading without a ResizeObserver notification", () => {
+    const fonts = new EventTarget();
+    const previousFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    const reads = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    vi.useFakeTimers();
+    try {
+      resetReadingTypography();
+      const view = render(<MasterMdViewer synthesis={synth()} />);
+      const initial = reads.mock.calls.length;
+      act(() => setReadingTypography({ font: "source-sans" }));
+      expect(reads.mock.calls.length).toBeGreaterThan(initial);
+      const changed = reads.mock.calls.length;
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(150);
+      });
+      expect(reads.mock.calls.length).toBeGreaterThan(changed);
+      view.unmount();
+      const unmounted = reads.mock.calls.length;
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(150);
+      });
+      expect(reads.mock.calls.length).toBe(unmounted);
+    } finally {
+      cleanup();
+      resetReadingTypography();
+      reads.mockRestore();
+      vi.useRealTimers();
+      if (previousFonts) Object.defineProperty(document, "fonts", previousFonts);
+      else Reflect.deleteProperty(document, "fonts");
+    }
+  });
+
   it("recomputes the layout-map when the captured ResizeObserver callback fires", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
 

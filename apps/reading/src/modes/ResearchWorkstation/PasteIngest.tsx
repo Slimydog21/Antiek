@@ -179,7 +179,7 @@ export default function PasteIngest({
 
   return (
     <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md p-3 bg-ice-1 dark:bg-charcoal-2">
-      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+      <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
         Add to this research
       </p>
       <div
@@ -220,7 +220,7 @@ export default function PasteIngest({
 
       {outcome.kind === "absorbed" && (
         <div className="mt-2 text-xs">
-          <p className="text-aurora" role="status">
+          <p className="text-success" role="status">
             Absorbed <span className="font-semibold">{outcome.title}</span>. It
             can be cited the next time this research runs.
           </p>

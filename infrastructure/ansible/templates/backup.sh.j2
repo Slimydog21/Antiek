@@ -105,6 +105,16 @@ if ! flock -n 9; then
 fi
 
 readonly LOCK_TIMEOUT_S="${ANTIEK_BACKUP_LOCK_TIMEOUT_S:-180}"
+# How long attempt 1 waits for the flock BEFORE resorting to stopping the
+# service. runtime/db_lock.py's warm writer releases the flock when its
+# keepalive lapses (default 20s, made true by the expiry timer in PR #3332),
+# so a free-running service yields within ~20s and the backup never causes
+# an outage. Capped at LOCK_TIMEOUT_S so a short test timeout stays short.
+readonly FIRST_WAIT_S="${ANTIEK_BACKUP_FIRST_WAIT_S:-45}"
+if [[ ! "${FIRST_WAIT_S}" =~ ${_NUM_RE} ]]; then
+    echo "ERROR: backup: ANTIEK_BACKUP_FIRST_WAIT_S must be a plain non-negative number (it is interpolated into python source); refusing: ${FIRST_WAIT_S}" >&2
+    exit 6
+fi
 if [[ ! "${LOCK_TIMEOUT_S}" =~ ${_NUM_RE} ]]; then
     echo "ERROR: backup: ANTIEK_BACKUP_LOCK_TIMEOUT_S must be a plain non-negative number (it is interpolated into python source); refusing: ${LOCK_TIMEOUT_S}" >&2
     exit 6
@@ -181,7 +191,60 @@ fi
 # Lock window is minimal: connect + EXPORT + count capture only; normalize,
 # verify, tar, and upload all run after release.
 echo "${LOG_PREFIX} exporting DuckDB → ${STAGING}/duckdb (single-writer flock, timeout ${LOCK_TIMEOUT_S}s)"
-sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
+
+# The substrate holds the DuckDB single-writer flock for its whole lifetime,
+# so the poll below deadlocks while antiek.service is up — this silently
+# broke the nightly backup 2026-09-19→21 (6 aborted runs, RPO breach).
+# Stop the service for the snapshot window. The restart is GUARDED: it only
+# runs if this script actually stopped the service, so a backup run on a
+# host where antiek was inactive never starts it as a side effect. The EXIT
+# trap below REPLACES the cleanup-only trap set earlier, so it must run
+# cleanup too — losing it would strand partial staging dirs on failure.
+ANTIEK_STOPPED_FOR_BACKUP=0
+restart_if_stopped() {
+    if [ "${ANTIEK_STOPPED_FOR_BACKUP:-0}" = "1" ]; then
+        if systemctl start antiek; then
+            echo "${LOG_PREFIX} antiek.service restarted after backup"
+            ANTIEK_STOPPED_FOR_BACKUP=0
+            return 0
+        fi
+        # The `|| echo` this replaced returned 0, because echo succeeds. The
+        # caller then cleared the flag unconditionally, so the EXIT trap had
+        # nothing left to retry, the run exited 0, and a FRESH freshness marker
+        # was stamped — asserting health while antiek.service was still down.
+        # This script already refuses to stamp over a bad backup (see the
+        # read-back SHA mismatch guard); a dead service deserves the same.
+        echo "${LOG_PREFIX} ERROR: failed to restart antiek" >&2
+        ANTIEK_RESTART_FAILED=1
+        return 1
+    fi
+    return 0
+}
+trap 'cleanup; restart_if_stopped' EXIT
+# STOPPING IS THE LAST RESORT, NOT THE FIRST MOVE (2026-09-21).
+# The stop above used to be unconditional and cost a 23s public API outage
+# every night (measured 12:18:36→12:18:59). It existed because a parked
+# warm writer held the flock forever on an idle service; PR #3332 fixes
+# that in runtime/db_lock.py, after which the flock frees within ~20s.
+# So: attempt 1 simply waits FIRST_WAIT_S. Only if that times out (exit 3)
+# AND systemd reports the service active do we stop it and retry with the
+# full LOCK_TIMEOUT_S. On a host where the reaper is deployed, attempt 2
+# never runs; on one where it is not, behaviour degrades to exactly the
+# old stop-and-snapshot — never to a missed backup.
+snapshot_attempt=1
+while :; do
+    if [ "${snapshot_attempt}" -eq 1 ]; then
+        SNAP_TIMEOUT_S="${FIRST_WAIT_S}"
+        if python3 -c "import sys; sys.exit(0 if float('${FIRST_WAIT_S}') > float('${LOCK_TIMEOUT_S}') else 1)"; then
+            SNAP_TIMEOUT_S="${LOCK_TIMEOUT_S}"
+        fi
+        echo "${LOG_PREFIX} snapshot attempt 1: waiting up to ${SNAP_TIMEOUT_S}s for the flock without stopping antiek"
+    else
+        SNAP_TIMEOUT_S="${LOCK_TIMEOUT_S}"
+        echo "${LOG_PREFIX} snapshot attempt 2: antiek stopped, waiting up to ${SNAP_TIMEOUT_S}s"
+    fi
+    set +e
+    sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import errno
 import fcntl
 import json
@@ -191,9 +254,15 @@ import time
 
 import duckdb
 
+sys.path.insert(0, "{{ antiek_install_dir }}")
+from substrate.graph.schema import (
+    _v22_arxiv_progress_shape_is_valid,
+    load_arxiv_bulk_progress,
+)
+
 db_path = "${STATE_DIR}/antiek.duckdb"
 lock_path = db_path + ".write.lock"  # runtime/db_lock.py: _lock_path_for()
-timeout_s = float("${LOCK_TIMEOUT_S}")
+timeout_s = float("${SNAP_TIMEOUT_S}")
 
 fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
 deadline = time.monotonic() + timeout_s
@@ -235,6 +304,15 @@ try:
             "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name"
         ).fetchall()]
+        if "arxiv_bulk_progress" not in tables or not _v22_arxiv_progress_shape_is_valid(con):
+            sys.stderr.write(
+                "ERROR: backup: arXiv progress table is missing or invalid; refusing a "
+                "v2 bundle that could not restore the ingestion cursor\n"
+            )
+            sys.exit(6)
+        # The catalog can be right while a populated cursor row is malformed.
+        # The nightly backup must not certify that state as resumable either.
+        load_arxiv_bulk_progress(con)
         def quoted(name):
             return '"' + name.replace('"', '""') + '"'
         counts = {
@@ -284,6 +362,9 @@ finally:
     os.close(fd)
 
 manifest = {
+    # V2 includes the DB-authoritative arXiv progress row in the same EXPORT
+    # transaction as its document rows. Restore checks this before IMPORT.
+    "bundle_contract_version": 2,
     "counts": counts,
     "columns": columns,
     "constraints": constraints,
@@ -294,6 +375,24 @@ with open("${STAGING}/source_manifest.json", "w") as f:
     json.dump(manifest, f, indent=2)
 print(f"  source row counts: {counts}")
 PY
+    snapshot_rc=$?
+    set -e
+    if [ "${snapshot_rc}" -eq 0 ]; then
+        break
+    fi
+    if [ "${snapshot_rc}" -eq 3 ] && [ "${snapshot_attempt}" -eq 1 ] \
+        && command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet antiek; then
+        echo "${LOG_PREFIX} flock still held after ${SNAP_TIMEOUT_S}s — stopping antiek for the snapshot window (last resort)"
+        systemctl stop antiek
+        ANTIEK_STOPPED_FOR_BACKUP=1
+        snapshot_attempt=2
+        continue
+    fi
+    exit "${snapshot_rc}"
+done
+# restart_if_stopped clears the flag itself ON SUCCESS. Do not clear it here:
+# a failed restart must leave the flag set so the EXIT trap retries.
+restart_if_stopped || true  # keep going to normalize/upload; the marker guard below refuses to certify
 
 # ── 1b. Normalize EXPORT schema.sql (DuckDB self-ref-FK stray-comma bug) ──
 # DuckDB EXPORT drops a self-referential FK but leaves a stray comma in
@@ -465,6 +564,17 @@ if [[ ! "${REMOTE_SHA256}" =~ ^[0-9a-f]{64}$ ]] || [[ "${REMOTE_SHA256}" != "${A
     exit 9
 fi
 
+# The marker asserts "nightly backups are landing and the system is healthy".
+# It must not be written while antiek.service is down because WE stopped it and
+# could not start it again — that certifies health over an outage. Same
+# reasoning as the read-back mismatch guard above: refuse rather than certify.
+if [ "${ANTIEK_RESTART_FAILED:-0}" = "1" ] || [ "${ANTIEK_STOPPED_FOR_BACKUP:-0}" = "1" ]; then
+    echo "ERROR: backup: antiek.service was stopped for the backup and did not restart;" >&2
+    echo "ERROR: backup: refusing freshness marker (the archive itself is fine and uploaded)" >&2
+    systemctl start antiek && echo "${LOG_PREFIX} antiek.service started on the final retry" >&2
+    exit 10
+fi
+
 # ── 6. Freshness marker (only reachable on full success) ──────────────────
 # tools/backup_freshness.py reads this marker; a marker older than its
 # threshold (default 26h) — or missing — means nightly backups stopped
@@ -474,6 +584,7 @@ echo "${LOG_PREFIX} writing freshness marker → ${STATE_DIR}/backup_freshness.j
 {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import json
 import os
+import pwd
 
 with open("${STAGING}/source_manifest.json") as f:
     counts = json.load(f)["counts"]
@@ -489,6 +600,12 @@ tmp = "${STATE_DIR}/backup_freshness.json.tmp"
 with open(tmp, "w") as f:
     json.dump(marker, f, indent=2)
     f.write("\n")
+# The service runs as root, but the substrate health probe runs as antiek and
+# must be able to read the freshness verdict. Set ownership before the atomic
+# replace so there is no window in which the marker is unreadable.
+owner = pwd.getpwnam("{{ antiek_user }}")
+os.chown(tmp, owner.pw_uid, owner.pw_gid)
+os.chmod(tmp, 0o640)
 os.replace(tmp, "${STATE_DIR}/backup_freshness.json")
 print("  marker written")
 PY

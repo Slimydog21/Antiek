@@ -32,7 +32,7 @@ import sys
 from typing import Any, Literal
 
 try:
-    from ...constants import (
+    from ..constants import (
         TRAVERSAL_DFS_DEPTH,
         TRAVERSAL_MAX_DEPTH,
         TRAVERSAL_TOP_N_PATHS,
@@ -40,7 +40,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
+    from substrate.constants import (
         TRAVERSAL_DFS_DEPTH,
         TRAVERSAL_MAX_DEPTH,
         TRAVERSAL_TOP_N_PATHS,
@@ -87,14 +87,14 @@ def resolve_node(
         [label, *owner_params],
     ).fetchone()
     if row:
-        return row[0]
+        return str(row[0])
 
     row = con.execute(
         f"SELECT node_id FROM nodes n WHERE canonical_label = ? AND {owner_sql}",
         [label, *owner_params],
     ).fetchone()
     if row:
-        return row[0]
+        return str(row[0])
 
     query = f"SELECT node_id, canonical_label FROM nodes n WHERE canonical_label ILIKE ? AND {owner_sql}"
     params: list[Any] = [f"%{label}%", *owner_params]
@@ -105,7 +105,7 @@ def resolve_node(
 
     row = con.execute(query, params).fetchone()
     if row:
-        return row[0]
+        return str(row[0])
     raise ValueError(f"node not found: {label!r}")
 
 
@@ -135,7 +135,7 @@ def degree_normalization_weight(con: Any, node_id: str, default_degree: int = 1)
     return 1.0 / math.log(d)
 
 
-def _compute_path_degree_score(con: Any, path: dict) -> float:
+def _compute_path_degree_score(con: Any, path: dict[str, Any]) -> float:
     """Geometric mean of per-node degree weights."""
     nodes = path.get("path_nodes", [])
     if not nodes:
@@ -144,10 +144,10 @@ def _compute_path_degree_score(con: Any, path: dict) -> float:
     product = 1.0
     for w in weights:
         product *= w
-    return round(product ** (1.0 / len(weights)), 4)
+    return float(round(product ** (1.0 / len(weights)), 4))
 
 
-def _flag_hub_concerns(path: dict, threshold: float = 0.6) -> list[str]:
+def _flag_hub_concerns(path: dict[str, Any], threshold: float = 0.6) -> list[str]:
     score = path.get("degree_normalized_score", 1.0)
     if score < threshold:
         return [
@@ -157,7 +157,7 @@ def _flag_hub_concerns(path: dict, threshold: float = 0.6) -> list[str]:
     return []
 
 
-def _format_path(row: Any) -> dict:
+def _format_path(row: Any) -> dict[str, Any]:
     """Format a raw recursive-CTE row into the dict shape every algorithm
     returns. ``path_nodes`` + ``path_relations`` are DuckDB list types
     that already round-trip as Python lists."""
@@ -201,7 +201,7 @@ def shortest_path(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
     scope_filter = _scope_filter(scope)
@@ -268,7 +268,7 @@ def top_n_paths(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
     scope_filter = _scope_filter(scope)
@@ -332,7 +332,7 @@ def dfs_with_depth(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
     scope_filter = _scope_filter(scope)
@@ -397,7 +397,7 @@ def bfs_semantic_stop(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Two-phase BFS through a constraint waypoint. Useful when the
     cross-domain analogy MUST flow through a named intermediate
     concept (e.g. "must touch 'photon coherence' on the way from
@@ -414,7 +414,7 @@ def bfs_semantic_stop(
     if not phase1:
         return []
 
-    all_paths: list[dict] = []
+    all_paths: list[dict[str, Any]] = []
     for p1 in phase1:
         phase2 = top_n_paths(
             con, waypoint_id, target_id,
@@ -458,7 +458,7 @@ def traverse(
     min_confidence: float = 0.0,
     normalize_degree: bool = True,
     owner_user_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Execute one traversal. Resolves ``source`` and ``target`` (by id
     or fuzzy label) before dispatching. Returns a dict shaped to match
     the Researchmaxx convention so downstream consumers don't need

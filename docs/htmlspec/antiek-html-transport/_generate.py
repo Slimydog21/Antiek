@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate ANT-AHT htmlspec (master + seven sprint pages). Idempotent."""
+"""Generate ANT-AHT htmlspec (master + eight sprint pages). Idempotent."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -115,15 +115,16 @@ def master_index() -> str:
         ("05", "compose-merge", "Compose / merge index", "Multi-investigation HTML index.", 3, "2 milestones", "done"),
         ("06", "write-bridge-api", "Write bridge + API", "Outline blocks + FastAPI routes.", 3, "3 milestones", "done"),
         ("07", "book-reader-snapshot", "Book reader snapshot", "PDF ingest → readable HTML beside chunks.", 2, "2 milestones", "done"),
+        ("08", "source-merge-apply", "Source merge apply gate", "Reviewed draft → explicit source/twin mutation.", 4, "3 milestones", "ready"),
     ]
-    by_wave: dict[int, list[str]] = {1: [], 2: [], 3: []}
+    by_wave: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: []}
     for num, slug, title, goal, wave, budget, st in cards:
         by_wave[wave].append(_sprint_card(num, slug, title, goal, wave, budget, st))
     body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-AHT</p>
 <h1>Antiek HTML Transport</h1>
 <p class="tagline">Profile B — agent-friendly HTML lenses on DuckDB truth (Thariq thesis).</p>
 <div class="meta-row"><span class="tag tag--green"><span class="dot"></span>exec-2 complete</span>
-<span class="tag tag--grey">7 sprints · 3 waves · {DATE}</span></div></header>
+<span class="tag tag--grey">8 sprints · 4 waves · {DATE}</span></div></header>
 <section class="block"><h2>Architectural fork (ratified)</h2>
 <ul>
 <li><strong>Canonical truth:</strong> DuckDB graph + typed event log — never HTML-primary.</li>
@@ -138,6 +139,7 @@ def master_index() -> str:
 <div class="wave-band">Wave 1 — contract + export</div><div class="sprint-grid">{''.join(by_wave[1])}</div>
 <div class="wave-band">Wave 2 — protocol + ingest (URL + book)</div><div class="sprint-grid">{''.join(by_wave[2])}</div>
 <div class="wave-band">Wave 3 — compose + Write bridge</div><div class="sprint-grid">{''.join(by_wave[3])}</div>
+<div class="wave-band">Wave 4 — reviewed apply boundary</div><div class="sprint-grid">{''.join(by_wave[4])}</div>
 </section>
 <section class="block" id="harness-hint-run" data-harness-default-pattern="inline">
 <h2>Harness</h2><p>Exec-2: pytest ANT-AHT suite + optional <code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code> post-complete hook.</p>
@@ -325,6 +327,37 @@ def main() -> None:
             [("Book snapshot", "./.venv/bin/python -m pytest tests/test_reader_snapshot.py tests/test_acquisition_books.py -k reader_snapshot -q", "pass")],
             ("inline", "books/adapter.py", "markdown-escape|same-flag", "1", "2"),
         ),
+        sprint_page(
+            "SPR-AHT-08", "08", "source-merge-apply",
+            "Source merge apply gate",
+            "Consume a reviewed draft-merge packet and perform the only allowed source-book/twin mutation.",
+            4, "3 milestones",
+            "Reader chases can already export, compose, and copy review packets; applying that draft to the source book is the first irreversible boundary.",
+            "The apply step must be explicit, conflict-aware, idempotent, and audited. A copied review packet is evidence, not permission by itself.",
+            "Wave 4 after SPR-AHT-05 compose and the Reader source-merge review packet.",
+            "POST /research/artifacts/source-merge/apply accepts a reviewed packet plus operator acknowledgement and returns a mutation receipt.",
+            [
+                ("Apply request contract", "Pydantic request/response models with reviewed packet, acknowledgement, and expected content hashes.",
+                 ["requires document_id, draft_merge_path, compose_index_path, member ids, conflict count, and operator acknowledgement"],
+                 ["interfaces/research/api/artifact_routes.py", "apps/reading/src/lib/api.ts"]),
+                ("Single mutation writer", "A substrate helper performs source-book revision + notes-twin promotion in one audited transaction.",
+                 ["refuses hash conflicts unless acknowledged", "refuses stale packet/content-hash mismatch", "emits source_merge.applied event with before/after revision ids"],
+                 ["substrate/research_artifact/source_merge.py", "substrate/books/model.py"]),
+                ("Reader apply UI", "Reader receipt exposes Apply only after review acknowledgement and displays the returned receipt.",
+                 ["button disabled before acknowledgement", "receipt shows source revision, twin revision, member count, conflict acknowledgement"],
+                 ["apps/reading/src/modes/Reading/ReadingCompanion.tsx", "apps/reading/src/modes/Reading/ReadingCompanion.test.tsx"]),
+            ],
+            ("Until this sprint is implemented, no UI may claim a draft has been merged into the book or twin.", "Steelman auto-apply after draft compose; rejected because source-book mutation needs human review and conflict acknowledgement.",
+             "Backend tests must prove no mutation on missing acknowledgement, stale hashes, or unacknowledged conflicts; frontend tests must prove disabled-by-default apply.", "Read compose.py, artifact_routes.py, books.py, and the Reader review-packet tests before writing the endpoint.",
+             "The mutation receipt is the handoff: exact source revision id, twin revision id, event id, member ids, and conflict decision."),
+            ["SPR-AHT-05", "SPR-AHT-06", "Reader source-merge review packet"], ["FastAPI TestClient", "Vitest"],
+            ["Model/provider calls", "Automatic source mutation on compose", "Git merge of arbitrary HTML bodies", "Applying to gated/taken-down books without the existing servability policy"],
+            [("Backend apply", "./.venv/bin/python -m pytest tests/test_research_artifact_source_merge.py tests/test_artifact_routes.py -k source_merge -q", "pass"),
+             ("Reader apply", "npm --prefix apps/reading test -- src/modes/Reading/ReadingCompanion.test.tsx --run", "pass"),
+             ("Typecheck", "npm --prefix apps/reading run typecheck", "pass")],
+            ("classify-and-act", "review-packet+apply-receipt", "mutation-boundary|hash-staleness|operator-ack", "2", "3"),
+            status="ready",
+        ),
     ]
 
     slugs = [
@@ -335,6 +368,7 @@ def main() -> None:
         "05-compose-merge",
         "06-write-bridge-api",
         "07-book-reader-snapshot",
+        "08-source-merge-apply",
     ]
     for slug, html in zip(slugs, pages, strict=True):
         path = ROOT / f"sprint-{slug}.html"

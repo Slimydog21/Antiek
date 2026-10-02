@@ -56,10 +56,26 @@ cd ~/Desktop/Antiek/infrastructure/ansible
 nano inventory.ini
 ```
 
+> **Tunnel credentials (added 2026-09-21, D8 in #3328).** `setup.yml` now
+> provisions cloudflared, but it needs the tunnel's credentials JSON, which
+> exists ONLY on the running VM (`/etc/cloudflared/<tunnel-id>.json`) and is in
+> no backup. Before you ever need this runbook, copy it off the box into
+> `infrastructure/ansible/cloudflared-creds.yml` (gitignored) with shape:
+>
+> ```yaml
+> cloudflared_tunnel_id: "<uuid from /etc/cloudflared/config.yml>"
+> cloudflared_tunnel_credentials_json: '<contents of /etc/cloudflared/<uuid>.json>'
+> ```
+>
+> Without it a rebuilt VM restores the data but has no `api.antiek.ai`.
+> DNS needs no change on rebuild: it is a proxied CNAME to the tunnel, so the
+> new VM answers as soon as cloudflared connects — the old "wait for DNS" note
+> in Step 10 is obsolete.
+
 ## Step 3 — Bring the new VM to the same configured state
 
 ```bash
-ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
+ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml -e @cloudflared-creds.yml
 ```
 
 Same playbook as first-deploy.md step 10. Idempotent. ~5 minutes. End
@@ -101,12 +117,39 @@ in which case pick one from before the corruption.
 
 ```bash
 ssh root@<new-vm-ip>
+set -euo pipefail
 cd /tmp
 tar -xzf antiek-restore.tar.gz
-# Creates /tmp/antiek-backup-<timestamp>/
-ls -la /tmp/antiek-backup-*/
-# Expected: duckdb/  research_events/  knowledge_skills/
+# Continue Steps 6 and 7 in this same shell. Refuse an ambiguous selection.
+mapfile -t restore_choices < <(find /tmp -maxdepth 1 -type d -name 'antiek-backup.*' -print)
+if [ "${#restore_choices[@]}" -ne 1 ]; then
+  echo "ABORT: expected exactly one extracted antiek-backup.* directory" >&2
+  exit 1
+fi
+export RESTORE_DIR="${restore_choices[0]}/"
+ls -la "${RESTORE_DIR}"
+# Expected: duckdb/  research_events/  knowledge_skills/  source_manifest.json
+
+# Set to 1 only when intentionally selecting an unversioned pre-cursor archive.
+# The gate imports into a disposable scratch DB and compares its catalog and
+# row counts with the manifest before any persistent restore mutation.
+export ANTIEK_RESTORE_ALLOW_LEGACY=0
+cd /opt/antiek
+if [ "${ANTIEK_RESTORE_ALLOW_LEGACY}" = "1" ]; then
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}" --allow-legacy
+else
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}"
+fi
 ```
+
+If the archive is intentionally older and unversioned, change the explicit
+`ANTIEK_RESTORE_ALLOW_LEGACY=0` line to `=1` **before running Step 5**. The
+script then passes `--allow-legacy` in both checks. A failed gate ends that
+shell under `set -e`; reconnect and rerun Step 5 with the chosen setting.
+Do not proceed to Step 6 after a refusal. Keep the same shell for Steps 5–7
+so `RESTORE_DIR` identifies the same bundle.
 
 ## Step 6 — Restore the event log + knowledge skills
 
@@ -114,14 +157,14 @@ These are file copies — straightforward rsync over the empty state
 directory:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+: "${RESTORE_DIR:?run Step 5 and its compatibility gate in this shell first}"
 
 # Restore the event log
-sudo -u antiek rsync -a "${RESTORE_DIR}/research_events/" \
+sudo -u antiek rsync -a "${RESTORE_DIR}research_events/" \
     /home/antiek/.antiek/research_events/
 
 # Restore the knowledge-skills directory
-sudo -u antiek rsync -a "${RESTORE_DIR}/knowledge_skills/" \
+sudo -u antiek rsync -a "${RESTORE_DIR}knowledge_skills/" \
     /home/antiek/.antiek/knowledge_skills/
 ```
 
@@ -132,16 +175,49 @@ The backup is a directory of Parquet shards + a `load.sql` script
 DATABASE`:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+set -euo pipefail
 
-# Ensure no stale DuckDB file exists (IMPORT requires a fresh DB)
-rm -f /home/antiek/.antiek/antiek.duckdb
+: "${RESTORE_DIR:?run Step 5 and its compatibility gate in this shell first}"
+
+# GUARD (added 2026-09-21 after a read-only DR audit). Do NOT remove.
+# The archive's top-level directory is `antiek-backup.<mktemp suffix>` — a
+# DOT, not a hyphen. This runbook globbed `antiek-backup-*` for its whole
+# life, which matches NOTHING, so RESTORE_DIR resolved to the empty string
+# and the next line still deleted the live graph before IMPORT failed on
+# the path '/duckdb'. Following this runbook destroyed production and did
+# not restore it. Verified on the box: `ls -d /tmp/antiek-backup-*/` ->
+# "No such file or directory".
+if [ -z "${RESTORE_DIR:-}" ] || [ ! -d "${RESTORE_DIR}duckdb" ]; then
+  echo "ABORT: no extracted backup found. RESTORE_DIR='${RESTORE_DIR:-}'" >&2
+  echo "Re-check Step 5 extracted to /tmp/antiek-backup.*/ before continuing." >&2
+  exit 1
+fi
+echo "Restoring from: ${RESTORE_DIR}"
+
+# Recheck the same archive immediately before deleting the DB. For an older
+# unversioned bundle, the explicit Step 5 choice must still be in this shell.
+# After a legacy restore, do not run arXiv sync until the raw snapshot and
+# legacy JSON state have been reconciled.
+cd /opt/antiek
+if [ "${ANTIEK_RESTORE_ALLOW_LEGACY:-0}" = "1" ]; then
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}" --allow-legacy
+else
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}"
+fi
+
+# Ensure no stale DuckDB file exists (IMPORT requires a fresh DB).
+# The .wal is removed too: leaving an orphan WAL beside a deleted DB was
+# tested on DuckDB 1.5.2 and imports cleanly, but removing it keeps the
+# starting state unambiguous.
+rm -f /home/antiek/.antiek/antiek.duckdb /home/antiek/.antiek/antiek.duckdb.wal
 
 # Run IMPORT DATABASE as the antiek user so file ownership is right
 sudo -u antiek /opt/antiek/.venv/bin/python3 -c "
 import duckdb
 con = duckdb.connect('/home/antiek/.antiek/antiek.duckdb')
-con.execute(\"IMPORT DATABASE '${RESTORE_DIR}/duckdb';\")
+con.execute(\"IMPORT DATABASE '${RESTORE_DIR}duckdb';\")
 con.close()
 print('IMPORT complete')
 "
@@ -207,7 +283,7 @@ substrate is healthy AND the restored graph is queryable end-to-end.
 
 ```bash
 rm /tmp/antiek-restore.tar.gz
-rm -rf /tmp/antiek-backup-*/
+rm -rf /tmp/antiek-backup.*/
 ```
 
 ---

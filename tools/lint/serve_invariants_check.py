@@ -158,6 +158,15 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # publicly servable/attributable, so a regression that widened this path
         # would be caught there too.
         "orchestration/monitoring/monitor.py",
+        # The operator re-sanitize tool (SPR-06) reads raw_text to REBUILD the
+        # stored document_reader_html sidecar under the current sanitizer: the
+        # body goes raw_text -> raw_text_to_main_html -> store_reader_html and
+        # nowhere else. Its report prints counts plus a sample of document_id /
+        # content_class / raw_len / a 48-char title — never body text — and it
+        # has no serve surface. Same internal-rewriter category as
+        # research_bridge/versioning above; serve_full_text_guarded remains the
+        # only body-emission path.
+        "tools/resanitize_reader_html.py",
         # SPR-01/02 (.antiek sidecar): _gather_anchors_and_audio reads raw_text in
         # `SELECT raw_text, metadata FROM documents WHERE document_id = ?` where the
         # document_id is a VOICE-NOTE id (an anchor's voice_note_id) — the OWNER's
@@ -202,6 +211,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # sidecar prefer bridge. Same internal-writer category as book_import
         # publish / twin backfill above.
         "tools/backfill_book_reader_html.py",
+        # Research source-merge (ANT-AHT): the merge apply / restore writers read
+        # raw_text ONLY to hash the before/after body so a concurrent edit is
+        # rejected (hash-binding mismatch) and to write the merged body back with
+        # UPDATE. The body never leaves storage on this path — no serve surface,
+        # no caller return — the same internal-writer category as book_import
+        # publish.py above. Owner reads still go only through serve_full_text_guarded.
+        "substrate/research_artifact/source_merge.py",
     }
 )
 

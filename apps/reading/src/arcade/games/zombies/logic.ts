@@ -1,7 +1,7 @@
 /**
  * Paperclip Zombies — pure rules (BO1 arcade zombies–inspired wait easter egg).
  *
- * Endless waves of office-supply "zombies" march toward Werner's fort.
+ * Endless waves of office-supply "zombies" march toward Brain's fort.
  * Click / fire to destroy them. Survive waves; lives deplete on breach.
  * Designed for deep-research wait states — endless loop with explicit exit.
  */

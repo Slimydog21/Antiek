@@ -284,6 +284,7 @@ def test_ingested_url_is_viewable_as_sanitized_html(
     from acquisition.urls.client import FetchedHtml
 
     class _StubEmbedder:
+        dimension = 16  # the EmbeddingProvider Protocol requires it; producers now pin it
         def encode(self, text: str) -> list[float]:
             h = abs(hash(text)) % 64
             v = [0.0] * 16

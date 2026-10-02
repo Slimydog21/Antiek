@@ -82,7 +82,7 @@ def _validate_evidence_only_hashes(rule: DiscoveredRule) -> None:
             )
 
 
-class RulePropagationEventKind(str, enum.Enum):
+class RulePropagationEventKind(enum.StrEnum):
     ENQUEUED = "enqueued"
     DP_SHUFFLED = "dp_shuffled"
     PROPAGATED_TO_SHARED = "propagated_to_shared"

@@ -9,8 +9,10 @@ The threshold defaults to
 ``substrate.constants.DECOMPOSER_PARAPHRASE_COSINE_MAX`` (0.85). The
 embedder is injected (``EmbeddingModel`` protocol from
 ``substrate/graph/search.py``); tests pass a deterministic stub.
-``_load_default_embedder`` lazily constructs a
-``SentenceTransformerEmbedding`` only when no embedder is supplied.
+``_load_default_embedder`` lazily resolves the process's configured
+embedding provider only when no embedder is supplied, and refuses (raises
+``ImportError``) rather than hash-score when that provider merely fell back to
+hashing because sentence-transformers is unavailable.
 """
 
 from __future__ import annotations
@@ -19,15 +21,16 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 try:
-    from ...constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
-    from ...graph.search import EmbeddingModel
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX  # type: ignore[no-redef]
-    from substrate.graph.search import EmbeddingModel  # type: ignore[no-redef]
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 
 
 @dataclass(frozen=True)
@@ -39,7 +42,7 @@ class ParaphraseFlag:
     sub_question: str
     cosine: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "index": self.index,
             "sub_question": self.sub_question,
@@ -50,7 +53,7 @@ class ParaphraseFlag:
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     """Plain Python cosine — keeps the module dependency-free for the
     test path that injects deterministic stub embeddings."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = sum(x * x for x in a) ** 0.5
     nb = sum(y * y for y in b) ** 0.5
     if na == 0.0 or nb == 0.0:
@@ -59,12 +62,29 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def _load_default_embedder() -> EmbeddingModel:
-    """Lazy default — only constructed when the caller didn't inject
-    an embedder. Keeps test paths free of the sentence-transformers
-    dependency."""
-    from substrate.graph.search import SentenceTransformerEmbedding
+    """Lazy default — only resolved when the caller didn't inject an
+    embedder. Uses the process's configured provider (the one every other
+    embedding path uses): MiniLM in production, and whatever
+    ``ANTIEK_EMBEDDING_PROVIDER`` / the lineup binding selects otherwise.
+    Constructing sentence-transformers directly here ignored that setting,
+    so tests that asked for the hash embedder still loaded the model.
 
-    return SentenceTransformerEmbedding()
+    The hash embedder is used only when it was asked for
+    (``ANTIEK_EMBEDDING_PROVIDER=hash``). When the provider fell back to
+    hashing because sentence-transformers is not importable, this raises
+    ``ImportError`` as the direct construction did, so callers such as
+    ``ParaphraseGuardRubric`` report the check as skipped instead of scoring
+    paraphrases by token hashes."""
+    from processing.embedding.embed import HashEmbedding, default_embedding_provider
+
+    provider = default_embedding_provider()
+    requested = os.environ.get("ANTIEK_EMBEDDING_PROVIDER", "").strip().lower()
+    if isinstance(provider, HashEmbedding) and requested != "hash":
+        raise ImportError(
+            "sentence-transformers is unavailable and the hash embedder was not "
+            "requested; the paraphrase check does not score by token hashes"
+        )
+    return provider
 
 
 def check_paraphrases(

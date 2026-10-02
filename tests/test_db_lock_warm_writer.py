@@ -6,6 +6,8 @@ Cite: runtime/db_lock.py WP-3; #3121 coexist; #3164/#3165 fill contention.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -76,6 +78,187 @@ def test_keepalive_zero_closes_fully(tmp_path: Path, monkeypatch):
     assert len(opens) > n_after_first, opens
 
 
+def test_per_call_zero_consumes_warm_slot_and_releases_cross_process_lock(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "override.duckdb")
+    with db_lock.connect_write(db, purpose="default", timeout_s=5) as con:
+        con.execute("CREATE TABLE t (id INTEGER)")
+    with db_lock.connect_write(db, purpose="yield", keepalive_s=0, timeout_s=5) as con:
+        con.execute("INSERT INTO t VALUES (1)")
+    assert db_lock.flush_warm_writers(db) == 0
+
+    # A different process must acquire both the sidecar flock and a DuckDB RW
+    # handle; checking only our in-process registry would miss either leak.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import duckdb, fcntl, os, sys; "
+            "db = sys.argv[1]; "
+            "fd = os.open(db + '.write.lock', os.O_WRONLY); "
+            "fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); "
+            "con = duckdb.connect(db); "
+            "assert con.execute('SELECT count(*) FROM t').fetchone()[0] == 1; "
+            "con.close(); os.close(fd)",
+            db,
+        ],
+        check=True,
+        timeout=5,
+    )
+    with db_lock.connect_write(db, purpose="default-again", timeout_s=5):
+        pass
+    assert db_lock.flush_warm_writers(db) == 1
+
+
+def test_warm_writer_yields_to_a_waiting_process_before_next_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "handoff.duckdb")
+    with db_lock.connect_write(db, purpose="api:first", timeout_s=5) as con:
+        con.execute("CREATE SEQUENCE proof_sequence START 1")
+        con.execute(
+            "CREATE TABLE proof (position BIGINT DEFAULT nextval('proof_sequence'), "
+            "writer TEXT)"
+        )
+
+    contender = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, time; "
+                "sys.path.insert(0, sys.argv[2]); "
+                "from runtime.db_lock import connect_write; "
+                "db = sys.argv[1]; "
+                "con = connect_write(db, purpose='arxiv:batch', "
+                "timeout_s=4, poll_interval_s=0.01, keepalive_s=0); "
+                "con.execute(\"INSERT INTO proof (writer) VALUES ('arxiv')\"); "
+                "print('acquired', flush=True); "
+                "time.sleep(0.1); con.close()"
+            ),
+            db,
+            str(Path(__file__).resolve().parents[1]),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 3
+        while not db_lock.write_handoff_requested(db):
+            if contender.poll() is not None:
+                _, stderr = contender.communicate()
+                pytest.fail(f"contender exited before requesting handoff: {stderr}")
+            assert time.monotonic() < deadline, "contender never requested handoff"
+            time.sleep(0.01)
+
+        with db_lock.connect_write(db, purpose="api:next", timeout_s=6) as con:
+            con.execute("INSERT INTO proof (writer) VALUES ('api')")
+            writers = [
+                row[0]
+                for row in con.execute(
+                    "SELECT writer FROM proof ORDER BY position"
+                ).fetchall()
+            ]
+        stdout, stderr = contender.communicate(timeout=8)
+        assert contender.returncode == 0, stderr
+        assert stdout.strip() == "acquired"
+        assert writers == ["arxiv", "api"]
+    finally:
+        if contender.poll() is None:
+            contender.kill()
+            contender.communicate(timeout=5)
+        db_lock.flush_warm_writers(db)
+
+
+def test_unreadable_waiter_registry_falls_back_to_cold_flock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "registry-error.duckdb")
+    with db_lock.connect_write(db, purpose="api:first", timeout_s=5) as con:
+        con.execute("CREATE TABLE proof (value INTEGER)")
+
+    def unreadable(_db_path: str) -> bool:
+        raise PermissionError("unreadable waiter registry")
+
+    monkeypatch.setattr(db_lock, "write_handoff_requested", unreadable)
+    with db_lock.connect_write(db, purpose="api:next", timeout_s=5) as con:
+        con.execute("INSERT INTO proof VALUES (1)")
+    assert db_lock.flush_warm_writers(db) == 0
+
+
+def test_active_writer_does_not_park_after_external_waiter_arrives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "active-handoff.duckdb")
+    contender = None
+    try:
+        with db_lock.connect_write(db, purpose="api:active", timeout_s=5) as con:
+            con.execute("CREATE TABLE proof (writer TEXT)")
+            contender = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; sys.path.insert(0, sys.argv[2]); "
+                        "from runtime.db_lock import connect_write; "
+                        "con = connect_write(sys.argv[1], purpose='arxiv:batch', "
+                        "timeout_s=4, poll_interval_s=0.01, keepalive_s=0); "
+                        "con.execute(\"INSERT INTO proof VALUES ('arxiv')\"); "
+                        "print('acquired', flush=True); con.close()"
+                    ),
+                    db,
+                    str(Path(__file__).resolve().parents[1]),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            deadline = time.monotonic() + 3
+            while not db_lock.write_handoff_requested(db):
+                if contender.poll() is not None:
+                    _, stderr = contender.communicate()
+                    pytest.fail(f"contender exited before requesting handoff: {stderr}")
+                assert time.monotonic() < deadline, "contender never requested handoff"
+                time.sleep(0.01)
+
+        assert db_lock.flush_warm_writers(db) == 0
+        stdout, stderr = contender.communicate(timeout=8)
+        assert contender.returncode == 0, stderr
+        assert stdout.strip() == "acquired"
+    finally:
+        if contender is not None and contender.poll() is None:
+            contender.kill()
+            contender.communicate(timeout=5)
+        db_lock.flush_warm_writers(db)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), "bad"])
+def test_invalid_keepalive_rejected_before_gate_or_warm_slot(
+    tmp_path: Path, monkeypatch, value
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "invalid.duckdb")
+    with pytest.raises((ValueError, OverflowError)):
+        db_lock.connect_write(db, keepalive_s=value, timeout_s=0)
+    assert not os.path.exists(db + ".write.lock")
+    with db_lock.connect_write(db, timeout_s=5) as con:
+        con.execute("CREATE TABLE t (id INTEGER)")
+    with pytest.raises((ValueError, OverflowError)):
+        db_lock.connect_write(db, keepalive_s=value, timeout_s=0)
+    assert db_lock.flush_warm_writers(db) == 1
+
+
 def test_open_transaction_does_not_park(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
@@ -104,3 +287,43 @@ def test_pytest_forces_keepalive_off(monkeypatch):
     monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "99")
     assert os.environ.get("PYTEST_CURRENT_TEST")
     assert db_lock._write_keepalive_s() == 0.0
+
+
+def test_parked_slot_releases_flock_on_expiry_without_another_writer(
+    tmp_path: Path, monkeypatch
+):
+    """The documented 20s bound must hold on an IDLE process.
+
+    Before the expiry timer, a parked writer released its flock only when the
+    NEXT in-process write called _take_warm_slot. With no next write the
+    cross-process flock was held forever: prod's nightly backup timed out
+    after 180s three nights running and /export/my-graph answered 503.
+    """
+    import fcntl
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "0.2")
+    db = str(tmp_path / "idle.duckdb")
+    with db_lock.connect_write(db, purpose="idle:1", timeout_s=5) as con:
+        con.execute("CREATE TABLE IF NOT EXISTS t (id INTEGER)")
+    lock_path = db + ".write.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        # Immediately after close the slot is parked and the flock is HELD.
+        with pytest.raises(OSError):
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # ... and with NO further connect_write, it must free itself.
+        deadline = time.monotonic() + 2.0
+        acquired = False
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except OSError:
+                time.sleep(0.02)
+        assert acquired, "parked warm writer never released the flock on expiry"
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    assert db_lock.flush_warm_writers(db) == 0

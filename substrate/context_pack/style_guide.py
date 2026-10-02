@@ -58,7 +58,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.context_pack.assembler import (  # type: ignore[no-redef]
+    from substrate.context_pack.assembler import (
         DEFAULT_KIND_PRIORITY,
         LayerSource,
     )
@@ -114,8 +114,8 @@ def _evidence_type_of(sub_question: Any) -> str | None:
         val = sub_question.evidence_type_required
         return val.strip().lower() if isinstance(val, str) else None
     if isinstance(sub_question, dict):
-        val = sub_question.get("evidence_type_required")
-        return val.strip().lower() if isinstance(val, str) else None
+        val_opt = sub_question.get("evidence_type_required")
+        return val_opt.strip().lower() if isinstance(val_opt, str) else None
     return None
 
 

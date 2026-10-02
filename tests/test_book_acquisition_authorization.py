@@ -364,8 +364,12 @@ def test_no_spend_surface_or_transport_imports() -> None:
         "dataclasses",
         "enum",
         "runtime",
+        # The legal gate is the procurement policy dependency; network and
+        # payment transports remain forbidden below.
+        "substrate",
         "typing",
     }
+    assert imported.isdisjoint({"httpx", "requests", "stripe", "urllib3"})
     called_names = {
         node.func.id
         for node in ast.walk(tree)

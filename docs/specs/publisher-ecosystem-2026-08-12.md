@@ -9,7 +9,7 @@
 
 ## 1. Executive summary
 
-Antiek's publisher ecosystem has two products and one legal frame. The products: **(1)** direct digital book/ebook purchases inside Antiek's marketplace (owned and read inside Antiek, with AI-augmented deep research and cocktail reading), and **(2)** a research-ingestion API (user pays a discounted price for agent notes + analysis of a publisher asset, with NO reading access — the publisher never gives away free reading, and ad attribution over time drives the effective price to zero). The legal frame is the Bartz v. Anthropic procurement-based compliance posture, enforced through retrieval-time gating, user-upload ownership, and publisher opt-in escrow per the master spec's §9.0 and §9.10. The sweet-deal mechanics for publishers — ad rev-share, attribution transparency, opt-in pre-onboarded escrow, Spotify-style equity (12% first-3-signers / 3% rest, ≤15% combined cap) — are designed to be structurally irresistible without poisoning the cap table. Infrastructure hosting has a v1 decision: self-host Stripe Checkout on `antiek.ai/store` as the initial purchase rail, then evaluate whitelabel marketplace migration (Lemon Squeezy or Payhip) once volume justifies the integration tax.
+Antiek's publisher ecosystem has two products and one legal frame. The products: **(1)** direct digital book/ebook purchases inside Antiek's marketplace (owned and read inside Antiek, with AI-augmented deep research and cocktail reading), and **(2)** a research-ingestion API (user pays a discounted price for agent notes + analysis of a publisher asset, with NO reading access — the publisher never gives away free reading, and ad attribution over time drives the effective price to zero). The legal frame is the house position already recorded in `docs/decisions/read-spr-01-servable-corpus-gate.md:17-26` ("Spotify, not Internet Archive"): both products aggregate copyrighted works and serve them for money, and neither trains on them, so the controlling case is *Hachette v. Internet Archive* (2d Cir. 2024), enforced through retrieval-time gating, user-upload ownership, and publisher opt-in escrow per the master spec's §9.0 and §9.10. The sweet-deal mechanics for publishers — ad rev-share, attribution transparency, opt-in pre-onboarded escrow, Spotify-style equity (12% first-3-signers / 3% rest, ≤15% combined cap) — are designed to be structurally irresistible without poisoning the cap table. Infrastructure hosting has a v1 decision: self-host Stripe Checkout on `antiek.ai/store` as the initial purchase rail, then evaluate whitelabel marketplace migration (Lemon Squeezy or Payhip) once volume justifies the integration tax.
 
 ---
 
@@ -81,11 +81,13 @@ This is the mechanism the operator described: **ad revenue grows until it displa
 
 ---
 
-## 4. Licensing and compliance posture (Bartz v. Anthropic alignment)
+## 4. Licensing and compliance posture (Hachette v. Internet Archive alignment)
+
+Both products aggregate copyrighted works and serve them for money; neither trains on them. The controlling case is therefore *Hachette v. Internet Archive* (2d Cir. 2024), which enjoined aggregate-and-serve and closed the structural fair-use defence for it. The house position is stated once, in `docs/decisions/read-spr-01-servable-corpus-gate.md:17-26`, and is not restated here: serve full text only where the licence permits it, deny by default, make takedown cheap and total. Serving is the exposure these two products carry; the mechanisms below are how they stay on the licensed side of that line.
 
 ### 4.1 The procurement firewall
 
-Per master spec §9.0: **the dispositive variable is procurement, not use.** Antiek must never be the entity that fetches copyrighted content on behalf of users. The platform is hosting infrastructure; the user is the fetch agent. Architectural commitments:
+Per master spec §9.0, Antiek must never be the entity that fetches copyrighted content on behalf of users. The platform is hosting infrastructure; the user is the fetch agent. *Bartz v. Anthropic* is the authority for this half only: it priced pirated procurement (the ~$1.5B settlement), not serving, and the legal-gate registry plus the book-acquisition intent check are the platform's controls against that procurement exposure. Architectural commitments:
 
 - **User uploads documents they have legitimate access to.** Research papers they purchased, books they own, notes they wrote. The platform processes them. The platform never scrapes copyrighted books and drops them into the user's graph.
 - **Retrieval-time gating** (Option C, accepted in §9.0): restricted-class content cannot be retrieved into a synthesis that triggers attribution unless `policy_tag in {"private_research", "operator_only"}`.

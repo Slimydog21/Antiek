@@ -237,9 +237,13 @@ def filter_to_new_only(
     (because a PR inserted code above it) is still recognized as the same
     grandfathered debt, not reported as NEW:
 
-    1. Exact ``(path, line, col, kind)`` membership (the common case, and
-       the only stage when no snippet is present — so substrate-lint
-       baselines and v1 baselines behave byte-identically to before).
+    1. Exact ``(path, line, col, kind)`` membership AND agreeing content.
+       A coordinate match alone is not enough: a different violation of the
+       same kind can land on a baselined coordinate as code moves, and
+       absorbing it would hand every baselined coordinate out as a free pass
+       on a required gate. When either side carries no snippet (substrate-lint
+       and v1 baselines), this degrades to coordinate-only matching and
+       behaves byte-identically to before.
     2. Content fallback: a current finding with a non-empty ``snippet``
        matches a baseline entry of the same ``(path, kind)`` whose
        normalized ``snippet`` is identical.
@@ -257,9 +261,15 @@ def filter_to_new_only(
     exact match uncounted, masking a genuine NEW duplicate (the multiset
     rule would be violated).
     """
-    exact: set[tuple[str, int, int, str]] = {
-        (k.path, k.line, k.col, k.kind) for k in baseline.violations
-    }
+    # Coordinate -> the normalized snippets baselined AT that coordinate.
+    # An empty string means that entry carried no snippet (a v1/legacy
+    # baseline), which keeps coordinate-only matching for those.
+    exact: dict[tuple[str, int, int, str], set[str]] = {}
+    for k in baseline.violations:
+        coord = (k.path, k.line, k.col, k.kind)
+        exact.setdefault(coord, set()).add(
+            normalize_snippet(k.snippet) if k.snippet else ""
+        )
     slots: dict[tuple[str, str, str], int] = {}
     for k in baseline.violations:
         if k.snippet:
@@ -270,9 +280,28 @@ def filter_to_new_only(
     # elsewhere can't hide behind it.
     unmatched: list[ViolationKey] = []
     for k in current:
-        if (k.path, k.line, k.col, k.kind) in exact:
+        coord = (k.path, k.line, k.col, k.kind)
+        baselined_snippets = exact.get(coord)
+        cur_snippet = normalize_snippet(k.snippet) if k.snippet else ""
+        # A coordinate match is only the SAME offense when the content agrees.
+        # Without this, a wholly different violation of the same kind landing
+        # on a baselined coordinate was absorbed silently — and on a required
+        # merge gate every baselined coordinate is then a free pass. Proved on
+        # origin/main: baseline "import os" at test_write_routes.py:29:1
+        # ruff:E402 absorbed a current "from zzz.malicious import backdoor" at
+        # the same coordinate and reported 0 NEW.
+        #
+        # An empty string on either side means no snippet was captured (a v1
+        # or substrate-lint baseline), so those keep coordinate-only matching
+        # and behave byte-identically to before.
+        same_offense = baselined_snippets is not None and (
+            cur_snippet == ""
+            or "" in baselined_snippets
+            or cur_snippet in baselined_snippets
+        )
+        if same_offense:
             if k.snippet:
-                sk = (k.path, k.kind, normalize_snippet(k.snippet))
+                sk = (k.path, k.kind, cur_snippet)
                 if slots.get(sk, 0) > 0:
                     slots[sk] -= 1
         else:

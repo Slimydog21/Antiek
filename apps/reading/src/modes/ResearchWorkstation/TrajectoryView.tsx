@@ -57,7 +57,7 @@ export default function TrajectoryView({
         )}
         {groups.map((g) => (
           <div key={g.phase} className="space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight border-b border-rule dark:border-charcoal-1 pb-1">
+            <div className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight border-b border-rule dark:border-charcoal-1 pb-1">
               Phase {g.phase}{g.label ? ` · ${g.label}` : ""}
             </div>
             {g.events.map((e) => (
@@ -87,7 +87,7 @@ function TrajectoryHeader({
             investigation.status === "in_progress"
               ? "text-sun-deep dark:text-sun"
               : investigation.status === "completed"
-                ? "text-emerald-700"
+                ? "text-success"
                 : investigation.status === "failed"
                   ? "text-emperor"
                   : "text-shadow-1 dark:text-moonlight"

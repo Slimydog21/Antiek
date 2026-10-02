@@ -127,7 +127,7 @@ def publish(
     )
 
 
-def get_publication(con: Any, publication_id: str) -> dict | None:
+def get_publication(con: Any, publication_id: str) -> dict[str, Any] | None:
     row = con.execute(
         "SELECT publication_id, project_id, visibility, content_class, served, taken_down "
         "FROM speak_publications WHERE publication_id = ?",

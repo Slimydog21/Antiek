@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { press } from "../../design/motion";
+
 /**
  * LemonSelect — generic over the option value type V. Renders as a styled
  * button + a popover of options; keyboard ↑/↓/Enter/Esc.
@@ -35,9 +37,9 @@ type Props<V> = {
 };
 
 const heights: Record<Sizing, string> = {
-  sm: "h-7  text-[12px]",
-  md: "h-9  text-[13px]",
-  lg: "h-11 text-[14px]",
+  sm: "h-7  text-xs",
+  md: "h-9  text-sm",
+  lg: "h-11 text-sm",
 };
 
 export function LemonSelect<V>({
@@ -67,7 +69,11 @@ export function LemonSelect<V>({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      // The Esc is the listbox's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHoverIdx((i) => {
@@ -122,9 +128,8 @@ export function LemonSelect<V>({
           "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright " +
           "border-edge border-sun rounded-hog " +
           "shadow-z1 dark:shadow-z1-night font-mono font-semibold " +
-          "hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-z2 dark:hover:shadow-z2-night " +
-          "transition-transform duration-75 " +
-          (fullWidth ? "w-full" : "")
+          press +
+          (fullWidth ? " w-full" : "")
         }
       >
         <span className={`truncate ${selected ? "" : "text-ink-mute dark:text-moonlight"}`}>
@@ -140,6 +145,7 @@ export function LemonSelect<V>({
       {open && (
         <ul
           role="listbox"
+          data-esc-overlay=""
           className={
             "absolute top-[calc(100%+4px)] left-0 z-50 min-w-full " +
             "bg-ice-0 dark:bg-charcoal-2 " +
@@ -163,7 +169,7 @@ export function LemonSelect<V>({
                   close();
                 }}
                 className={
-                  "px-3 py-1.5 text-[13px] cursor-pointer " +
+                  "px-3 py-1.5 text-sm cursor-pointer " +
                   (o.disabled
                     ? "opacity-40 cursor-not-allowed "
                     : isHover

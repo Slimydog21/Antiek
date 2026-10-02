@@ -96,5 +96,5 @@ export function opaquePanelShadowClasses(
 export const ELEVATION_EXEMPT_SURFACES = [
   "ResearchWorkstation dense IDE (/inv/:id center)",
   "GlassSurface scene landings",
-  "Werner illustration layer",
+  "Brain illustration layer",
 ] as const;

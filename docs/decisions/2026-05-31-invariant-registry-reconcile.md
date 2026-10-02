@@ -43,7 +43,7 @@ never a `guarded` entry pointing at a non-existent file.**
 
 | Invariant | 203eefb status | Guard node | Live-main reachability | SPR-02 call |
 |---|---|---|---|---|
-| `section-14-4-synthesis-pin` | guarded | `tests/test_dispatch_synthesis_pin.py::test_default_deep_synthesizer_stays_pinned_to_opus_with_deepseek_live` | node present (L131); collects + PASSES | **keep guarded** |
+| `section-14-4-synthesis-pin` | guarded | `tests/test_dispatch_synthesis_pin.py::test_default_deep_synthesizer_stays_pinned_to_glm_with_deepseek_live` | node present (L131); collects + PASSES | **keep guarded** |
 | `provenance-chain-no-copy` | guarded | `tests/test_seam_no_copy.py::test_read_to_write_copy_fails_the_guard` | node present (L93); collects + PASSES | **keep guarded** |
 | `single-writer-remote-exec` | guarded | `tests/test_remote_exec_isolation.py::test_connect_write_only_in_funnel` | node present (L70); collects + PASSES | **keep guarded** |
 | `single-writer-per-graph` | guarded | `tests/test_graph_handle_isolation.py::test_two_handles_locks_do_not_contend` | guard imports `substrate.graph_handle` — **module ABSENT on main**; collection fails `ModuleNotFoundError: No module named 'substrate.graph_handle'` | **flip @unguarded, owner SPR-04** |

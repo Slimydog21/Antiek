@@ -219,6 +219,7 @@ def ingest_post(
                 text=chunk.text,
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
+                embedding_provider=emb,
                 token_count=chunk.token_count,
             )
             chunk_ids.append(chunk_id)

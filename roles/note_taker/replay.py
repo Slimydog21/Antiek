@@ -13,13 +13,13 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from runtime.db_lock import LockedConnection, connect_read, connect_write
 from substrate.event_log import default_events_dir, iter_physical_events
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
-from substrate.schemas.events import ConfidenceLevel, NoteEmergedPayload
+from substrate.schemas.events import NoteEmergedPayload
 from substrate.write.event_outbox import (
     build_typed_envelope,
     dispatch_aggregate_pending,
@@ -679,7 +679,7 @@ class DurableNoteTakerReplay:
                                 note_id=note_id,
                                 note_text=normalized,
                                 source_event_ids=list(note.source_event_ids),
-                                confidence=cast(ConfidenceLevel, note.confidence),
+                                confidence=note.confidence,
                                 node_id=None,
                             ),
                             parent_event_id=source_ids[-1],

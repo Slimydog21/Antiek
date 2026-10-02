@@ -44,11 +44,31 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # merge_group: REQUIRED for the merge queue. A queued PR is tested as a
+  # temporary merge commit of (main + PR) delivered as a `merge_group` event,
+  # NOT as a `pull_request` event. Without this trigger the 8 required checks
+  # would never report for a queue entry and every PR would hang in the queue
+  # forever — so this must land BEFORE the merge_queue rule is enabled.
+  # Concurrency needs no change: for a non-pull_request event the group keys
+  # on github.sha with cancel-in-progress false, so each merge group gets its
+  # own run and nothing cancels it.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
-  group: enforce-declared-bar-${{ github.ref }}
-  cancel-in-progress: true
+  # One run per PR branch: a new push to a PR cancels the previous run,
+  # because only the latest head of a PR is worth checking. main is
+  # different — every commit there is a release candidate, so its run must
+  # reach a verdict. Keying main by `github.ref` with cancel-in-progress
+  # meant each merge cancelled the previous merge's run; on ci.yml that
+  # produced 32 cancelled / 8 failure / ZERO success over 40 main runs
+  # before #3203 fixed it. This workflow emits `mypy --strict + ruff (declared scope,
+  # baselined)`, which ruleset 23702536 makes a REQUIRED check — so main
+  # never getting a verdict from it is the same hole, on a gate that now
+  # decides whether PRs can merge.
+  group: enforce-declared-bar-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Match ci.yml: Node 24 for JS-based actions (checkout/setup-python).
@@ -103,7 +123,7 @@ jobs:
           # don't resolve here are simply not constrained). Provenance +
           # regeneration rule: header of tools/lints/constraints.txt.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
           pip install -c tools/lints/constraints.txt \
             "ruff==${RUFF_VERSION}" "mypy==${MYPY_VERSION}"
           # Surface the resolved set in the job log so a future red can be

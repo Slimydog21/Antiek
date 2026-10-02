@@ -102,9 +102,20 @@ def assert_g2_synquery_honesty_shape(payload: Mapping[str, Any]) -> None:
         raise HonestyContractError(f"g2/synquery honesty missing keys: {miss}")
     if payload.get("money_model") != "accrue_escrow_now_disburse_after_legal_review":
         raise HonestyContractError("money_model must be accrue-escrow (not paid today)")
-    # When gated, paid_today must be false — never invent cash.
+    # When gated, paid_today must be false — never invent cash. This check
+    # was unsatisfiable while the producer hardcoded False; it is meaningful
+    # now that the value is derived from disbursement state.
     if payload.get("g2_counsel_gated") and payload.get("paid_today") is not False:
         raise HonestyContractError("paid_today must be False while G2 counsel gated")
+    # And never claim a payment this envelope cannot see. It is DB-free, so
+    # True is a value it has no standing to emit: False when provably gated,
+    # None when it cannot know. A True here means someone wired a claim to a
+    # source that is not the payouts ledger.
+    if payload.get("paid_today") is True:
+        raise HonestyContractError(
+            "paid_today cannot be True in a DB-free honesty envelope — it "
+            "cannot observe the payouts ledger; emit None for unknown"
+        )
     if payload.get("synquery_gated") and payload.get("synquery_partnership") == "live":
         raise HonestyContractError("synquery_partnership cannot be live while gated")
 

@@ -4,7 +4,7 @@
  */
 export function FakeNotebook() {
   return (
-    <div className="p-5 max-w-prose font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+    <div className="p-5 max-w-prose font-serif text-base leading-relaxed text-ink dark:text-bright">
       <h1 className="font-sans font-bold text-2xl mb-3">
         Neutral-atom gate errors — first pass
       </h1>
@@ -23,7 +23,7 @@ export function FakeNotebook() {
       <h2 className="font-sans font-bold text-lg mt-5 mb-2">
         Open questions
       </h2>
-      <ul className="list-disc list-inside space-y-1 text-[14.5px]">
+      <ul className="list-disc list-inside space-y-1 text-sm">
         <li>Has anyone published a head-to-head benchmark with shared decomp?</li>
         <li>What's the effective gate fidelity after error-correction overhead?</li>
         <li>Where does the Vuletic preprint's number land after normalisation?</li>

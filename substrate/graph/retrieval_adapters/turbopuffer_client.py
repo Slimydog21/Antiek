@@ -16,7 +16,7 @@ class ShadowNamespace(Protocol):
 
 def make_namespace(*, api_key: str, region: str, namespace: str) -> ShadowNamespace:
     try:
-        import turbopuffer  # type: ignore[import-not-found]
+        import turbopuffer
     except ImportError as exc:
         raise RuntimeError("install the turbopuffer_shadow extra") from exc
     client = turbopuffer.Turbopuffer(api_key=api_key, region=region, timeout=30.0,

@@ -18,17 +18,17 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
   return (
     <NodeViewWrapper className="my-3" data-block="question-card">
       <div className="border-l-edge border-aurora bg-aurora/10 dark:bg-aurora/15 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
-        <span className="text-aurora font-mono text-[10px] uppercase tracking-wider shrink-0 mt-1">
+        <span className="text-aurora font-mono text-xxs uppercase tracking-wider shrink-0 mt-1">
           question
         </span>
-        <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+        <p className="flex-1 font-serif text-base leading-relaxed text-ink dark:text-bright">
           {text || (
             <span className="italic text-ink-mute dark:text-moonlight">
               (empty question)
             </span>
           )}
           {parkedId && (
-            <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight ml-2">
+            <span className="font-mono text-xxs text-ink-mute dark:text-moonlight ml-2">
               ↳ {parkedId.slice(0, 10)}
             </span>
           )}
@@ -56,7 +56,7 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
                 },
               );
             }}
-            className="text-[10px] font-mono text-aurora hover:underline shrink-0 mt-1"
+            className="text-xxs font-mono text-aurora hover:underline shrink-0 mt-1"
             title="Chase this question in a floating panel"
           >
             chase
@@ -66,7 +66,7 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
           type="button"
           onClick={() => deleteNode()}
           aria-label="Remove question"
-          className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
+          className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >
           ✕
         </button>

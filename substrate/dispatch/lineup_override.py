@@ -27,6 +27,7 @@ call — acceptable, and the PUT path re-reads on the next call anyway.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,7 @@ from .lineup_catalog import ACTION_BY_ID, ROLE_BY_ID
 
 _OPERATOR_OWNER = "__operator__"
 _registry_cache: dict[tuple[str, int, int], dict[str, object]] = {}
+_log = logging.getLogger("antiek.dispatch.lineup_override")
 
 
 def _registry_path() -> Path:
@@ -57,9 +59,25 @@ def _load_registry() -> dict[str, object]:
         return cached
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        # An operator lineup that EXISTS but cannot be read is not "no
+        # assignment": every paid call now routes to the platform default and
+        # the route receipt says manual_override=False. Say so, once per file
+        # version (the cache key), instead of returning the same {} as
+        # "operator made no assignment".
+        _log.warning(
+            "lineup registry %s exists but is unreadable (%s: %s) — every "
+            "lineup assignment is IGNORED and dispatch falls back to the "
+            "platform default until the file is repaired",
+            path, type(exc).__name__, exc,
+        )
         raw = {}
     if not isinstance(raw, dict):
+        _log.warning(
+            "lineup registry %s is not a JSON object (%s) — every lineup "
+            "assignment is IGNORED and dispatch falls back to the platform default",
+            path, type(raw).__name__,
+        )
         raw = {}
     _registry_cache.clear()  # one-entry cache
     _registry_cache[key] = raw

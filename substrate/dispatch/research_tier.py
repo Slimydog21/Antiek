@@ -135,7 +135,7 @@ def normalize_research_tier(value: object) -> ResearchTier:
     high-value target. The caller can detect the coercion by comparing
     the input to the result if it cares."""
     if isinstance(value, str) and value in _RESEARCH_TIER_MAP:
-        return value  # type: ignore[return-value]
+        return value  # type: ignore[return-value,unused-ignore]
     return DEFAULT_RESEARCH_TIER
 
 

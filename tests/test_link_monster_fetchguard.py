@@ -119,3 +119,41 @@ def test_fetch_guarded_4xx_raises(monkeypatch):
     monkeypatch.setattr("acquisition.link_monster.fetchguard._host_is_safe", lambda h: True)
     with pytest.raises(httpx.HTTPStatusError):
         fetch_guarded("https://public.example.com/missing", client=client)
+
+
+def test_guard_denies_by_default_not_by_denylist(monkeypatch) -> None:
+    """Every non-global address must be refused, not just the listed ones.
+
+    A denylist can only reject the forms someone thought to enumerate. The
+    IPv4-mapped IPv6 form is in none of the listed networks — an IPv6Address
+    never compares inside an IPv4Network — so it passed the guard while the OS
+    routed it to the IPv4 target. `is_global` is what makes the docstring's
+    promise ("require all of them to be public") actually true.
+    """
+    import socket as _socket
+
+    from acquisition.link_monster import fetchguard
+
+    must_refuse = [
+        "127.0.0.1",
+        "169.254.169.254",
+        "::1",
+        "::ffff:127.0.0.1",        # the mapped form the denylist could not see
+        "::ffff:169.254.169.254",
+        "0.0.0.0",
+        "::",
+    ]
+    must_allow = ["8.8.8.8", "2606:4700::1"]
+
+    def _resolve_to(addr: str):
+        fam = _socket.AF_INET6 if ":" in addr else _socket.AF_INET
+        return lambda host, port: [(fam, None, None, "", (addr, 0))]
+
+    for addr in must_refuse:
+        monkeypatch.setattr(fetchguard.socket, "getaddrinfo", _resolve_to(addr))
+        assert not fetchguard._host_is_safe("probe.invalid"), f"{addr} must be refused"
+
+    # The other half: a stricter posture must not break the feature.
+    for addr in must_allow:
+        monkeypatch.setattr(fetchguard.socket, "getaddrinfo", _resolve_to(addr))
+        assert fetchguard._host_is_safe("probe.invalid"), f"{addr} must stay allowed"

@@ -46,7 +46,7 @@ export const Showcase: Story = {
       const [model, setModel] = useState<string>("nano-banana");
       const [query, setQuery] = useState("");
       const [draft, setDraft] = useState(
-        "Hi Werner. Type Cmd+Enter to submit. The textarea auto-grows.",
+        "Hi Werner. Type Cmd+Enter to submit. The textarea auto-grows.", // LOSTPIXEL PIXEL-FREEZE: visible string kept until design-primitives-showcase--showcase baselines are re-minted
       );
       return (
         <div className="min-h-screen bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
@@ -87,10 +87,11 @@ export const Showcase: Story = {
                 <LemonTag>default</LemonTag>
                 <LemonTag colour="sun">sun</LemonTag>
                 <LemonTag colour="aurora">aurora</LemonTag>
+                <LemonTag colour="success">success</LemonTag>
                 <LemonTag colour="danger">danger</LemonTag>
                 <LemonTag colour="muted">muted</LemonTag>
                 <LemonTag dot colour="sun">running</LemonTag>
-                <LemonTag dot colour="aurora">done</LemonTag>
+                <LemonTag dot colour="success">done</LemonTag>
                 <LemonTag dot colour="danger">failed</LemonTag>
                 <LemonTag onRemove={() => toast.info("Tag removed")}>kalshi</LemonTag>
               </div>
@@ -193,7 +194,7 @@ export const Showcase: Story = {
                     key: "status",
                     header: "Status",
                     render: (r) => (
-                      <LemonTag dot colour={r.status === "done" ? "aurora" : "sun"}>
+                      <LemonTag dot colour={r.status === "done" ? "success" : "sun"}>
                         {r.status}
                       </LemonTag>
                     ),

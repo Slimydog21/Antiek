@@ -62,11 +62,23 @@ from tools.lints.no_blocking_write_in_async import (
 from tools.lints.no_blocking_write_in_async import (
     scan_paths as scan_blocking_write_in_async,
 )
+from tools.lints.no_indirect_write_in_async import (
+    Violation as IndirectWriteInAsyncViolation,
+)
+from tools.lints.no_indirect_write_in_async import (
+    scan_paths as scan_indirect_write_in_async,
+)
 from tools.lints.no_raise_in_substrate_writers import (
     Violation,
 )
 from tools.lints.no_raise_in_substrate_writers import (
     scan_paths as scan_no_raise,
+)
+from tools.lints.no_raw_read_only_connect import (
+    Violation as RawReadOnlyConnectViolation,
+)
+from tools.lints.no_raw_read_only_connect import (
+    scan_paths as scan_raw_read_only_connect,
 )
 from tools.lints.no_seam_call_under_write_lock import (
     Violation as SeamUnderLockViolation,
@@ -122,6 +134,22 @@ def _blocking_write_in_async_to_key(v: object) -> ViolationKey:
     )
 
 
+def _indirect_write_in_async_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, IndirectWriteInAsyncViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"indirect-write-in-async:{v.helper}",
+    )
+
+
+def _raw_read_only_connect_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, RawReadOnlyConnectViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"raw-read-only-connect:{v.call}",
+    )
+
+
 def _seam_under_lock_to_key(v: object) -> ViolationKey:
     assert isinstance(v, SeamUnderLockViolation)
     return ViolationKey(
@@ -151,12 +179,54 @@ LINT_REGISTRY: dict[str, tuple[
         _seam_under_lock_to_key,
         "no_seam_call_under_write_lock",
     ),
+    "raw_read_only_connect": (
+        scan_raw_read_only_connect,
+        _raw_read_only_connect_to_key,
+        "no_raw_read_only_connect",
+    ),
     "blocking_write_in_async": (
         scan_blocking_write_in_async,
         _blocking_write_in_async_to_key,
         "no_blocking_write_in_async",
     ),
+    "indirect_write_in_async": (
+        scan_indirect_write_in_async,
+        _indirect_write_in_async_to_key,
+        "no_indirect_write_in_async",
+    ),
 }
+
+
+
+def _count_python_files(paths: list[Path | str]) -> int:
+    """How many ``.py`` files the scan will actually visit — the same rule
+    every lint's ``scan_paths`` applies (a ``.py`` file, or ``*.py`` under a
+    directory). A scan over ZERO files reports zero violations, and zero
+    violations is byte-identical to "clean": a typo'd ``--paths`` (or a
+    scope variable that expanded to nothing in CI) made four REQUIRED
+    keystone lints pass over nothing. The empty baselines cannot catch it
+    (``--check-stale`` needs an entry to go stale). So the count is checked
+    first, and a zero-file scan is a verification failure (exit 2), never a
+    pass."""
+    n = 0
+    for raw in paths:
+        target = Path(raw)
+        if target.is_file() and target.suffix == ".py":
+            n += 1
+        elif target.is_dir():
+            n += sum(1 for _ in target.rglob("*.py"))
+    return n
+
+
+def _refuse_zero_file_scan(paths: list[Path | str]) -> bool:
+    if _count_python_files(paths) > 0:
+        return False
+    print(
+        f"scanned 0 Python files under {[str(p) for p in paths]} — a zero-file "
+        "scan cannot verify anything; check --paths (exit 2, not a pass)",
+        file=sys.stderr,
+    )
+    return True
 
 
 def _run_capture(
@@ -165,6 +235,8 @@ def _run_capture(
     lint_name: str,
 ) -> int:
     scan_fn, key_fn, full_name = LINT_REGISTRY[lint_name]
+    if _refuse_zero_file_scan(paths):
+        return 2
     violations = scan_fn(paths)
     # Stamp the normalized source line so the baseline survives line shifts
     # (content-keyed matching — see tools/lints/baseline.py).
@@ -187,6 +259,8 @@ def _run_enforce(
         print(f"baseline not found: {baseline_file}", file=sys.stderr)
         return 2
 
+    if _refuse_zero_file_scan(paths):
+        return 2
     violations = scan_fn(paths)
     current_keys = enrich_keys_with_snippets(
         compute_keys(violations, key_fn), Path.cwd()

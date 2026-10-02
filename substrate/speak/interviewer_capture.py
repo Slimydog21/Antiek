@@ -16,12 +16,14 @@ first. The split is deliberate: 'we recorded what happened' is not
 
 from __future__ import annotations
 
+from typing import Any
+
 from substrate.loop_3.trajectory_harvest import HarvestedTrajectory, harvest_trajectory_for_prime_rl
 
 from .async_interview import resume
 
 
-def capture_trajectory(db_path: str, interview_id: str) -> list[dict]:
+def capture_trajectory(db_path: str, interview_id: str) -> list[dict[str, Any]]:
     """Shape an interview's turns into harvestable trajectory events.
 
     Each interviewer utterance is a role-driven 'decision' (an action);
@@ -30,7 +32,7 @@ def capture_trajectory(db_path: str, interview_id: str) -> list[dict]:
     ``harvest_trajectory_for_prime_rl`` consumes (action_type ending in
     '.delivered', role='interviewer')."""
     session = resume(db_path, interview_id)
-    events: list[dict] = []
+    events: list[dict[str, Any]] = []
     for turn in session.turns:
         if turn.get("role") == "interviewer":
             events.append({

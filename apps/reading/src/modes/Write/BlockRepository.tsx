@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { openWindow, readerWindowId } from "../../components/windows/openWindow";
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
+import { SOURCE_DOCUMENT_MIME } from "../../workspace/sourceDrag";
 import {
   listFolders,
   searchRepository,
@@ -35,12 +37,17 @@ export interface BlockRepositoryProps {
   onAdd: (hit: RepositoryHit) => void;
   /** Optional folder filter; null = the whole repository. */
   initialFolderId?: string | null;
+  /** The piece being written, when the shelf is open beside one (the write
+   *  origin context, reading-global SPR-02). Absent ⇒ repository hits open
+   *  the reader WITHOUT an origin — lawful, nothing changes. */
+  deliverableId?: string | null;
   className?: string;
 }
 
 export default function BlockRepository({
   onAdd,
   initialFolderId = null,
+  deliverableId = null,
   className,
 }: BlockRepositoryProps) {
   const [query, setQuery] = useState("");
@@ -90,7 +97,7 @@ export default function BlockRepository({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink dark:text-bright">
           Your blocks
         </h2>
-        {loading && <span className="text-[11px] text-ink-mute dark:text-moonlight">searching…</span>}
+        {loading && <span className="text-xs text-ink-mute dark:text-moonlight">searching…</span>}
       </div>
 
       <input
@@ -123,7 +130,7 @@ export default function BlockRepository({
 
       <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto">
         {hits.map((hit) => (
-          <li key={hit.node_id}>
+          <li key={hit.node_id} className="flex items-stretch gap-1">
             <button
               type="button"
               draggable
@@ -137,19 +144,52 @@ export default function BlockRepository({
                   label: hit.label,
                 };
                 e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
+                // C5: the SAME drag also carries the source document for the
+                // outline pane's assign-source drop (only when the hit names one).
+                if (hit.document_id) {
+                  e.dataTransfer.setData(
+                    SOURCE_DOCUMENT_MIME,
+                    JSON.stringify({ document_id: hit.document_id, document_title: hit.document_title }),
+                  );
+                }
                 e.dataTransfer.effectAllowed = "copy";
               }}
               title="Tap to add to the outline (or drag)"
-              className="w-full cursor-grab rounded border border-rule bg-ice-0 px-2 py-1.5 text-left hover:border-ocean active:cursor-grabbing dark:border-charcoal-1 dark:bg-charcoal-2"
+              className="min-w-0 flex-1 cursor-grab rounded border border-rule bg-ice-0 px-2 py-1.5 text-left hover:border-sun-deep active:cursor-grabbing dark:border-charcoal-1 dark:bg-charcoal-2"
             >
               <p className="truncate font-serif text-ink dark:text-bright">{hit.label}</p>
               {(hit.document_title || hit.source_tier != null) && (
-                <p className="truncate text-[10px] text-ink-mute dark:text-moonlight">
+                <p className="truncate text-xxs text-ink-mute dark:text-moonlight">
                   {hit.document_title ?? "your note"}
                   {hit.source_tier != null ? ` · tier ${hit.source_tier}` : ""}
                 </p>
               )}
             </button>
+            {/* Reading-global SPR-02: a hit with source identity opens (or
+                focuses) the ONE reader window on its source document. The
+                write origin rides when the shelf is beside a piece. */}
+            {hit.document_id && (
+              <button
+                type="button"
+                data-open-in-reader
+                onClick={() =>
+                  openWindow(
+                    "reader",
+                    {
+                      documentId: hit.document_id!,
+                      ...(deliverableId
+                        ? { origin: { from: "write" as const, id: deliverableId } }
+                        : {}),
+                    },
+                    { id: readerWindowId(hit.document_id!) },
+                  )
+                }
+                title="Open the source in the reader"
+                className="shrink-0 rounded border border-rule px-1.5 font-mono text-xxs text-shadow-1 hover:text-ink dark:border-charcoal-1 dark:text-moonlight dark:hover:text-bright"
+              >
+                read ↗
+              </button>
+            )}
           </li>
         ))}
         {!loading && hits.length === 0 && !error && (
@@ -178,10 +218,10 @@ function FolderChip({
       type="button"
       onClick={onClick}
       className={
-        "rounded-full border px-2 py-0.5 text-[11px] " +
+        "rounded-full border px-2 py-0.5 text-xs " +
         (active
-          ? "border-ocean bg-ocean/15 text-ocean"
-          : "border-rule text-ink-soft hover:border-ocean dark:border-charcoal-1")
+          ? "border-sun-deep bg-sun-deep/15 text-sun-deep"
+          : "border-rule text-ink-soft hover:border-sun-deep dark:border-charcoal-1")
       }
     >
       {label}

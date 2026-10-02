@@ -10,7 +10,7 @@ from __future__ import annotations
 import secrets
 import threading
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class KeyProviderError(Exception):
@@ -99,7 +99,7 @@ class KMSStubKeyProvider:
     `describe_key`, and `disable_key` methods.
     """
 
-    client: object  # actual KMS client; substrate doesn't import any SDK
+    client: Any  # actual KMS client; substrate doesn't import any SDK
     key_alias_prefix: str = "alias/antiek-graph"
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -112,7 +112,7 @@ class KMSStubKeyProvider:
             resp = self.client.generate_data_key(
                 KeyId=alias,
                 KeySpec="AES_256",
-            )  # type: ignore[attr-defined]
+            )
         except Exception as e:
             raise KeyProviderError(
                 f"KMS generate_data_key failed for {alias!r}: {e}",
@@ -140,7 +140,7 @@ class KMSStubKeyProvider:
     def revoke(self, *, graph_id: str) -> None:
         alias = self._alias_for(graph_id)
         try:
-            self.client.disable_key(KeyId=alias)  # type: ignore[attr-defined]
+            self.client.disable_key(KeyId=alias)
         except Exception as e:
             raise KeyProviderError(
                 f"KMS disable_key failed for {alias!r}: {e}",

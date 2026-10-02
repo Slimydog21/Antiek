@@ -3,7 +3,9 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import { opaquePanelShadowClasses } from "../design/elevation";
+import { surfaceSpring } from "../design/motion";
 
+import { escOverlayOpen, ESC_OVERLAY_PROPS } from "./escapeOverlay";
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
@@ -79,10 +81,19 @@ export function PanelLayoutPanel({ id }: Props) {
   // Only listens when this panel is the focused-floating one. Ignores
   // ESC while focus is inside an editable element so the operator can
   // still use Escape to cancel inline edits.
+  //
+  // One Esc reaches exactly one handler (lane A B2-2, R2-M2): a key another
+  // handler already claimed (defaultPrevented) is not this panel's, nor is
+  // an Esc while the panel sits in a pane fullscreen has hidden (kept
+  // mounted, off screen). While focused and on screen the panel is an Esc
+  // overlay (ESC_OVERLAY_PROPS below), so the fullscreen restore defers to
+  // it and the NEXT Esc restores the panes.
   useEffect(() => {
     if (!panel || panel.mode !== "floating" || !isFocused) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (rootRef.current?.closest("[hidden]")) return;
+      if (escOverlayOpen(document, rootRef.current)) return;
       const t = e.target as HTMLElement | null;
       if (t) {
         const tag = t.tagName.toLowerCase();
@@ -145,11 +156,7 @@ export function PanelLayoutPanel({ id }: Props) {
         initial={reduceMotion ? false : { scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={reduceMotion ? undefined : { scale: 0.96, opacity: 0 }}
-        transition={
-          reduceMotion
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 320, damping: 28 }
-        }
+        transition={reduceMotion ? { duration: 0 } : surfaceSpring}
         style={{
           position: "absolute",
           top: panel.rect.y,
@@ -160,7 +167,7 @@ export function PanelLayoutPanel({ id }: Props) {
         }}
         className={
           "bg-ice-0 dark:bg-charcoal-2 " +
-          "border-edge border-sun rounded-hog " +
+          "border border-rule rounded-hog " +
           "flex flex-col overflow-hidden " +
           shadow +
           (isFocused
@@ -170,6 +177,7 @@ export function PanelLayoutPanel({ id }: Props) {
         onMouseDownCapture={onMouseDownRaise}
         role="region"
         aria-label={panel.title}
+        {...(isFocused ? ESC_OVERLAY_PROPS : {})}
         ref={(el) => {
           rootRef.current = el;
         }}

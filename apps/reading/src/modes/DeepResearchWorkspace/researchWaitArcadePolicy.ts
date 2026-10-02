@@ -7,7 +7,6 @@ export interface ResearchWaitArcadePolicyInput {
   hasAuthoritativeSnapshot: boolean;
   researchCount: number;
   allTerminal: boolean;
-  reducedMotion: boolean;
   offerReady: boolean;
   optedIn: boolean;
 }
@@ -16,6 +15,11 @@ export interface ResearchWaitArcadePolicyInput {
  * Render policy only. Research lifecycle authority remains with
  * useResearchSession's durable snapshot; arcade state can never keep a host
  * alive after that snapshot becomes terminal.
+ *
+ * Reduced motion is deliberately NOT a hide condition: the engine ships a
+ * tested static-frame, step-on-input play path (loop.ts), so reduced-motion
+ * sessions follow the same waiting → offer → playing flow with reduced
+ * cartridges. Function is never lost.
  */
 export function deriveResearchWaitArcadeMode(
   input: ResearchWaitArcadePolicyInput,
@@ -24,8 +28,7 @@ export function deriveResearchWaitArcadeMode(
     !input.featureEnabled ||
     !input.hasAuthoritativeSnapshot ||
     input.researchCount === 0 ||
-    input.allTerminal ||
-    input.reducedMotion
+    input.allTerminal
   ) {
     return "hidden";
   }

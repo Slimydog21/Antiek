@@ -8,6 +8,7 @@ optional operator overrides.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from .advertiser_retention import compute_advertiser_retention
 from .creator_distribution import compute_creator_distribution
@@ -44,7 +45,7 @@ def build_snapshot_from_inputs(
 
 
 def build_snapshot_from_conn(
-    con,
+    con: Any,
     *,
     creator_paid_cents_override: Mapping[str, int] | None = None,
     current_advertiser_spend_override: Mapping[str, int] | None = None,

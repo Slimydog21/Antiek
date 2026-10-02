@@ -91,11 +91,7 @@ def is_blocked_by_takedown(con: Any, claim: ClaimRecord) -> bool:
         con, target_kind="interview", target_id=claim.interview_id
     ):
         return True
-    if claim.subject_ref and takedown_mod.is_taken_down(
-        con, target_kind="subject", target_id=claim.subject_ref
-    ):
-        return True
-    return False
+    return bool(claim.subject_ref and takedown_mod.is_taken_down(con, target_kind="subject", target_id=claim.subject_ref))
 
 
 def assert_claim_publishable(con: Any, claim_id: str) -> None:

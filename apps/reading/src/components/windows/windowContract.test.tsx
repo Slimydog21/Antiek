@@ -5,7 +5,8 @@
  * PART 1 (SPR-09 M4) — the window-adaptation contract on a REAL product page
  * (Stats):
  *   - rendered at its normal route (useInWindow()=false), the page keeps its
- *     opaque full-bleed bg + h-screen — the full-page route is UNCHANGED;
+ *     opaque full-bleed bg + h-full — the full-page route roots at h-full (Q17:
+ * h-screen clipped under the nav rail inside AppShell);
  *   - rendered inside a WorkspaceWindow (useInWindow()=true via the host
  *     provider), the SAME page drops the opaque bg (→ glass shows through) and
  *     uses h-full (→ fills the window), with NO feature change.
@@ -70,12 +71,12 @@ function rootAndMain(container: HTMLElement) {
 }
 
 describe("window-adaptation contract — Stats at its full-page route", () => {
-  it("keeps the opaque bg + h-screen when NOT in a window (route unchanged)", async () => {
+  it("keeps the opaque bg + h-full when NOT in a window (route unchanged)", async () => {
     const { container } = render(<Stats />);
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
     const { root, main } = rootAndMain(container);
-    expect(root.className).toContain("h-screen");
-    expect(root.className).not.toContain("h-full");
+    expect(root.className).toContain("h-full");
+    expect(root.className).not.toContain("h-screen");
     expect(main.className).toContain("bg-ice-0");
     expect(main.className).not.toContain("bg-transparent");
   });

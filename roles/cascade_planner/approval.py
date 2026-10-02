@@ -23,18 +23,18 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
-    from ...event_log import log_event
-    from ...graph.insight_question import graph_db_path
-    from ...runtime.db_lock import connect_read, connect_write
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.event_log import log_event
+    from substrate.graph.insight_question import graph_db_path
+
     from .persist import _json
-    from .tree_contract import PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.cascade_planner.persist import _json  # type: ignore[no-redef]
-    from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
-    from substrate.event_log import log_event  # type: ignore[no-redef]
-    from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
+    from roles.cascade_planner.persist import _json
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.event_log import log_event
+    from substrate.graph.insight_question import graph_db_path
 
 
 class PlanNotApproved(RuntimeError):
@@ -50,7 +50,7 @@ def approve_plan(
     db_path: str | None = None,
     events_dir: str | None = None,
     con: Any = None,
-) -> dict:
+) -> dict[str, Any]:
     """Approve the plan rooted at ``root_node_id``. Writes approval state to
     the root node metadata and emits ``plan.approved``. Returns the new
     approval dict."""
@@ -62,6 +62,10 @@ def approve_plan(
             raise PlanNotApproved(f"no plan root node {root_node_id!r}")
         meta = _json(row[0])
         approval = meta.get("approval", {"state": "draft", "plan_version": 1})
+        if not isinstance(approval, dict):
+            raise PlanNotApproved(
+                f"plan root {root_node_id!r} has non-object approval metadata"
+            )
         approval["state"] = "approved"
         approval["approved_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         approval["approved_by"] = approver
@@ -79,14 +83,15 @@ def approve_plan(
             c.close()
 
 
-def load_approval(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> dict:
+def load_approval(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> dict[str, Any]:
     owned = con is None
     c = con if con is not None else connect_read(db_path or graph_db_path())
     try:
         row = c.execute("SELECT metadata FROM nodes WHERE node_id = ?", [root_node_id]).fetchone()
         if row is None:
             return {"state": "draft"}
-        return _json(row[0]).get("approval", {"state": "draft"})
+        approval = _json(row[0]).get("approval", {"state": "draft"})
+        return approval if isinstance(approval, dict) else {"state": "draft"}
     finally:
         if owned:
             c.close()

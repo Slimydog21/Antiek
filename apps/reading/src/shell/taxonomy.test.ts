@@ -36,7 +36,7 @@ import {
  *
  * A "mode" is:
  *   - any directory under src/modes/ that has an index.tsx, EXCEPT
- *     `shared/` (a HeaderBar utility, not a product mode), OR
+ *     `shared/` (cross-cutting utilities — FloatMenu — not a product mode), OR
  *   - the two Write component modes (Write/Editor, Write/Repository),
  *     which are the Write workflow's surfaces and have no index.tsx of
  *     their own.
@@ -62,13 +62,21 @@ function discoverModeIds(): Set<ModeId> {
   // The Write workflow's two component modes — present as components,
   // no index.tsx. Discover them by globbing their entry components so
   // this stays mechanical (renaming/removing them breaks here too).
+  // "Write/Repository" is the block repository mounted inside WriteHome;
+  // the probe targets the LIVE component (BlockRepository.tsx) — the old
+  // Repository/Repository.tsx was an orphan with no production consumer
+  // and was deleted in the Q7 dead-UI sweep.
   const writeModules = import.meta.glob([
     "../modes/Write/Editor/Editor.tsx",
-    "../modes/Write/Repository/Repository.tsx",
+    "../modes/Write/BlockRepository.tsx",
   ]);
   for (const path of Object.keys(writeModules)) {
     const m = path.match(/\.\.\/modes\/(Write\/[^/]+)\//);
-    if (m) ids.add(m[1]);
+    if (m) {
+      ids.add(m[1]);
+    } else if (path.endsWith("/Write/BlockRepository.tsx")) {
+      ids.add("Write/Repository" as ModeId);
+    }
   }
 
   return ids;
@@ -170,8 +178,8 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(WORKFLOWS.read.defaultRoute).not.toBe("/wrestle");
   });
 
-  it("the Read landing surface resolves to the Library (ThreadJump + stub agree)", () => {
-    // landingModeForWorkflow is the single source ThreadJump uses; it must
+  it("the Read landing surface resolves to the Library (TrailJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source TrailJump uses; it must
     // agree with the door so the re-home holds everywhere, not just on the rail.
     const landing = landingModeForWorkflow("read");
     expect(landing?.id).toBe("Library");
@@ -248,8 +256,8 @@ describe("Write door re-home (Write SPR-07)", () => {
     expect(WORKFLOWS.write.defaultRoute).not.toBe("/create");
   });
 
-  it("the Write landing surface resolves on /write (ThreadJump + stub agree)", () => {
-    // landingModeForWorkflow is the single source ThreadJump uses; it must
+  it("the Write landing surface resolves on /write (TrailJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source TrailJump uses; it must
     // agree with the door so the re-home holds everywhere, not just on the rail.
     const landing = landingModeForWorkflow("write");
     expect(landing?.workflow).toBe("write");

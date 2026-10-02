@@ -24,6 +24,11 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+)
+
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
@@ -515,7 +520,18 @@ def test_ingest_asset_sanitizer_gate_intact(db_env: dict, sample_pdf: Path):
 
 
 def test_ingest_asset_sets_content_class(db_env: dict, sample_pdf: Path):
-    """The document's content_class matches the fair_use_class."""
+    """An ingested asset lands on the DENY-BY-DEFAULT content_class.
+
+    This test previously asserted `content_class == "licensed"` — i.e. that the
+    fair_use_class was passed straight through. That assertion CERTIFIED a
+    defect: the two vocabularies are disjoint, so every value it accepted was
+    unservable, and CI stayed green over an ingest path that made every
+    document permanently dark.
+
+    What must hold is that the column carries a REAL content_class from
+    SERVABLE_CONTENT_CLASSES' vocabulary, and that an unmapped rights claim
+    lands on the gate rather than anywhere servable.
+    """
     with patch(
         "acquisition.doc_to_html.converter.subprocess.run",
         side_effect=_mock_subprocess_run_success,
@@ -534,7 +550,12 @@ def test_ingest_asset_sets_content_class(db_env: dict, sample_pdf: Path):
             [result["document_id"]],
         ).fetchone()
         assert row is not None
-        assert row[0] == "licensed"
+        # The gate state, not the fair-use token.
+        assert row[0] == GATED_DEFAULT_CONTENT_CLASS
+        # And it is a real content_class, not a foreign vocabulary leaking in.
+        assert row[0] not in ("public", "licensed", "personal")
+        # Fail OPEN is the dangerous direction: never servable by accident.
+        assert row[0] not in SERVABLE_CONTENT_CLASSES
     finally:
         con.close()
 

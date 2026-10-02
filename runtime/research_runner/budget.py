@@ -26,13 +26,14 @@ import threading
 from dataclasses import dataclass
 
 try:
-    from ...constants import TOTAL_ACQUISITION_BUDGET_USD
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD
+
     from .protocol import BudgetExceeded
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.protocol import BudgetExceeded  # type: ignore[no-redef]
-    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import BudgetExceeded
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD
 
 
 @dataclass
@@ -126,7 +127,7 @@ class BudgetManager:
         """Increment the step counter for a research and report whether it is
         still within ``max_steps`` budget. Used for the free-call ceiling."""
         with self._lock:
-            led = self._ledgers.setdefault(
+            self._ledgers.setdefault(
                 investigation_id, _ResearchLedger(cap_usd=float("inf"))
             )
             return True  # step accounting handled in charge(); kept for symmetry

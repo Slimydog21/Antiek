@@ -298,7 +298,8 @@ async def register_multimedia_with_twin(
         db_path,
         registrar.owner_id,
     )
-    _register_twin_document(
+    await asyncio.to_thread(
+        _register_twin_document,
         db_path=db_path,
         owner_id=registrar.owner_id,
         asset=asset,

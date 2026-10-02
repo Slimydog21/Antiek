@@ -26,7 +26,7 @@ function ChatExchangeNodeView({ node, deleteNode }: NodeViewProps) {
               type="button"
               onClick={() => deleteNode()}
               aria-label="Remove block"
-              className="font-sans normal-case tracking-normal text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+              className="font-sans normal-case tracking-normal text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
             >
               ✕
             </button>
@@ -36,26 +36,26 @@ function ChatExchangeNodeView({ node, deleteNode }: NodeViewProps) {
         <div className="space-y-2">
           {userText && (
             <div>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              <span className="font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight">
                 you
               </span>
-              <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+              <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
                 {userText}
               </p>
             </div>
           )}
           {assistantText && (
             <div className="pl-3 border-l-2 border-sun">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-sun-deep dark:text-sun">
+              <span className="font-mono text-xxs uppercase tracking-wider text-sun-deep dark:text-sun">
                 ai
               </span>
-              <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+              <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
                 {assistantText}
               </p>
             </div>
           )}
           {!userText && !assistantText && (
-            <p className="text-ink-mute dark:text-moonlight italic font-mono text-[12px]">
+            <p className="text-ink-mute dark:text-moonlight italic font-mono text-xs">
               (empty exchange — substrate-ref pending resolve)
             </p>
           )}

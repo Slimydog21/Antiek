@@ -25,8 +25,11 @@ real warm<cold or warm>cold signal. These tests prove the response; the mock RUN
 
 from __future__ import annotations
 
+from typing import Any
+
 from compounding.benchmark.aggregate import aggregate_comparison
 from compounding.benchmark.measure import CostToResolve
+from compounding.benchmark.result_schema import ArmComparison
 from compounding.benchmark.validity import (
     VALIDITY_INVALID,
     VALIDITY_VALID,
@@ -46,14 +49,14 @@ def _cost(token: float, *, sources: int = 0, wall: float = 0.0) -> CostToResolve
     )
 
 
-def _runs(values: list[float], **kw) -> list[CostToResolve]:
+def _runs(values: list[float], **kw: Any) -> list[CostToResolve]:
     return [_cost(v, **kw) for v in values]
 
 
 # ── M4 non-vacuity: the delta is signed, never clamped ────────────────────────
 
 
-def test_positive_delta_reported():
+def test_positive_delta_reported() -> None:
     """warm MORE expensive than cold → strictly POSITIVE delta. The gate that
     fails if the harness clamps to >= 0."""
     warm = _runs([0.30, 0.32, 0.31, 0.29, 0.30])
@@ -65,55 +68,61 @@ def test_positive_delta_reported():
     assert delta.ci_low > 0.0, "the whole CI should be above 0 for a clean warm>cold signal"
 
 
-def test_negative_delta_reported():
+def test_negative_delta_reported() -> None:
     """warm CHEAPER than cold (the flywheel-works direction) → strictly NEGATIVE
     delta, also reportable verbatim."""
     warm = _runs([0.10, 0.11, 0.09, 0.10, 0.10])
     cold = _runs([0.30, 0.32, 0.31, 0.29, 0.30])
     cmp = aggregate_comparison("warm_vs_cold", warm, cold, seed=7)
     delta = cmp.metric("token_cost_usd")
+    assert delta is not None
     assert delta.delta < 0.0
     assert delta.ci_high < 0.0
 
 
-def test_pure_noise_straddles_zero():
+def test_pure_noise_straddles_zero() -> None:
     """warm and cold drawn from the SAME distribution → the delta CI straddles 0.
     The instrument does not manufacture signal from noise."""
     warm = _runs([0.20, 0.22, 0.18, 0.21, 0.19, 0.20, 0.205])
     cold = _runs([0.21, 0.19, 0.205, 0.20, 0.215, 0.195, 0.20])
     cmp = aggregate_comparison("warm_vs_cold", warm, cold, seed=11)
     delta = cmp.metric("token_cost_usd")
+    assert delta is not None
     assert delta.straddles_zero, f"noise must straddle 0, got [{delta.ci_low},{delta.ci_high}]"
 
 
-def test_same_seed_reproduces_same_delta():
+def test_same_seed_reproduces_same_delta() -> None:
     """Deterministic seeding (M4): identical inputs + seed → identical delta and
     CI bounds across runs."""
     warm = _runs([0.30, 0.25, 0.35, 0.28, 0.31, 0.27])
     cold = _runs([0.10, 0.12, 0.09, 0.11, 0.10, 0.13])
     a = aggregate_comparison("c", warm, cold, seed=42).metric("token_cost_usd")
     b = aggregate_comparison("c", warm, cold, seed=42).metric("token_cost_usd")
+    assert a is not None and b is not None
     assert (a.delta, a.ci_low, a.ci_high) == (b.delta, b.ci_low, b.ci_high)
 
 
-def test_wider_variance_widens_ci():
+def test_wider_variance_widens_ci() -> None:
     """Rigor: the CI is computed from the runs, not hard-coded — more spread in
     the per-run diffs widens the interval."""
     cold = _runs([0.10] * 8)
     tight = aggregate_comparison("t", _runs([0.20, 0.21, 0.19, 0.20, 0.205, 0.195, 0.20, 0.20]), cold, seed=3)
     wide = aggregate_comparison("w", _runs([0.40, 0.05, 0.35, 0.02, 0.38, 0.01, 0.30, 0.10]), cold, seed=3)
-    assert wide.metric("token_cost_usd").ci_half_width > tight.metric("token_cost_usd").ci_half_width
+    wide_delta = wide.metric("token_cost_usd")
+    tight_delta = tight.metric("token_cost_usd")
+    assert wide_delta is not None and tight_delta is not None
+    assert wide_delta.ci_half_width > tight_delta.ci_half_width
 
 
 # ── M5 validity control: flat passes, spike invalidates ───────────────────────
 
 
-def _flat_control():
+def _flat_control() -> ArmComparison:
     base = _runs([0.20, 0.21, 0.19, 0.20, 0.205, 0.195])
     return aggregate_comparison("irrelevant_vs_cold", base, base, seed=5)
 
 
-def test_irrelevant_seed_straddles_zero():
+def test_irrelevant_seed_straddles_zero() -> None:
     """The irrelevant-seed arm (same as cold) → control delta CI straddles 0 →
     validity gate passes as ``valid``."""
     control = _flat_control()
@@ -137,7 +146,7 @@ def test_irrelevant_seed_straddles_zero():
     assert v.validity == VALIDITY_VALID, v.validity_reason
 
 
-def test_irrelevant_nonzero_flags_invalid():
+def test_irrelevant_nonzero_flags_invalid() -> None:
     """SEED-AND-CATCH: inject an irrelevant control engineered to show a non-zero
     delta past the floor → the run is flagged ``validity: invalid`` and the
     headline is WITHHELD. Proves the control actually gates (M5)."""
@@ -163,7 +172,7 @@ def test_irrelevant_nonzero_flags_invalid():
     assert v.headline == VERDICT_NOT_ASSESSED, "the headline MUST be withheld when invalid"
 
 
-def test_single_control_domain_spike_invalidates():
+def test_single_control_domain_spike_invalidates() -> None:
     """§2: a single control domain spiking past the floor while the pooled CI
     straddles 0 still invalidates (pooled flatness can mask one response)."""
     control = _flat_control()  # pooled straddles 0
@@ -180,7 +189,7 @@ def test_single_control_domain_spike_invalidates():
     assert v.headline == VERDICT_NOT_ASSESSED
 
 
-def test_underpowered_when_control_ci_too_wide():
+def test_underpowered_when_control_ci_too_wide() -> None:
     """§2: a control CI that straddles 0 only because it is NOISY (half-width >
     tolerance) is ``underpowered``, NOT ``valid`` — widen n."""
     control = aggregate_comparison(
@@ -198,7 +207,7 @@ def test_underpowered_when_control_ci_too_wide():
 # ── M5 headline verdicts (only when valid) ────────────────────────────────────
 
 
-def test_valid_compounds_requires_dose_response():
+def test_valid_compounds_requires_dose_response() -> None:
     """A clean warm<cold headline with a flat control, corroborating sources, AND
     a load-bearing dose-response (high saves more than partial) → ``compounds``."""
     cold = _runs([0.30] * 8, sources=10)
@@ -213,7 +222,7 @@ def test_valid_compounds_requires_dose_response():
     assert v.headline == VERDICT_COMPOUNDS, v.headline_reason
 
 
-def test_valid_but_no_dose_response_is_null():
+def test_valid_but_no_dose_response_is_null() -> None:
     """warm<cold but high-overlap does NOT save more than partial (dose-response
     fails) → ``null``, not ``compounds`` — relevance must out-perform partial."""
     cold = _runs([0.30] * 8, sources=10)
@@ -229,7 +238,7 @@ def test_valid_but_no_dose_response_is_null():
     assert v.headline == VERDICT_NULL, v.headline_reason
 
 
-def test_valid_negative_when_warm_more_expensive():
+def test_valid_negative_when_warm_more_expensive() -> None:
     """A flat control + a headline whose CI is entirely ABOVE 0 → ``negative``
     (warm more expensive; flywheel falsified) — the positive number is emitted."""
     cold = _runs([0.10] * 8)

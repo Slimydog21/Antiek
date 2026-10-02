@@ -64,6 +64,7 @@ function state(events: Event[], overrides: Partial<InvestigationState> = {}): In
     completedAt: null,
     streamStatus: "open",
     reconnects: 0,
+    sourcePolicy: [],
     ...overrides,
   };
 }

@@ -172,17 +172,22 @@ export function ArcadeMount({
         aria-describedby={instructionsId}
         style={{
           display: "block",
+          // Fixed design width, but compress proportionally in a narrower
+          // container: maxWidth caps the box while height:auto + aspectRatio
+          // keep the game's shape instead of squashing it horizontally.
           width,
-          height,
           maxWidth: "100%",
+          height: "auto",
+          aspectRatio: `${width} / ${height}`,
           touchAction: "none",
-          borderRadius: 8,
+          // --radius (6px) matches the enclosing canvas shell so the canvas
+          // corners and the shell corners agree.
+          borderRadius: "var(--radius)",
           background: "var(--card-soft)",
         }}
       />
       <span id={instructionsId} className="sr-only">
-        Focus the game, then use Space or Enter to start. Arrow keys control Ice
-        Fishing. Pointer or keyboard controls Paperclip Zombies. Escape exits.
+        {cartridge.meta.instructions}
       </span>
     </>
   );

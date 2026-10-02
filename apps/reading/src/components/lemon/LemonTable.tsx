@@ -63,7 +63,7 @@ export function LemonTable<Row>({
                 key={c.key}
                 style={c.width ? { width: c.width } : undefined}
                 className={
-                  "bg-ink text-sun font-mono text-[12px] uppercase tracking-wider font-semibold " +
+                  "bg-ink text-sun font-mono text-xs uppercase tracking-wider font-semibold " +
                   `px-3 ${cellY} text-${c.align ?? "left"} ` +
                   "border-b-edge border-sun"
                 }

@@ -1,357 +1,457 @@
 /* ============================================================
-   Antiek design tokens — CSS variable sibling of tokens.ts.
-   Imported by .storybook/preview.tsx so stories render
-   with the brand vars available. Day mode by default; night mode
-   under prefers-color-scheme.
+   Antiek design tokens: parchment, walnut ink, and a library at night.
+   Research and palette rationale: docs/decisions/reading-comfort-20261001.md.
 
-   Source of truth: src/design/tokens.ts
+   ONE colour source of truth, three layers (PostHog's discipline,
+   Antiek's brand):
+
+     1. PRIMITIVES   theme-invariant palette (the sun, the night ramp,
+                     the fixed ink/paper that paint dark islands and
+                     fills). Declared once, in :root, never redeclared.
+     2. SEMANTIC     what a colour is FOR: --bg-page, --text-3, --focus.
+                     Day values live in the :root block below (the ONE
+                     block to edit to change the day ground). Night values
+                     live in the [data-theme="dark"] block, repeated
+                     verbatim inside the no-JS @media fallback
+                     (token-parity.test.ts asserts the two are identical).
+     3. LEGACY ALIASES  every older var name (--ice-0, --ink-mute,
+                     --emperor, …) points at a semantic token, so call
+                     sites keep working and follow the theme.
+
+   Theme switch: index.html sets data-theme="light"|"dark" on <html>
+   before first paint (preference 'antiek.theme' = light|dark|system;
+   src/design/theme.ts). Aliases are declared on :root, the same element
+   that carries data-theme, so they re-resolve per theme. Do not set
+   data-theme on a subtree: the :root aliases would not follow it.
+
+   Every *-rgb triplet feeds tailwind.config.js as
+   rgb(var(--x-rgb) / <alpha-value>) so /opacity modifiers resolve.
+   Contrast for every text/background and UI pair, both themes, is
+   computed (not asserted by comment) in tokens.contrast.test.ts.
+   Mirror: src/design/tokens.ts (`primitive`, `semantic`).
    ============================================================ */
 
+/* ── 1. PRIMITIVES (theme-invariant) ─────────────────────────── */
 :root {
-  /* --sun is the brand CONSTANT — the loud lemon. UNCHANGED (AMS-SPR-09): it
-     is the bottom-tab value (via --bar-accent) and the Werner bill/foot. The
-     SPR-09 re-tone softens only the var-driven accent/highlight roles below,
-     never this. */
-  --sun:        #F5DF24;
+  /* Primary fills keep the operator's green. Their labels use fixed ink. */
+  --sun:           #6ECB8F;
+  --sun-rgb:       110 203 143;
+  --sun-hover:     #82D59F;
+  --sun-hover-rgb: 130 213 159;
+  --sun-press:     #5CBD7D;
+  --sun-press-rgb: 92 189 125;
 
-  /* Weathered "light" sun family (AMS-SPR-09) — a LOWER-CHROMA, sun-bleached
-     gold the chrome leans on without shouting. Chroma (max-min)/255 is ~0.36
-     here vs the brand lemon's 0.82, so it reads calm/aged next to the loud
-     --sun (bar) it sits beside. The re-toned accent/highlight roles below are
-     pulled toward this family. Not a new palette — a yellow-family re-tone.
+  /* Legacy sun names now hold pale green surfaces. */
+  --sun-light:      #BFE4CD;
+  --sun-light-soft: #D4ECDD;
+  --sun-light-deep: #237242;
+  /* The operator's highlighter is a pigment, independent of theme. */
+  --highlighter: #A9FF17;
+  --mark-ink: var(--fixed-ink);
+  --sun-hl-faint: rgba(169,255,23,0.16);
+  --sun-hl-day: var(--highlighter);
+  --sun-hl-night: var(--highlighter);
+  /* The selected bottom tab uses the same primary green. */
+  --sun-bar-night: #6ECB8F;
 
-     REACH (honest scope, mirrors tokens.ts): this re-tone is VAR-DEEP only. It
-     softens consumers that read these vars — the 4 ::selection highlighter
-     veils (src/index.css), AssignHotkey.css var(--sun-deep), and the night
-     offset-shadows (var(--sun-deep)). It does NOT reach the 56 component
-     consumers of the Tailwind utilities text-sun-deep / bg-sun-glow /
-     border-sun-deep, which resolve through tailwind.config.js (sun-deep
-     #B89A00 / sun-glow #FCE85E, OUT OF SCOPE for SPR-09). Those still render
-     the OLD loud hexes until the Tailwind owner re-tones the var->tailwind
-     mirror to match these values. */
-  --sun-light:      #E8D98C;  /* weathered straw; the calm light chrome leans on */
-  --sun-light-soft: #F0E6B8;  /* palest weathered wash (faint chrome veils) */
-  --sun-light-deep: #9C8636;  /* muted ochre weathered depth; ==--sun-deep day.
-                                 AA: accent-edge 1.4.11 ≥3:1 → on ice-0 #FFFFFF
-                                 3.57:1 ✓, on ice-2 page #F4F7FA 3.32:1 ✓ */
+  /* Fixed ink and paper: the pigments that do NOT flip. They paint what
+     is dark (or white) in both themes: ink printed on the sun, ink
+     buttons, the dark rail, white text on a danger fill. The Tailwind
+     keys `ink`, `shadow-2` and `shadow-1` (as fills) and the
+     text-ice-0…4 utilities read these. --fixed-ink-3 is the slate of the
+     day --text-2, kept as a pigment because bg-shadow-1 is the hover of
+     the bg-shadow-2 ink button under white text: white on it 6.56:1 in
+     both themes. Following the night --text-2 it was 2.54:1. */
+  --fixed-ink:       #2C2823;
+  --fixed-ink-rgb:   44 40 35;
+  --fixed-ink-2:     #4B4338;
+  --fixed-ink-2-rgb: 75 67 56;
+  --fixed-ink-3:     #5D5448;
+  --fixed-ink-3-rgb: 93 84 72;
+  --fixed-paper:     #FFFFFF;
+  --fixed-paper-rgb: 255 255 255;
+  /* The operator's muted red is reserved for destructive/error semantics. */
+  --danger-fill:     #8A403B;
+  --danger-fill-rgb: 138 64 59;
 
-  /* was #B89A00 (chroma 0.72); re-toned to the muted-ochre weathered light so
-     the day hover/depth edge reads aged, not loud. AA pair (accent-edge,
-     WCAG 1.4.11 ≥3:1): on ice-0 #FFFFFF 3.57:1 ✓; on ice-2 page #F4F7FA
-     3.32:1 ✓. == --sun-light-deep (one weathered ochre). */
-  --sun-deep:   #9C8636;
-  /* was #FCE85E (chroma 0.62); re-toned to a desaturated weathered glow peak
-     (chroma 0.38) so the day highlight peak calms toward --sun-light. AA pair
-     (the highlighter text it tints, ink #0F1419 over the consumed --sun-hl-*
-     surfaces ≥4.5:1) is carried by --sun-hl-day below, not this glow alone. */
-  --sun-glow:   #F1E08F;
-  /* Highlighter veils — re-toned to the weathered straw rgb (232,217,140 ==
-     --sun-light #E8D98C) so the operator's highlighter reads as a calm aged
-     wash, not a loud lemon block. AA pair: prose text --ink #0F1419 OVER
-     [veil composited over its surface] must clear WCAG AA 4.5:1.
-       faint(0.18) over ice-0 #FFFFFF → 17.40:1 ✓ ; over ice-2 #F4F7FA → 16.37:1 ✓
-       day(0.45)   over ice-0 #FFFFFF → 15.83:1 ✓ ; over ice-2 #F4F7FA → 15.17:1 ✓ */
-  --sun-hl-faint: rgba(232,217,140,0.18);
-  --sun-hl-day:   rgba(232,217,140,0.45);
-  /* night veil rgb (242,222,154 == night --sun-glow #F2DE9A). AA pair: night
-     prose text --ink #EEF1F6 over [veil over surface] ≥4.5:1 → over card
-     #1B202A 6.22:1 ✓ ; over page #0D1019 7.38:1 ✓ */
-  --sun-hl-night: rgba(242,222,154,0.30);
+  /* Night ramp ("majestic night sky"). Primitives: the night semantic
+     block below points at them, and the Tailwind night keys used under
+     dark: (dark:bg-charcoal-2, dark:text-moonlight) read them directly.
+     --moonlight was #6B7585 (3.50:1 on the night card, 627 of the 727
+     night axe failures); it is now the night --text-3. */
+  --void:           #100F0D;
+  --void-rgb:       16 15 13;
+  --space-1:        #171511;
+  --space-1-rgb:    23 21 17;
+  --space-2:        #211E19;
+  --space-2-rgb:    33 30 25;
+  --charcoal-1:     #24211B;
+  --charcoal-1-rgb: 36 33 27;
+  --charcoal-2:     #29251F;
+  --charcoal-2-rgb: 41 37 31;
+  --slate-1:        #332D25;
+  --slate-1-rgb:    51 45 37;
+  --slate-2:        #3B342A;
+  --slate-2-rgb:    59 52 42;
+  --moonlight:      #ADA392;
+  --moonlight-rgb:  173 163 146;
+  --starlight:      #CFC5B3;
+  --starlight-rgb:  207 197 179;
+  --bright:         #E6DECE;
+  --bright-rgb:     230 222 206;
 
-  /* day surface ramp */
-  --ice-0:      #FFFFFF;
-  --ice-1:      #FBFCFD;
-  --ice-2:      #F4F7FA;
-  /* Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
-     field. A legitimate new token source: the FUT-style selector needs a
-     football-green field that themes with the app (day = grass, night =
-     deep turf). Kept as vars so LineupPitch consumes tokens, not hex. */
-  --pitch-base: #4C8F4F;
-  --pitch-mid:  #3D7A41;
-  --pitch-deep: #2F6633;
-  --ice-3:      #EAEFF4;
-  --ice-4:      #DCE5ED;
-  --glacial-1:  #C2D1DD;
-  --glacial-2:  #9AB0C0;
-  /* S11 a11y: darkened #64778A → #4F5F70 (6.32:1 on white) so opacity-
-     blended descendants clear WCAG AA. Reconciled with tokens.ts +
-     tailwind.config.js (the canonical source) in SPR-01. */
-  --shadow-1:   #4F5F70;
-  --shadow-2:   #384858;
-  --ink:        #0F1419;
+  /* Z-index ladder. Mirrors src/design/zIndex.ts value-for-value
+     (zIndex.test.ts pins the pair); Tailwind exposes z-modal, z-toast… */
+  --z-raised:              1;
+  --z-floating:            2;
+  --z-scene-badge:         5;
+  --z-window:              40;
+  --z-mobile-rail:         40;
+  --z-floating-ceiling:    50;
+  --z-mobile-rail-toggle:  50;
+  --z-mascot:              60;
+  --z-modal:               100;
+  --z-popover:             120;
+  --z-ad-overlay:          150;
+  --z-toast:               200;
 
-  /* Neutral "light" chrome border (AMS-SPR-01). A calm blue-grey — the
-     lightest neutral that still clears WCAG 1.4.11 3:1 on white cards
-     (#788596 on #FFFFFF = 3.75:1; on the #F4F7FA page = 3.49:1). A paler
-     glacial line would look lighter but fail the floor and vanish. Mirrors
-     tokens.ts `rule.day` + tailwind.config.js colors.rule. */
-  --rule:       #788596;
-
-  /* aliases for readability */
-  --page:       var(--ice-2);
-  --card:       var(--ice-0);
-  --card-soft:  var(--ice-1);
-  --inset:      var(--ice-3);
-  --divider:    var(--ice-4);
-  --muted:      var(--glacial-2);
-  --text:       var(--ink);
-  --text-muted: var(--shadow-1);
-  /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
-     AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
-  --border:     var(--rule);
-
-  /* Preserved bottom-bar yellow accent (AMS-SPR-01; SPR-06 paints the bar
-     with this). Day = the brand lemon itself. Mirrors tokens.ts `barAccent`
-     + tailwind.config.js colors["bar-accent"]. */
-  --bar-accent: var(--sun);
-
-  /* Glass / transparency surfaces (AMS-SPR-01; SPR-03/04/09 consume these
-     to reveal the mountainscape behind the working surfaces). Day = a
-     near-white frost. --glass-bg-solid is the OPAQUE fallback for
-     prefers-reduced-motion / no-scene / low-power — same hue at alpha 1, so
-     a panel degrades to a flat card with no colour jump. LEGIBILITY: glass
-     alone does not guarantee 4.5:1 body-text contrast over a busy scene; the
-     consumer must add a scrim (raise alpha toward solid, or back the text
-     band). See tokens.ts `glass` for the full contract. Mirrors
-     tailwind.config.js (bg-glass / border-glass). */
-  --glass-bg:       rgba(251,252,253,0.72); /* --card-soft #FBFCFD @ 0.72 */
-  --glass-bg-solid: #FBFCFD;                /* opaque fallback == --card-soft */
-  --glass-border:   rgba(15,20,25,0.12);    /* --ink #0F1419 @ 0.12 hairline */
-  --glass-blur:     12px;                    /* backdrop-filter radius */
-
-  /* werner — five fills for the single-source <Werner> component.
-     Bill + foot lock to --sun so the mark carries the brand constant at every size.
-     See tokens.ts + brand/README.md (restraint: rail idle, thinking, empty, celebrate only). */
-  --werner-coat:  #0F1419;
-  --werner-belly: #FBFCFD;
-  --werner-bill:  var(--sun);
-  --werner-foot:  var(--sun);
-  --werner-eye:   #0F1419;
-  /* werner-rod (SPR-04): the fishing rod's shaft. A weathered-wood ochre so
-     the rod reads as a HELD prop with contrast against the near-black coat AND
-     the page, on both themes — like --foot/--bill, it leans on the brand
-     weathered-sun family rather than inventing a new hue. */
-  --werner-rod:   var(--sun-deep);
-  /* werner-fish (SPR-05): Werner's OWN little fish in the endless never-catch
-     loop — NOT the cursor, NOT a bait worm. A brand-aurora teal
-     so the fish reads as a cool little catch against the warm rod + near-black
-     coat, on both themes; it leans on the existing --aurora accent rather than
-     inventing a new hue (same restraint as --rod/--foot). */
-  --werner-fish:  var(--aurora);
-
-  /* accent (reserved) */
-  --aurora:  #16C2C2;
-  /* S11 a11y: darkened #E33C2D → #CE3623 (4.51:1 with white text).
-     Reconciled with tokens.ts + tailwind.config.js in SPR-01. */
-  --emperor: #CE3623;
-
-  /* Research-state family (herdr transfer P0-1) — SEMANTIC ALIASES, not new
-     hues. Each state token points at an existing palette constant, so state
-     colour can never drift from the brand palette: working=sun, blocked=
-     emperor, done=aurora, stopped/muted=shadow-1. Night values resolve
-     automatically because the night block re-declares the referenced vars. */
-  --state-working: var(--sun);
-  --state-blocked: var(--emperor);
-  --state-done:    var(--aurora);
-  --state-stopped: var(--shadow-2);
-  --state-muted:   var(--shadow-2);
-
-  /* chunky offset shadows */
-  --shadow-z1:   3px 3px 0 0 var(--ink);
-  --shadow-z2:   5px 5px 0 0 var(--ink);
-  --shadow-z3:   8px 8px 0 0 var(--ink);
-  --shadow-lift: 12px 12px 0 0 var(--ink);
-
-  /* geometry */
+  /* Geometry */
   --radius-sm: 4px;
   --radius:    6px;
   --radius-lg: 10px;
   --edge:      2.5px;
 
-  /* spacing density (CFEEL-S2 M1) — PostHog/Quill density-token pattern. Every
-     Tailwind spacing utility (p-*, m-*, gap-*, space-*, w/h numeric, inset-*)
-     is redefined in tailwind.config.js as `calc(var(--spacing) * <key>)`, so a
-     subtree can scale ALL its spacing by overriding ONE var. The DEFAULT here
-     is 0.25rem (== 4px == Tailwind's base spacing unit), which makes every
-     resolved utility byte-identical to Tailwind's default scale: e.g. p-4 =
-     calc(0.25rem * 4) = 1rem (Tailwind default 1rem); gap-2 = calc(0.25rem * 2)
-     = 0.5rem; m-1 = calc(0.25rem * 1) = 0.25rem. This is why default ==
-     Tailwind default: Tailwind's own scale IS key/4 rem, and 0.25rem * key ==
-     (key/4) rem for every key. So the mechanism is provably non-regressive on
-     the default surface — no component is wired to a denser density here;
-     wiring `[data-density]` onto a production subtree is a deliberate operator
-     opt-in (CFEEL-S2 leaves it un-wired). --density is the human-readable
-     companion scalar (1 = default); it documents intent and is reserved for a
-     future computed override — the resolved value is driven by --spacing. */
+  /* Spacing density (CFEEL-S2 M1): every Tailwind spacing utility is
+     calc(var(--spacing) * key); 0.25rem makes each one byte-identical to
+     Tailwind's default scale. [data-density="compact"] tightens a subtree. */
   --spacing: 0.25rem;
   --density: 1;
 
-  /* opacity tokens (CFEEL-S2 M3) — PostHog's two disabled/icon dimming
-     constants, surfaced as Tailwind utilities (opacity-disabled / opacity-icon)
-     so a dimmed control reads from ONE token, not a magic 0.65/0.8 scattered
-     across components. Theme-invariant (same dim ratio day + night); mirrored
-     in the night block for parity with the rest of this file's structure. */
+  /* Opacity (CFEEL-S2 M3): PostHog's disabled/icon dim constants. */
   --opacity-disabled: 0.65;
   --opacity-icon:     0.8;
 
-  /* motion (U-05) — durations + easings as tokens, never magic numbers.
-     fast = press, base = hover/colour, slow = signature-beat ceiling
-     (== Werner's 800 ms celebrate). See src/design/motion.ts +
-     src/design/motion/README.md. */
+  /* Motion (U-05). fast = press, base = hover/colour (also Tailwind's
+     DEFAULT transition), slow = signature-beat ceiling. */
   --motion-fast:  80ms;
   --motion-base:  150ms;
   --motion-slow:  800ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-enter:    cubic-bezier(0, 0, 0.2, 1);
 
-  /* type */
-  --sans:  "Inter", system-ui, -apple-system, sans-serif;
-  --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --serif: "Charter", "Iowan Old Style", Georgia, serif;
+  /* Type: three faces, one job each. Inter + JetBrains Mono ship as
+     self-hosted woff2 (src/index.css); the fallbacks name real installed
+     faces so a missing file never lands on Courier. */
+  --sans:  "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:  "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: "Charter", "Iowan Old Style", "Source Serif 4", Georgia, serif;
 
-  /* edge-reservation seam (SPR-06 M3) — the single source of truth for the
-     always-on ad border's inset. AppShell's outer frame reserves these four
-     edges as padding so the working region sits INSIDE them. DEFAULT 0:
-     SPR-06 frees the edges + defines the contract but paints nothing; SPR-07
-     mounts the border by setting these to its thickness and painting the
-     padding band. Keep all four so the border can be asymmetric if a future
-     layout needs it; SPR-07's symmetric border sets one shared value to all
-     four. Contract doc: docs/decisions/spr-06-edge-reservation-seam.md. */
+  /* Edge-reservation seam (SPR-06 M3): the always-on ad border's inset.
+     Default 0; docs/decisions/spr-06-edge-reservation-seam.md. */
   --akb-border-inset-top:    0px;
   --akb-border-inset-right:  0px;
   --akb-border-inset-bottom: 0px;
   --akb-border-inset-left:   0px;
 }
 
-/* Per-subtree density override (CFEEL-S2 M1) — Antiek's high-information lever.
-   Setting `data-density="compact"` on any element scales --spacing for that
-   subtree only, so every spacing utility under it tightens ~12.5% (0.21875rem
-   ≈ 3.5px vs the 0.25rem ≈ 4px default) WITHOUT touching the global default.
-   This is the OPT-IN mechanism only — no production component is wired to it in
-   CFEEL-S2 (that's a deliberate operator follow-up; wiring a dense subtree must
-   be paired with a lostpixel review since it intentionally moves pixels there).
-   The default surface — anything NOT under [data-density="compact"] — stays
-   pixel-identical to today. Matches PostHog/Quill's density-overridable
-   spacing-token discipline. */
-[data-density="compact"] {
-  --spacing: 0.21875rem; /* ≈3.5px; ~12.5% denser than the 0.25rem default */
-  --density: 0.875;
+/* ── 2. SEMANTIC, day (paper). Edit this block to change the ground. ── */
+:root {
+  color-scheme: light;
+
+  --bg-page:           #F3EBDD;
+  --bg-page-rgb:       243 235 221;
+  --bg-card:           #F9F3E8;
+  --bg-card-rgb:       249 243 232;
+  --bg-inset:          #EAE0CD;
+  --bg-inset-rgb:      234 224 205;
+  /* hairline: decorative dividers inside a surface (not a boundary). */
+  --border-hairline:     #D8CBB5;
+  --border-hairline-rgb: 216 203 181;
+  /* rule: meaningful boundaries (fields, keycap edges, tables) >= 3:1. */
+  --border-rule:       #7E6F5D;
+  --border-rule-rgb:   126 111 93;
+
+  --text-1:     var(--fixed-ink);
+  --text-1-rgb: var(--fixed-ink-rgb);
+  --text-2:     var(--fixed-ink-3);
+  --text-2-rgb: var(--fixed-ink-3-rgb);
+  --text-3:     #6C6252;
+  --text-3-rgb: 108 98 82;
+
+  /* The brand as TEXT (replaces sun-deep-as-text at 3.3:1). */
+  --sun-ink:     #237242;
+  --sun-ink-rgb: 35 114 66;
+  /* Green edges and emphasis keep contrast on the page. */
+  --sun-deep:     #237242;
+  --sun-deep-rgb: 35 114 66;
+  --sun-glow:     #D4ECDD;
+  --bar-accent:     var(--sun);
+  --bar-accent-rgb: var(--sun-rgb);
+  --keycap-edge:     var(--fixed-ink);
+  --keycap-edge-rgb: var(--fixed-ink-rgb);
+
+  /* Links and evidence (replaces day aurora-as-text at 2.2:1). */
+  --teal:     #237242;
+  --teal-rgb: 35 114 66;
+  /* AI cognition FILL (thinking dots, mascot accents); never text. */
+  --aurora:     #6ECB8F;
+  --aurora-rgb: 110 203 143;
+
+  --danger:      var(--danger-fill);
+  --danger-rgb:  var(--danger-fill-rgb);
+  --success:     #237242;
+  --success-rgb: 35 114 66;
+  --stale:       #6C6252;
+  --stale-rgb:   108 98 82;
+  --not-run:     #6C6252;
+  --not-run-rgb: 108 98 82;
+
+  --focus:     var(--fixed-ink);
+  --focus-rgb: var(--fixed-ink-rgb);
+  --wash:      rgba(44,40,35,0.06);
+  --mark:      var(--sun-hl-day);
+  --reading-page: var(--bg-card);
+  --reading-ink: var(--text-1);
+  --reading-soft-page: #E8DFCF;
+  --reading-soft-ink: var(--fixed-ink);
+
+  --media-well: var(--charcoal-2);
+
+  --glass-bg:       rgba(249,243,232,0.72);
+  --glass-bg-solid: var(--bg-card);
+  --glass-border:   rgba(44,40,35,0.12);
+  --glass-blur:     12px;
+
+  --mascot-primary: #FF9273;
+  --mascot-secondary: #943D4A;
+  --mascot-coat:  var(--mascot-primary);
+  --mascot-belly: var(--bright);
+  --mascot-bill:  var(--mascot-secondary);
+  --mascot-foot:  var(--mascot-secondary);
+
+  --pitch-base: #4C8F4F;
+  --pitch-mid:  #3D7A41;
+  --pitch-deep: #2F6633;
+
+  --shadow-z1:   3px 3px 0 0 var(--fixed-ink);
+  --shadow-z2:   5px 5px 0 0 var(--fixed-ink);
+  --shadow-z3:   8px 8px 0 0 var(--fixed-ink);
+  --shadow-lift: 12px 12px 0 0 var(--fixed-ink);
 }
 
+/* ── 2b. SEMANTIC, night. Keep byte-identical to the @media block. ── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-page:             var(--space-2);
+  --bg-page-rgb:         var(--space-2-rgb);
+  --bg-card:             var(--charcoal-2);
+  --bg-card-rgb:         var(--charcoal-2-rgb);
+  --bg-inset:            var(--charcoal-1);
+  --bg-inset-rgb:        var(--charcoal-1-rgb);
+  --border-hairline:     #463E32;
+  --border-hairline-rgb: 70 62 50;
+  --border-rule:         #8F816E;
+  --border-rule-rgb:     143 129 110;
+
+  --text-1:     var(--bright);
+  --text-1-rgb: var(--bright-rgb);
+  --text-2:     #C3BAAA;
+  --text-2-rgb: 195 186 170;
+  --text-3:     var(--moonlight);
+  --text-3-rgb: var(--moonlight-rgb);
+
+  --sun-ink:          var(--sun);
+  --sun-ink-rgb:      var(--sun-rgb);
+  --sun-deep:         #6ECB8F;
+  --sun-deep-rgb:     110 203 143;
+  --sun-glow:         #355B42;
+  --bar-accent:       var(--sun-bar-night);
+  --bar-accent-rgb:   110 203 143;
+  --keycap-edge:      var(--border-rule);
+  --keycap-edge-rgb:  var(--border-rule-rgb);
+
+  --teal:       var(--aurora);
+  --teal-rgb:   var(--aurora-rgb);
+  --aurora:     #6ECB8F;
+  --aurora-rgb: 110 203 143;
+
+  --danger:      #D49B94;
+  --danger-rgb:  212 155 148;
+  --success:     #6ECB8F;
+  --success-rgb: 110 203 143;
+  --stale:       #C3BAAA;
+  --stale-rgb:   195 186 170;
+  --not-run:     #ADA392;
+  --not-run-rgb: 173 163 146;
+
+  --focus:     var(--highlighter);
+  --focus-rgb: 169 255 23;
+  --wash:      rgba(230,222,206,0.08);
+  --mark:      var(--sun-hl-night);
+  --reading-page: var(--bg-card);
+  --reading-ink: var(--text-1);
+  --reading-soft-page: var(--bg-page);
+  --reading-soft-ink: #C7BBA7;
+
+  --media-well: var(--void);
+
+  --glass-bg:       rgba(41,37,31,0.66);
+  --glass-bg-solid: var(--bg-card);
+  --glass-border:   rgba(230,222,206,0.14);
+  --glass-blur:     12px;
+
+  --mascot-coat:  var(--mascot-primary);
+  --mascot-belly: var(--bright);
+  --mascot-bill:  var(--mascot-secondary);
+  --mascot-foot:  var(--mascot-secondary);
+
+  --pitch-base: #2E5C33;
+  --pitch-mid:  #244A29;
+  --pitch-deep: #1B3A20;
+
+  --shadow-z1:   3px 3px 0 0 var(--void);
+  --shadow-z2:   5px 5px 0 0 var(--void);
+  --shadow-z3:   8px 8px 0 0 var(--void);
+  --shadow-lift: 12px 12px 0 0 var(--void);
+}
+
+/* No-JS fallback: follow the OS when nothing set data-theme. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* night surface ramp */
-    --ice-0:      #1B202A;  /* (re-mapped at night: card surface) */
-    --ice-1:      #161B24;
-    --ice-2:      #0D1019;
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg-page:             var(--space-2);
+    --bg-page-rgb:         var(--space-2-rgb);
+    --bg-card:             var(--charcoal-2);
+    --bg-card-rgb:         var(--charcoal-2-rgb);
+    --bg-inset:            var(--charcoal-1);
+    --bg-inset-rgb:        var(--charcoal-1-rgb);
+    --border-hairline:     #463E32;
+    --border-hairline-rgb: 70 62 50;
+    --border-rule:         #8F816E;
+    --border-rule-rgb:     143 129 110;
+
+    --text-1:     var(--bright);
+    --text-1-rgb: var(--bright-rgb);
+    --text-2:     #C3BAAA;
+    --text-2-rgb: 195 186 170;
+    --text-3:     var(--moonlight);
+    --text-3-rgb: var(--moonlight-rgb);
+
+    --sun-ink:          var(--sun);
+    --sun-ink-rgb:      var(--sun-rgb);
+    --sun-deep:         #6ECB8F;
+    --sun-deep-rgb:     110 203 143;
+    --sun-glow:         #355B42;
+    --bar-accent:       var(--sun-bar-night);
+    --bar-accent-rgb:   110 203 143;
+    --keycap-edge:      var(--border-rule);
+    --keycap-edge-rgb:  var(--border-rule-rgb);
+
+    --teal:       var(--aurora);
+    --teal-rgb:   var(--aurora-rgb);
+    --aurora:     #6ECB8F;
+    --aurora-rgb: 110 203 143;
+
+    --danger:      #D49B94;
+    --danger-rgb:  212 155 148;
+    --success:     #6ECB8F;
+    --success-rgb: 110 203 143;
+    --stale:       #C3BAAA;
+    --stale-rgb:   195 186 170;
+    --not-run:     #ADA392;
+    --not-run-rgb: 173 163 146;
+
+    --focus:     var(--highlighter);
+    --focus-rgb: 169 255 23;
+    --wash:      rgba(230,222,206,0.08);
+    --mark:      var(--sun-hl-night);
+    --reading-page: var(--bg-card);
+    --reading-ink: var(--text-1);
+    --reading-soft-page: var(--bg-page);
+    --reading-soft-ink: #C7BBA7;
+
+    --media-well: var(--void);
+
+    --glass-bg:       rgba(41,37,31,0.66);
+    --glass-bg-solid: var(--bg-card);
+    --glass-border:   rgba(230,222,206,0.14);
+    --glass-blur:     12px;
+
+    --mascot-coat:  var(--mascot-primary);
+    --mascot-belly: var(--bright);
+    --mascot-bill:  var(--mascot-secondary);
+    --mascot-foot:  var(--mascot-secondary);
+
     --pitch-base: #2E5C33;
     --pitch-mid:  #244A29;
     --pitch-deep: #1B3A20;
-    --ice-3:      #0A0D14;
-    --ice-4:      #080A10;
-    --glacial-1:  #252B36;
-    --glacial-2:  #323845;
-    --shadow-1:   #6B7585;
-    --shadow-2:   #A0AAB8;
-    --ink:        #EEF1F6;
 
-    /* Neutral "light" chrome border, night. A calm slate — the lightest
-       neutral that still clears 3:1 on the night card (#606C7E on #1B202A =
-       3.07:1; on the #0D1019 page = 3.57:1). Mirrors tokens.ts `rule.night`.
-       Tailwind has no media-swap for a single color key, so border-rule
-       renders the DAY hex statically; this CSS var carries the night value
-       for elements that read var(--border)/var(--rule), and components keep
-       their explicit dark:border-charcoal-1 override. */
-    --rule:       #606C7E;
+    --shadow-z1:   3px 3px 0 0 var(--void);
+    --shadow-z2:   5px 5px 0 0 var(--void);
+    --shadow-z3:   8px 8px 0 0 var(--void);
+    --shadow-lift: 12px 12px 0 0 var(--void);
+}
+}
 
-    --page:       #0D1019;
-    --card:       #1B202A;
-    --card-soft:  #13171F;
-    --inset:      #0D1019;
-    --divider:    #13171F;
-    --muted:      #6B7585;
-    --text:       #EEF1F6;
-    --text-muted: #6B7585;
-    /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
-       AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
-    --border:     var(--rule);
+/* ── 3. LEGACY ALIASES. Declared once; they resolve through the theme.
+      Existing call sites keep their names and follow the semantic layer. */
+:root {
+  /* surfaces */
+  --ice-0:     var(--bg-card);
+  --ice-1:     var(--bg-card);
+  --ice-2:     var(--bg-page);
+  --ice-3:     var(--bg-inset);
+  --ice-4:     var(--border-hairline);
+  --glacial-1: var(--border-hairline);
+  --glacial-2: var(--border-rule);
+  --page:      var(--bg-page);
+  --card:      var(--bg-card);
+  --card-soft: var(--bg-page);
+  --inset:     var(--bg-inset);
+  --divider:   var(--border-hairline);
 
-    /* was #8A7300; re-toned (AMS-SPR-09) to a weathered ochre so the night
-       depth/shadow-glow reads aged, not loud. AA pair (accent-edge 1.4.11
-       ≥3:1, used as the night offset-shadow glow): on card #1B202A 3.44:1 ✓;
-       on page #0D1019 4.01:1 ✓. */
-    --sun-deep:   #84722F;
-    /* was #FFEC5F; re-toned (AMS-SPR-09) to a calmer weathered night glow
-       (chroma ~0.40) so the night highlight peak softens toward --sun-light.
-       The LOUD night bar value (#FFEC5F) is preserved separately as
-       --sun-bar-night below — the bar must NOT soften with the glow. AA for
-       the highlighter that consumes this rgb is carried by --sun-hl-night. */
-    --sun-glow:   #F2DE9A;
+  /* text: three roles, not five greys */
+  --ink:          var(--text-1);
+  --text:         var(--text-1);
+  --ink-soft:     var(--text-2);
+  --ink-soft-rgb: var(--text-2-rgb);
+  --shadow-1:     var(--text-2);
+  /* shadow-2 is a pigment, not a text role: the slate the day scene's
+     BrainJourney coat is painted in, the same colour as bg-shadow-2 and
+     tokens.ts surface.day[8]. Text reads text-shadow-2 (--text-2). */
+  --shadow-2:     var(--fixed-ink-2);
+  --text-muted:   var(--text-2);
+  --ink-mute:     var(--text-3);
+  --ink-mute-rgb: var(--text-3-rgb);
+  --muted:        var(--text-3);
 
-    /* The LOUD night bar value, decoupled from the now-softened --sun-glow
-       (AMS-SPR-09). Was: --bar-accent pointed at --sun-glow (#FFEC5F). Since
-       SPR-09 softens --sun-glow, the bar would have softened too — violating
-       "keep the bottom tab LOUD". So the bar's loud warm glow lives here as
-       its own constant and --bar-accent points at it. UNCHANGED hex #FFEC5F.
-       Mirrors tokens.ts `barAccent.night`. */
-    --sun-bar-night: #FFEC5F;
+  /* lines */
+  --rule:   var(--border-rule);
+  --border: var(--border-rule);
 
-    /* Preserved bottom-bar yellow accent, night (AMS-SPR-01; SPR-06). Stays
-       LOUD: points at --sun-bar-night (#FFEC5F), the brand night glow — NOT
-       the softened --sun-glow. The bar stays bold; only the chrome accents
-       soften (AMS-SPR-09). Mirrors tokens.ts `barAccent.night` (#FFEC5F). */
-    --bar-accent: var(--sun-bar-night);
+  /* The emperor alias follows the muted-red danger role. */
+  --emperor: var(--danger);
 
-    /* Glass / transparency surfaces, night (AMS-SPR-01; SPR-03/04/09). Deep
-       slate frost over the night sky. --glass-bg-solid is the opaque
-       reduced-motion / no-scene fallback (same hue, alpha 1). Legibility
-       contract: see day block + tokens.ts `glass`. */
-    --glass-bg:       rgba(27,32,42,0.66);  /* --card #1B202A @ 0.66 */
-    --glass-bg-solid: #1B202A;              /* opaque fallback == night --card */
-    --glass-border:   rgba(238,241,246,0.14); /* --ink(night) #EEF1F6 @ 0.14 */
-    --glass-blur:     12px;
+  /* Honesty states: a colour AND a word (and an icon) at every call site,
+     never colour alone. Each is a text-safe colour in both themes, so the
+     same token works for the dot and the label. */
+  --state-working:     var(--sun-ink);
+  --state-blocked:     var(--danger);
+  --state-done:        var(--success);
+  --state-stopped:     var(--text-2);
+  --state-muted:       var(--text-3);
+  --state-verified:    var(--success);
+  --state-conflicting: var(--danger);
+  --state-stale:       var(--stale);
+  --state-not-run:     var(--not-run);
+}
 
-    --werner-coat:  #0A0D14;
-    --werner-belly: #DCE2EA;
-    --werner-bill:  var(--sun);
-    --werner-foot:  var(--sun);
-    --werner-eye:   #DCE2EA;
-    /* werner-rod (SPR-04), night: the day --sun-deep darkens to #84722F at
-       night, which reads dim against the deep-slate scene; lift the rod to the
-       weathered-straw --sun-light so the held rod stays legible after dark. */
-    --werner-rod:   var(--sun-light);
-    /* werner-fish (SPR-05), night: --aurora brightens to #3FE0DC after dark
-       (see the night --aurora below), which keeps the little fish legible
-       against the deep-slate scene; the var(--aurora) reference above already
-       resolves to that brighter teal here. */
-    --werner-fish:  var(--aurora);
-
-    --aurora:  #3FE0DC;
-    --emperor: #FF6155;
-
-    /* Research-state family (herdr transfer P0-1) — night aliases. Same
-       semantic targets as day; the values resolve through the night
-       redeclarations above (aurora/emperor/shadow-2), so state colours
-       track the night palette automatically. */
-    --state-working: var(--sun);
-    --state-blocked: var(--emperor);
-    --state-done:    var(--aurora);
-    --state-stopped: var(--shadow-2);
-    --state-muted:   var(--shadow-2);
-
-    /* shadows glow at night */
-    --shadow-z1:   3px 3px 0 0 var(--sun-deep);
-    --shadow-z2:   5px 5px 0 0 var(--sun-deep);
-    --shadow-z3:   8px 8px 0 0 var(--sun-deep);
-    --shadow-lift: 12px 12px 0 0 var(--sun-deep);
-
-    /* opacity tokens, night (CFEEL-S2 M3) — theme-invariant; the dim ratio is
-       the same day + night. Mirrored here only so the night block stays a
-       complete structural sibling of :root (every token in this file appears in
-       both); the values are deliberately identical to the day block. */
-    --opacity-disabled: 0.65;
-    --opacity-icon:     0.8;
-  }
+/* Per-subtree density override (CFEEL-S2 M1). Opt-in only. */
+[data-density="compact"] {
+  --spacing: 0.21875rem; /* ≈3.5px; ~12.5% denser than the 0.25rem default */
+  --density: 0.875;
 }
 
 

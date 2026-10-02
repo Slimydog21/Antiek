@@ -10,8 +10,9 @@ Config (env-only — systemd unit reads /etc/antiek/secrets.env):
 - ``ANTIEK_DAEMON_SLEEP_SECONDS`` — scan interval (default 60).
 - ``ANTIEK_DAEMON_EXPECTED_COST_USD`` — cost-per-spawn estimate
   used for budget gating (default 0.50).
-- ``ANTIEK_DAEMON_BUDGET_USD_PER_DAY`` — §16 hard cap on total
-  spawn spend per UTC day (default 5.0).
+- ``ANTIEK_DAEMON_HOURLY_BUDGET_USD`` — §16 hard cap on total
+  spawn spend per UTC day, despite the name (default 5.0; read by
+  ``budget._resolve_daily_cap``).
 """
 
 from __future__ import annotations
@@ -42,9 +43,11 @@ def main() -> int:
 
     # Defer the daemon import so a `--help` invocation doesn't pay
     # the cost of bringing in the substrate module graph.
+    from orchestration.continuous import DaemonBudget
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
+        refuse_spawn_switch,
         run_one_iteration,
     )
     from orchestration.continuous.daemon import (
@@ -52,7 +55,15 @@ def main() -> int:
     )
 
     if args.once:
-        run_one_iteration(state=DaemonState(), config=DaemonConfig())
+        # A smoke run must answer a set spawn switch exactly as the service does.
+        import os
+
+        refuse_spawn_switch(os.environ)
+        run_one_iteration(
+            state=DaemonState(),
+            config=DaemonConfig(),
+            budget=DaemonBudget.from_env(),
+        )
         return 0
     daemon_main()
     return 0

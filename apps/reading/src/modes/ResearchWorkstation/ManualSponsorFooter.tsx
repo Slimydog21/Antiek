@@ -113,7 +113,7 @@ export default function ManualSponsorFooter({
       <AdBorder slotId={slotId} position="bottom" fill={fillView} />
       {served && priceStatus === "unpriced" && (
         <p
-          className="mt-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight"
+          className="mt-2 text-xs font-mono text-shadow-1 dark:text-moonlight"
           data-testid="manual-sponsor-rank0-honesty"
         >
           {fillKind === "ad"

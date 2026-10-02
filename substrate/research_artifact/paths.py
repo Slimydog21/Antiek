@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import secrets
@@ -56,27 +57,61 @@ def artifact_source_path_for(artifact_id: str, content_hash: str) -> Path:
     )
 
 
+def companion_owner_key(owner_user_id: str) -> str:
+    """A path-safe key for one owner. Owner ids can be emails, which the
+    artifact-id pattern refuses, and a digest keeps them out of file names."""
+    if not owner_user_id:
+        raise ValueError("companion owner required")
+    return hashlib.sha256(owner_user_id.encode("utf-8")).hexdigest()[:32]
+
+
+def companion_path_for(owner_user_id: str, document_id: str) -> Path:
+    """The persisted companion build of one owner's view of one document
+    (companions SPR-02), beside the research artifacts under the
+    validated-id and bounded-read conventions.
+
+    Keyed by (owner, document): one owner's build is never at another
+    owner's path, so a re-keyed document cannot serve the previous owner's
+    build. The pre-owner layout (``companions/<document_id>.html``) is never
+    read."""
+    return (
+        research_artifacts_dir()
+        / "companions"
+        / "by-owner"
+        / companion_owner_key(owner_user_id)
+        / f"{validate_artifact_id(document_id)}.json"
+    )
+
+
 def read_bounded_nofollow(path: Path, limit: int) -> bytes:
-    """Descriptor-bound read: reject symlinks and size before allocation."""
+    """Descriptor-bound read: reject symlinks and size before allocation.
+
+    O_NONBLOCK: opening a FIFO for reading blocks until a writer appears, and
+    that open comes before the fstat that refuses non-regular files. It has no
+    effect on reading a regular file."""
     parent_fd, name = _open_parent_dir(path, create=False)
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    # Every descriptor is closed on every path out, whatever raises: a name
+    # the OS rejects outright (an embedded NUL raises ValueError, not OSError)
+    # must not leak the parent directory's descriptor.
     try:
-        fd = os.open(name, flags, dir_fd=parent_fd)
-    except OSError as err:
-        os.close(parent_fd)
-        raise ValueError("artifact cannot be opened safely") from err
-    try:
-        metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("artifact is not a regular file")
-        if metadata.st_size > limit:
-            raise OverflowError(f"artifact exceeds {limit} bytes")
-        data = os.read(fd, limit + 1)
-        if len(data) > limit:
-            raise OverflowError(f"artifact exceeds {limit} bytes")
-        return data
+        try:
+            fd = os.open(name, flags, dir_fd=parent_fd)
+        except (OSError, ValueError) as err:
+            raise ValueError("artifact cannot be opened safely") from err
+        try:
+            metadata = os.fstat(fd)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("artifact is not a regular file")
+            if metadata.st_size > limit:
+                raise OverflowError(f"artifact exceeds {limit} bytes")
+            data = os.read(fd, limit + 1)
+            if len(data) > limit:
+                raise OverflowError(f"artifact exceeds {limit} bytes")
+            return data
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
         os.close(parent_fd)
 
 
@@ -99,38 +134,54 @@ def unlink_anchored(path: Path, *, missing_ok: bool = True) -> None:
 
 
 def atomic_write_nofollow(path: Path, data: bytes) -> None:
-    """Publish bytes atomically via an exclusive, fsynced sibling temp."""
+    """Publish bytes atomically via an exclusive, fsynced sibling temp.
+
+    The parent directory's descriptor is closed on every path out, and no
+    cleanup step replaces the error that caused it: closing and removing the
+    temp after a failure are best effort, the original failure is what
+    raises, and a cleanup failure rides on it as a note (not as its cause:
+    the cleanup did not cause the failure). A temp that fails to close is
+    removed and never published."""
     parent_fd, name = _open_parent_dir(path, create=True)
-    temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
+        temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
-    except BaseException:
-        os.close(parent_fd)
-        raise
-    try:
-        view = memoryview(data)
-        while view:
-            written = os.write(fd, view)
-            view = view[written:]
-        os.fsync(fd)
-    except BaseException:
-        os.close(fd)
-        with suppress(FileNotFoundError):
-            os.unlink(temp_name, dir_fd=parent_fd)
-        os.close(parent_fd)
-        raise
-    else:
-        os.close(fd)
-    try:
-        os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-        os.fsync(parent_fd)
-    except BaseException:
-        with suppress(FileNotFoundError):
-            os.unlink(temp_name, dir_fd=parent_fd)
-        raise
+        try:
+            try:
+                view = memoryview(data)
+                while view:
+                    written = os.write(fd, view)
+                    view = view[written:]
+                os.fsync(fd)
+            except BaseException as failure:
+                try:
+                    os.close(fd)
+                except OSError as close_error:
+                    failure.add_note(_cleanup_note("closing the temp file", close_error))
+                raise
+            # Closed outside the handler: its own error is the failure then.
+            os.close(fd)
+            os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        except BaseException as failure:
+            try:
+                os.unlink(temp_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass  # never created, or already published by the replace
+            except OSError as unlink_error:
+                failure.add_note(_cleanup_note("removing the temp file", unlink_error))
+            raise
     finally:
         os.close(parent_fd)
+
+
+def _cleanup_note(stage: str, error: OSError) -> str:
+    """A cleanup failure as a note: the stage, the error's type and errno.
+
+    Never the error's text: an OSError's str names its file, and the temp's
+    name embeds the artifact id."""
+    return f"{stage} also failed: {type(error).__name__} (errno {error.errno}, {error.strerror})"
 
 
 def _open_parent_dir(path: Path, *, create: bool) -> tuple[int, str]:
@@ -171,8 +222,62 @@ def _open_parent_dir(path: Path, *, create: bool) -> tuple[int, str]:
         raise
 
 
+def twin_notes_path_for(investigation_id: str) -> Path:
+    safe = investigation_id.replace("/", "_")
+    return research_artifacts_dir() / f"{safe}.notes.html"
+
+
 def compose_path_for(*investigation_ids: str) -> Path:
     joined = "-".join(i.replace("/", "_") for i in investigation_ids[:8])
     if len(investigation_ids) > 8:
         joined += f"-and{len(investigation_ids) - 8}-more"
     return research_artifacts_dir() / f"compose-{joined}.html"
+
+
+def draft_merge_path_for(*investigation_ids: str) -> Path:
+    joined = "-".join(i.replace("/", "_") for i in investigation_ids[:8])
+    if len(investigation_ids) > 8:
+        joined += f"-and{len(investigation_ids) - 8}-more"
+    return research_artifacts_dir() / f"draft-merge-{joined}.html"
+
+
+_DRAFT_MERGE_NAME = re.compile(r"draft-merge-[^/\\]+\.html")
+_CONFINED_READ_LIMIT = 10 * 1024 * 1024
+
+
+def _read_confined_text(candidate: str, *, refusal: str, direct_child: re.Pattern[str] | None) -> str:
+    """UTF-8 text of a file under the research artifacts directory, read
+    through one descriptor anchored at that directory (no symlink component,
+    no ``..`` escape, regular file, bounded). The check and the read are the
+    same open, so the file cannot be swapped between them. Every refusal,
+    present or missing, raises ``ValueError(refusal)``."""
+    path = Path(os.path.abspath(candidate))
+    if direct_child is not None and (
+        path.parent != Path(os.path.abspath(research_artifacts_dir()))
+        or not direct_child.fullmatch(path.name)
+    ):
+        raise ValueError(refusal)
+    try:
+        return read_bounded_nofollow(path, _CONFINED_READ_LIMIT).decode("utf-8")
+    except (OSError, ValueError, OverflowError):
+        raise ValueError(refusal) from None
+
+
+def read_reviewed_draft_merge(candidate: str) -> str:
+    """The text of the server-written draft-merge file ``candidate`` names.
+
+    A source merge splices this file into a book's body, and the path arrives
+    in a client's review packet. It may only name a draft this server wrote:
+    a ``draft-merge-*.html`` directly inside the research artifacts directory.
+    Anything else raises ``ValueError("source_merge_draft_merge_path_invalid")``.
+    """
+    return _read_confined_text(
+        candidate, refusal="source_merge_draft_merge_path_invalid", direct_child=_DRAFT_MERGE_NAME
+    )
+
+
+def read_importable_artifact(candidate: str) -> str:
+    """The text of a research artifact under the artifacts directory, for an
+    HTTP notes import whose path arrives from the client. Anything outside it
+    raises ``ValueError("import_notes_path_invalid")``."""
+    return _read_confined_text(candidate, refusal="import_notes_path_invalid", direct_child=None)

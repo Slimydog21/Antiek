@@ -122,7 +122,7 @@ def load_chunk_tier_changes_since(
 
 def load_outcomes_for_synthesis(
     con: Any, synthesis_id: str,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """All observer-recorded outcomes for a synthesis, oldest first.
     Returns a list of plain dicts so callers can serialize directly
     into ``BacktestReport.outcomes`` (which expects
@@ -143,7 +143,7 @@ def load_outcomes_for_synthesis(
         except (json.JSONDecodeError, TypeError):
             return raw
 
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for r in rows:
         out.append({
             "outcome_id": r[0],

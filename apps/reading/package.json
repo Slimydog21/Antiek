@@ -10,10 +10,11 @@
     "build:check": "npm run build && tsx scripts/check_bundle.ts",
     "bench:pdf-panel": "tsx scripts/bench_pdf_panel.ts",
     "e2e": "npm run build-storybook && npm run build && playwright test",
-    "e2e:ams": "npm run build && playwright test --project=ams-real",
+    "e2e:ams": "npm run build-storybook && npm run build && playwright test --project=ams-real",
     "e2e:feel": "npm run build-storybook && npm run build && playwright test --project=chromium feel- && playwright test --project=ams-real feel-",
-    "e2e:login": "npm run build && LOGIN_E2E=1 playwright test --project=login-real",
+    "e2e:login": "npm run build-storybook && npm run build && LOGIN_E2E=1 playwright test --project=login-real",
     "e2e:passkey": "PASSKEY_E2E=1 playwright test --project=passkey-real",
+    "test:e2e": "MEMORY_E2E=1 playwright test --project=memory-real",
     "e2e:ams:typecheck": "tsc --noEmit -p tsconfig.ams-e2e.json",
     "test:reflint": "vitest run --config vitest.tools.config.ts",
     "test:handoff": "vitest run --config vitest.agent.config.ts",
@@ -21,7 +22,7 @@
     "a11y:audit": "npm run build-storybook && tsx scripts/a11y_audit.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "lint:tokens": "tsx scripts/lint_tokens.ts",
+    "lint:tokens": "tsx scripts/lint_tokens.ts && tsx scripts/lint_token_refs.ts",
     "lint:tokens:update": "tsx scripts/lint_tokens.ts --update",
     "lint:type": "tsx scripts/lint_type_scale.ts",
     "lint:type:update": "tsx scripts/lint_type_scale.ts --update",
@@ -36,19 +37,19 @@
   "dependencies": {
     "@posthog/react": "^1.10.0",
     "@simplewebauthn/browser": "^13.3.0",
-    "@tiptap/extension-link": "^3.27.1",
-    "@tiptap/extension-placeholder": "^3.27.1",
-    "@tiptap/react": "^3.27.1",
-    "@tiptap/starter-kit": "^3.27.1",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "framer-motion": "^12.40.0",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.48.0",
     "p5": "^2.3.2",
     "pdfjs-dist": "^4.7.76",
     "posthog-js": "^1.379.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "7.18.4",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.13"
   },
@@ -63,7 +64,6 @@
     "@storybook/react-vite": "^8.4.7",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.19.19",
-    "@types/p5": "^1.7.7",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
@@ -78,7 +78,27 @@
     "tailwindcss": "^3.4.15",
     "tsx": "^4.22.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
+    "vite": "6.4.3",
     "vitest": "^4.1.7"
+  },
+  "overrides": {
+    "axios": "1.18.0",
+    "form-data": "4.0.6",
+    "lost-pixel": {
+      "esbuild": "0.25.10",
+      "serve-handler": {
+        "minimatch": "3.1.5"
+      },
+      "shelljs": {
+        "glob": {
+          "minimatch": "3.1.5"
+        }
+      }
+    },
+    "@storybook/addon-essentials": {
+      "@storybook/addon-actions": {
+        "uuid": "^11.1.1"
+      }
+    }
   }
 }

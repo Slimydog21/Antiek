@@ -42,7 +42,7 @@ const DEFAULT_ROUTE = "/";
 /** The bottom rail (NavRail.tsx: aria-label="Primary navigation"). */
 const RAIL = 'aside[aria-label="Primary navigation"]';
 
-/** The brand lemon — the one value SPR-09 must NOT change (bar + Werner). */
+/** The brand lemon — the one value SPR-09 must NOT change (bar + Brain). */
 const BRAND_LEMON = "#F5DF24";
 
 /** Read resolved :root custom properties from the live document. */

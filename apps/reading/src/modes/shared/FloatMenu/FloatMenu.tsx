@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
+import { topModal } from "../../../workspace/escapeOverlay";
+import { zIndex } from "../../../design/zIndex";
 import { ApiError, editSelection } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
 import {
@@ -80,6 +82,14 @@ export interface FloatMenuProps {
   /** CK-5: apply the model's edited span. The host splices it into the
    *  section prose (its own selection state identifies the span to replace). */
   onApplyEdit?: (editedText: string) => void;
+  /** Anchor-first SPR-02: pin the selection as a PERSISTENT passage anchor
+   *  alongside the action (Note/Dialogue/Search) or alone (the Pin button).
+   *  The READING host wires this to the anchors API; hosts that omit it keep
+   *  the menu byte-for-byte unchanged (D-3, mode-gated not a fork) — and
+   *  Deep-research is deliberately NOT routed here: its pin lives in the
+   *  host's onDeepResearch, which needs the anchor id for the SPR-04
+   *  spawn write-back (one pin, one link). */
+  onPinAnchor?: (pin: { source: string }, selection: FloatMenuSelection) => void;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -128,6 +138,7 @@ export default function FloatMenu({
   rewriteActions,
   editContext,
   onApplyEdit,
+  onPinAnchor,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -145,7 +156,11 @@ export default function FloatMenu({
   useEffect(() => {
     if (!selection) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]")) {
+        const modal = topModal();
+        if (modal && !modal.contains(rootRef.current)) return;
+        // The Esc is the menu's alone (workspace/escapeOverlay.ts).
+        e.preventDefault();
         window.getSelection()?.removeAllRanges();
         setView({ kind: "menu" });
       }
@@ -171,13 +186,14 @@ export default function FloatMenu({
     <div
       ref={rootRef}
       data-floatmenu
+      data-esc-overlay=""
       role="menu"
       aria-label="Highlight actions"
       style={{
         position: "fixed",
         top: pos.top,
         left: pos.left,
-        zIndex: 50,
+        zIndex: zIndex.popover,
         maxWidth: MENU_W,
       }}
       // Don't blur the selection when interacting with the menu — the same
@@ -190,19 +206,45 @@ export default function FloatMenu({
       {view.kind === "menu" && (
         <div className="flex flex-col">
           <div className="flex items-stretch divide-x divide-charcoal-2">
-            <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
-            <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
-            <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
+            <MenuButton
+              label="Note"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_note" }, selection);
+                setView({ kind: "note" });
+              }}
+            />
+            <MenuButton
+              label="Dialogue"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_dialogue" }, selection);
+                setView({ kind: "dialogue" });
+              }}
+            />
+            <MenuButton
+              label="Search"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_search" }, selection);
+                setView({ kind: "search" });
+              }}
+            />
             <MenuButton
               label="Deep-research"
               onClick={() => {
                 // DEEP-RESEARCH → the REUSED chase path (host wires
                 // ChaseThread + startInvestigation). §9.0: hand the host the
                 // guarded outbound text (null ⇒ withheld) so a withheld body
-                // never becomes a child investigation's spawn_context.
+                // never becomes a child investigation's spawn_context. Its pin
+                // lives in the host's onDeepResearch (the SPR-04 write-back
+                // needs the anchor id — one pin, one link).
                 onDeepResearch(outboundText(selection), selection);
               }}
             />
+            {onPinAnchor && (
+              <MenuButton
+                label="Pin"
+                onClick={() => onPinAnchor({ source: "pin" }, selection)}
+              />
+            )}
           </div>
           {/* Write SPR-09 M4: rewrite actions, shown ONLY when the Write host
               supplies them (D-3). Each routes the selection through the §9.0
@@ -271,7 +313,7 @@ export default function FloatMenu({
       {hybridEnabled && view.kind === "menu" && (
         <div
           data-floatmenu-hybrid
-          className="px-3 py-1.5 border-t border-charcoal-2 text-sun-deep"
+          className="px-3 py-1.5 border-t border-charcoal-2 text-sun"
           title="Hybrid: the AI may ask clarifying questions before launching. Not yet functional — see HYBRID_DECISION.md."
         >
           Hybrid — coming (AI asks first)
@@ -349,7 +391,7 @@ function NotePanel({
   if (saved) {
     return (
       <Panel title="Noted" onClose={onClose}>
-        <p className="text-aurora">Saved — user-sourced, anchored to your selection.</p>
+        <p className="text-success">Saved — user-sourced, anchored to your selection.</p>
       </Panel>
     );
   }
@@ -368,7 +410,7 @@ function NotePanel({
           useVoiceCapture.start() does NOT re-throw a denial — it reflects in
           recorderState "denied" — so we read that AND voice.error (ASR/503). */}
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type a note.
         </p>
       )}
@@ -479,12 +521,12 @@ function DialoguePanel({
       {reply && (
         // The MODEL reply — labelled, never conflated with the user's words.
         <div className="bg-shadow-2 rounded p-1.5 mb-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
+          <span className="text-xxs uppercase tracking-wider text-moonlight block mb-0.5">
             AI reply
           </span>
           <p className="text-bright whitespace-pre-wrap leading-relaxed">{reply.reply}</p>
           {reply.shape ? (
-            <p className="text-[10px] uppercase tracking-wide text-moonlight font-mono" data-testid="dialogue-shape">
+            <p className="text-xxs uppercase tracking-wide text-moonlight font-mono" data-testid="dialogue-shape">
               {reply.shape}
             </p>
           ) : null}
@@ -499,7 +541,7 @@ function DialoguePanel({
         autoFocus
       />
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type your question.
         </p>
       )}
@@ -521,7 +563,7 @@ function DialoguePanel({
           {voice.phase === "recording" ? "■ Stop" : "● Speak it"}
         </LemonButton>
       </div>
-      <p className="text-[10px] text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
+      <p className="text-xxs text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
     </Panel>
   );
 }
@@ -566,7 +608,7 @@ function SearchPanel({
   return (
     <Panel title="Search the corpus" onClose={onClose}>
       {withheld ? (
-        <p className="text-sun-deep" role="alert">
+        <p className="text-sun" role="alert">
           {WITHHELD_OUTBOUND_REASON}
         </p>
       ) : pending ? (
@@ -609,7 +651,7 @@ function Panel({
   return (
     <div className="p-2 w-[300px]">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-moonlight">{title}</span>
+        <span className="text-xxs uppercase tracking-wider text-moonlight">{title}</span>
         <button
           type="button"
           onClick={onClose}
@@ -670,7 +712,7 @@ function EditPanel({
     <Panel title="Edit selection" onClose={onClose}>
       <div data-floatmenu-edit className="flex flex-col gap-1.5">
         {safeText === null ? (
-          <p className="text-sun-deep" role="alert">
+          <p className="text-sun" role="alert">
             {WITHHELD_OUTBOUND_REASON}
           </p>
         ) : null}

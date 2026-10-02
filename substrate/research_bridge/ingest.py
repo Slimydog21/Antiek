@@ -19,8 +19,18 @@ import os
 import sys
 from dataclasses import dataclass
 
+# Hoisted OUT of the try below. ``...runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead. The ignore code
+# MATCHED what mypy emits, which is why it never looked wrong — but a
+# correctly-matched ignore suppresses just as thoroughly, and LockedConnection
+# was typed Any across this module.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
+
 try:
-    from ...runtime.db_lock import LockedConnection
     from ..graph.ops import (
         content_addressed_id,
         insert_chunk,
@@ -36,15 +46,17 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.graph.ops import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.graph.ops import (
         content_addressed_id,
         insert_chunk,
         insert_document,
         new_random_id,
     )
-    from substrate.research_bridge.paste_log import log_paste_event  # type: ignore[no-redef]
-    from substrate.research_bridge.source_detection import (  # type: ignore[no-redef]
+    from substrate.research_bridge.paste_log import (
+        log_paste_event,
+    )
+    from substrate.research_bridge.source_detection import (
         KNOWN_SOURCES,
         SourceDetectionResult,
         detect_source,
@@ -178,6 +190,10 @@ def ingest_paste(
         title=title,
         raw_text=raw_text,
         investigation_id=investigation_id,
+        # Text pasted from an outside research tool is third-party material
+        # the operator is reading, not content Antiek may serve: owner-
+        # readable, never public. NULL was grandfathered public.
+        content_class=PERSONAL_READING_CONTENT_CLASS,
         metadata={
             "research_bridge": {
                 "source": source,

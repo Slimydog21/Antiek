@@ -13,9 +13,10 @@
  *   * Empty candidate list renders a named empty state, not a blank menu.
  */
 
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ComposerCandidateView } from "../api/composerProjection";
+import { press } from "../design/motion";
 
 export interface ModelPickerProps {
   candidates: ComposerCandidateView[] | null;
@@ -85,14 +86,25 @@ export default function ModelPicker({
       e.preventDefault();
       if (open) choose(candidates[activeIndex]);
       else setOpen(true);
-    } else if (e.key === "Escape") {
-      setOpen(false);
     }
   }
 
+  // Esc closes the open list from any focus, and is its alone
+  // (workspace/escapeOverlay.ts): it never also exits a pane fullscreen.
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [open]);
+
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+      <div className="flex items-center gap-2 text-xs text-shadow-1 dark:text-moonlight" role="status">
         <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-sun" />
         Loading model drivers…
       </div>
@@ -101,7 +113,7 @@ export default function ModelPicker({
 
   if (error) {
     return (
-      <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-[11px] text-emperor" role="alert">
+      <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-xs text-emperor" role="alert">
         Model drivers unavailable · {error}
       </p>
     );
@@ -109,7 +121,7 @@ export default function ModelPicker({
 
   if (!candidates || candidates.length === 0) {
     return (
-      <p className="rounded border border-sun/40 bg-ice-0 px-3 py-2 text-[11px] text-shadow-1 dark:bg-charcoal-2 dark:text-moonlight">
+      <p className="rounded border border-sun/40 bg-ice-0 px-3 py-2 text-xs text-shadow-1 dark:bg-charcoal-2 dark:text-moonlight">
         No model drivers available for this action.
       </p>
     );
@@ -117,7 +129,7 @@ export default function ModelPicker({
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold text-ink dark:text-bright">{label}</span>
+      <span className="text-xs font-semibold text-ink dark:text-bright">{label}</span>
       <div className="relative inline-block w-full max-w-sm">
         <button
           ref={buttonRef}
@@ -129,7 +141,10 @@ export default function ModelPicker({
           disabled={disabled}
           onClick={toggle}
           onKeyDown={onKeyDown}
-          className="flex w-full items-center justify-between gap-2 rounded-md border-2 border-sun bg-ice-0 px-3 py-2 text-left text-sm text-ink shadow-[3px_3px_0_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-px active:translate-y-0 active:shadow-none disabled:opacity-60 dark:bg-charcoal-2 dark:text-bright"
+          className={
+            "flex w-full items-center justify-between gap-2 rounded-md border-2 border-sun bg-ice-0 px-3 py-2 text-left text-sm text-ink shadow-z1 dark:shadow-z1-night disabled:opacity-60 dark:bg-charcoal-2 dark:text-bright " +
+            press
+          }
         >
           <span className="truncate">
             {selectedView
@@ -138,17 +153,18 @@ export default function ModelPicker({
           </span>
           <span className="flex items-center gap-2">
             {selectedView && (
-              <span className="text-[10px] text-shadow-1 dark:text-moonlight">
+              <span className="text-xxs text-shadow-1 dark:text-moonlight">
                 {pricingLabel(selectedView)}
               </span>
             )}
-            <span aria-hidden className="text-[10px]">{open ? "▲" : "▼"}</span>
+            <span aria-hidden className="text-xxs">{open ? "▲" : "▼"}</span>
           </span>
         </button>
         {open && (
           <ul
             id={listboxId}
             role="listbox"
+            data-esc-overlay=""
             aria-label={label}
             className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border-2 border-sun bg-ice-0 py-1 shadow-[4px_4px_0_rgba(0,0,0,0.15)] dark:bg-charcoal-1"
           >
@@ -173,11 +189,11 @@ export default function ModelPicker({
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       {c.quality_basis === "measured" ? (
-                        <span className="rounded bg-aurora/15 px-1 text-[9px] text-aurora">measured</span>
+                        <span className="rounded bg-card px-1 text-xxs text-success">measured</span>
                       ) : (
-                        <span className="rounded bg-moonlight/15 px-1 text-[9px] text-shadow-1 dark:text-moonlight">prior</span>
+                        <span className="rounded bg-moonlight/15 px-1 text-xxs text-shadow-1 dark:text-moonlight">prior</span>
                       )}
-                      <span className="text-[10px] text-shadow-1 dark:text-moonlight">
+                      <span className="text-xxs text-shadow-1 dark:text-moonlight">
                         {c.eligible ? pricingLabel(c) : "ineligible"}
                       </span>
                     </span>
@@ -188,7 +204,7 @@ export default function ModelPicker({
           </ul>
         )}
       </div>
-      <p className="text-[10px] text-shadow-1/80 dark:text-moonlight/80">{note}</p>
+      <p className="text-xxs text-shadow-1/80 dark:text-moonlight/80">{note}</p>
     </div>
   );
 }

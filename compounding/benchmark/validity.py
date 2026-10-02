@@ -191,19 +191,18 @@ def assess_headline(
     )
     if compounds:
         sources = headline.metric(CORROBORATING_METRIC)
-        sources_ok = sources is None or sources.ci_high <= 0.0
+        # Below-the-bar-but-cheaper falls through to NULL with the honest reason.
+        if sources is not None and sources.ci_high > 0.0:
+            return VERDICT_NULL, (
+                f"headline cost cheaper but {CORROBORATING_METRIC} CI_high "
+                f"{sources.ci_high:.6g} > 0 — savings not corroborated"
+            )
         dose_ok, dose_reason = _dose_response_holds(headline, partial)
-        if sources_ok and dose_ok:
+        if dose_ok:
             return VERDICT_COMPOUNDS, (
                 f"headline {HEADLINE_METRIC} CI_high {token.ci_high:.6g} < 0, "
                 f"|delta| {abs(token.delta):.6g} >= floor {material_floor:.6g}, "
                 f"corroborated by sources and dose-response"
-            )
-        # Below-the-bar-but-cheaper falls through to NULL with the honest reason.
-        if not sources_ok:
-            return VERDICT_NULL, (
-                f"headline cost cheaper but {CORROBORATING_METRIC} CI_high "
-                f"{sources.ci_high:.6g} > 0 — savings not corroborated"
             )
         return VERDICT_NULL, dose_reason
 

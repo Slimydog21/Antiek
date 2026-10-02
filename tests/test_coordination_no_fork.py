@@ -58,9 +58,12 @@ def test_ledger_equals_independent_quick_status_parse() -> None:
         )
 
 
-def test_all_eight_gates_present() -> None:
+def test_all_thirteen_gates_present() -> None:
     ledger = load_gate_ledger()
-    assert ledger.gate_ids() == ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+    assert ledger.gate_ids() == tuple(f"G{i}" for i in range(1, 14))
+    assert ledger.by_id("G9").owner == "Operator + counsel"
+    assert ledger.by_id("G10").owner.startswith("Operator (BizDev")
+    assert ledger.by_id("G12").owner.startswith("Operator (per-title")
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────
@@ -180,9 +183,15 @@ def test_impact_map_grounded() -> None:
     # G6 → Research (Phase-8 enforcing + autoresearch wedges).
     assert set(ledger.by_id("G6").blocks_products()) == {Product.RESEARCH}
 
-    # G4/G5 are infra verdicts — no per-product block.
+    # G13 is infrastructure triage — no per-product block.
     assert ledger.by_id("G4").blocks_products() == ()
     assert ledger.by_id("G5").blocks_products() == ()
+    assert ledger.by_id("G13").blocks_products() == ()
+
+    # Later operator gate-actions carry the doc's product-neutral Blocks field.
+    assert "SPR-07" in ledger.by_id("G9").blocks
+    assert "Stripe Press title" in ledger.by_id("G10").blocks
+    assert "Bernays" in ledger.by_id("G12").blocks
 
 
 def test_gates_blocking_only_counts_open_gates() -> None:
@@ -201,8 +210,8 @@ def test_gates_blocking_only_counts_open_gates() -> None:
 
 def test_accuracy_snapshot_matches_canonical_states() -> None:
     """Pin the documented gate states so a parsing/rendering regression is
-    caught: G1/G4/G5 closed, G2/G3/G6 open, G7 calendar, G8 data-bound; G5 is
-    provisionally closed."""
+    caught: G1/G4/G5/G11/G13 closed, G2/G3/G6/G9/G10/G12 open, G7 calendar,
+    G8 data-bound; G5 is provisionally closed."""
     ledger = load_gate_ledger()
     expected = {
         "G1": GateStatus.CLOSED,
@@ -213,6 +222,11 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
         "G6": GateStatus.OPEN,
         "G7": GateStatus.CALENDAR,
         "G8": GateStatus.DATA_BOUND,
+        "G9": GateStatus.OPEN,
+        "G10": GateStatus.OPEN,
+        "G11": GateStatus.CLOSED,
+        "G12": GateStatus.OPEN,
+        "G13": GateStatus.CLOSED,
     }
     actual = {g.gate_id: g.status for g in ledger.gates}
     assert actual == expected, f"gate-state snapshot drifted: {actual}"
@@ -220,10 +234,35 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
     # Nuance preserved: G5 is provisionally closed (not flattened to plain closed).
     assert ledger.by_id("G5").is_provisional
     assert not ledger.by_id("G4").is_provisional
+    # Closed-but-standing is distinct from a closed gate that may be retired.
+    assert ledger.by_id("G11").is_closed
+    assert ledger.by_id("G11").requires_standing_operator_duty
+    assert not ledger.by_id("G4").requires_standing_operator_duty
     # Closure records resolve to docs/decisions/ for the closed-with-record gates.
     assert ledger.by_id("G4").closure_record == "docs/decisions/g4-lemon-ui-verdict.md"
     assert ledger.by_id("G5").closure_record is not None
     assert ledger.by_id("G5").closure_record.startswith("docs/decisions/")
+
+
+def test_parser_admits_future_gate_ids() -> None:
+    """The open G\\d+ contract admits G14 without another regex change."""
+    future = """# Operator-only gate actions
+
+| Gate | Status | What it blocks |
+|---|---|---|
+| G14 future action | ❌ open | future example |
+
+## G14 — Future action
+
+**Status:** ❌ OPEN
+**Owner:** Operator
+**Blocks:** future example
+"""
+    ledger = parse_gate_ledger(future, source_path="future-fixture")
+    quick = parse_quick_status_table(future)
+    assert ledger.gate_ids() == ("G14",)
+    assert quick == {"G14": GateStatus.OPEN}
+    assert ledger.by_id("G14").owner == "Operator"
 
 
 # ── M2 roadmap: count reconciliation + critical path + unblocked-now ─────────
@@ -280,3 +319,54 @@ def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch:
     assert by_spec["read"] == 2
     # Specs with no fixture dir contribute 0 (read-only, no invention).
     assert by_spec["write"] == 0
+
+
+# ── 5. A root that exists but holds no roster must not defeat the fallback ────
+
+
+def test_root_with_no_recognised_roster_dir_falls_back(tmp_path: Path) -> None:
+    """A directory that merely EXISTS is not the specs root.
+
+    ``~/Desktop/Antiek`` is a symlink to the repo, so the canonical specs root
+    resolves to ``platform/specs/`` — a directory that exists for an unrelated
+    reason (one vendored spec) and contains none of the five rosters. Treating
+    that as "present" made every count read 0 on the operator's machine while
+    CI, where the path is absent, passed via the committed manifest. Same code,
+    opposite verdicts, and the local one was wrong.
+
+    Zero here means "did not look", not "nothing to find".
+    """
+    absent = tmp_path / "does-not-exist"
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    (unrelated / "karpathy-deep-lens-engineering").mkdir()
+
+    from_absent = {r.spec: r.count for r in build_roadmap(specs_root=absent).rosters}
+    from_unrelated = {r.spec: r.count for r in build_roadmap(specs_root=unrelated).rosters}
+
+    assert from_unrelated == from_absent, (
+        "a root holding no recognised roster dir must fall back to the committed "
+        f"manifest exactly as an absent root does: {from_unrelated} != {from_absent}"
+    )
+    assert sum(from_unrelated.values()) > 0, (
+        "the fallback itself returned nothing — this assertion would pass "
+        "vacuously if the manifest were empty"
+    )
+
+
+def test_a_partial_fixture_root_still_reports_honest_zeros(tmp_path: Path) -> None:
+    """Requiring one recognised dir must not turn every gap into a backfill.
+
+    The point of the presence check is to tell "this is not the specs root"
+    from "this is the specs root and that spec has no sprints yet". The second
+    must still report 0, or the roadmap starts inventing work.
+    """
+    (tmp_path / "deep-research-workspace").mkdir()
+    (tmp_path / "deep-research-workspace" / "sprint-01-x.html").write_text("x")
+
+    by_spec = {r.spec: r.count for r in build_roadmap(specs_root=tmp_path).rosters}
+    assert by_spec["drw"] == 1, by_spec
+    for spec in ("read", "write", "speak", "unified"):
+        assert by_spec[spec] == 0, (
+            f"{spec} was backfilled from the manifest despite a present root: {by_spec}"
+        )

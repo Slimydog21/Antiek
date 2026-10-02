@@ -28,11 +28,17 @@ Environment="ANTIEK_ARXIV_THROTTLE_PATH={{ antiek_state_dir }}/arxiv_throttle.js
 Environment="ANTIEK_ARXIV_GOVERNOR_LOCK_PATH={{ antiek_state_dir }}/arxiv_throttle.json.governor.lock"
 Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harvest.json"
 Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
+# The system bundle from the ca-certificates package (setup.yml). Setting it
+# here makes runtime.ssl_bootstrap a no-op, so the box's bundle keeps priority
+# over the venv's certifi copy. Belt-and-braces on Ubuntu; the real fix is for
+# a python.org interpreter that ships no bundle at all (arxiv-missing-ssl-env).
+Environment="SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
 
 ExecStartPre=/usr/bin/mkdir -p {{ antiek_state_dir }}/reports
 # Chunked DuckDB write locks (batch/max-lock/yield) so nightly sync cannot
 # monopolize write.lock for hours (prod incident 2026-09-18).
-ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
+# Disable the warm writer for this command so each yielded batch releases write.lock.
+ExecStart=/usr/bin/env ANTIEK_WRITE_KEEPALIVE_S=0 {{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
 ExecStartPost={{ antiek_install_dir }}/.venv/bin/python -m tools.source_census --source arxiv --db-path {{ antiek_state_dir }}/antiek.duckdb --out {{ antiek_state_dir }}/reports/source_census.json
 
 StandardOutput=journal
@@ -51,3 +57,34 @@ RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
+
+# ── cgroup resource isolation ─────────────────────────────────────────────
+# This unit was the ONE long-running production worker left uncapped:
+# measured 2026-10-01, `systemctl show -p MemoryMax -p CPUQuotaPerSecUSec`
+# returned `infinity` for both, while antiek.service is capped at 12G/300%
+# and antiek-continuous-research.service at 6G/200% (the two templates
+# beside this one). An uncapped nightly job that walks a 4.5 GB metadata
+# file shares a 15 GB / 4 vCPU box with the API, and the API is the DuckDB
+# writer: a runaway here does not fail this job, it starves or OOMs the
+# service that answers requests.
+#
+# Values are derived from the measurement, not chosen for looks:
+#   memory.peak for this cgroup after a full bulk pass was 1,107,795,968 B
+#   (~1.03 GiB) -- streaming parser, 200-record persist batches. MemoryMax=3G
+#   is ~3x that peak, so a legitimate pass cannot be OOM-killed mid-crawl
+#   (a mid-crawl kill loses the run but not the cursor), while a leak or a
+#   pathological batch is bounded well below the API's 12G.
+#   CPUQuota=150% covers the observed single-core parse plus the DuckDB write
+#   bursts, and leaves the other two cores to the API.
+#
+# These caps do NOT sum to the host's RAM on purpose: 12G + 6G + 3G = 21G on
+# a 15 GB box. They are ceilings enforced only under pressure, not
+# reservations, and the three units do not peak together -- the timer runs at
+# 04:20 UTC, the backup at 03:00, and the API's own measured peak is 791 MB.
+CPUQuota=150%
+CPUWeight=50
+MemoryMax=3G
+MemoryHigh=2.5G
+MemorySwapMax=0
+TasksMax=256
+LimitNOFILE=65536

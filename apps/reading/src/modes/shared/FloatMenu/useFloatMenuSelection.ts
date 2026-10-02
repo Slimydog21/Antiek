@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { emitWernerExperience } from "../../../werner";
+import { emitMascotExperience } from "../../../mascot";
 
 /**
  * useFloatMenuSelection — the shared, host-agnostic selection listener that
@@ -138,7 +138,7 @@ export function useFloatMenuSelection({
         : {};
       if (!selectionOpenRef.current) {
         selectionOpenRef.current = true;
-        emitWernerExperience("highlight");
+        emitMascotExperience("highlight");
       }
       setSelection({
         text,

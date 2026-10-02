@@ -11,6 +11,9 @@ Parses a publisher's catalog manifest and, per work:
      (only the ``rights_holder`` name) -> deny-by-default gated branch
      (``restricted_pending_opt_in``), accrual-eligible because a rights holder
      exists. content_class is NEVER assigned by any other route.
+     The binding import this module must keep:
+     ``from acquisition.licenses_core import classify`` — no other
+     content_class route is permitted here.
   3. Ingests the body through the shared servable path
      (``acquisition.books.adapter.ingest_servable_book`` ->
      ``substrate.books.ingest.register_book``), passing classify()'s
@@ -49,8 +52,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
-from acquisition.licenses_core import classify
+from acquisition.licenses_core import ClassificationResult, classify
 from substrate.dedup import IdentityRecord, identity_basis
 
 from .manifest import (
@@ -173,7 +177,7 @@ def _identity_record(entry: ManifestEntry, body_text: str | None) -> IdentityRec
 
 def _source_declaration_for(
     publisher: PublisherIdentity, validation: GrantValidation
-) -> dict:
+) -> dict[str, Any]:
     """Build the ``source_declaration`` handed to classify().
 
     A VALID grant becomes ``publisher_grant`` (classify branch 1 ->
@@ -197,7 +201,7 @@ def _source_declaration_for(
     return {"rights_holder": holder}
 
 
-def _compose_basis(classification, validation: GrantValidation) -> str:
+def _compose_basis(classification: ClassificationResult, validation: GrantValidation) -> str:
     """The license_basis stamped on the row. For a servable opt-in work, append
     the verbatim grant statement to classify()'s basis so an auditor answers
     'by whose grant, what text?' from the row alone. For a gated work, fold the
@@ -238,9 +242,9 @@ def ingest_entry(
     *,
     ip_holder_id: str,
     db_path: str,
-    catalog_grant=None,
+    catalog_grant: Any = None,
     investigation_id: str = "inv-opt-in",
-    embedder=None,
+    embedder: Any = None,
     accrual_usd: Decimal = OPT_IN_INTAKE_ACCRUAL_USD,
 ) -> WorkOutcome:
     """Ingest ONE manifest entry, linking it to ``ip_holder_id``.
@@ -297,6 +301,22 @@ def ingest_entry(
         embedder=embedder,
     )
 
+    if result.ingest.skipped_reason is not None:
+        # ingest_pdf wrote NO documents row (e.g. below the word floor). The
+        # work is not servable — there is nothing to serve — so nothing
+        # accrues, and no document_id is reported for a row that does not
+        # exist. Reported as a skip, not as a gated or servable work.
+        return WorkOutcome(
+            title=entry.title,
+            document_id=None,
+            content_class=classification.content_class,
+            license_basis=basis,
+            servable=False,
+            ip_holder_id=ip_holder_id,
+            identity_basis=ikey_basis,
+            skipped_reason=f"ingest skipped: {result.ingest.skipped_reason}",
+        )
+
     accrued = False
     if classification.servable:
         # A servable opt-in work begins accruing to its publisher's holder via
@@ -305,9 +325,12 @@ def ingest_entry(
         # escrow write stays under substrate/, never a cross-layer accrue_escrow
         # call out of acquisition/ (collision #3 / seam #3). Accrual only; the
         # money path (payout/stripe_connect) is untouched, G2/G3 stay gated.
+        # Keyed on (holder, document_id): a re-run or grant flip of the SAME
+        # work does not seed again (accrued stays False).
         with connect_write(db_path, purpose="opt_in/accrue") as con:
-            accrue_opt_in_escrow(con, ip_holder_id, accrual_usd)
-        accrued = True
+            accrued = accrue_opt_in_escrow(
+                con, ip_holder_id, accrual_usd, document_id=result.document_id
+            )
 
     return WorkOutcome(
         title=entry.title,
@@ -327,7 +350,7 @@ def intake_manifest(
     *,
     investigation_id: str = "inv-opt-in",
     db_path: str | None = None,
-    embedder=None,
+    embedder: Any = None,
     accrual_usd: Decimal = OPT_IN_INTAKE_ACCRUAL_USD,
 ) -> IntakeResult:
     """Ingest a parsed publisher catalog manifest.
@@ -387,7 +410,7 @@ def intake_manifest_file(
     *,
     investigation_id: str = "inv-opt-in",
     db_path: str | None = None,
-    embedder=None,
+    embedder: Any = None,
 ) -> IntakeResult:
     """Load a manifest JSON file from ``path`` and ingest it."""
     return intake_manifest(

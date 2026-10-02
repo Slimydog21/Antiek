@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas import (
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         ClaimGroundednessVerdict,
         DecisionAlignment,
         ExecutionRiskOutcome,
@@ -34,8 +35,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         ClaimGroundednessVerdict,
         DecisionAlignment,
         ExecutionRiskOutcome,
@@ -160,7 +161,8 @@ def emit_groundedness_scored(
     scored_claims: int,
     total_claims: int,
     supported_threshold: float,
-    per_claim: list | None = None,
+    # ClaimGroundednessVerdict (pydantic) or already-serialized dicts.
+    per_claim: list[Any] | None = None,
     notes: str = "",
     parent_event_id: str | None = None,
 ) -> str | None:

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonInput } from "../../../components/lemon";
+import { LemonButton, LemonCard, LemonInput } from "../../../components/lemon";
 import {
   getEconomics,
   makeContributionInvitePath,
@@ -56,11 +56,23 @@ export interface PublicLaneProps {
   feed: FeedItem[];
   /** Logged-out browse: no invite mint, no operator console links. */
   visitorMode?: boolean;
+  /** The feed request failed: the list is unknown, so the lane must not
+   *  claim it is empty. Optional so the `{ feedLoading, feed }` contract
+   *  holds for callers that predate it. */
+  feedFailed?: boolean;
+  /** Re-run the feed request (shown as "Try again" when the feed failed). */
+  onRetry?: () => void;
 }
 
-const PANEL =
-  "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
-  "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
+/**
+ * Static-chrome card recipe (D6): heavy edge in `rule`, no sun — the
+ * sun-yellow edge stays on the ratified LemonCard primitive only. Used
+ * where a panel needs its own element/role (gate notices) and LemonCard
+ * can't carry the semantics.
+ */
+const STATIC_PANEL =
+  "rounded-hog border-edge border-rule bg-ice-0 p-4 shadow-z1 " +
+  "dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z1-night";
 
 
 /**
@@ -107,7 +119,7 @@ function ContributionInviteCta({
         {busy ? PUBLIC_LANE_LABELS.ctaMintBusy : "Add your memory"}
       </LemonButton>
       {err && (
-        <p className="mt-1 font-serif text-[11px] text-emperor" role="alert">
+        <p className="mt-1 font-serif text-xs text-emperor" role="alert">
           {err}
         </p>
       )}
@@ -115,7 +127,13 @@ function ContributionInviteCta({
   );
 }
 
-export default function PublicLane({ feedLoading, feed, visitorMode = false }: PublicLaneProps) {
+export default function PublicLane({
+  feedLoading,
+  feed,
+  visitorMode = false,
+  feedFailed = false,
+  onRetry,
+}: PublicLaneProps) {
   const [query, setQuery] = useState("");
 
   // FIX 2 — LIVE G2/G3 read. `getEconomics` is per-project but G2/G3 are GLOBAL
@@ -205,12 +223,12 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           className="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
           data-testid="share-browse-link"
         >
-          <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="font-serif text-xs text-ink-mute dark:text-moonlight">
             {PUBLIC_LANE_LABELS.shareBrowseHint}
           </p>
           <Link
             to="/speak/browse"
-            className="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+            className="mt-1 inline-block font-mono text-xs text-sun-deep underline dark:text-sun"
           >
             {PUBLIC_LANE_LABELS.shareBrowseLink}
           </Link>
@@ -222,6 +240,18 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
           Loading…
         </p>
+      ) : feedFailed ? (
+        // A failed request is an unknown, never an empty feed.
+        <div role="alert" className="space-y-2">
+          <p className="font-serif text-sm text-ink dark:text-bright">
+            Public remembrances didn't load, so we can't say what's here yet.
+          </p>
+          {onRetry && (
+            <LemonButton variant="secondary" size="sm" type="button" onClick={onRetry}>
+              Try again
+            </LemonButton>
+          )}
+        </div>
       ) : feed.length === 0 ? (
         // Honest empty — copy unchanged from the shipped surface.
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
@@ -237,21 +267,22 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
       ) : (
         <ul className="space-y-2">
           {filtered.map((f) => (
-            <li key={f.id} className={PANEL}>
+            <li key={f.id}>
+              <LemonCard elevation="z1">
               <div className="flex items-center justify-between gap-3">
                 {visitorMode ? (
-                  <span className="font-serif text-[16px] text-ink dark:text-bright">
+                  <span className="font-serif text-base text-ink dark:text-bright">
                     {f.name}
                   </span>
                 ) : (
                   <Link
                     to={`/speak/${f.id}`}
-                    className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
+                    className="font-serif text-base text-ink hover:underline dark:text-bright"
                   >
                     {f.name}
                   </Link>
                 )}
-                <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+                <span className="shrink-0 font-mono text-xxs text-ink-mute dark:text-moonlight">
                   {f.voiceCount === 0
                     ? "no voices yet"
                     : `${f.voiceCount} voice${f.voiceCount === 1 ? "" : "s"}`}
@@ -261,7 +292,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
               {/* M5 — lifecycle honesty. The feed lists public-INTENT projects;
                   FeedItem carries NO "published" flag, so we NEVER claim a
                   project is published. We label it as intended-public only. */}
-              <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mt-0.5 font-serif text-xs text-ink-mute dark:text-moonlight">
                 {PUBLIC_LANE_LABELS.intendedPublic}
               </p>
 
@@ -276,7 +307,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                     <>
                       <ContributionInviteCta projectId={f.id} mode="open" />
                       <p
-                        className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                        className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight"
                         data-testid={`visitor-cta-note-${f.id}`}
                       >
                         {PUBLIC_LANE_LABELS.visitorCtaNoteLive}
@@ -284,7 +315,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                     </>
                   ) : (
                     <p
-                      className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                      className="font-serif text-xs text-ink-mute dark:text-moonlight"
                       data-testid={`visitor-cta-note-${f.id}`}
                     >
                       {PUBLIC_LANE_LABELS.visitorCtaNote}
@@ -293,12 +324,13 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                 ) : (
                   <>
                     <ContributionInviteCta projectId={f.id} />
-                    <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                    <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
                       {PUBLIC_LANE_LABELS.ctaOperatorOnly}
                     </p>
                   </>
                 )}
               </div>
+              </LemonCard>
             </li>
           ))}
         </ul>
@@ -309,14 +341,14 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           the canonical future-tense G7 sentence VERBATIM. No close/enable
           affordance; future tense only. */}
       <div
-        className={PANEL}
+        className={STATIC_PANEL}
         role="note"
         aria-label={GATE_PHRASES.publicEcosystem.label}
       >
-        <h3 className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+        <h3 className="font-serif text-base font-semibold text-ink dark:text-bright">
           {GATE_PHRASES.publicEcosystem.label}
         </h3>
-        <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+        <p className="mt-1 font-serif text-sm text-ink-mute dark:text-moonlight">
           {g7Live
             ? PUBLIC_LANE_LABELS.openContributionLive
             : GATE_PHRASES.publicEcosystem.whenGated}
@@ -331,34 +363,34 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           STATE sentence when the gate has cleared. The payout basis is §9.3
           Option-B — corroboration × source quality, NOT an airtime/ad-duration
           model (see the guard at speakApi.ts releasePayout). */}
-      <div className={PANEL}>
-        <h3 className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+      <LemonCard elevation="z1">
+        <h3 className="font-serif text-base font-semibold text-ink dark:text-bright">
           {PUBLIC_LANE_LABELS.explainerHeading}
         </h3>
         <ol className="mt-2 space-y-2">
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {PUBLIC_LANE_LABELS.explainerStepFind}
           </li>
           {/* G7 — static, no FE read; distinct from the M2 panel above. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {g7Live
               ? PUBLIC_LANE_LABELS.explainerStepOpenContributionLive
               : PUBLIC_LANE_LABELS.explainerStepOpenContribution}
           </li>
           {/* G2 — LIVE: gated future-tense copy vs honest open-state copy. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {publishingOpen || (visitorMode && publishingLive)
               ? PUBLIC_LANE_LABELS.publishingOpen
               : GATE_PHRASES.publicSharing.whenGated}
           </li>
           {/* G3 — LIVE: gated future-tense copy vs honest open-state copy. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {payoutsOpen || (visitorMode && disbursementLive)
               ? PUBLIC_LANE_LABELS.payoutsOpen
               : GATE_PHRASES.disbursement.whenGated}
           </li>
           <li
-            className="font-serif text-[13px] text-ink dark:text-bright"
+            className="font-serif text-sm text-ink dark:text-bright"
             data-testid="public-lane-synquery-gate"
           >
             {synqueryLive
@@ -366,10 +398,10 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
               : GATE_PHRASES.synquery.whenGated}
           </li>
         </ol>
-        <p className="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight">
+        <p className="mt-2 font-serif text-xs italic text-ink-mute dark:text-moonlight">
           {PUBLIC_LANE_LABELS.explainerPayoutBasis}
         </p>
-      </div>
+      </LemonCard>
 
       {/*
         PARTIAL close of spine SPR-03: feed CTA now mints invite tokens →

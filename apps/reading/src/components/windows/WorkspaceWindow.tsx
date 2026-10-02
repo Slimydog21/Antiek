@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { shadowForStackDepth } from "../../design/elevation";
+import { surfaceSpring } from "../../design/motion";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
@@ -88,6 +89,16 @@ export function WorkspaceWindow({
       }
     };
   }, []);
+
+  // Re-opening a stable-id window does not remount it. When store focus moves
+  // back here, move DOM focus too so keyboard and assistive-tech users receive
+  // the same context transition as on the initial open.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (isFocused && root && !root.contains(document.activeElement)) {
+      root.focus();
+    }
+  }, [isFocused]);
 
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
@@ -258,7 +269,7 @@ export function WorkspaceWindow({
       initial={reduceMotion ? false : { scale: 0.97, opacity: 0 }}
       animate={{ scale: 1, opacity: isFull ? 1 : isFocused ? 1 : 0.95 }}
       exit={reduceMotion ? undefined : { scale: 0.97, opacity: 0 }}
-      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 30 }}
+      transition={reduceMotion ? { duration: 0 } : surfaceSpring}
       style={geometry}
       className={
         surfaceClass +
@@ -291,7 +302,7 @@ export function WorkspaceWindow({
         <span aria-hidden="true" className="font-mono text-shadow-1 dark:text-moonlight leading-none">
           ⋮⋮
         </span>
-        <span className="flex-1 text-[12.5px] font-mono font-semibold truncate text-ink dark:text-bright">
+        <span className="flex-1 text-xs font-mono font-semibold truncate text-ink dark:text-bright">
           {win.title}
         </span>
         <button
@@ -300,7 +311,7 @@ export function WorkspaceWindow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => toggleMode(id)}
           aria-label={isFull ? "Restore window to floating" : "Expand window to full"}
-          className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+          className="px-1.5 leading-none text-sm text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
         >
           {isFull ? "❐" : "▢"}
         </button>
@@ -310,7 +321,7 @@ export function WorkspaceWindow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => close(id)}
           aria-label="Close window"
-          className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-emperor"
+          className="px-1.5 leading-none text-sm text-shadow-1 dark:text-moonlight hover:text-emperor"
         >
           ✕
         </button>

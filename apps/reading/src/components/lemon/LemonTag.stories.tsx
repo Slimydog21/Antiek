@@ -18,6 +18,7 @@ export const AllColours: Story = {
       <LemonTag>default</LemonTag>
       <LemonTag colour="sun">sun</LemonTag>
       <LemonTag colour="aurora">aurora</LemonTag>
+      <LemonTag colour="success">success</LemonTag>
       <LemonTag colour="danger">danger</LemonTag>
       <LemonTag colour="muted">muted</LemonTag>
     </div>
@@ -29,6 +30,7 @@ export const WithDot: Story = {
     <div className="flex flex-wrap gap-2 p-6">
       <LemonTag dot>running</LemonTag>
       <LemonTag dot colour="sun">flagged</LemonTag>
+      <LemonTag dot colour="success">done</LemonTag>
       <LemonTag dot colour="danger">failed</LemonTag>
     </div>
   ),

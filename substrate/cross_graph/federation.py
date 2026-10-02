@@ -60,10 +60,10 @@ class CrossGraphReference:
 def federate_search(
     *,
     topic_query: str,
-    local_results: list[dict],
-    federated_partner_results: dict[str, list[dict]],
+    local_results: list[dict[str, Any]],
+    federated_partner_results: dict[str, list[dict[str, Any]]],
     config: FederationConfig,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Merge local search results with federated partner results.
 
     For each partner substrate listed in config.allowed_partner_substrates,

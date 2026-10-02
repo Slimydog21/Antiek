@@ -1,11 +1,11 @@
 /**
  * BrainMascot.tsx — canonical Antiek brain mark (the U-02 slot, brain edition).
  *
- * The same four-slot contract Werner held — idle / thinking / empty / celebrate,
+ * The same four-slot contract Brain held — idle / thinking / empty / celebrate,
  * enforced by the dev runtime guard below — rendered from the operator's
  * Krea-generated brain mascot set (tools/brand/mascot-brain/). Mission tie-in:
  * Antiek uses AI to amplify the human brain, never replace it; the mascot *is*
- * the thesis, so the mark is a brain, not a penguin.
+ * the thesis, so the mark is a brain, not a mascot.
  *
  * Beyond the still pose map, the brain is ALIVE (the operator's animation brief):
  *   - blink        — idle only; crossfades to a closed-eyes frame every ~3–6 s
@@ -16,12 +16,12 @@
  *                    via framer-motion) so it always appears to be watching.
  *   - hover wave   — a quick rotate wobble + scale bump on pointer hover.
  *
- * Restraint is load-bearing exactly as it was for Werner: the mark appears in
+ * Restraint is load-bearing exactly as it was for Brain: the mark appears in
  * rail (idle), AI working (thinking), blank states (empty), and core-action
  * complete (celebrate). Nowhere else. Motion is CSS + two motion values and
  * collapses under prefers-reduced-motion (media query + useReducedMotion).
  *
- * The floating project-home station (shell/PenguinMascot.tsx) is intentionally
+ * The floating project-home station (shell/MascotStation.tsx) is intentionally
  * NOT re-skinned here — its fishing-rig interaction model is a ratified
  * operator decision and is tracked separately.
  */
@@ -33,11 +33,11 @@ import type { MascotMood } from "../design/tokens";
 import type { SceneMood } from "../scene/mood";
 import { mascotMoodForScene } from "./mascotSceneMap";
 
-import brainIdle from "./mascot-brain/01_hero_front_transparent.png";
-import brainClosed from "./mascot-brain/blink_closed_transparent.png";
-import brainThinking from "./mascot-brain/mood_thinking.png";
-import brainEmpty from "./mascot-brain/mood_sleepy.png";
-import brainCelebrate from "./mascot-brain/mood_excited.png";
+import brainIdle from "./mascot-brain/athletic/01_hero_front_b_20261001.png";
+import brainClosed from "./mascot-brain/athletic/blink_closed_b_20261001.png";
+import brainThinking from "./mascot-brain/athletic/mood_thinking_b_20261001.png";
+import brainEmpty from "./mascot-brain/athletic/mood_sleepy_b_20261001.png";
+import brainCelebrate from "./mascot-brain/athletic/mood_excited_b_20261001.png";
 
 import "./mascot-brain/brainMascot.css";
 
@@ -79,7 +79,7 @@ export default function BrainMascot({
   const effectiveMood = mood ?? (scene ? mascotMoodForScene(scene) : "idle");
   const reduceMotion = (useReducedMotion() ?? false) === true;
 
-  // Dev runtime guard — the mechanical half of U-02, same as Werner's.
+  // Dev runtime guard — the mechanical half of U-02, same as Brain's.
   if (
     process.env.NODE_ENV !== "production" &&
     effectiveMood &&

@@ -59,7 +59,7 @@ export const AroundReadingColumn: Story = {
         position="top"
         fill={{ kind: "house", house: { documentId: "d2", title: "Meditations", author: "Marcus Aurelius" } }}
       />
-      <p className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright">
+      <p className="font-serif text-base leading-[1.7] text-ink dark:text-bright">
         The reading column sits between the rails, full width, never narrowed.
         An ad rail above and below keeps the economics present without
         crowding the prose.

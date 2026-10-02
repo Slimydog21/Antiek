@@ -13,6 +13,7 @@ criterion. The store is single-writer per the canonical
 
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -43,7 +44,7 @@ def ensure_table(con: Any) -> None:
     DB. For read-only connections (``connect_read``), DuckDB will
     refuse the DDL; the loader catches the error and assumes the
     table is already present."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS loop_3_checklist (
@@ -54,10 +55,8 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        # Read-only connections, attached databases, etc. The canonical
-        # schema bootstrap covers this on the first write path.
-        pass
+    # Read-only connections, attached databases, etc. The canonical
+    # schema bootstrap covers this on the first write path.
 
 
 def set_criterion(

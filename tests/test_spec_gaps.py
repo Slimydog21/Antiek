@@ -213,7 +213,7 @@ class TestGap6_UrlAlias:
         # Stub the fetcher so we can count calls.
         call_count = {"n": 0}
 
-        def stub_fetch(url, *, client=None):
+        def stub_fetch(url, *, client=None, purpose=None):
             call_count["n"] += 1
             body = b"<html><body>" + b"hello world " * 50 + b"</body></html>"
             return FetchedHtml(
@@ -226,6 +226,7 @@ class TestGap6_UrlAlias:
 
         # Stub embedder so we don't need sentence-transformers.
         class _StubEmbedder:
+            dimension = 4  # the EmbeddingProvider Protocol requires it; producers now pin it
             def encode(self, t): return [0.0] * 4
 
         # First ingest creates the alias.
@@ -255,6 +256,7 @@ class TestGap6_UrlAlias:
         from acquisition.urls.client import FetchedHtml
 
         class _StubEmbedder:
+            dimension = 4  # the EmbeddingProvider Protocol requires it; producers now pin it
             def encode(self, t): return [0.0] * 4
 
         # Seed the alias.

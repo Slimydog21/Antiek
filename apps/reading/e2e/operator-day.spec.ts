@@ -14,7 +14,7 @@
  *   - Workspace store: open, focus, dock, float, close
  *   - Persistence: write + read layout snapshot
  *   - Shortcuts module: dispatch + handle ⌘K / ⌘B / ⌘/
- *   - Werner animations render with reduced-motion guard
+ *   - Brain animations render with reduced-motion guard
  *   - Brand sun-yellow highlighter on PDF + prose text selection
  *
  * Not in scope (hardware): cross-monitor popout, real /thought-partner
@@ -44,9 +44,9 @@ test.describe("Operator-day macro · single linear session", () => {
       await expect(page.getByText("ANTIEK / LEMON SHOWCASE")).toBeVisible();
     }
 
-    // ── PHASE 2: Brand · Werner animation gallery renders all 5 poses
+    // ── PHASE 2: Brand · Brain animation gallery renders all 5 poses
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loadStory(page, "brand-werner-animations--all-poses");
+    await loadStory(page, "brand-mascot-animations--all-poses");
     for (const label of [
       "Tobogganing",
       "Thinking",
