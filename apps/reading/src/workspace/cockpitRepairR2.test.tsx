@@ -445,8 +445,10 @@ describe("M2 — one Esc reaches exactly one handler with a floating panel in fu
     });
     expect(ws().focusedPanelId).toBe(id);
     act(() => ws().setFullscreenPane("left"));
+    const panelTitle = screen.getByRole("group", { name: "Notes — panel controls" });
+    act(() => panelTitle.focus());
     act(() => {
-      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      panelTitle.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     });
     const panelClosed = !ws().panels[id];
     const restored = ws().fullscreenPane === null;
