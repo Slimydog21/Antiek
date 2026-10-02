@@ -270,7 +270,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
     onPaidRequestInFlight?.(true);
     setPhase({ kind: "sending", quote: prepared });
     try {
-      const result = await sendQuickAsk({ ...request, quote_digest: prepared.quote_digest });
+      const result = await sendQuickAsk(request, prepared);
       if (mounted.current && result.usage_basis !== "charge_unknown") clearPendingSend(ownerId);
       setPhase({ kind: "answered", result });
     } catch {

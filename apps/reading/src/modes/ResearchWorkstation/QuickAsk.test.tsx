@@ -218,11 +218,10 @@ describe("Quick Ask one-request boundary", () => {
     expect((await screen.findByRole("article", { name: "Quick Ask answer" })).textContent).toContain("A bounded answer.");
     expect(quote).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][0]).toMatchObject({
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
       question: "What is the counterargument?",
       model_choice: { authority: "user_model", provider_id: "user-deepseek", model_id: "deepseek-flash" },
-      quote_digest: quoted.quote_digest,
-    });
+    }), quoted);
     expect(screen.getByText(/Antiek-estimated cost/)).toBeTruthy();
     expect(screen.getByText(/final charge is not reconciled/)).toBeTruthy();
   });

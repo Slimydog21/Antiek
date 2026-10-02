@@ -85,6 +85,13 @@ function nonnegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function usdEstimate(value: unknown): value is string {
+  // Decimal can emit exponent notation; retain the server's exact string.
+  return typeof value === "string" && value.length <= 80 &&
+    /^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value) &&
+    nonnegative(Number(value));
+}
+
 function nullableCount(value: unknown): value is number | null {
   return value === null || (Number.isInteger(value) && nonnegative(value));
 }
@@ -103,7 +110,7 @@ function timestamp(value: unknown): value is string {
 function parseQuote(value: unknown): QuickAskQuote {
   if (!isRecord(value) ||
       typeof value.quote_digest !== "string" || !/^[0-9a-f]{64}$/.test(value.quote_digest) ||
-      typeof value.estimate_usd !== "string" || !/^\d+(?:\.\d{1,8})?$/.test(value.estimate_usd) ||
+      !usdEstimate(value.estimate_usd) ||
       !Number.isInteger(value.reserved_cents) || !nonnegative(value.reserved_cents) ||
       !nonempty(value.price_snapshot) || !nonempty(value.price_source) ||
       !nonempty(value.provider_id) || !nonempty(value.model_id) ||
@@ -269,21 +276,24 @@ export async function quoteQuickAsk(input: QuickAskInput): Promise<QuickAskQuote
   if (!response.ok) throw await parseError(response, "quick_ask_unavailable");
   const value: unknown = await response.json();
   const quote = parseQuote(value);
-  if (quote.provider_id !== input.model_choice.provider_id ||
-      quote.model_id !== input.model_choice.model_id) {
+  if (quote.provider_id !== input.model_choice.provider_id) {
     throw new QuickAskError("quick_ask_unavailable");
   }
   return quote;
 }
 
 export async function sendQuickAsk(
-  input: QuickAskInput & { quote_digest: string },
+  input: QuickAskInput,
+  quote: QuickAskQuote,
 ): Promise<QuickAskResult> {
+  if (quote.provider_id !== input.model_choice.provider_id) {
+    throw new QuickAskError("quick_ask_model_unavailable");
+  }
   let response: Response;
   try {
     response = await apiFetch("/research/quick-ask", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, quote_digest: quote.quote_digest }),
     });
   } catch {
     // A browser transport error cannot tell whether the server sent the paid
@@ -295,8 +305,8 @@ export async function sendQuickAsk(
     const value: unknown = await response.json();
     const result = parseResult(value);
     if (result.operation_id !== input.operation_id ||
-        result.provider_id !== input.model_choice.provider_id ||
-        result.model_id !== input.model_choice.model_id) {
+        result.provider_id !== quote.provider_id ||
+        result.model_id !== quote.model_id) {
       throw new QuickAskError("charge_unknown");
     }
     return result;
