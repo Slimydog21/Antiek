@@ -39,6 +39,16 @@ _requires_vss = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_turbopuffer_credentials(monkeypatch):
+    """Pin the credential-free adapter contracts at the test boundary."""
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_SERVABLE", raising=False)
+    monkeypatch.delenv("DUCKLAKE_CATALOG", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+
+
 @pytest.fixture
 def seeded_db():
     emb = HashEmbedding()

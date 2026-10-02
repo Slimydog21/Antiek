@@ -66,7 +66,7 @@ concl=success
 if [ -n "${FAKE_GH_GREEN_ONLY:-}" ]; then
   case "$*" in *"/commits/${FAKE_GH_GREEN_ONLY}/"*) ;; *) concl=pending ;; esac
 fi
-for c in tsc vitest keystone 'mypy --strict + ruff (declared scope, baselined)' \\
+for c in 'dependency lock' tsc vitest keystone 'mypy --strict + ruff (declared scope, baselined)' \\
          'pytest shard 0 of 4' 'pytest shard 1 of 4' 'pytest shard 2 of 4' 'pytest shard 3 of 4' \\
          pytest; do
   printf '%s\\tcompleted\\t%s\\t2026-01-01T00:00:00Z\\n' "$c" "$concl"

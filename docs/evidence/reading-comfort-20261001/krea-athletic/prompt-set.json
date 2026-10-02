@@ -1,0 +1,13 @@
+{
+  "user_direction": "Alex Caruso style basketball headband reading Antiek; B and C sneaker variations with #943D4A as the secondary color",
+  "generation_provider": "Krea API",
+  "source_models": [
+    "krea/krea-2/medium with antiek-brain-doodle-v1",
+    "google/nano-banana-pro for reference edits"
+  ],
+  "candidates": {
+    "B": "h-b-magenta-court-transparent.png",
+    "C": "i-c-magenta-court-transparent.png"
+  },
+  "status": "preview; no rejected or unselected artwork applied to production"
+}

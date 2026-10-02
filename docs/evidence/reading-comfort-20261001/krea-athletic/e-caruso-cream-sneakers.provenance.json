@@ -1,0 +1,19 @@
+{
+  "label": "ai-generated",
+  "tool": "Krea API",
+  "model": "krea/krea-2/medium",
+  "style_id": "78qf9d9pe",
+  "style_name": "antiek-brain-doodle-v1",
+  "style_strength": 0.5,
+  "reference_asset_id": "50a9110e-2d39-4c9c-8df1-59e7a92a451c",
+  "denoising_strength": 0.58,
+  "seed": 717,
+  "prompt": "antiekbrain, exactly the same warm coral brain mascot as the reference image, same coral color, same brain silhouette, same tiny friendly face, same long thin muted magenta legs and hand-drawn brown linework. Wearing an Alex Caruso style basketball sweatband: a SLIM simple continuous elastic terrycloth sports headband snug around the forehead just above the eyes, only one tenth of the head height, solid medium green-teal #6ECB8F. No knot, no tails, no bow, no bulging folds. The headband front has the small centered word \"Antiek\" in dark clean athletic embroidery, exactly spelled A n t i e k. Leave the top brain lobes visible. Full body in the same upright pose and framing as the reference, flat clean warm cream background with no shadow. Add two SMALL low-profile cream court sneakers to the feet, with a small green-teal #6ECB8F side panel and dark capital A monogram on each shoe, a thin warm dark sole, tiny muted magenta heel tabs, simple cream laces. Keep the long magenta legs visible. Very simple doodle shoes matching the character linework, understated and proportionate, not giant detailed trainers.",
+  "requested_at": "2026-10-01T05:39:49.262803+00:00",
+  "status": "completed",
+  "preview_only": true,
+  "job_id": "ab0f4a2c-27ed-4e6a-a7f9-5c84b29e230a",
+  "generated_at": "2026-10-01T05:40:03.228Z",
+  "output": "e-caruso-cream-sneakers.png",
+  "bytes": 383966
+}

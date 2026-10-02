@@ -1,0 +1,51 @@
+{
+  "source": "b9c4ae357 plus disclosed badge contrast repair",
+  "method": "Native Chrome UI, Storybook addon axe and DOM computed styles; production not yet verified",
+  "book_combination": {
+    "font": "Literata, Georgia, serif",
+    "size": "24px",
+    "leading": "39.6px",
+    "theme": "dark",
+    "page_light": "soft",
+    "ink": "rgb(199, 187, 167)",
+    "ground": "rgb(33, 30, 25)"
+  },
+  "mobile": {
+    "requested_viewport": [
+      320,
+      568
+    ],
+    "document_client_width": 305,
+    "document_scroll_width": 305,
+    "dialog_rect": [
+      16,
+      289
+    ],
+    "close_target": [
+      44,
+      44
+    ],
+    "reset_target_height": 44,
+    "viewport_reset": true
+  },
+  "font_persistence": "New local tab retained Literata24px/wide selection. Storybook decorator resets theme globals and does not run application appearance-boot, so this new-tab test is font persistence, not theme/light boot proof. Application production boot remains pending.",
+  "axe": {
+    "reader_open_type": {
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 2
+    },
+    "manuscript_soft_light_after_fix": {
+      "violations": 0,
+      "passes": 15,
+      "incomplete": 0
+    },
+    "manuscript_soft_dark_after_transition_after_fix": {
+      "violations": 0,
+      "passes": 15,
+      "incomplete": 0
+    }
+  },
+  "failure_and_repair": "Before repair, moderate badge text#237242 on composited#d0dbc2 was4.1:1 Serious at11px; tinted high/moderate confidence and proceed/pass/conditional recommendation foregrounds use theme text-1, retaining semantic fills. Initial dark theme scan sampled a summary during its transition; settled computed summary#ADA392 and repeated scan passed.",
+  "limitations": "Native scans are bounded observations; CI axe index-loading failure is informational and not counted as enforcement. Settings/portfolio combined-final scans pending before release."
+}

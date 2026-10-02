@@ -72,13 +72,13 @@ def _config() -> DispatchConfig:
     return DispatchConfig({"thought_partner": "pro"}, {"pro": tier})
 
 
-def _authority_fixture(monkeypatch: pytest.MonkeyPatch):
+def _authority_fixture(monkeypatch: pytest.MonkeyPatch, model_id: str = "deepseek-flash"):
     record = models_admin.UserModelRecord(
         id="user-owner-model",
         owner_user_id="owner-a",
         provider_kind="openai_compat",
         provider_catalog_id="deepseek",
-        model_id="deepseek-chat",
+        model_id=model_id,
         display_name="Owner model",
         base_url="https://api.deepseek.com",
         cred_ref="cred-owner",
@@ -141,8 +141,143 @@ def test_exact_owner_model_executes_one_rung_without_house_fallback(
     assert len(authority.digest()) == 64
     assert provider.calls[0]["prompt"] == "private book prompt"
     assert house.calls == []
-    assert result.cost_usd == pytest.approx((2 * 0.28 + 3 * 0.42) / 1_000_000)
+    # deepseek-flash peak cache-miss rates: $0.30 in / $1.20 out per 1M tokens.
+    assert result.cost_usd == pytest.approx((2 * 0.30 + 3 * 1.20) / 1_000_000)
     assert ledger.key_usage(record.id, "owner-a").used_cents == 1
+
+
+@pytest.mark.parametrize(("stored", "sent"), [
+    ("deepseek-chat", "deepseek-flash-nothink"),
+    ("deepseek-reasoner", "deepseek-flash"),
+    ("deepseek-v4-flash", "deepseek-flash"),
+])
+def test_record_saved_under_a_retired_name_keeps_its_mode_and_price(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stored: str, sent: str,
+) -> None:
+    """A key registered before DeepSeek retired deepseek-chat/deepseek-reasoner
+    must not fail at the provider: it is priced, bound and dispatched as the
+    current variant with the same mode, at Flash rates, and a remembered
+    choice under the old name still resolves."""
+    app, record, _, provider, house = _authority_fixture(monkeypatch, model_id=stored)
+    result, authority = dispatch_talk_to_book_byot(
+        app=app,
+        request_owner_user_id="owner-a",
+        resource_owner_user_id="owner-a",
+        document_id="doc-a",
+        choice=models_admin.UserModelChoice(
+            authority="user_model", provider_id=record.id, model_id=stored,
+        ),
+        prompt="private book prompt",
+        investigation_id="read-doc-a",
+        logical_operation_id="turn-legacy",
+        config=_config(),
+        usage_ledger=ByotUsageLedger(tmp_path / "usage.sqlite3"),
+    )
+    assert provider.calls[0]["model"] == sent
+    assert (result.provider, result.model) == (record.id, sent)
+    # Flash peak cache-miss rates, never Pro's $1.32 / $3.96.
+    assert result.cost_usd == pytest.approx((2 * 0.30 + 3 * 1.20) / 1_000_000)
+    assert house.calls == []
+
+
+@pytest.mark.parametrize(("stored", "thinking"), [
+    ("deepseek-chat", "disabled"),
+    ("deepseek-reasoner", "enabled"),
+    ("deepseek-v4-flash", "enabled"),
+])
+def test_persisted_legacy_record_sends_its_mode_on_the_wire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stored: str, thinking: str,
+) -> None:
+    """End to end from disk: a registry row saved under a retired DeepSeek
+    name, reloaded at boot, dispatched through the real registered adapter.
+    The request DeepSeek receives names a live model and keeps the old mode."""
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.settings_budget import register_settings_budget_routes
+    from substrate.dispatch.router import get_provider
+
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    registry_path = tmp_path / "settings" / "user_models.json"
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(registry_path))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok" / "master.key"))
+
+    def _app() -> FastAPI:
+        app = FastAPI()
+
+        @app.middleware("http")
+        async def _test_identity(request, call_next):
+            request.state.user_id = "__operator__"
+            request.state.user_email = "operator-under-test@example.com"
+            request.state.auth_method = "antiek_session_cookie"
+            return await call_next(request)
+
+        register_settings_budget_routes(app)
+        return app
+
+    with TestClient(_app()) as first:
+        created = first.post("/settings/models/user", json={
+            "provider_kind": "openai_compat",
+            "provider_catalog_id": "deepseek",
+            "model_id": "deepseek-flash",
+            "display_name": "Old DeepSeek",
+            "api_key": "sk-test-only-legacy-key-abcdefghijklmnopqrstuvwxyz",
+        })
+        assert created.status_code == 201
+    provider_id = created.json()["id"]
+    # Rewrite the row as a pre-rename registration would have saved it.
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry[provider_id]["model_id"] = stored
+    registry[provider_id]["model_ids"] = [stored]
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    owner = registry[provider_id]["owner_user_id"]
+
+    reset_provider_registry()
+    sent: list[httpx.Request] = []
+
+    def deepseek(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, request=request, json={
+            "id": "chatcmpl-legacy",
+            "object": "chat.completion",
+            "model": "deepseek-flash",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "owner answer"},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        })
+
+    with TestClient(_app()) as reborn:
+        adapter = get_provider(provider_id)
+        adapter._client = httpx.Client(transport=httpx.MockTransport(deepseek))  # noqa: SLF001
+        adapter._owns_client = True  # noqa: SLF001
+        result, _ = dispatch_talk_to_book_byot(
+            app=reborn.app,
+            request_owner_user_id=owner,
+            resource_owner_user_id=owner,
+            document_id="doc-a",
+            choice=models_admin.UserModelChoice(
+                authority="user_model", provider_id=provider_id, model_id=stored,
+            ),
+            prompt="private book prompt",
+            investigation_id="read-doc-a",
+            logical_operation_id="turn-wire",
+            config=_config(),
+            usage_ledger=ByotUsageLedger(tmp_path / "usage.sqlite3"),
+        )
+    reset_provider_registry()
+
+    assert result.text == "owner answer"
+    assert len(sent) == 1
+    assert str(sent[0].url) == "https://api.deepseek.com/chat/completions"
+    body = json.loads(sent[0].content)
+    assert body["model"] == "deepseek-flash"
+    assert body["thinking"] == {"type": thinking}
+    assert body["messages"] == [{"role": "user", "content": "private book prompt"}]
+    assert result.cost_usd == pytest.approx((2 * 0.30 + 3 * 1.20) / 1_000_000)
 
 
 @pytest.mark.parametrize("resource_owner", ["owner-b", "__operator__"])
@@ -216,7 +351,7 @@ def test_call_time_route_mutation_refuses_before_provider_io(
         if calls == 1:
             return original_load()
         changes = {
-            "model": {"model_id": "deepseek-reasoner"},
+            "model": {"model_id": "deepseek-v4-pro"},
             "endpoint": {"base_url": "https://example.invalid/v1"},
             "fingerprint": {"cred_fingerprint": "b" * 64},
         }[mutation]

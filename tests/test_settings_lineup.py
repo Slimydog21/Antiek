@@ -104,6 +104,21 @@ def test_bench_contains_dispatch_tiers_and_presets(client: TestClient) -> None:
     assert ("anthropic", "claude-haiku-4-5-20251001") in bench
 
 
+def test_house_bench_omits_preset_mode_variants(client: TestClient) -> None:
+    """``deepseek-flash-nothink`` is a BYOT catalog row sent as
+    ``deepseek-flash`` plus a mode switch. Only a user-registered adapter
+    translates it, so the house ``deepseek`` adapter never gets it."""
+    bench = {(b["provider_id"], b["model_id"]) for b in client.get("/settings/lineup").json()["bench"]}
+    assert ("deepseek", "deepseek-flash") in bench
+    assert ("deepseek", "deepseek-flash-nothink") not in bench
+    refused = client.put(
+        "/settings/lineup",
+        json={"general": {"writer": {"provider_id": "deepseek", "model_id": "deepseek-flash-nothink"}}},
+    )
+    assert refused.status_code == 422
+    assert "not on the bench" in refused.json()["detail"]
+
+
 def test_put_and_get_roundtrip(client: TestClient) -> None:
     put = client.put(
         "/settings/lineup",

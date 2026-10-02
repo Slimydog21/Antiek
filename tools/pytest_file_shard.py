@@ -46,6 +46,31 @@ def shard_for_nodeid(nodeid: str, count: int) -> int:
     return int.from_bytes(digest[:8], "big") % count
 
 
+def _median_seconds_per_test(
+    weights: Mapping[str, float] | None,
+    by_file: Mapping[str, Sequence[str]],
+) -> float | None:
+    """Median measured seconds per collected test, or None when unmeasurable.
+
+    Every weight the packer compares is seconds. A file with no duration has no
+    seconds to give, so its elapsed time is estimated with this ratio rather
+    than with its test count, which is a different unit.
+    """
+    if not weights:
+        return None
+    ratios = sorted(
+        measured / len(by_file[source_file])
+        for source_file, measured in weights.items()
+        if measured > 0 and len(by_file.get(source_file, ())) > 0
+    )
+    if not ratios:
+        return None
+    middle = len(ratios) // 2
+    if len(ratios) % 2:
+        return ratios[middle]
+    return (ratios[middle - 1] + ratios[middle]) / 2
+
+
 def partition_nodeids(
     nodeids: Sequence[str],
     count: int,
@@ -77,15 +102,34 @@ def partition_nodeids(
         source_file = nodeid.split("::", maxsplit=1)[0]
         by_file.setdefault(source_file, []).append(nodeid)
 
+    # Unmeasured files must still carry weight, but in the SAME unit as the
+    # measured ones. Pricing them by test count mixes currencies: a measured
+    # 47-second file and an unmeasured 40-test file are then compared as 47
+    # and 40.
+    #
+    # The current map, rebuilt from CI logs by tools/rebuild_shard_durations.py,
+    # covers 971 of 977 test files, so this fallback carries about six files plus
+    # anything newly added. It mattered more when the map was hand-maintained and
+    # covered 854 of 975: pricing 121 files in the wrong unit was worth 1.29x of
+    # shard spread, against 1.00x with consistent seconds.
+    #
+    # An earlier version of this comment cited a "349-second file" as the
+    # example. That figure came from the hand-maintained map and was wrong by
+    # 7.4x -- the file costs 47.4s. The example now uses a number this file can
+    # be held to.
+    seconds_per_test = _median_seconds_per_test(weights, by_file)
+
     def cost(source_file: str, file_nodeids: list[str]) -> float:
         if weights is not None:
             measured = weights.get(source_file)
             if measured is not None and measured > 0:
                 return float(measured)
-        # Unmeasured (new file, or no map): fall back to test count. Mixing the
-        # two units is deliberate — a new file should not sort as free and land
-        # everything on one shard.
-        return float(len(file_nodeids))
+        # Unmeasured (new file, or a map that omits it): estimated in seconds,
+        # so it neither sorts as free nor drags a second unit into the sums.
+        counted = float(len(file_nodeids))
+        if seconds_per_test is None:
+            return counted
+        return counted * seconds_per_test
 
     shards: list[list[str]] = [[] for _ in range(count)]
     loads = [0.0] * count

@@ -1,0 +1,24 @@
+{
+  "surface": "Reading/Typography Reader story; actual ReadingColumn",
+  "viewport_width": 1440,
+  "font": "Source Serif 4",
+  "size_px": 20,
+  "method": "Native select choices; CUA locator reads of the article rectangle",
+  "readings": [
+    {
+      "ch": 52,
+      "computed_max_width_px": 520,
+      "rendered_width_px": 520
+    },
+    {
+      "ch": 66,
+      "computed_max_width_px": 660,
+      "rendered_width_px": 660
+    },
+    {
+      "ch": 78,
+      "computed_max_width_px": 780,
+      "rendered_width_px": 780
+    }
+  ]
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import time
 from typing import Any
 
@@ -19,9 +20,9 @@ import pytest
 
 from runtime.byok.anthropic_oauth import (
     ANTHROPIC_AUTHORIZE_URL,
-    ANTHROPIC_OAUTH_CLIENT_ID,
     ANTHROPIC_REDIRECT_URI,
     ANTHROPIC_SCOPE,
+    BYOK_CLAUDE_CLIENT_ID_ENV,
     AnthropicAuthError,
     AnthropicAuthFailure,
     AnthropicTokens,
@@ -109,7 +110,9 @@ class TestBuildAuthorizeUrl:
         assert url.startswith(ANTHROPIC_AUTHORIZE_URL + "?")
         assert "response_type=code" in url
         assert "code=true" in url
-        assert f"client_id={ANTHROPIC_OAUTH_CLIENT_ID}" in url
+        # The module carries no client_id: it comes from the operator's own
+        # registration, which the byok conftest supplies (see that file).
+        assert f"client_id={os.environ[BYOK_CLAUDE_CLIENT_ID_ENV]}" in url
         assert "code_challenge_method=S256" in url
         assert f"code_challenge={pkce.code_challenge}" in url
         # state = code_verifier (Claude Code convention)

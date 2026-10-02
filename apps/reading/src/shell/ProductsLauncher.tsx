@@ -222,7 +222,7 @@ export function ProductsLauncher({
           }}
           onKeyDown={onSearchKeyDown}
           placeholder="Filter…"
-          className="w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight outline-none focus:border-sun"
+          className="w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight"
         />
 
         <div className="overflow-y-auto max-h-[55vh] space-y-6 pt-2">

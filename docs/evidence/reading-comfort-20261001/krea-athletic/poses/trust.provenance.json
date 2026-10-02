@@ -1,0 +1,17 @@
+{
+  "asset_id": "7e65f2d2-a70c-4eec-b821-df0d9cb4a63d",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/workflow-art/trust-512.png",
+  "source_sha256": "6c7bf9ce1f90ab502d04aadc3876cf1d020043e0914d0c8985247d194024691f",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Keep the exact existing props and expression of image 1.",
+  "requested_at": "2026-10-01T06:28:26.012676+00:00",
+  "preview_only": true,
+  "job_id": "b546d0a3-eb0e-4d83-b69f-8de91ec96aca",
+  "status": "completed",
+  "output": "trust-krea-b.png",
+  "generated_at": "2026-10-01T06:28:48.468Z",
+  "sha256": "8c8da3af8fd9342e63b1ed64efc514f6ebd8d982a15786fb5cc049567474a547"
+}
