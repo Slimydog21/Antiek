@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
-
+import { readingTypographyStyle, useReadingTypography } from "../../lib/readingTypography";
+import "../../design/readingTypography.css";
 
 /**
  * ReadingColumn — the calm, centered reading body that renders a servable
@@ -169,6 +170,7 @@ function renderBlocks(text: string, marks: AnchorMark[]) {
  */
 export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
   function ReadingColumn({ assetId, text, chunkId, contentFormat = "text", marks = [] }, ref) {
+    const typography = useReadingTypography();
     return (
       <article
         ref={ref}
@@ -181,7 +183,8 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // chunk stays asset-level (the contract's cover/title-card case).
         {...(assetId ? { "data-akb-asset-id": assetId } : {})}
         {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
-        className="prose-antiek reading-page flex-1"
+        className="prose-antiek reading-page reading-prose flex-1"
+        style={readingTypographyStyle(typography)}
       >
         {text.trim() ? (
           contentFormat === "html" ? (

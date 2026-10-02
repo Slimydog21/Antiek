@@ -1,0 +1,544 @@
+FFFFFFFFFFFFFFF...FFFFFFFF.......                                        [100%]
+=================================== FAILURES ===================================
+_____ test_frame_telemetry_bounded_never_500_under_external_duckdb_holder ______
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-ed55bs1q/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1202b4260>
+
+    def test_frame_telemetry_bounded_never_500_under_external_duckdb_holder(
+        isolated_db, monkeypatch
+    ):
+        """Prod 2026-10-01: while the nightly ``arxiv_oai_sync --bulk`` held the
+        DuckDB file, this route answered 500 — 130x/3h and 6,793x/24h — because the
+        gate read opened a connection of its own with no external-lock tolerance.
+    
+        Contract this test pins: an external holder is a BOUNDED wait and then an
+        honest, retryable 503 (with Retry-After so the emitter can re-send the
+        idempotent window batch) — never a 500 — and the batch still accrues the
+        moment the holder is gone.
+        """
+        import subprocess
+        import sys
+        import time
+    
+        from interfaces.research.api import ad_routes
+        from runtime import db_lock
+    
+        _mint_value(monkeypatch, 1000)
+        _seed_book(
+            isolated_db,
+            document_id="pd-earner",
+            title="Earner",
+            author="A",
+            content_class="public_domain",
+            raw_text="public domain body",
+            rights_holder_name="Earner Estate",
+        )
+        monkeypatch.setattr(ad_routes, "_FRAME_WRITE_TIMEOUT_S", 0.4)
+        # Force the route to open a handle instead of reusing a parked warm writer,
+        # so the test exercises the contended path deterministically.
+        db_lock.flush_warm_writers(isolated_db)
+    
+        holder = subprocess.Popen(
+            [sys.executable, "-c", _HOLD_DB_SCRIPT, isolated_db, "30"],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert holder.stdout is not None
+            assert holder.stdout.readline().strip() == "held"
+            db_lock.flush_warm_writers(isolated_db)
+            t0 = time.monotonic()
+            resp = _client().post("/api/ad/frame-telemetry", json=_batch())
+            elapsed = time.monotonic() - t0
+            assert resp.status_code != 500, resp.text
+>           assert resp.status_code == 503, resp.text
+E           AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E           assert 401 == 503
+E            +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:207: AssertionError
+___________________ test_frame_telemetry_accepts_and_accrues ___________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-_9n2gt38/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1202b4350>
+
+    def test_frame_telemetry_accepts_and_accrues(isolated_db, monkeypatch):
+        _mint_value(monkeypatch, 1000)  # SERVER prices the window (AFA-S1)
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner",
+                   author="A", content_class="public_domain",
+                   raw_text="public domain body", rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        assert holder is not None
+        before = _escrow_of(isolated_db, holder)
+    
+        resp = _client().post("/api/ad/frame-telemetry", json=_batch())
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:231: AssertionError
+______________ test_frame_telemetry_ignores_client_supplied_value ______________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-qnd_lk1w/antiek.duckdb'
+
+    def test_frame_telemetry_ignores_client_supplied_value(isolated_db):
+        """RED-PROOF (ad-pipeline gap S1): a client that forges
+        ``ad_value_usd_cents`` cannot influence the accrued value. The field is
+        accepted back on the wire ONLY as an IGNORED HINT — it is logged to the
+        client-hint ledger (``client_hint``) for auditability and the server mints
+        the value from its own fill record (0: no settled record exists). On
+        pre-fix code this batch accrued 999_999 cents; post-fix it accrues 0."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        before = _escrow_of(isolated_db, holder)
+    
+        forged = _batch()
+        forged["ad_value_usd_cents"] = 999_999  # a lie the server never trusts
+        resp = _client().post("/api/ad/frame-telemetry", json=forged)
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:263: AssertionError
+________ test_frame_telemetry_value_lookup_is_owner_scoped_same_window _________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-elpmfnjc/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1202b42c0>
+
+    def test_frame_telemetry_value_lookup_is_owner_scoped_same_window(
+        isolated_db, monkeypatch
+    ):
+        """Two owners may reuse a window id; valuation receives both identities.
+    
+        The public telemetry body remains owner-free. Identity comes exclusively
+        from authenticated request state, and the default resolver still returns
+        zero for each owner (no cross-owner or invented price).
+        """
+        from interfaces.research.api import ad_routes
+    
+        seen: list[tuple[str, str]] = []
+    
+        def capture(*, owner_user_id: str, window_id: str, con=None) -> int:
+            seen.append((owner_user_id, window_id))
+            return 0
+    
+        monkeypatch.setattr(ad_routes, "resolve_window_value_cents", capture)
+        from substrate.multi_user import auth
+        from substrate.multi_user.auth import UserClaims
+    
+        owners = iter(("owner-a", "owner-b"))
+    
+        def claims() -> UserClaims:
+            return UserClaims(
+                user_id=next(owners),
+                email=None,
+                scopes=frozenset({"operator"}),
+                issued_at="2026-08-12T00:00:00Z",
+            )
+    
+        monkeypatch.setattr(auth, "operator_claims", claims)
+        client = TestClient(
+            create_app(register_wrestling=False, register_providers=False)
+        )
+        for _owner in ("owner-a", "owner-b"):
+            response = client.post(
+                "/api/ad/frame-telemetry",
+                    json={
+                    "window_id": "shared-window",
+                    "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
+                    "seconds": [],
+                },
+            )
+>           assert response.status_code == 202, response.text
+E           AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E           assert 401 == 202
+E            +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:330: AssertionError
+____________________ test_frame_telemetry_v1_batch_rejected ____________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-7vgwpy2z/antiek.duckdb'
+
+    def test_frame_telemetry_v1_batch_rejected(isolated_db):
+        """A stale v1 emitter (which still carries a client value) is rejected 409
+        by the version gate — there is no ordering window in which a client-priced
+        v1 batch accrues against v2 semantics."""
+        stale = _batch()
+        stale["schema_version"] = "frame-telemetry-v1"
+        stale["ad_value_usd_cents"] = 5000
+        resp = _client().post("/api/ad/frame-telemetry", json=stale)
+>       assert resp.status_code == 409
+E       assert 401 == 409
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:346: AssertionError
+__________________ test_frame_telemetry_idempotent_on_repost ___________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-vzyhbpsw/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x120e3e000>
+
+    def test_frame_telemetry_idempotent_on_repost(isolated_db, monkeypatch):
+        _mint_value(monkeypatch, 1000)
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        client = _client()
+        client.post("/api/ad/frame-telemetry", json=_batch())
+        once = _escrow_of(isolated_db, holder)
+        # Re-posting the identical batch must not double-accrue.
+        r2 = client.post("/api/ad/frame-telemetry", json=_batch())
+>       assert r2.status_code == 202
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:361: AssertionError
+__________________ test_unknown_asset_is_house_not_an_earner ___________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-276fekdg/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x120616cf0>
+
+    def test_unknown_asset_is_house_not_an_earner(isolated_db, monkeypatch):
+        _mint_value(monkeypatch, 500)
+        # No documents row for this asset → NULL content_class → ineligible
+        # (deny-by-default). The whole window becomes a house second.
+        resp = _client().post(
+            "/api/ad/frame-telemetry", json=_batch(asset_id="ghost-asset")
+        )
+>       assert resp.status_code == 202
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:373: AssertionError
+________________ test_client_content_class_hint_is_not_trusted _________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-mgskgef1/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1207f11f0>
+
+    def test_client_content_class_hint_is_not_trusted(isolated_db, monkeypatch):
+        _mint_value(monkeypatch, 400)
+        # A private user_owned book is INELIGIBLE to earn. A malicious client echoes
+        # content_class="public_domain"; the backend must resolve the real class
+        # (user_owned) server-side and refuse to accrue.
+        _seed_book(isolated_db, document_id="private-1", title="Private", author="Me",
+                   content_class="user_owned", raw_text="private body",
+                   rights_holder_name="Me Estate")
+        batch = _batch(asset_id="private-1")
+        batch["seconds"][0]["samples"][0]["content_class"] = "public_domain"  # lie
+        batch["seconds"][1]["samples"][0]["content_class"] = "public_domain"
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 202
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:393: AssertionError
+____________ test_server_minted_settled_value_wins_over_client_hint ____________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-kefztbz2/antiek.duckdb'
+
+    def test_server_minted_settled_value_wins_over_client_hint(isolated_db):
+        """The value the accrual apportions is the server's OWN settled fill
+        record for the window. The client hint can neither add to it nor replace
+        it, and a forged hint is still logged for the audit trail."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        assert holder is not None
+        _seed_fill_record(
+            isolated_db, owner_user_id="__operator__", window_id="win-1",
+            revenue_usd_cents=4300, price_status="settled",
+        )
+        before = _escrow_of(isolated_db, holder)
+    
+        batch = _batch()
+        batch["ad_value_usd_cents"] = 9_999_999  # a forged claim, 9.9M cents
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:473: AssertionError
+______ test_fill_record_persisted_at_fill_time_feeds_server_minted_value _______
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-iz1miuwu/antiek.duckdb'
+
+    def test_fill_record_persisted_at_fill_time_feeds_server_minted_value(
+        isolated_db,
+    ):
+        """End-to-end: the fill record ``POST /api/ad/fills`` persists at fill
+        time is the record frame-telemetry joins. While it is unpriced the
+        telemetry accrues honest zero; once a billing authority settles the SAME
+        row, the identical client batch accrues the settled cents — with no client
+        change whatsoever."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        client = _client()
+    
+        fill_resp = client.post(
+            "/api/ad/fills",
+            json={"window_id": "win-1", "lens": "read", "positions": ["top"]},
+        )
+>       assert fill_resp.status_code == 200, fill_resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 200
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:505: AssertionError
+____________ test_frame_telemetry_unpriced_fill_record_accrues_zero ____________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-1o3bhd45/antiek.duckdb'
+
+    def test_frame_telemetry_unpriced_fill_record_accrues_zero(isolated_db):
+        """An ``unpriced`` fill record NEVER feeds the accrual, even if the row
+        already carries a candidate revenue: CPM is a ranking signal, not
+        settlement evidence — only a ``settled`` record is money."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        before = _escrow_of(isolated_db, holder)
+        _seed_fill_record(
+            isolated_db, owner_user_id="__operator__", window_id="win-1",
+            revenue_usd_cents=7700, price_status="unpriced",
+        )
+        resp = _client().post("/api/ad/frame-telemetry", json=_batch())
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:542: AssertionError
+_________ test_frame_telemetry_missing_fill_record_accrues_honest_zero _________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-pxpldm_1/antiek.duckdb'
+
+    def test_frame_telemetry_missing_fill_record_accrues_honest_zero(isolated_db):
+        """No server-side fill record for the window → the server mints 0 and the
+        window accrues house/zero honestly. No fabricated price, ever."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        resp = _client().post(
+            "/api/ad/frame-telemetry", json=_batch(window_id="win-never-filled")
+        )
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:558: AssertionError
+____ test_client_hint_retry_with_changed_claim_appends_audit_row_not_money _____
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-0cmf52ba/antiek.duckdb'
+
+    def test_client_hint_retry_with_changed_claim_appends_audit_row_not_money(
+        isolated_db,
+    ):
+        """A retry that CHANGES its claimed value is audited, not accrued: the
+        accrual is idempotent (identical attention batch → same batch_ref), the
+        escrow never moves, and both claims land on the client-hint ledger."""
+        _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+                   content_class="public_domain", raw_text="body",
+                   rights_holder_name="Earner Estate")
+        holder = _ip_holder_of(isolated_db, "pd-earner")
+        client = _client()
+    
+        batch = _batch()
+        batch["ad_value_usd_cents"] = 1000
+        r1 = client.post("/api/ad/frame-telemetry", json=batch)
+>       assert r1.status_code == 202, r1.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:581: AssertionError
+______________ test_frame_telemetry_negative_client_hint_rejected ______________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-p7zgm4zg/antiek.duckdb'
+
+    def test_frame_telemetry_negative_client_hint_rejected(isolated_db):
+        """The hint is accepted but still validated as a sane integer — a
+        negative claim is 422, not silently logged."""
+        batch = _batch()
+        batch["ad_value_usd_cents"] = -5
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:598: AssertionError
+_________________ test_frame_telemetry_v2_batch_still_accepted _________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-5w6qf9hj/antiek.duckdb'
+
+    def test_frame_telemetry_v2_batch_still_accepted(isolated_db):
+        """Backward compatibility: a v2 emitter (the value field is absent from
+        its contract) keeps working on v3 semantics, and a v2-labeled body that
+        smuggles the hint is still ignored + logged."""
+        batch = _batch()
+        batch["schema_version"] = "frame-telemetry-v2"
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 202, resp.text
+E       AssertionError: {"error":{"message":"Authentication required. One of: Antiek session cookie (sign in via /login), Cloudflare Access browser session, Cloudflare Access service token, or Authorization: Bearer <operator-token>.","code":"operator_auth_required"}}
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:608: AssertionError
+________________ test_frame_telemetry_version_mismatch_rejected ________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-rdeh4fb_/antiek.duckdb'
+
+    def test_frame_telemetry_version_mismatch_rejected(isolated_db):
+        batch = _batch()
+        batch["schema_version"] = "frame-telemetry-vOLD"
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 409
+E       assert 401 == 409
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:690: AssertionError
+______________ test_frame_telemetry_out_of_range_sample_rejected _______________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-rtuynp57/antiek.duckdb'
+
+    def test_frame_telemetry_out_of_range_sample_rejected(isolated_db):
+        batch = _batch()
+        batch["seconds"][0]["samples"][0]["viewport_area_fraction"] = 1.5  # out of [0,1]
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:698: AssertionError
+____________________ test_frame_telemetry_bad_lens_rejected ____________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-bxevp3fe/antiek.duckdb'
+
+    def test_frame_telemetry_bad_lens_rejected(isolated_db):
+        batch = _batch()
+        batch["seconds"][0]["lens"] = "doodle"
+        resp = _client().post("/api/ad/frame-telemetry", json=batch)
+>       assert resp.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:706: AssertionError
+__________________ test_fill_returns_house_when_no_advertiser __________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-ngp2eoji/antiek.duckdb'
+
+    def test_fill_returns_house_when_no_advertiser(isolated_db):
+        _seed_book(isolated_db, document_id="pd-other", title="Promotable", author="X",
+                   content_class="public_domain", raw_text="body")
+        _seed_book(isolated_db, document_id="pd-current", title="Reading Now", author="Y",
+                   content_class="public_domain", raw_text="body")
+        resp = _client().get("/api/ad/fill?document_id=pd-current&page_index=3&position=top")
+>       assert resp.status_code == 200
+E       assert 401 == 200
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:718: AssertionError
+______________ test_fill_house_with_no_candidates_is_still_house _______________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-byw65ozd/antiek.duckdb'
+
+    def test_fill_house_with_no_candidates_is_still_house(isolated_db):
+        # Only the book being read is servable → nothing else to promote → a neutral
+        # house fill (null promo), never blank/broken.
+        _seed_book(isolated_db, document_id="pd-current", title="Only Book", author="Y",
+                   content_class="public_domain", raw_text="body")
+        body = _client().get(
+            "/api/ad/fill?document_id=pd-current&page_index=0&position=bottom"
+        ).json()
+>       assert body["kind"] == "house"
+               ^^^^^^^^^^^^
+E       KeyError: 'kind'
+
+tests/test_ad_routes.py:737: KeyError
+______________________ test_fill_rejects_unknown_position ______________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-ws5s2npp/antiek.duckdb'
+
+    def test_fill_rejects_unknown_position(isolated_db):
+        resp = _client().get("/api/ad/fill?document_id=d&page_index=0&position=middle")
+>       assert resp.status_code == 422
+E       assert 401 == 422
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:743: AssertionError
+______________________ test_no_gated_body_in_fill_payload ______________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-76wgrf9g/antiek.duckdb'
+
+    def test_no_gated_body_in_fill_payload(isolated_db):
+        _seed_book(isolated_db, document_id="gated-1", title="Gated", author="Z",
+                   content_class="restricted_pending_opt_in", raw_text=_GATED_BODY)
+        _seed_book(isolated_db, document_id="pd-current", title="Reading", author="Y",
+                   content_class="public_domain", raw_text="body")
+        # A gated book is never servable → never a house-promo candidate, and its
+        # body never appears regardless.
+        resp = _client().get("/api/ad/fill?document_id=pd-current&page_index=1&position=top")
+>       assert resp.status_code == 200
+E       assert 401 == 200
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:757: AssertionError
+___________________ test_no_gated_body_in_telemetry_payload ____________________
+
+isolated_db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-ad-routes-zl9rgdiq/antiek.duckdb'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x120a4cbf0>
+
+    def test_no_gated_body_in_telemetry_payload(isolated_db, monkeypatch):
+        _mint_value(monkeypatch, 600)
+        # A gated book IS eligible to earn (to escrow, §9.10) but its body must never
+        # surface in the accrual response.
+        _seed_book(isolated_db, document_id="gated-earner", title="Gated", author="Z",
+                   content_class="restricted_pending_opt_in", raw_text=_GATED_BODY,
+                   rights_holder_name="Pending Estate")
+        resp = _client().post(
+            "/api/ad/frame-telemetry", json=_batch(asset_id="gated-earner")
+        )
+>       assert resp.status_code == 202
+E       assert 401 == 202
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests/test_ad_routes.py:771: AssertionError
+=============================== warnings summary ===============================
+../../platform/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_ad_routes.py::test_frame_telemetry_bounded_never_500_under_external_duckdb_holder
+FAILED tests/test_ad_routes.py::test_frame_telemetry_accepts_and_accrues - As...
+FAILED tests/test_ad_routes.py::test_frame_telemetry_ignores_client_supplied_value
+FAILED tests/test_ad_routes.py::test_frame_telemetry_value_lookup_is_owner_scoped_same_window
+FAILED tests/test_ad_routes.py::test_frame_telemetry_v1_batch_rejected - asse...
+FAILED tests/test_ad_routes.py::test_frame_telemetry_idempotent_on_repost - a...
+FAILED tests/test_ad_routes.py::test_unknown_asset_is_house_not_an_earner - a...
+FAILED tests/test_ad_routes.py::test_client_content_class_hint_is_not_trusted
+FAILED tests/test_ad_routes.py::test_server_minted_settled_value_wins_over_client_hint
+FAILED tests/test_ad_routes.py::test_fill_record_persisted_at_fill_time_feeds_server_minted_value
+FAILED tests/test_ad_routes.py::test_frame_telemetry_unpriced_fill_record_accrues_zero
+FAILED tests/test_ad_routes.py::test_frame_telemetry_missing_fill_record_accrues_honest_zero
+FAILED tests/test_ad_routes.py::test_client_hint_retry_with_changed_claim_appends_audit_row_not_money
+FAILED tests/test_ad_routes.py::test_frame_telemetry_negative_client_hint_rejected
+FAILED tests/test_ad_routes.py::test_frame_telemetry_v2_batch_still_accepted
+FAILED tests/test_ad_routes.py::test_frame_telemetry_version_mismatch_rejected
+FAILED tests/test_ad_routes.py::test_frame_telemetry_out_of_range_sample_rejected
+FAILED tests/test_ad_routes.py::test_frame_telemetry_bad_lens_rejected - asse...
+FAILED tests/test_ad_routes.py::test_fill_returns_house_when_no_advertiser - ...
+FAILED tests/test_ad_routes.py::test_fill_house_with_no_candidates_is_still_house
+FAILED tests/test_ad_routes.py::test_fill_rejects_unknown_position - assert 4...
+FAILED tests/test_ad_routes.py::test_no_gated_body_in_fill_payload - assert 4...
+FAILED tests/test_ad_routes.py::test_no_gated_body_in_telemetry_payload - ass...
+23 failed, 10 passed, 1 warning in 16.83s

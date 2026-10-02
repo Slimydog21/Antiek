@@ -7,6 +7,7 @@ import {
   type RenderedDocument,
 } from "../../api/styles";
 import LemonTag from "../../components/lemon/LemonTag";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import StyleRail from "./StyleRail";
 import "./StyleWheel.css";
 
@@ -30,9 +31,19 @@ const REFUSAL_COPY: Record<string, string> = {
   document_not_found: "This document is not in the substrate.",
 };
 
-function messageOf(error: unknown): string {
-  const raw = error instanceof Error ? error.message : "The style service is unavailable.";
-  return REFUSAL_COPY[raw] ?? raw;
+function failureOf(error: unknown, what: string): DescribedFailure {
+  // A serve-gate refusal arrives as the error's message code; an honest state
+  // names it in the reader's words. Anything else goes through describeFailure,
+  // whose title and detail never carry a status, method, path or body.
+  if (error instanceof Error && error.message in REFUSAL_COPY) {
+    return {
+      title: "Couldn't preview this document.",
+      detail: REFUSAL_COPY[error.message],
+      retryable: false,
+      kind: "forbidden",
+    };
+  }
+  return describeFailure(error, { what });
 }
 
 /**
@@ -47,7 +58,7 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
   const [styles, setStyles] = useState<ProjectionStyle[]>([]);
   const [selected, setSelected] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [receipt, setReceipt] = useState<RenderedDocument | null>(null);
@@ -66,7 +77,12 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
         if (!loaded.length) {
           setSelected("");
           setStatus("empty");
-          setError("No styles are available for this document.");
+          setError({
+            title: "No styles are available for this document.",
+            detail: "",
+            retryable: false,
+            kind: "not_found",
+          });
           return;
         }
         const requested = loaded.find((style) => style.name === initialStyle) ?? loaded[0];
@@ -75,7 +91,7 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
       } catch (cause) {
         if (controller.signal.aborted) return;
         setStatus("unavailable");
-        setError(messageOf(cause));
+        setError(failureOf(cause, "load the styles"));
       }
     })();
     return () => controller.abort();
@@ -105,7 +121,7 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
         if (!controller.signal.aborted && run === previewRun.current) {
           setPreviewUrl(null);
           setReceipt(null);
-          setError(messageOf(cause));
+          setError(failureOf(cause, "preview this document"));
         }
       })
       .finally(() => {
@@ -125,7 +141,7 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
   if (status === "unavailable") {
     return (
       <p className="style-wheel__state style-wheel__state--error" role="alert">
-        Styles unavailable · {error}
+        Styles unavailable{error ? ` · ${error.title} ${error.detail}` : ""}
       </p>
     );
   }
@@ -188,7 +204,7 @@ export default function DocumentStylePreview({ documentId, initialStyle }: Docum
 
       {error ? (
         <p className="style-wheel__error" role="alert">
-          {error}
+          {error.title} {error.detail}
         </p>
       ) : null}
 
