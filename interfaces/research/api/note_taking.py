@@ -185,7 +185,11 @@ def _backoff_seconds(barren_passes: int, base_s: float, max_s: float) -> float:
     any pass count past about six. Extracted from the worker loop so the arithmetic can be
     tested without driving the loop.
     """
-    return min(base_s * (2 ** min(barren_passes - 1, 63)), max_s)
+    # float() is not decoration. `min()` over a float and a float-typed parameter is
+    # Any to mypy, so the declared bar reds a new `no-any-return` here without it.
+    # Found by the gate, not by ruff: running the linter alone does not run the type
+    # half of `mypy --strict + ruff`.
+    return float(min(base_s * (2 ** min(barren_passes - 1, 63)), max_s))
 
 
 def start_replay_recovery(
