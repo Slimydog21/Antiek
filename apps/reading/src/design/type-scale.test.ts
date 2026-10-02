@@ -7,6 +7,7 @@
  * the file, so the assertions track what Tailwind actually emits.
  */
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, beforeAll } from "vitest";
@@ -51,6 +52,21 @@ describe("type scale (CFEEL-S2 M2) — PostHog app sizes + 24px chrome ceiling",
       expect(gotSize, `fontSize["${key}"] size`).toBe(size);
       const lhValue = typeof gotLh === "object" && gotLh ? gotLh.lineHeight : gotLh;
       expect(lhValue, `fontSize["${key}"] line-height`).toBe(lh);
+    }
+  });
+
+  it("the var(--fs-*) CSS mirror in tokens.css matches the Tailwind scale byte-for-byte", () => {
+    // Raw stylesheets cannot use text-* utilities; they sit on the scale via
+    // var(--fs-*) (tokens.css). lint_type_scale.ts flags a sub-ceiling raw
+    // `font-size: Npx` the same way it flags text-[Npx], so this pin is what
+    // keeps the two spellings of the scale from drifting apart.
+    const css = readFileSync(join(APP, "src/design/tokens.css"), "utf8");
+    for (const [key, size] of EXPECTED.map(([k, s]) => [k, s] as const)) {
+      const declared = new RegExp(`--fs-${key}:\\s*${size};`).test(css);
+      expect(
+        declared,
+        `tokens.css must declare --fs-${key}: ${size}; (the raw-CSS mirror of text-${key})`,
+      ).toBe(true);
     }
   });
 

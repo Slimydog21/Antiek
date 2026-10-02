@@ -209,9 +209,12 @@ export function NotebookEditor({
     ],
     content: initialStored?.html ?? initialContent ?? "<p></p>",
     // The prose layer (index.css) owns face, size, measure and rhythm.
+    // outline-none is paired with the ring idiom (focus.guard.test.ts) so
+    // keyboard focus on the writing surface never disappears.
     editorProps: {
       attributes: {
-        class: "tiptap prose-antiek focus:outline-none min-h-[120px]",
+        class:
+          "tiptap prose-antiek focus:outline-none focus-visible:ring-2 focus-visible:ring-sun min-h-[120px]",
       },
     },
     onUpdate: ({ editor: e }) => {

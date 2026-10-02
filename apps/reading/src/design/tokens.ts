@@ -190,6 +190,31 @@ export const glass = {
 } as const;
 
 /**
+ * Lighting veils for canvas sketches (vignettes, chalk lines). Absolute
+ * black/white at a caller-chosen alpha — this is LIGHT, not surface colour,
+ * so it deliberately sits outside the warm-ink ramp: a vignette shades
+ * toward darkness, not toward walnut. Canvas2D cannot resolve var(), so the
+ * literal channels live here in the allow-listed token source and sketches
+ * compose the alpha — lint_tokens.ts flags the same literals written
+ * inline at a call site.
+ */
+export const veil = {
+  black: (a: number): string => `rgba(0,0,0,${a})`,
+  white: (a: number): string => `rgba(255,255,255,${a})`,
+} as const;
+
+/**
+ * Scene-status fallback badge (SceneStatusBadge.tsx) — a theme-FIXED dark
+ * chip floating over scene art. The themed glass tokens follow bg-card,
+ * which is parchment-bright in day; this chip must stay dark over day and
+ * night art alike, so it holds its own slate glass instead.
+ */
+export const sceneBadge = {
+  bg: "rgba(15, 23, 42, 0.84)",
+  border: "rgba(255, 255, 255, 0.28)",
+} as const;
+
+/**
  * The 10-step ramps the canvases index into, now DERIVED from the semantic
  * layer (they used to hold their own glacial hexes). Index meaning is
  * unchanged: day [0] card … [2] page … [9] ink; night [2] page, [4] card,
