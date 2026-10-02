@@ -15,15 +15,16 @@ Scope of this file:
   ``substrate/event_log/events.py`` so the schemas package is at the
   bottom of the dependency stack; event_log re-exports for back-compat).
 - The ``Event`` envelope.
-- Payload variants for the 20 currently-schemaed action types:
-  - ``DispatchCallPayload`` (week 1 dependency — cost-tracking emits)
-  - ``ContextPackAssembledPayload`` (week 1 dependency — pack provenance)
-  - 17 wrestling payloads (locked at substrate time per
-    ``architecture_notes.md`` §9.1 so Loop 2 trajectories are typed
-    from the first event written)
-  - ``BlockPositionPayload`` (Living Roadmap SPR-03 — DRW block-canvas
-    position persistence as a typed event, single-writer funnel)
-- A discriminated union over those 20 variants.
+- One payload variant per schemaed action type. The inventory is the union at
+  the bottom of this module -- ``TypedPayload`` -- and it is the only place the
+  set is stated. Deliberately no count here: this paragraph used to read "the 20
+  currently-schemaed action types" and "a discriminated union over those 20
+  variants", with the 20 composed as 1 + 1 + 17 wrestling + 1. Measured, the
+  union holds 122 members and the module declares 123 ``*Payload`` classes, so
+  the number had been wrong for a long time and nothing could notice -- a count
+  written into prose has no mechanism that fails when the set it describes grows.
+  Enumerating the kinds instead of tallying them is also why the old text went
+  stale: "17 wrestling payloads" was a tally.
 - A model validator enforcing that wrestling-loop events carry
   ``document_id`` on the envelope.
 
