@@ -1,3 +1,4 @@
+import { ReadingTypographyControls } from "../../components/reader/ReadingTypography";
 import LemonCard from "../../components/lemon/LemonCard";
 import { LemonSelect } from "../../components/lemon";
 import type { MotionPreference, ThemePreference } from "../../design/theme";
@@ -47,6 +48,10 @@ export default function AppearancePanel() {
                 : `Follows your device. ${motion.reduced ? "Motion is reduced" : "Animations are on"} right now.`}
           </p>
         </div>
+        <section className="sm:col-span-2 border-t border-hairline pt-4" aria-labelledby="reading-type-settings">
+          <h2 id="reading-type-settings" className="text-base font-semibold text-1 mb-4">Reading type</h2>
+          <ReadingTypographyControls />
+        </section>
       </div>
       <div className="border-t border-hairline p-4"><ReadingLightControl /></div>
     </LemonCard>
