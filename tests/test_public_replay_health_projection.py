@@ -2,7 +2,7 @@
 
 import pytest
 
-from interfaces.research.api.app import _public_note_taker_replay
+from interfaces.research.api.public_replay_health import _public_note_taker_replay
 
 
 @pytest.mark.parametrize(

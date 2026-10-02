@@ -93,6 +93,7 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
 # Retry-After hint (seconds) served with every 503 mapped from
 # runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
@@ -125,24 +126,6 @@ class EmittedEventResponse(BaseModel):
 
     event_id: str
     action_type: str
-
-
-def _public_note_taker_replay(report: object) -> dict[str, str]:
-    """Expose only an admitted worker phase, without copying private report fields."""
-    if type(report) is not dict:
-        return {}
-    status = report.get("status")
-    if type(status) is not str or status not in (
-        "starting",
-        "waiting_for_database",
-        "waiting_for_writer",
-        "catching_up",
-        "current",
-        "backoff",
-        "idle",
-    ):
-        return {}
-    return {"status": status}
 
 
 class HealthResponse(BaseModel):
