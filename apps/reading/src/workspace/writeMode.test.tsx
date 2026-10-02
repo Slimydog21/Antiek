@@ -330,6 +330,13 @@ describe("the keys in writing mode", () => {
   it("with the left pane focused, the same keys walk the body and section tabs instead", async () => {
     mountCockpit("/write/d-1");
     await screen.findAllByText("alpha claim");
+    // Main outline text does not prove route adoption and section seeding.
+    // Both must finish before a section activation can take effect.
+    await waitFor(() => {
+      const tree = tabs().trees.writing;
+      expect(tree?.active_tab_id).toBe("root:document:/write/d-1");
+      expect(tree?.nodes["root:document:/write/d-1"]?.child_order).toHaveLength(DETAIL.sections.length);
+    });
     const s1 = childTabId("root:document:/write/d-1", "document", "section:s-1");
     const s2 = childTabId("root:document:/write/d-1", "document", "section:s-2");
     act(() => {

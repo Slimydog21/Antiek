@@ -143,36 +143,119 @@ def _default_replay_service(
     )
 
 
+def _resolve_replay_tuning() -> tuple[float, float, float]:
+    """Backoff floor/ceiling and the log-aggregation interval, env-overridable.
+
+    Resolved at worker start (not import) so a test or a box can set them
+    before the thread exists.
+    """
+
+    def _float(name: str, default: float) -> float:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return default
+
+    return (
+        _float("ANTIEK_NOTE_TAKER_REPLAY_BACKOFF_BASE_S", 2.0),
+        _float("ANTIEK_NOTE_TAKER_REPLAY_BACKOFF_MAX_S", 30.0),
+        _float("ANTIEK_NOTE_TAKER_REPLAY_LOG_INTERVAL_S", 30.0),
+    )
+
+
 def start_replay_recovery(
     *,
     db_path: str | None = None,
     events_dir: str | None = None,
     stop_event: threading.Event | None = None,
     poll_interval_s: float = 2.0,
+    state: dict[str, Any] | None = None,
 ) -> threading.Thread:
-    """Continuously catch up every physical stream without blocking startup."""
+    """Continuously catch up every physical stream without blocking startup.
+
+    Failure discipline (prod 2026-10-01). This worker used to retry every
+    investigation on every poll and print one stderr line per failure, with no
+    backoff and no awareness that another process was queued for the write
+    lock. Across a multi-hour ``arxiv_oai_sync --bulk`` pass that produced a
+    sustained storm — 2,624 Binder/IO lines in 29h — while the recovery made NO
+    progress at all: the sync held the DuckDB file ~15s of every 15.5s, so
+    every attempt landed inside its window and failed. The projector worker
+    beside it (``app.py::_recover_knowledge_event_projector``) already honoured
+    ``write_handoff_requested`` and backed off. This one now does the same, and
+    records what it is doing into ``state`` so a health surface can stop being
+    write-blind.
+
+    ``state`` is updated in place (never replaced) so a caller that published
+    the dict to a health endpoint keeps seeing live values.
+    """
     if poll_interval_s <= 0:
         raise ValueError("poll_interval_s must be positive")
     service = _default_replay_service(db_path=db_path, events_dir=events_dir)
     stop = stop_event or threading.Event()
+    backoff_base_s, backoff_max_s, log_interval_s = _resolve_replay_tuning()
+    report: dict[str, Any] = state if state is not None else {}
+    report.setdefault("status", "starting")
 
     def recover() -> None:
+        from runtime.db_lock import write_handoff_requested
         from substrate.graph.knowledge_event_projector import discover_investigations
 
+        barren_passes = 0
+        suppressed = 0
+        last_log_at = 0.0
         while not stop.is_set():
             if not os.path.exists(service.db_path):
+                report.update({"status": "waiting_for_database"})
                 stop.wait(poll_interval_s)
                 continue
-            for investigation_id in discover_investigations(service.events_dir):
+            # A published writer owns admission. Attempting a catch-up while
+            # one is queued is what made the storm: the attempt lands inside
+            # the lock holder's window and fails, pass after pass.
+            try:
+                queued = write_handoff_requested(service.db_path)
+            except OSError:
+                queued = False
+            if queued:
+                report.update({"status": "waiting_for_writer", "investigations": 0})
+                stop.wait(poll_interval_s)
+                continue
+
+            investigations = list(discover_investigations(service.events_dir))
+            progressed = False
+            failures = 0
+            for investigation_id in investigations:
                 if stop.is_set():
                     return
                 try:
                     service.catch_up(investigation_id)
+                    progressed = True
                 except Exception as exc:
-                    print(
-                        "Note-taker replay recovery remains pending for "
-                        f"{investigation_id}: {exc!r}",
-                        file=sys.stderr,
+                    failures += 1
+                    now = time.monotonic()
+                    # One line per interval, carrying what it swallowed. A
+                    # per-failure line is not observability, it is noise: at
+                    # ~1 line/second it buried the real errors around it.
+                    if now - last_log_at >= log_interval_s:
+                        unseen = "" if suppressed == 0 else f" (+{suppressed} suppressed)"
+                        print(
+                            "Note-taker replay recovery remains pending for "
+                            f"{investigation_id}: {exc!r}{unseen}",
+                            file=sys.stderr,
+                        )
+                        last_log_at = now
+                        suppressed = 0
+                    else:
+                        suppressed += 1
+                    report.update(
+                        {
+                            "status": "catching_up",
+                            "last_failure_investigation": investigation_id,
+                            "last_failure_class": type(exc).__name__,
+                            "last_failure_at": time.time(),
+                        }
                     )
                 # Fairness gap so fills / lease peers can acquire (#3164 class).
                 yield_s = float(
@@ -180,7 +263,35 @@ def start_replay_recovery(
                 )
                 if yield_s > 0 and not os.environ.get("PYTEST_CURRENT_TEST"):
                     time.sleep(yield_s)
-            stop.wait(poll_interval_s)
+
+            if progressed:
+                barren_passes = 0
+                report.update(
+                    {
+                        "status": "current",
+                        "consecutive_barren_passes": 0,
+                        "failures": failures,
+                        "investigations": len(investigations),
+                        "last_success_at": time.time(),
+                    }
+                )
+                stop.wait(poll_interval_s)
+                continue
+
+            barren_passes += 1
+            backoff_s = min(backoff_base_s * (2 ** (barren_passes - 1)), backoff_max_s)
+            report.update(
+                {
+                    "status": "backoff" if investigations else "idle",
+                    "consecutive_barren_passes": barren_passes,
+                    "failures": failures,
+                    "investigations": len(investigations),
+                    "backoff_s": backoff_s,
+                    "suppressed_failures": suppressed,
+                }
+            )
+            # An empty investigation list is not a failure: poll normally.
+            stop.wait(backoff_s if investigations else poll_interval_s)
 
     thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)
     thread.start()

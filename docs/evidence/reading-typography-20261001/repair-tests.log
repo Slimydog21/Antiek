@@ -1,0 +1,306 @@
+
+ RUN  v4.1.11 /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: render exploded
+    at Thrower (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/AppErrorBoundary.test.tsx:46:19)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Not implemented: navigation to another Document
+TypeError: Failed to fetch dynamically imported module: https://antiek.ai/assets/Settings-Bq9x1a2Z.js
+    at chunkError (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/chunkLoadRecovery.test.tsx:30:10)
+    at LazyRouteThatFailed (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/chunkLoadRecovery.test.tsx:169:13)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+TypeError: Failed to fetch dynamically imported module: https://antiek.ai/assets/Settings-Bq9x1a2Z.js
+    at chunkError (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/chunkLoadRecovery.test.tsx:30:10)
+    at LazyRouteThatFailed (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/lib/chunkLoadRecovery.test.tsx:169:13)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+Error: BrainMascot: invalid mood "party". Only idle, thinking, empty, celebrate are permitted. The four-slot restraint is non-negotiable per brand/README.md and U-02.
+    at BrainMascot (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/brand/BrainMascot.tsx:88:11)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: BrainMascot: invalid mood "party". Only idle, thinking, empty, celebrate are permitted. The four-slot restraint is non-negotiable per brand/README.md and U-02.
+    at BrainMascot (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/brand/BrainMascot.tsx:88:11)
+    at renderWithHooks (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+
+ Test Files  388 passed (388)
+      Tests  3675 passed (3675)
+   Start at  12:30:47
+   Duration  133.54s (transform 6.98s, setup 0ms, import 36.93s, tests 87.39s, environment 111.30s)
+
