@@ -32,6 +32,8 @@
  * shared AIActionFailure.
  */
 import { useState } from "react";
+import type { KeyboardEvent } from "react";
+import { ESC_OVERLAY_PROPS, topModal } from "../../../workspace/escapeOverlay";
 import { Link } from "react-router-dom";
 
 import LemonButton from "../../../components/lemon/LemonButton";
@@ -148,9 +150,20 @@ export default function DigDeeper({
     void follow();
   };
 
+  function onEscape(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing ||
+        event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.getModifierState("AltGraph") ||
+        event.currentTarget.closest('[hidden], [aria-hidden="true"], [inert]') || topModal()) return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest("[data-esc-overlay]") !== event.currentTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!busy && deepen !== "busy") onClose();
+  }
+
   if (launchedId) {
     return (
-      <div data-dig-deeper data-dig-launched className="mb-2 border-t border-hairline pt-2">
+      <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-dig-deeper data-dig-launched className="mb-2 border-t border-hairline pt-2">
         <p className="text-shadow-1 dark:text-moonlight mb-1.5" role="status">
           following the thread… — the chase is in the family above
         </p>
@@ -176,7 +189,7 @@ export default function DigDeeper({
   }
 
   return (
-    <div data-dig-deeper className="mb-2 border-t border-hairline pt-2">
+    <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-dig-deeper className="mb-2 border-t border-hairline pt-2">
       <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1">
         Following from this passage
       </label>
@@ -195,6 +208,7 @@ export default function DigDeeper({
         “{spawnContext}”
       </blockquote>
       <LemonTextarea
+        autoFocus
         value={question}
         onChange={(e) => setQuestion(e.target.value)}
         disabled={busy}
@@ -222,6 +236,7 @@ export default function DigDeeper({
         <button
           type="button"
           onClick={onClose}
+          disabled={busy || deepen === "busy"}
           className="text-shadow-1 hover:text-ink dark:hover:text-bright"
         >
           Cancel

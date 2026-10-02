@@ -97,6 +97,8 @@ export type WindowsSnapshot = {
   windows: Record<string, WorkspaceWindowDescriptor>;
   /** Bottom-to-top render order (last = topmost). Mirrors floating z. */
   order: string[];
+  /** Opening order for keyboard cycling; focus never restacks this sequence. */
+  cycleOrder: string[];
   /** The focused window id (keyboard target + topmost), or null. */
   focusedId: string | null;
   /** Monotonic z source so newly focused windows sit above older ones. */
@@ -121,6 +123,7 @@ export type WindowsActions = {
   open: (kind: WindowKind, payload?: Record<string, unknown>, opts?: OpenWindowOptions) => string;
   close: (id: string) => void;
   focus: (id: string) => void;
+  cycleFocus: (direction: 1 | -1) => boolean;
   setRect: (id: string, rect: Partial<WindowRect>) => void;
   expand: (id: string) => void;
   restore: (id: string) => void;
@@ -162,6 +165,7 @@ export const WINDOW_Z_BASE = zIndex.windowBase;
 const EMPTY: WindowsSnapshot = {
   windows: {},
   order: [],
+  cycleOrder: [],
   focusedId: null,
   zCounter: WINDOW_Z_BASE,
 };
@@ -223,6 +227,7 @@ export const useWindows = create<Store>()((set, get) => ({
       return {
         windows: { ...s.windows, [id]: desc },
         order: [...s.order, id],
+        cycleOrder: [...s.cycleOrder, id],
         focusedId: id,
         zCounter: z,
       };
@@ -238,7 +243,7 @@ export const useWindows = create<Store>()((set, get) => ({
       // Focus returns to the next-topmost window (last in order) on close —
       // SPR-09 M8 focus management.
       const focusedId = s.focusedId === id ? (order[order.length - 1] ?? null) : s.focusedId;
-      return { ...s, windows: rest, order, focusedId };
+      return { ...s, windows: rest, order, cycleOrder: s.cycleOrder.filter((x) => x !== id), focusedId };
     }),
 
   focus: (id) =>
@@ -254,6 +259,16 @@ export const useWindows = create<Store>()((set, get) => ({
         order: [...s.order.filter((x) => x !== id), id],
       };
     }),
+
+  cycleFocus: (direction) => {
+    const s = get();
+    const cursor = s.focusedId === null ? -1 : s.cycleOrder.indexOf(s.focusedId);
+    if (s.cycleOrder.length < 2 || cursor < 0) return false;
+    const next = s.cycleOrder[(cursor + direction + s.cycleOrder.length) % s.cycleOrder.length];
+    if (!s.windows[next]) return false;
+    s.focus(next);
+    return true;
+  },
 
   setRect: (id, rect) =>
     set((s) => {

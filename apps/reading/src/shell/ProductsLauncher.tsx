@@ -1,406 +1,195 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
 import { LemonModal } from "../components/lemon/LemonModal";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
-import {
-  MODE_TAXONOMY,
-  WORKFLOWS,
-  WORKFLOW_ORDER,
-  type ModeEntry,
-  type Workflow,
-} from "./workflowTaxonomy";
+import { MAX_WINDOWS, useWindows } from "../workspace/windowsStore";
+import { MODE_TAXONOMY, WORKFLOWS, WORKFLOW_ORDER, type ModeEntry, type Workflow } from "./workflowTaxonomy";
 
-// The bare (param-free) routes the taxonomy declares. A param route's index
-// (everything before "/:") only navigates if it matches one of these — e.g.
-// /skill-rules/:ruleId → /skill-rules is real, so we land on the index
-// instead of misrouting to /operator.
-const BARE_ROUTES = new Set(
-  MODE_TAXONOMY.filter((m) => m.route && !m.route.includes(":")).map(
-    (m) => m.route!,
-  ),
-);
-
-// Local to the launcher surface only. Keeps the taxonomy (the shared source
-// for NavRail, ProjectTree, stubs, palette, and the future M2 rail-destination
-// guard) free of presentation concerns. These are the human labels the
-// operator sees in the calm "More" drawer.
-//
-// Cost & consent (escrow/IP-holder consent + unified cost) is intentionally
-// not a top-level MODE_TAXONOMY entry; it lives as content inside the
-// Coordination shared surface (see taxonomy sharedReason and blurb).
-// Documented here for M4 clarity so the launcher remains the honest
-// inventory without duplicating taxonomy.
+const BARE_ROUTES = new Set(MODE_TAXONOMY.flatMap((mode) => mode.route && !mode.route.includes(":") ? [mode.route] : []));
 const RUN_LABELS: Record<string, string> = {
-  OperatorDashboard: "Operator console",
-  TrustCenter: "Trust & safety",
-  PrivacyDashboard: "Privacy & deletion",
-  Billing: "Billing & usage",
-  Settings: "Settings",
-  Coordination: "Coordination",
+  OperatorDashboard: "Operator console", TrustCenter: "Trust & safety", PrivacyDashboard: "Privacy & deletion",
+  Billing: "Billing & usage", Settings: "Settings", Coordination: "Coordination",
 };
+type Product = Exclude<Workflow, "shared">;
+type LauncherItem =
+  | { kind: "home"; id: string; label: string }
+  | { kind: "product"; id: string; label: string; workflow: Product; matchesProduct: boolean }
+  | { kind: "mode"; id: string; label: string; mode: ModeEntry; target: string | null };
 
-/**
- * ProductsLauncher (SPR-04 zone-1 grid). The honest full inventory of every
- * mode, presented as two calm top-level groups: workflow deep/power modes
- * (under their four human workflow labels) and Run & settings (Operator,
- * Trust, Settings, governance and debug surfaces, every shared taxonomy
- * entry exactly once with human labels).
- *
- * This is the pressure-release valve that lets the rail stay at exactly
- * four workflows. Deep modes and the entire operator bucket live here and
- * in the ⌘K palette, never on the rail. It is the honesty surface: an
- * unbuilt mode is shown dimmed with a "not yet" tag rather than hidden or
- * faked as present. Data-driven from MODE_TAXONOMY; a tiny local label map
- * here supplies the calm human surface names without touching the single
- * source used by rail, tree, stubs and palette.
- *
- * Presentation note (post M4 sharpen, Q8 overlay pass): rendered as a
- * LemonModal — the house modal rung (z=100, chunky sun-edge chrome, focus
- * trap, Esc + scrim dismissal). The "drawer" language in the broader spec is
- * aspirational; the implementation is a modal/overlay for immediate
- * accessibility and keyboard parity with ⌘K.
- */
-export function ProductsLauncher({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+// Keep the existing destination rules: shared details need a selected object;
+// workflow detail entries without an index open their workflow's real door.
+function modeDestination(mode: ModeEntry): string | null {
+  if (!mode.built || !mode.route) return null;
+  if (!mode.route.includes(":")) return mode.route;
+  const index = mode.route.split("/:")[0];
+  if (BARE_ROUTES.has(index)) return index;
+  return mode.workflow === "shared" ? null : WORKFLOWS[mode.workflow].defaultRoute;
+}
+function operable(item: LauncherItem): boolean { return item.kind !== "mode" || item.target !== null; }
+function inventory(query: string): LauncherItem[] {
+  const matches = (text: string) => text.toLowerCase().includes(query);
+  const modeMatches = (mode: ModeEntry) => [mode.label, mode.blurb, mode.id, RUN_LABELS[mode.id] ?? ""].some(matches);
+  const items: LauncherItem[] = [{ kind: "home", id: "home", label: "Antiek home — what you can do, and where to start" }];
+  const appendMode = (mode: ModeEntry) => items.push({
+    kind: "mode", id: `mode:${mode.id}`, mode, target: modeDestination(mode),
+    label: mode.workflow === "shared" ? RUN_LABELS[mode.id] ?? mode.label : mode.label,
+  });
+  for (const workflow of WORKFLOW_ORDER) {
+    const product = WORKFLOWS[workflow];
+    const matchesProduct = matches(product.label) || matches(product.tagline);
+    const modes = MODE_TAXONOMY.filter((mode) => mode.workflow === workflow && (matchesProduct || modeMatches(mode)));
+    if (!matchesProduct && modes.length === 0) continue;
+    items.push({ kind: "product", id: `product:${workflow}`, workflow, label: product.label, matchesProduct });
+    modes.forEach(appendMode);
+  }
+  MODE_TAXONOMY.filter((mode) => mode.workflow === "shared" && modeMatches(mode)).forEach(appendMode);
+  return items;
+}
+
+export function ProductsLauncher({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const activeRowRef = useRef<HTMLButtonElement>(null);
+  const descriptionId = useId();
+  const normalizedQuery = query.trim().toLowerCase();
+  const items = useMemo(() => inventory(normalizedQuery), [normalizedQuery]);
+  const selectable = items.filter(operable);
+  const defaultItem = normalizedQuery && !"antiek home".includes(normalizedQuery)
+    ? selectable.find((item) => item.kind === "mode" || (item.kind === "product" && item.matchesProduct))
+    : selectable[0];
+  const activeItem = selectable.find((item) => item.id === activeId) ?? defaultItem;
+
+  useEffect(() => {
+    activeRowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [activeItem?.id]);
 
   useEffect(() => {
     if (!open) {
       setQuery("");
-      setActiveIndex(0);
+      setActiveId(null);
+      setNotice("");
       return;
     }
-    // LemonModal's focus trap claims initial focus (the header ✕); hand it
-    // back to the filter input so the ⌘K-parity "type immediately" action
-    // survives the modal rung. Child effects run before this parent effect.
     inputRef.current?.focus();
   }, [open]);
 
-  // Two top-level groups only: workflow deep modes (the four workflows'
-  // power surfaces, presented under their own human labels) vs the run
-  // & settings bucket (every shared/operator entry exactly once, human
-  // labeled, never using "shared" or class tokens in the UI).
-  const { wfGroups, runModes, flatItems } = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const match = (m: ModeEntry) =>
-      !q ||
-      m.label.toLowerCase().includes(q) ||
-      m.blurb.toLowerCase().includes(q) ||
-      m.id.toLowerCase().includes(q);
-
-    const wfGroups = WORKFLOW_ORDER.map((wf) => ({
-      workflow: wf,
-      label: WORKFLOWS[wf].label,
-      modes: MODE_TAXONOMY.filter((m) => m.workflow === wf && match(m)),
-    })).filter((g) => g.modes.length > 0);
-
-    const rawRun = MODE_TAXONOMY.filter(
-      (m) => m.workflow === "shared" && match(m),
-    );
-    const runModes = rawRun.map((m) => ({
-      ...m,
-      label: RUN_LABELS[m.id] ?? m.label,
-    }));
-
-    const flatItems = [...wfGroups.flatMap((g) => g.modes), ...rawRun];
-    return { wfGroups, runModes, flatItems };
-  }, [query]);
-
-  useEffect(() => {
-    if (flatItems.length > 0 && activeIndex >= flatItems.length) {
-      setActiveIndex(0);
+  const canEnterWindow = (requestedId: string, label: string) => {
+    const current = useWindows.getState();
+    if (!current.windows[requestedId] && current.order.length >= MAX_WINDOWS) {
+      setNotice(`Window limit reached. Close a window before opening ${label}.`);
+      return false;
     }
-  }, [flatItems.length]);
-
-  /** Built modes navigate. A bare route navigates directly. A param route
-   *  resolves to its index (everything before "/:") when that index is a
-   *  real route; for a workflow param route with no real index we fall back
-   *  to the workflow default. A shared param route whose index isn't a real
-   *  route is treated as unbuilt (no navigation) rather than misrouted. */
-  const openMode = (m: ModeEntry) => {
-    if (!m.built || !m.route) return;
-    let target: string;
-    if (m.route.includes(":")) {
-      const index = m.route.split("/:")[0];
-      if (BARE_ROUTES.has(index)) {
-        target = index;
-      } else if (m.workflow !== "shared") {
-        target = WORKFLOWS[m.workflow].defaultRoute;
-      } else {
+    return true;
+  };
+  const finishWindowEntry = (openedId: string, requestedId: string, label: string) => {
+    if (openedId === requestedId) onClose();
+    else setNotice(`Window limit reached. Close a window before opening ${label}.`);
+  };
+  const activate = (item: LauncherItem) => {
+    if (!open) return;
+    setNotice("");
+    switch (item.kind) {
+      case "home":
+        navigate("/home");
+        onClose();
+        return;
+      case "product": {
+        const id = `win:subaction:${item.workflow}`;
+        if (!canEnterWindow(id, item.label)) return;
+        const openedId = openWindow("subaction", { workflow: item.workflow, __windowId: id }, { id, title: item.label });
+        finishWindowEntry(openedId, id, item.label);
         return;
       }
-    } else {
-      target = m.route;
-    }
-    navigate(target);
-    onClose();
-  };
-
-  // SPR-09 M5 — the legacy additive "open in window" spawn, retained for the
-  // window-eligible run/settings rows (Stats / Library) as a power affordance.
-  // A window-eligible, built mode (contract-verified page) opens as a
-  // transparent workspace window over the scene instead of navigating away.
-  const openModeInWindow = (m: ModeEntry) => {
-    const kind = windowKindForRoute(m.route);
-    if (!m.built || !kind) return;
-    openWindow(kind);
-    onClose();
-  };
-
-  // SPR-04 M1/M3 — the DEFAULT product activation. Clicking a product
-  // (Research / Read / Write / Speak) opens a `subaction` window over the scene
-  // listing that workflow's sub-actions, rather than navigating full-page. This
-  // is the windows-default keystone: the operator's first interaction with a
-  // product is a floating window, not a page swap. A stable per-workflow id
-  // means a second click on the same product FOCUSES the one window instead of
-  // duplicating it. The window id is threaded into the payload so a sub-action
-  // row click can close THIS window after it navigates to the chosen surface.
-  const openProductWindow = (workflow: Workflow) => {
-    const id = `win:subaction:${workflow}`;
-    openWindow(
-      "subaction",
-      { workflow, __windowId: id },
-      { id, title: WORKFLOWS[workflow as Exclude<Workflow, "shared">]?.label ?? "Sub-actions" },
-    );
-    onClose();
-  };
-
-  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, Math.max(0, flatItems.length - 1)));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      const m = flatItems[activeIndex];
-      if (m) openMode(m);
-    }
-  };
-
-  // Active visual treatment matches the sibling CommandPalette (activeIdx
-  // + highlight, not DOM roving focus). This gives power users the two-action
-  // bar (More then arrow+enter, or type filter+enter) without tabbing.
-  const isActive = (id: string) => flatItems[activeIndex]?.id === id;
-
-  return (
-    <LemonModal
-      open={open}
-      onClose={onClose}
-      title="More"
-      size="md"
-      footer={
-        <div className="flex items-center justify-between text-xs font-mono text-shadow-1 dark:text-moonlight">
-          <span>Esc to close · ⌘K for deep search</span>
-          <span>{MODE_TAXONOMY.length} surfaces</span>
-        </div>
+      case "mode":
+        if (!item.target) return;
+        navigate(item.target);
+        onClose();
+        return;
+      default: {
+        const unreachable: never = item;
+        return unreachable;
       }
-    >
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-shadow-1 dark:text-moonlight -mt-1">
-          Deep modes for each workflow and the operator, trust, and settings
-          surfaces. Greyed entries are not built yet and are shown honestly.
+    }
+  };
+  const openModeInWindow = (mode: ModeEntry) => {
+    const kind = windowKindForRoute(mode.route);
+    if (!open || !mode.built || !kind || !canEnterWindow(`win:${kind}`, mode.label)) return;
+    finishWindowEntry(openWindow(kind), `win:${kind}`, mode.label);
+  };
+  const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey ||
+        event.altKey || event.shiftKey || event.getModifierState("AltGraph")) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setActiveId((current) => {
+        const index = selectable.findIndex((item) => item.id === (current ?? activeItem?.id));
+        return selectable[Math.max(0, Math.min(selectable.length - 1, index + delta))]?.id ?? null;
+      });
+    } else if (event.key === "Enter" && activeItem) {
+      event.preventDefault();
+      activate(activeItem);
+    }
+  };
+  const firstRunId = items.find((item) => item.kind === "mode" && item.mode.workflow === "shared")?.id;
+  return (
+    <LemonModal open={open} onClose={onClose} title="More" size="md" footer={
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-mono text-shadow-1 dark:text-moonlight">
+        <span>Arrows choose · Enter opens · Esc closes</span><span>Tab reaches buttons</span>
+      </div>
+    }>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-shadow-1 dark:text-moonlight">Open a product window or go directly to a surface. Unavailable entries stay visible.</p>
+        <input ref={inputRef} type="text" autoFocus aria-label="Filter products and surfaces" aria-describedby={descriptionId}
+          value={query} onChange={(event) => { setQuery(event.target.value); setActiveId(null); setNotice(""); }}
+          onKeyDown={onSearchKeyDown} placeholder="Filter…"
+          className="w-full px-2 py-1.5 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded-none text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight" />
+        <p id={descriptionId} aria-live="polite" className="sr-only">
+          {activeItem ? `Selected: ${activeItem.label}. Enter opens this entry.` : "No matching entry can be opened. Home remains available above the inventory."}
         </p>
-        <input
-          ref={inputRef}
-          type="text"
-          autoFocus
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setActiveIndex(0);
-          }}
-          onKeyDown={onSearchKeyDown}
-          placeholder="Filter…"
-          className="w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight"
-        />
-
-        <div className="overflow-y-auto max-h-[55vh] space-y-6 pt-2">
-          {/* SPR-12 M1 — the unified branded home, featured at the top of
-              the launcher so it is one click away from anywhere (the rail
-              logo is the other path). Not a MODE_TAXONOMY entry (Home is
-              shell chrome, not a workflow mode — it has no modes/Home/
-              index.tsx, so the completeness glob does not treat it as a
-              mode). Always shown, never filtered, so the front door is
-              never buried. */}
-          <div>
-            <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
-              Home
-            </div>
-            <button
-              type="button"
-              data-testid="launcher-home"
-              onClick={() => {
-                navigate("/home");
-                onClose();
-              }}
-              className="w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
-            >
-              <span className="flex-1 min-w-0 truncate text-sm">
-                Antiek home — what you can do, and where to start
-              </span>
-            </button>
-          </div>
-
-          {wfGroups.length === 0 && runModes.length === 0 ? (
-            <p className="text-sm italic text-shadow-1 dark:text-moonlight">
-              No surfaces match “{query}”.
-            </p>
-          ) : (
-            <>
-              {wfGroups.length > 0 && (
-                <div>
-                  <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
-                    Open a product — or go deeper
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
-                    {wfGroups.map((g) => (
-                      <section key={g.workflow} aria-label={g.label}>
-                        {/* SPR-04 M1/M3 — the PRODUCT header is the default
-                            product activation: clicking it opens a sub-action
-                            window over the scene (a window, not a navigation).
-                            The deep-mode rows below it remain direct navigates
-                            into specific surfaces. */}
-                        <h3 className="mb-2">
-                          <button
-                            type="button"
-                            data-product-window={g.workflow}
-                            onClick={() => openProductWindow(g.workflow as Workflow)}
-                            title={`Open ${g.label} — its sub-actions, in a window over the scene`}
-                            // The product-activation (sub-action) window and the
-                            // eligible-mode ⊞ "open in window" affordance share an
-                            // accessible-name STEM ("Open … in a window"). Today the
-                            // label sets are disjoint (workflow labels
-                            // Research/Read/Write/Speak vs the only eligible-mode
-                            // labels Substrate stats / Library — verified against
-                            // workflowTaxonomy.ts), but the namespaces could converge
-                            // if a future workflow label ever equalled an
-                            // eligible-mode label, making every getByRole({name}) in
-                            // the gates ambiguous. The interposed "workflow" keyword
-                            // keeps the two name-spaces provably disjoint by
-                            // construction (a product header is "Open <Workflow>
-                            // workflow in a window"; an eligible mode is "Open <Mode>
-                            // in a window" with no "workflow" token).
-                            aria-label={`Open ${g.label} workflow in a window`}
-                            className="w-full text-left font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5"
-                          >
-                            <span className="flex-1 min-w-0 truncate">{g.label}</span>
-                            <span aria-hidden="true" className="shrink-0 normal-case tracking-normal opacity-70">
-                              ⊞
-                            </span>
-                          </button>
-                        </h3>
-                        <ul className="space-y-0.5">
-                          {g.modes.map((m) => (
-                            <li key={m.id} className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                disabled={!m.built}
-                                onClick={() => openMode(m)}
-                                title={m.blurb}
-                                data-mode-id={m.id}
-                                className={
-                                  "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
-                                  (m.built
-                                    ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
-                                    : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                                  (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
-                                }
-                              >
-                                <span className="flex-1 min-w-0 truncate text-sm">
-                                  {m.label}
-                                </span>
-                                {!m.built && (
-                                  <LemonTag colour="muted" className="shrink-0 text-xxs">
-                                    not yet
-                                  </LemonTag>
-                                )}
-                              </button>
-                              {m.built && windowKindForRoute(m.route) && (
-                                <button
-                                  type="button"
-                                  data-mode-window={m.id}
-                                  onClick={() => openModeInWindow(m)}
-                                  title={`Open ${m.label} in a floating window over the scene`}
-                                  aria-label={`Open ${m.label} in a window`}
-                                  className="shrink-0 px-1.5 py-1 rounded text-xs text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
-                                >
-                                  ⊞
-                                </button>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
-                    ))}
-                  </div>
+        {notice && <p role="status" className="text-xs text-ink dark:text-bright">{notice}</p>}
+        <ul aria-label="Products and surfaces" className="overflow-y-auto max-h-[55vh] space-y-0.5">
+          {items.map((item) => {
+            const active = item.id === activeItem?.id;
+            const available = operable(item);
+            const mode = item.kind === "mode" ? item.mode : null;
+            const unavailableReason = mode && !mode.built ? "not yet" : "open from context";
+            return (
+              <li key={item.id}>
+                {item.id === firstRunId && <h3 className="mt-3 px-2 py-1 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">Run & settings</h3>}
+                <div className="flex items-center gap-1">
+                  <button ref={active ? activeRowRef : undefined} type="button" disabled={!available}
+                    data-testid={item.kind === "home" ? "launcher-home" : undefined}
+                    data-product-window={item.kind === "product" ? item.workflow : undefined}
+                    data-mode-id={mode?.id} data-launcher-active={active ? "true" : undefined} aria-current={active ? "true" : undefined}
+                    aria-label={item.kind === "product" ? `Open ${item.label} workflow in a window` : undefined}
+                    title={item.kind === "product" ? WORKFLOWS[item.workflow].tagline : mode?.blurb}
+                    onFocus={() => setActiveId(item.id)} onClick={() => activate(item)}
+                    className={"min-w-0 flex-1 text-left px-2 py-1.5 rounded-none border-l-2 flex items-center gap-2 " +
+                      (item.kind === "product" ? "min-h-[58px] mt-2 font-mono text-xs uppercase tracking-wider " : "min-h-[50px] text-sm ") +
+                      (active ? "border-sun bg-sun/10 dark:bg-sun/5 " : "border-transparent ") +
+                      (available ? "text-ink dark:text-bright hover:bg-sun/20 dark:hover:bg-sun/10" : "text-ink-mute dark:text-moonlight opacity-70")}>
+                    <span className={item.kind === "mode" && mode?.workflow !== "shared" ? "flex-1 min-w-0 pl-3" : "flex-1 min-w-0"}>{item.label}</span>
+                    {item.kind === "product" && <span aria-hidden="true">⊞</span>}
+                    {!available && <LemonTag colour="muted" className="shrink-0 text-xxs">{unavailableReason}</LemonTag>}
+                  </button>
+                  {mode?.built && windowKindForRoute(mode.route) && (
+                    <button type="button" data-mode-window={mode.id} onClick={() => openModeInWindow(mode)}
+                      title={`Open ${mode.label} in a floating window`} aria-label={`Open ${mode.label} in a window`}
+                      className="shrink-0 px-1.5 py-1 rounded-none text-xs text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10">⊞</button>
+                  )}
                 </div>
-              )}
-
-              {runModes.length > 0 && (
-                <div>
-                  <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
-                    Run & settings
-                  </div>
-                  <ul className="space-y-0.5 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-                    {runModes.map((m) => (
-                      <li key={m.id} className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={!m.built}
-                          onClick={() => openMode(m)}
-                          title={m.blurb}
-                          data-mode-id={m.id}
-                          className={
-                            "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
-                            (m.built
-                              ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
-                              : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                            (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
-                          }
-                        >
-                          <span className="flex-1 min-w-0 truncate text-sm">
-                            {m.label}
-                          </span>
-                          {!m.built && (
-                            <LemonTag colour="muted" className="shrink-0 text-xxs">
-                              not yet
-                            </LemonTag>
-                          )}
-                        </button>
-                        {m.built && windowKindForRoute(m.route) && (
-                          <button
-                            type="button"
-                            data-mode-window={m.id}
-                            onClick={() => openModeInWindow(m)}
-                            title={`Open ${m.label} in a floating window over the scene`}
-                            aria-label={`Open ${m.label} in a window`}
-                            className="shrink-0 px-1.5 py-1 rounded text-xs text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
-                          >
-                            ⊞
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+              </li>
+            );
+          })}
+        </ul>
+        {items.length === 1 && <p className="text-sm text-shadow-1 dark:text-moonlight">No surfaces match “{query}”.</p>}
       </div>
     </LemonModal>
   );
 }
-
 export default ProductsLauncher;

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 import { useViewportTier } from "../workspace/useViewportTier";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
@@ -25,6 +25,7 @@ import {
   emitProductActivate,
   formatBinding,
   BUILTIN_BINDINGS,
+  PRODUCT_ACTIVATE_EVENT,
 } from "../components/hotkeys/bindings";
 import type { ActionId } from "../components/hotkeys/keymap";
 
@@ -167,7 +168,7 @@ function RailButton({
   icon: ReactNode;
   label: string;
   active?: boolean;
-  onClick: () => void;
+  onClick: MouseEventHandler<HTMLButtonElement>;
   title: string;
   variant?: "workflow" | "utility" | "more";
   orientation?: Orientation;
@@ -275,6 +276,37 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
+  const launcherOpenRef = useRef(false);
+  const launcherOpenerRef = useRef<HTMLElement | null>(null);
+  const openLauncher = useCallback((opener: HTMLElement | null) => {
+    if (launcherOpenRef.current) return;
+    launcherOpenRef.current = true;
+    launcherOpenerRef.current = opener?.isConnected ? opener : null;
+    setLauncherOpen(true);
+  }, []);
+  const closeLauncher = useCallback(() => {
+    launcherOpenRef.current = false;
+    setLauncherOpen(false);
+    const opener = launcherOpenerRef.current;
+    launcherOpenerRef.current = null;
+    if (opener?.isConnected) opener.focus();
+  }, []);
+  useEffect(() => {
+    const onProductActivate = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.defaultPrevented) return;
+      const detail: unknown = event.detail;
+      if (!detail || typeof detail !== "object" ||
+          !("productId" in detail) || detail.productId !== "more" ||
+          !("source" in detail) || detail.source !== "hotkey" ||
+          ("route" in detail && detail.route !== undefined) ||
+          ("actionId" in detail && detail.actionId !== undefined) ||
+          ("entityId" in detail && detail.entityId !== undefined)) return;
+      const active = document.activeElement;
+      openLauncher(active instanceof HTMLElement ? active : null);
+    };
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
+    return () => window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
+  }, [openLauncher]);
   // The left rail is the phone overlay (absolute, behind a toggle) only at
   // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
   // panes (C2; R3-M4). The bottom dock never collapses, so this only
@@ -334,6 +366,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
 
   if (isMobile && collapsed) {
     return (
+      <>
       <button
         type="button"
         title="Open navigation"
@@ -348,6 +381,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
       </button>
+      <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
+      </>
     );
   }
 
@@ -460,8 +495,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       label="More"
       title="More - all products, Operator, Trust, Settings"
       active={launcherOpen}
-      onClick={() => {
-        setLauncherOpen(true);
+      onClick={(event) => {
+        openLauncher(event.currentTarget);
         // SPR-08/SPR-10 — More OPENS the launcher (no nav), so it emits a
         // routeless activation, identical to the `g m` hotkey path.
         emitProductActivate({ productId: "more", source: "click" });
@@ -512,7 +547,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           <span data-mascot-station aria-hidden="true" className="w-16 shrink-0" />
         </aside>
 
-        <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+        <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
       </>
     );
   }
@@ -571,7 +606,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <span data-mascot-station aria-hidden="true" className="mt-auto mx-auto h-16 w-16 shrink-0" />
       </aside>
 
-      <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+      <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
     </>
   );
 }

@@ -262,3 +262,48 @@ describe("windowsStore — cascade + reset", () => {
     expect(w().zCounter).toBe(WINDOW_Z_BASE);
   });
 });
+
+
+describe("windowsStore stable cycle order", () => {
+  function openIds(ids: string[]) { for (const id of ids) w().open("stats", { id }, { id }); }
+  it("cycles backward across every member independently of z-order", () => {
+    openIds(["10", "2", "é:opaque"]);
+    for (const id of ["2", "10", "é:opaque", "2"]) {
+      expect(w().cycleFocus(-1)).toBe(true); expect(w().focusedId).toBe(id);
+      expect(w().cycleOrder).toEqual(["10", "2", "é:opaque"]);
+      expect(w().order.at(-1)).toBe(id);
+    }
+  });
+  it("preserves stable order on focus/reopen/geometry/mode and cycles forward", () => {
+    openIds(["a", "b", "c", "d"]); w().focus("b"); w().open("stats", {}, { id: "a" });
+    w().setRect("a", { x: 123 }); w().expand("a"); w().restore("a");
+    expect(w().cycleOrder).toEqual(["a", "b", "c", "d"]);
+    for (const id of ["b", "c", "d", "a"]) { expect(w().cycleFocus(1)).toBe(true); expect(w().focusedId).toBe(id); }
+    expect(w().windows.a.rect.x).toBe(123);
+  });
+  it("removes closed members, appends reopens, and clears on reset", () => {
+    openIds(["a", "b", "c"]); w().close("b"); expect(w().cycleOrder).toEqual(["a", "c"]);
+    w().close("c"); expect(w().focusedId).toBe("a"); expect(w().cycleOrder).toEqual(["a"]);
+    w().open("stats", {}, { id: "b" }); expect(w().cycleOrder).toEqual(["a", "b"]);
+    w().close("absent"); expect(w().cycleOrder).toEqual(["a", "b"]);
+    w().reset(); expect(w().cycleOrder).toEqual([]); expect(w().cycleFocus(1)).toBe(false);
+  });
+  it("keeps cap refusal and z-order eviction honest without phantom cycle members", () => {
+    const ids = Array.from({ length: MAX_WINDOWS }, (_, i) => `id:${i}`); openIds(ids);
+    w().focus(ids[0]); const evicted = w().order[0];
+    const result = w().open("stats", {}, { id: "not-created" });
+    expect(result).toBe(evicted); expect(w().cycleOrder).toEqual(ids);
+    const replacement = w().order[0];
+    w().open("stats", {}, { id: "replacement", replaceOldestAtLimit: true });
+    expect(w().cycleOrder).toEqual([...ids.filter((id) => id !== replacement), "replacement"]);
+    expect(new Set(w().cycleOrder).size).toBe(MAX_WINDOWS);
+    expect([...w().cycleOrder].sort()).toEqual(Object.keys(w().windows).sort());
+  });
+  it("refuses empty/single/absent cursors without changing focus or z", () => {
+    expect(w().cycleFocus(-1)).toBe(false); openIds(["a"]);
+    const before = w().zCounter; expect(w().cycleFocus(1)).toBe(false); expect(w().zCounter).toBe(before);
+    openIds(["b"]); useWindows.setState({ focusedId: null }); expect(w().cycleFocus(1)).toBe(false);
+    useWindows.setState({ focusedId: "absent" }); expect(w().cycleFocus(-1)).toBe(false);
+    expect(w().focusedId).toBe("absent");
+  });
+});

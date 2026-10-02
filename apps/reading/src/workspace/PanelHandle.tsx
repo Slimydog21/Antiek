@@ -9,6 +9,8 @@ import { useWorkspace } from "./WorkspaceStore";
 import { clampRectToViewport } from "./panelLayoutLogic";
 import { openPopoutFor } from "./popout";
 import type { PanelMode } from "./panel.types";
+import { panelFocusId } from "./panelFocusId";
+import { escOverlayOpen, topModal } from "./escapeOverlay";
 
 /**
  * PanelHandle — the title strip rendered at the top of every panel.
@@ -30,6 +32,45 @@ type Props = {
   draggable: boolean;
   resizable?: boolean;
 };
+
+const titleAvailable = (title: HTMLElement) => title.isConnected && document.activeElement === title &&
+  !title.closest('[hidden], [aria-hidden="true"], [inert]') && !topModal() &&
+  !escOverlayOpen(title.closest('[role="region"]') ?? title);
+
+function handleTitleKeyDown(event: React.KeyboardEvent<HTMLDivElement>, { id, draggable, resizable }: Required<Props>) {
+  if (event.target !== event.currentTarget || !titleAvailable(event.currentTarget) ||
+      event.defaultPrevented || event.nativeEvent.isComposing || event.getModifierState("AltGraph") ||
+      event.ctrlKey || event.metaKey || event.altKey) return;
+  const current = useWorkspace.getState();
+  if (!Object.hasOwn(current.panels, id)) return;
+  const live = current.panels[id];
+  if (live.mode !== "floating" || (event.shiftKey ? !resizable : !draggable)) return;
+  let dx = 0, dy = 0;
+  switch (event.key) {
+    case "ArrowLeft": dx = -24; break;
+    case "ArrowRight": dx = 24; break;
+    case "ArrowUp": dy = -24; break;
+    case "ArrowDown": dy = 24; break;
+    default: return;
+  }
+  event.preventDefault();
+  if (event.shiftKey) {
+    current.setRect(id, { width: Math.max(240, live.rect.width + dx), height: Math.max(160, live.rect.height + dy) });
+  } else {
+    const rect = clampRectToViewport({ ...live.rect, x: live.rect.x + dx, y: live.rect.y + dy },
+      { width: window.innerWidth, height: window.innerHeight });
+    current.setRect(id, { x: rect.x, y: rect.y });
+  }
+}
+
+function panelTitleHints(mode: PanelMode, draggable: boolean, resizable: boolean) {
+  const move = mode === "floating" && draggable;
+  const resize = mode === "floating" && resizable;
+  const help = [move ? "Arrow keys move 24 pixels." : "", resize ? "Shift and arrow keys resize 24 pixels." : ""].filter(Boolean).join(" ");
+  const shortcuts = [move ? "ArrowLeft ArrowRight ArrowUp ArrowDown" : "", resize ? "Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown" : ""].filter(Boolean).join(" ");
+
+  return { help, shortcuts };
+}
 
 export function PanelHandle({ id, draggable, resizable = false }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
@@ -117,7 +158,19 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
     resizeStart.current = null;
   }, []);
 
+  const onTitleFocus = (event: React.FocusEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || !titleAvailable(event.currentTarget)) return;
+    const current = actions();
+    if (Object.hasOwn(current.panels, id) && current.focusedPanelId !== id) current.focus(id);
+  };
+
+  const onTitleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) =>
+    handleTitleKeyDown(event, { id, draggable, resizable });
+
   if (!panel) return null;
+
+  const titleId = panelFocusId(id);
+  const { help, shortcuts } = panelTitleHints(panel.mode, draggable, resizable);
 
   const setMode = (mode: PanelMode) => {
     if (mode === "popout") {
@@ -130,9 +183,17 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
   return (
     <>
       <div
+        id={titleId}
         data-panel-title={id}
+        role="group"
+        aria-label={`${panel.title} — panel controls`}
+        aria-describedby={help ? `${titleId}-help` : undefined}
+        aria-keyshortcuts={shortcuts || undefined}
+        tabIndex={0}
+        onFocus={onTitleFocus}
+        onKeyDown={onTitleKeyDown}
         className={
-          "shrink-0 flex items-center gap-2 px-2.5 py-1.5 " +
+          "shrink-0 flex items-center gap-2 px-2.5 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun " +
           "border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 " +
           (draggable ? `cursor-grab active:cursor-grabbing select-none shadow-z1 dark:shadow-z1-night ${press} ` : "") +
           (focused ? "" : "opacity-90")
@@ -142,6 +203,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        {help && <span id={`${titleId}-help`} className="sr-only">{help}</span>}
         {/* Drag grip — only visible/meaningful in floating mode */}
         {draggable && (
           <span

@@ -2,8 +2,8 @@
  * WorkspaceWindow.test.tsx — SPR-09 M1 + M7 + M8 acceptance.
  *
  * Lifecycle: a window drags via the store rect, expands→restores, closes;
- * clicking it raises it (focus z-order); the glass body reveals the scene;
- * an unfocused window drops backdrop blur (perf); keyboard moves/closes it;
+ * clicking it raises it (focus z-order); square opaque frames use no blur;
+ * keyboard moves/closes it;
  * reduced-motion disables the spring; focus enters on mount + returns on close.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -48,15 +48,16 @@ function renderWindow(id: string) {
 }
 
 describe("WorkspaceWindow — frame + body", () => {
-  it("renders the title bar, hosted child, and a glass body that reveals the scene", () => {
+  it("renders the title bar and hosted child in a square opaque frame", () => {
     const id = w().open("library", {}, { title: "Library" });
     const { container } = renderWindow(id);
     expect(screen.getByText("Library")).toBeTruthy();
     expect(screen.getByTestId("hosted-page")).toBeTruthy();
     const root = container.querySelector(`[data-workspace-window='${id}']`) as HTMLElement;
-    // Focused floating window uses live glass (transparent body → scene shows).
-    expect(root.className).toContain("bg-glass");
-    expect(root.className).toContain("backdrop-blur-glass");
+    expect(root.className).toContain("bg-glass-solid");
+    expect(root.className).toContain("rounded-none");
+    expect(root.className).toContain("border-2");
+    expect(root.className).not.toContain("backdrop-blur-glass");
   });
 
   it("returns null for an unknown window id", () => {
@@ -128,7 +129,7 @@ describe("WorkspaceWindow — focus / z-order (M7 perf)", () => {
     expect(w().windows[a].z).toBeGreaterThan(w().windows[b].z);
   });
 
-  it("an unfocused window drops the backdrop blur (perf degradation)", () => {
+  it("focused and inactive frames retain distinct edges without backdrop blur", () => {
     const a = w().open("stats", {});
     const b = w().open("library", {});
     render(
@@ -141,11 +142,12 @@ describe("WorkspaceWindow — focus / z-order (M7 perf)", () => {
         </WorkspaceWindow>
       </>,
     );
-    // b is focused; a is unfocused → a must NOT pay for live backdrop blur.
     const rootA = document.querySelector(`[data-workspace-window='${a}']`) as HTMLElement;
     const rootB = document.querySelector(`[data-workspace-window='${b}']`) as HTMLElement;
     expect(rootA.className).not.toContain("backdrop-blur-glass");
-    expect(rootB.className).toContain("backdrop-blur-glass");
+    expect(rootB.className).not.toContain("backdrop-blur-glass");
+    expect(rootA.className).toContain("border-glass");
+    expect(rootB.className).toContain("border-sun");
     expect(rootA.getAttribute("data-window-focused")).toBe("false");
   });
 });

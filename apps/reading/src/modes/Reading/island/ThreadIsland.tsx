@@ -27,7 +27,7 @@
  * metadata-only anchor, so the card can only ever show passage POSITION
  * there — never a withheld sentence.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -41,6 +41,8 @@ import FlagForDiligence from "../../../shared/FlagForDiligence";
 import { hideIsland } from "./hiddenIslands";
 import { useIslandThread } from "./useIslandThread";
 import type { IslandStatus } from "./islandModel";
+import { ESC_OVERLAY_PROPS } from "../../../workspace/escapeOverlay";
+import { useIslandInteraction } from "./useIslandInteraction";
 
 export interface ThreadIslandProps {
   anchorId: string;
@@ -122,37 +124,37 @@ export default function ThreadIsland({
   // engagement, inside the card.
   const [reformatting, setReformatting] = useState(false);
   const thread = useIslandThread(investigationId);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const digOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const reformatOpenerRef = useRef<HTMLButtonElement | null>(null);
 
-  const collapse = useCallback(() => {
+  const onCollapse = useCallback(() => {
     setExpanded(false);
     setDig(null);
     setReformatting(false);
   }, []);
 
-  // Esc (element-scoped — the card's own key, never a global binding) and
-  // click-away collapse the open card. Dismiss is the same collapse.
-  useEffect(() => {
-    if (!expanded) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") collapse();
+  const { cardRef, glyphRef, dismissRef, collapse } = useIslandInteraction({ expanded, onCollapse });
+  const closeDig = () => {
+    setDig(null);
+    const opener = digOpenerRef.current;
+    if (opener?.isConnected && !opener.closest('[hidden], [aria-hidden="true"], [inert]')) {
+      opener.focus({ preventScroll: true });
     }
-    function onDocMouseDown(e: MouseEvent) {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) collapse();
+  };
+  const closeReformat = () => {
+    setReformatting(false);
+    const opener = reformatOpenerRef.current;
+    if (opener?.isConnected && !opener.closest('[hidden], [aria-hidden="true"], [inert]')) {
+      opener.focus({ preventScroll: true });
     }
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDocMouseDown);
-    };
-  }, [expanded, collapse]);
+  };
 
   const glyph = STATUS_GLYPHS[thread.status];
 
   if (!expanded) {
     return (
       <button
+        ref={glyphRef}
         type="button"
         data-island-id={anchorId}
         data-island-state="collapsed"
@@ -186,6 +188,7 @@ export default function ThreadIsland({
   return (
     <div
       ref={cardRef}
+      {...ESC_OVERLAY_PROPS}
       data-island-id={anchorId}
       data-island-state="expanded"
       data-island-status={thread.status}
@@ -200,7 +203,8 @@ export default function ThreadIsland({
         </p>
         <button
           type="button"
-          onClick={collapse}
+          ref={dismissRef}
+          onClick={() => collapse(true)}
           aria-label="Dismiss the island"
           className="shrink-0 text-shadow-1 hover:text-ink dark:hover:text-bright px-1"
         >
@@ -287,15 +291,16 @@ export default function ThreadIsland({
                       <button
                         type="button"
                         data-island-dig-question={q.node_id}
-                        onClick={() =>
+                        onClick={(event) => {
+                          digOpenerRef.current = event.currentTarget;
                           setDig({
                             initialQuestion: q.text,
                             // The no-orphan seam: an escalated question's
                             // reserved child id rides the dig (launch INTO
                             // it, never a duplicate child).
                             reservedChildId: q.reserved_child_investigation_id ?? null,
-                          })
-                        }
+                          });
+                        }}
                         className="text-sun-deep underline-offset-2 hover:underline"
                         title="Dig deeper on this question — a chase into the thread's family"
                       >
@@ -352,7 +357,7 @@ export default function ThreadIsland({
           reservedChildId={dig.reservedChildId}
           sessionState={thread.sessionState}
           onLaunched={() => thread.refetchFamily()}
-          onClose={() => setDig(null)}
+          onClose={closeDig}
         />
       ) : null}
 
@@ -363,7 +368,7 @@ export default function ThreadIsland({
           documentId={documentId}
           anchorId={anchorId}
           passageQuote={servable ? passageQuote : null}
-          onClose={() => setReformatting(false)}
+          onClose={closeReformat}
         />
       ) : null}
 
@@ -380,11 +385,12 @@ export default function ThreadIsland({
           type="button"
           data-island-dig-deeper
           disabled={thread.status === "gone"}
-          onClick={() =>
+          onClick={(event) => {
+            digOpenerRef.current = event.currentTarget;
             setDig((open) =>
               open ? null : { initialQuestion: quoteForContext, reservedChildId: null },
-            )
-          }
+            );
+          }}
           title={
             thread.status === "gone"
               ? "The thread's record is missing — there is nothing to chase from"
@@ -398,7 +404,10 @@ export default function ThreadIsland({
           type="button"
           data-island-reformat
           disabled={thread.status === "gone"}
-          onClick={() => setReformatting((open) => !open)}
+          onClick={(event) => {
+            reformatOpenerRef.current = event.currentTarget;
+            setReformatting((open) => !open);
+          }}
           title="Reformat this book by prompt — a generated derived document with bite-level provenance"
           className="text-sun-deep underline-offset-2 hover:underline disabled:text-shadow-1 disabled:dark:text-moonlight disabled:italic disabled:cursor-not-allowed"
         >
