@@ -811,7 +811,17 @@ def register_auth_routes(
             raise HTTPException(status_code=404, detail="Not Found")
         # Constant-time compare; an empty/incorrect token is also a 404 so
         # a probe can't distinguish "feature off" from "wrong token".
-        if not token or not secrets.compare_digest(token.strip(), configured):
+        #
+        # COMPARED AS BYTES. `secrets.compare_digest` accepts str only when both are ASCII, and
+        # raises TypeError otherwise -- so a non-ASCII token used to reach the exception handler
+        # instead of this 404. Measured: the same non-ASCII input returned 500 when the feature
+        # was enabled and 404 when it was disabled, which is the enabled-state disclosure this
+        # comment says the route does not make. Comparing encoded bytes keeps the constant-time
+        # property, accepts any input, and returns the same 404 either way.
+        if not token or not secrets.compare_digest(
+            token.strip().encode("utf-8", "surrogatepass"),
+            configured.encode("utf-8", "surrogatepass"),
+        ):
             raise HTTPException(status_code=404, detail="Not Found")
         # Mint under the operator identity so the existing cookie path in
         # the middleware (which checks cookie-email == ANTIEK_OPERATOR_EMAIL)
