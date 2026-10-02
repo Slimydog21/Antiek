@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -115,6 +116,134 @@ def test_chunked_persist_yields_flock_and_rw_handle_to_competing_process(
     finally:
         stream.close()
         db_lock.flush_warm_writers(db)
+
+
+def test_chunked_persist_steps_aside_for_a_live_waiter(tmp_path, monkeypatch):
+    """Prod 2026-10-01: ``--lock-yield-seconds 0.5`` is a BLIND sleep.
+
+    Measured on the live box while this sync ran: it held the DuckDB file ~15s
+    of every 15.5s (~97% duty), the API's own unflocked read connections failed
+    for the whole multi-hour bulk pass, and uvicorn answered 6,793 500s in 24h.
+    A fixed sleep cannot fix that — it hands the lock back to a timer, not to
+    the writer that is actually queued. The yield must be a floor and then wait
+    on ``write_handoff_requested``, the same token protocol the warm writer
+    honours.
+
+    Contract pinned here: while a live waiter token is published, the sync does
+    NOT start its next batch's acquisition. The queued writer is simulated by
+    this test and is served 100ms into the sync's wait, so the test cannot pass
+    by a timer racing ahead of the first acquisition.
+    """
+    db = str(tmp_path / "graph.duckdb")
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db)
+    # raising=False: on the pre-fix module these names do not exist, and the
+    # test must then fail on BEHAVIOUR (handoff never consulted), not on a
+    # missing attribute.
+    monkeypatch.setattr(sync, "HANDOFF_WAIT_MAX_S", 2.0, raising=False)
+    monkeypatch.setattr(sync, "HANDOFF_POLL_S", 0.01, raising=False)
+
+    acquires: list[float] = []
+    real_connect = connect_write
+
+    def counting_connect(path, **kwargs):
+        acquires.append(time.monotonic())
+        return real_connect(path, **kwargs)
+
+    monkeypatch.setattr(sync, "connect_write", counting_connect)
+
+    withdrew_at: list[float] = []
+    served: list[tuple[int, str]] = []
+
+    def withdraw() -> None:
+        db_lock._unregister_write_waiter(served.pop())
+        withdrew_at.append(time.monotonic())
+
+    asked: list[str] = []
+    real_requested = getattr(sync, "write_handoff_requested", None)
+
+    def probing_requested(path):
+        asked.append(path)
+        if len(asked) == 1:
+            # This process plays the queued API writer: it publishes a waiter
+            # token DURING the sync's yield (never before the sync's first
+            # acquisition, which would make connect_write's own handoff wait —
+            # not the yield under test — do the blocking) and is served 100ms
+            # later.
+            served.append(db_lock._register_write_waiter(db))
+            threading.Timer(0.1, withdraw).start()
+        return real_requested(path) if real_requested is not None else False
+
+    monkeypatch.setattr(sync, "write_handoff_requested", probing_requested, raising=False)
+
+    tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
+    try:
+        out = list(
+            sync._chunked_persist_tap(
+                iter([_rec(0), _rec(1)]),
+                db,
+                tally,
+                batch_size=1,
+                max_lock_s=60.0,
+                yield_s=0.0,
+            )
+        )
+    finally:
+        for token in served:
+            db_lock._unregister_write_waiter(token)
+
+    assert len(out) == 2
+    assert tally["inserted"] == 2
+    assert asked, "the sync never consulted the waiter protocol"
+    assert len(acquires) == 2
+    assert withdrew_at, "the queued writer was never served"
+    assert acquires[1] >= withdrew_at[0] - 0.02, (
+        "the sync started its next batch while a live writer was queued "
+        f"(next batch at {acquires[1]}, waiter withdrew at {withdrew_at[0]})"
+    )
+    assert acquires[1] - acquires[0] >= 0.08, (
+        "the sync did not actually wait out the queued writer "
+        f"(gap {acquires[1] - acquires[0]:.3f}s)"
+    )
+
+
+def test_chunked_persist_never_waits_when_no_writer_is_queued(tmp_path, monkeypatch):
+    """The handoff is conditional: with nobody queued, the sync must not add
+    latency to its own run — but it must still ask the waiter protocol."""
+    db = str(tmp_path / "graph.duckdb")
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db)
+    monkeypatch.setattr(sync, "HANDOFF_WAIT_MAX_S", 2.0, raising=False)
+    monkeypatch.setattr(sync, "HANDOFF_POLL_S", 0.01, raising=False)
+
+    asked: list[str] = []
+    real_requested = getattr(sync, "write_handoff_requested", None)
+
+    def counting_requested(path):
+        asked.append(path)
+        return real_requested(path) if real_requested is not None else False
+
+    monkeypatch.setattr(sync, "write_handoff_requested", counting_requested, raising=False)
+
+    tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
+    t0 = time.monotonic()
+    out = list(
+        sync._chunked_persist_tap(
+            iter([_rec(0), _rec(1)]),
+            db,
+            tally,
+            batch_size=1,
+            max_lock_s=60.0,
+            yield_s=0.0,
+        )
+    )
+    elapsed = time.monotonic() - t0
+
+    assert len(out) == 2
+    assert asked, "the sync never consulted the waiter protocol"
+    assert elapsed < 1.0, f"uncontended run added {elapsed:.2f}s of handoff wait"
 
 
 def test_chunked_persist_releases_when_max_lock_seconds_elapsed(
