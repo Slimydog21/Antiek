@@ -437,6 +437,10 @@ class ReadLockTimeout(RuntimeError):
     """Raised when another process holds DuckDB's file lock past the read budget."""
 
 
+class WriteConfigurationTimeout(RuntimeError):
+    """A same-process incompatible DuckDB connection outlived the write budget."""
+
+
 # Spec-facing alias. The spec names this WriteCoordinatorTimeout; the existing
 # WriteLockTimeout is the same condition. Keep both names so old call sites
 # keep working and new code can use the spec terminology.
@@ -824,6 +828,9 @@ def connect_write(
     Blocks up to timeout_s waiting for the lock; raises WriteLockTimeout if
     it can't be acquired. Polls rather than using a blocking flock so we can
     enforce a deadline.
+    If an incompatible same-process connection prevents the DuckDB write
+    open until that deadline, raises WriteConfigurationTimeout. The holder
+    must release its own handle; this function cannot safely close it.
 
     `purpose` is a short tag (e.g. "ingest", "extract", "supersession-review")
     stamped into the sidecar lock file so a stuck writer is identifiable.
@@ -1087,6 +1094,14 @@ def _connect_write_after_process_gate(
                 f"Could not open DuckDB for write on {db_path} within "
                 f"{timeout_s}s; this process already holds a conflicting "
                 f"DuckDB handle."
+            ) from open_error
+        if _SAME_FILE_DIFFERENT_CONFIG in str(open_error):
+            # The existing caller owns its handle and may still be using it. Preserve
+            # the wait above, then expose a typed retryable failure so the
+            # API's shared handler can return 503 instead of a raw 500.
+            raise WriteConfigurationTimeout(
+                f"Could not open DuckDB write connection on {db_path} within "
+                f"{timeout_s}s; an incompatible connection remains open in this process."
             ) from open_error
         raise open_error
     return LockedConnection(

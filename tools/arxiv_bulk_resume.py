@@ -16,13 +16,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from acquisition.arxiv.bulk import BulkOaiLine
-from acquisition.arxiv.oai_persist import persist_oai_record
+from acquisition.arxiv.oai_persist import persist_oai_records_batched
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph.schema import (
     ARXIV_BULK_PROGRESS_COLUMNS,
     load_arxiv_bulk_progress,
 )
-from substrate.schemas.documents import RightsTier
+from substrate.schemas.documents import ArxivOaiRecord, RightsTier
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +271,7 @@ def commit_bulk_slice(
     with connect_write(db_path, purpose="arxiv_bulk_slice", keepalive_s=0) as con:
         start = time.monotonic()
         with con.transaction():
+            live_records: list[ArxivOaiRecord] = []
             for line in lines:
                 record = line.record
                 if record is not None:
@@ -296,15 +297,19 @@ def commit_bulk_slice(
                         next_progress[key] = _as_int(next_progress[key]) + 1
                         if record.tier == RightsTier.T3_DEFAULT_UNKNOWN and not record.license_uri:
                             next_progress["bulk_ambiguous_events"] = _as_int(next_progress["bulk_ambiguous_events"]) + 1
-                        if persist_oai_record(con, record):
-                            tally["inserted"] += 1
-                        else:
-                            tally["updated"] += 1
+                        live_records.append(record)
                 next_progress["next_byte_offset"] = line.end_offset
                 next_progress["physical_line_count"] = _as_int(next_progress["physical_line_count"]) + 1
                 consumed += 1
                 if max_lock_s > 0 and time.monotonic() - start >= max_lock_s:
                     break
+            # One insert statement and one update statement for the whole
+            # slice: DuckDB re-plans every statement, and each plan re-binds
+            # the documents FK constraints (~11-12 ms per constraint on the
+            # production catalog). Batching pays that cost once per slice.
+            inserted, updated = persist_oai_records_batched(con, live_records)
+            tally["inserted"] += inserted
+            tally["updated"] += updated
             save_progress(con, next_progress)
     return consumed, next_progress, tally
 

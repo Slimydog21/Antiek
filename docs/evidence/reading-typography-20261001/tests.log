@@ -1,0 +1,13 @@
+
+> antiek-reading@0.1.0 test
+> vitest run src/lib/readingTypography.test.ts src/components/reader src/modes/Settings/AppearancePanel.test.tsx src/modes/Reading src/modes/ResearchWorkstation/MasterMdViewer.test.tsx
+
+
+ RUN  v4.1.11 /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading
+
+
+ Test Files  33 passed (33)
+      Tests  355 passed (355)
+   Start at  08:42:49
+   Duration  20.75s (transform 26.75s, setup 0ms, import 30.47s, tests 56.83s, environment 34.95s)
+
