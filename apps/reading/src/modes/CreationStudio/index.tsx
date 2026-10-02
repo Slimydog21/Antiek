@@ -17,6 +17,7 @@ import {
   type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
+import { describeFailure } from "../../shared/failure";
 import {
   DRAG_MIME,
   type PaletteDragPayload,
@@ -333,7 +334,7 @@ function SectionCard({
   );
 }
 
-function ProseEditor({
+export function ProseEditor({
   section,
   onSaved,
 }: {
@@ -345,6 +346,7 @@ function ProseEditor({
   const [promote, setPromote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lastStatus, setLastStatus] = useState<"saved" | "saved_and_promoted" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // If the section is refreshed from above with new prose, mirror it.
   useEffect(() => {
@@ -354,15 +356,24 @@ function ProseEditor({
   async function handleSave() {
     if (!text.trim()) return;
     setBusy(true);
+    setError(null);
     try {
       const r = await updateSectionProse(section.section_id, {
         prose_text: text,
         original_text: section.prose_text || undefined,
         promote_to_graph: promote,
+        // The confirmed baseline this edit was made against, so a save that
+        // would overwrite a newer draft from another surface is refused with
+        // 409 instead of winning silently. `section.prose_text` is what seeded
+        // this textarea, so it is exactly the text the operator edited.
+        based_on_prose_text: section.prose_text ?? "",
       });
       setLastStatus(r.status);
       setEditing(false);
       await onSaved();
+    } catch (e: unknown) {
+      // Without this a refused save was an unhandled rejection with no copy.
+      setError(describeFailure(e).detail);
     } finally {
       setBusy(false);
     }
@@ -445,6 +456,11 @@ function ProseEditor({
           </LemonButton>
         </div>
       </div>
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-danger dark:text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

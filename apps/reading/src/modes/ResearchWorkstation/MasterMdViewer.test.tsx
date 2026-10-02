@@ -24,6 +24,7 @@ import {
 
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
+import { resetReadingTypography, setReadingTypography } from "../../lib/readingTypography";
 
 const { getChunkMock, apiFetchMock } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
@@ -666,6 +667,41 @@ interface CapturedRO {
 }
 
 describe("MasterMdViewer — ResizeObserver recompute trigger (Living-Roadmap SPR-02 round 2)", () => {
+  it("remeasures after typography changes and font loading without a ResizeObserver notification", () => {
+    const fonts = new EventTarget();
+    const previousFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    const reads = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    vi.useFakeTimers();
+    try {
+      resetReadingTypography();
+      const view = render(<MasterMdViewer synthesis={synth()} />);
+      const initial = reads.mock.calls.length;
+      act(() => setReadingTypography({ font: "source-sans" }));
+      expect(reads.mock.calls.length).toBeGreaterThan(initial);
+      const changed = reads.mock.calls.length;
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(150);
+      });
+      expect(reads.mock.calls.length).toBeGreaterThan(changed);
+      view.unmount();
+      const unmounted = reads.mock.calls.length;
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(150);
+      });
+      expect(reads.mock.calls.length).toBe(unmounted);
+    } finally {
+      cleanup();
+      resetReadingTypography();
+      reads.mockRestore();
+      vi.useRealTimers();
+      if (previousFonts) Object.defineProperty(document, "fonts", previousFonts);
+      else Reflect.deleteProperty(document, "fonts");
+    }
+  });
+
   it("recomputes the layout-map when the captured ResizeObserver callback fires", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
 
