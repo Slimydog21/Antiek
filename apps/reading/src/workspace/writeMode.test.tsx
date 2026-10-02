@@ -131,6 +131,63 @@ function mountCockpit(path: string, preset: "docked" | "omarchy-inset" = "omarch
   );
 }
 
+// ─── deterministic readiness (the file's shared setup) ───────────────────
+//
+// The cockpit settles a mountain of async work before the state these
+// tests read exists: the strip and the right pane are LAZY chunks, the tab
+// tree loads through the adapter, the route sync activates the piece's
+// body tab only once the strip's chunk lands, and the outline pane fetches
+// its blocks only once ITS chunk lands. A DOM signal from one surface
+// proves only that surface — `findAllByText("alpha claim")` matches the
+// MAIN outline, which renders the same block text — so under CPU load the
+// old awaits let tests act on state that did not exist yet. (A key pressed
+// before the tree loads is a legal no-op: shortcuts.tabTreeKey guards on
+// `loaded`; a drop needs the pane's own block tabs.) Both gates below wait
+// on the exact state the assertions read, as PRECONDITIONS — no assertion
+// runs inside a waitFor.
+
+/** The writing tree exists with its route-adopted body tab active and
+ *  every section child seeded — the state the tree/keys assertions read
+ *  (the piece under test is d-1). */
+async function writingTreeReady() {
+  await waitFor(() => {
+    const tree = tabs().trees.writing;
+    const body = Object.values(tree?.nodes ?? {}).find(
+      (n) => n.parent_tab_id === null && n.ref === "/write/d-1",
+    );
+    expect(tree?.active_tab_id).toBe(body?.tab_id ?? null);
+    expect(body?.child_order ?? []).toHaveLength(DETAIL.sections.length);
+  });
+}
+
+/** The (lazy) outline pane is mounted, its fetches have resolved, and every
+ *  block tab — the drop tests' drop targets — is attached. */
+async function writeOutlineReady() {
+  await waitFor(() => {
+    for (const blocks of Object.values(BLOCKS)) {
+      for (const block of blocks) {
+        expect(
+          document.querySelector(`[data-block-tab="${block.outline_block_id}"]`),
+        ).toBeTruthy();
+      }
+    }
+  });
+}
+
+/** mountCockpit gated on both readiness signals, so every writing test
+ *  starts from the same settled cockpit. The docked preset mounts the same
+ *  lazy pane as its right-dock panel, so the outline gate holds in either
+ *  preset. */
+async function mountWritingCockpit(
+  path = "/write/d-1",
+  preset: "docked" | "omarchy-inset" = "omarchy-inset",
+) {
+  const view = mountCockpit(path, preset);
+  await writingTreeReady();
+  await writeOutlineReady();
+  return view;
+}
+
 beforeEach(() => {
   pinPlatform("mac");
   tierRef.current = "xl";
@@ -174,8 +231,7 @@ afterEach(() => {
 
 describe("the writing mothership tree (C5 left)", () => {
   it("seeds the full body as tab 1 with one child tab per section", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("Intro section");
+    await mountWritingCockpit();
     const tree = tabs().trees.writing!;
     const body = Object.values(tree.nodes).find((n) => n.parent_tab_id === null);
     expect(body?.kind).toBe("document");
@@ -187,8 +243,7 @@ describe("the writing mothership tree (C5 left)", () => {
   });
 
   it("a section tab scopes the piece view to that section; the body tab shows all", async () => {
-    const { container } = mountCockpit("/write/d-1");
-    await screen.findAllByText("Intro section");
+    const { container } = await mountWritingCockpit();
     const main = container.querySelector("main")!;
     expect(within(main as HTMLElement).getAllByText("Body section").length).toBeGreaterThan(0);
     const cid = childTabId("root:document:/write/d-1", "document", "section:s-2");
@@ -222,8 +277,7 @@ describe("the writing mothership tree (C5 left)", () => {
 
 describe("the mode-aware right pane (C4/C5 contract)", () => {
   it("writing mode gets the outline pane with one tab per outline block — NOT the companion", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     const right = document.querySelector<HTMLElement>('[data-pane="right"]')!;
     expect(right.querySelector("[data-write-outline]")).toBeTruthy();
     expect(right.querySelector("[data-companion-pane]")).toBeNull();
@@ -245,8 +299,7 @@ describe("the mode-aware right pane (C4/C5 contract)", () => {
   });
 
   it("the docked preset surfaces the outline as a right-dock panel on a piece route", async () => {
-    mountCockpit("/write/d-1", "docked");
-    await screen.findAllByText("Intro section");
+    await mountWritingCockpit("/write/d-1", "docked");
     expect(ws().panels[WRITE_OUTLINE_PANEL_ID]).toBeTruthy();
     expect(ws().dockRightIds).toContain(WRITE_OUTLINE_PANEL_ID);
   });
@@ -268,8 +321,7 @@ describe("drag a source document onto a block tab", () => {
   }
 
   it("assigns the source to the block and reflects it — with NO pretend-write to the server", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     dropOn("b-2", { document_id: "doc-source", document_title: "The Source Book" });
     // The assignment record landed (session-scoped bridge, write-through TODO).
     const record = sources().records["d-1"]?.["b-2"] ?? [];
@@ -294,8 +346,7 @@ describe("drag a source document onto a block tab", () => {
   });
 
   it("an empty assignment list says so honestly, with the session-state label", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     expect(document.querySelector("[data-no-sources]")!.textContent).toContain("None assigned yet");
     expect(document.querySelector("[data-no-sources]")!.textContent).toContain("session state");
   });
@@ -305,8 +356,7 @@ describe("drag a source document onto a block tab", () => {
 
 describe("the keys in writing mode", () => {
   it("with the right pane focused, prefix n/p and ctrl+alt+]/[ cycle the outline's block tabs", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     expect(outline().activeBlockId).toBe("b-1");
     const section = tabs().trees.writing!.active_tab_id;
     act(() => ws().setFocusedPane("right"));
@@ -328,8 +378,7 @@ describe("the keys in writing mode", () => {
   });
 
   it("with the left pane focused, the same keys walk the body and section tabs instead", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     // Main outline text does not prove route adoption and section seeding.
     // Both must finish before a section activation can take effect.
     await waitFor(() => {
@@ -355,8 +404,7 @@ describe("the keys in writing mode", () => {
     const row = KEYMAP.find((r) => r.id === "aisidecar");
     expect(row?.action).toBe("aisidecar.toggle");
     expect(row?.chord).toBe("mod+/");
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("Intro section");
+    await mountWritingCockpit();
     expect(ws().panels["shortcuts:aisidecar"]).toBeUndefined();
     key(document.body, "mod+/");
     expect(ws().panels["shortcuts:aisidecar"]).toBeTruthy();
@@ -366,8 +414,7 @@ describe("the keys in writing mode", () => {
   });
 
   it("the tree keys traverse body → section children (prefix o / u)", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("Intro section");
+    await mountWritingCockpit();
     key(document.body, "ctrl+b");
     key(document.body, "o");
     expect(tabs().trees.writing!.active_tab_id).toBe(
@@ -383,8 +430,7 @@ describe("the keys in writing mode", () => {
 
 describe("section tabs scope in place (defect 5)", () => {
   it("an active section tab is labelled by its heading and shows no 'opens as window' bridge", async () => {
-    const { container } = mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    const { container } = await mountWritingCockpit();
     const cid = childTabId("root:document:/write/d-1", "document", "section:s-2");
     act(() => {
       tabs().activateTab("writing", cid);
@@ -419,8 +465,7 @@ describe("a drop that is not a source document is refused honestly (defect 11)",
     ["an object with no document id", JSON.stringify({ document_title: "Orphan" })],
     ["a blank document id", JSON.stringify({ document_id: "  ", document_title: null })],
   ])("%s: nothing is assigned, nothing throws, and the pane says why", async (_label, raw) => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     expect(() => dropRaw("b-2", raw)).not.toThrow();
     expect(sources().records["d-1"]?.["b-2"] ?? []).toHaveLength(0);
     const refusal = await screen.findByRole("status", { name: /drop refused/i });
@@ -429,8 +474,7 @@ describe("a drop that is not a source document is refused honestly (defect 11)",
   });
 
   it("a good drop after a refusal clears it and assigns", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     dropRaw("b-2", "{not json");
     await screen.findByRole("status", { name: /drop refused/i });
     dropRaw("b-2", JSON.stringify({ document_id: "doc-ok", document_title: "Good Book" }));
@@ -441,8 +485,7 @@ describe("a drop that is not a source document is refused honestly (defect 11)",
 
 describe("the outline pane's copy names no internal file (defect 11)", () => {
   it("the empty-sources line reads as product copy", async () => {
-    mountCockpit("/write/d-1");
-    await screen.findAllByText("alpha claim");
+    await mountWritingCockpit();
     const text = document.querySelector("[data-no-sources]")!.textContent ?? "";
     expect(text).not.toMatch(/\.tsx?\b|TODO|blockSources/);
     expect(document.querySelector("[data-write-outline]")!.textContent).not.toMatch(/\.tsx?\b|TODO/);
