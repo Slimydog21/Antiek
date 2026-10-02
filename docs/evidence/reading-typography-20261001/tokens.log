@@ -1,0 +1,6 @@
+
+> antiek-reading@0.1.0 lint:tokens
+> tsx scripts/lint_tokens.ts && tsx scripts/lint_token_refs.ts
+
+token-lint OK — no new hardcoded hex (65 grandfathered; baseline has 80).
+token-refs OK — every design-token utility reference resolves (167 token families; 0 grandfathered), and all 120 var() names resolve to a declaration.

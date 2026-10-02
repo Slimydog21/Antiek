@@ -108,13 +108,13 @@ def test_document_and_cursor_roll_back_together_before_slice_commit(tmp_path, mo
     snapshot.write_text(json.dumps(_record("a", "2024-01-01")) + "\n")
     import tools.arxiv_bulk_resume as resume
 
-    real = resume.persist_oai_record
+    real = resume.persist_oai_records_batched
 
-    def die_inside_transaction(con, record):
-        real(con, record)
+    def die_inside_transaction(con, records):
+        real(con, records)
         raise RuntimeError("before commit")
 
-    monkeypatch.setattr(resume, "persist_oai_record", die_inside_transaction)
+    monkeypatch.setattr(resume, "persist_oai_records_batched", die_inside_transaction)
     with pytest.raises(RuntimeError, match="before commit"):
         _run(tmp_path, snapshot)
     row = _progress(tmp_path)
