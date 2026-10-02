@@ -8005,23 +8005,31 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    note_taker_recovery_start_lock = threading.Lock()
+
     def _recover_note_taker_replay() -> None:
         from substrate.graph import default_db_path
 
         from .note_taking import start_replay_recovery
 
-        stop = threading.Event()
-        app.state.note_taker_recovery_stop = stop
-        # The worker's own report, published for /health. Prod 2026-10-01: it
-        # failed against a contended DuckDB write lock for hours — thousands of
-        # stderr lines and no projection progress — while /health answered
-        # "ok", because nothing read what the worker knew.
-        app.state.note_taker_recovery = {}
-        app.state.note_taker_recovery_worker = start_replay_recovery(
-            db_path=default_db_path(),
-            stop_event=stop,
-            state=app.state.note_taker_recovery,
-        )
+        with note_taker_recovery_start_lock:
+            worker = getattr(app.state, "note_taker_recovery_worker", None)
+            # Repeated startup must retain the live worker and its stop/report
+            # handles; replacing them orphans a thread that shutdown cannot stop.
+            if worker is not None and worker.is_alive():
+                return
+            stop = threading.Event()
+            app.state.note_taker_recovery_stop = stop
+            # The worker's own report, published for /health. Prod 2026-10-01: it
+            # failed against a contended DuckDB write lock for hours — thousands of
+            # stderr lines and no projection progress — while /health answered
+            # "ok", because nothing read what the worker knew.
+            app.state.note_taker_recovery = {}
+            app.state.note_taker_recovery_worker = start_replay_recovery(
+                db_path=default_db_path(),
+                stop_event=stop,
+                state=app.state.note_taker_recovery,
+            )
 
     def _stop_note_taker_replay() -> None:
         stop = getattr(app.state, "note_taker_recovery_stop", None)
