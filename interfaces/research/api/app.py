@@ -235,6 +235,12 @@ class HealthResponse(BaseModel):
     prime_agent_invocations_attempted: int = 0
 
 
+# A registered provider id can be `user-<operator-user-id>-<their-configured-name>`.
+# /health needs no credentials, so those entries are never published: see the comment at
+# the `registered_providers=` call site.
+_PRIVATE_PROVIDER_PREFIX = "user-"
+
+
 def _probe_backup_freshness() -> dict[str, Any]:
     """Read-only backup freshness for /health. Never raises."""
     try:
@@ -245,7 +251,10 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_fresh": verdict.fresh,
             "backup_completed_at": verdict.completed_at,
             "backup_age_hours": verdict.age_hours,
-            "backup_marker_path": verdict.marker_path,
+            # The marker path is a filesystem location on the host: measured live,
+            # /health published `/home/antiek/.antiek/backup_freshness.json` to an
+            # unauthenticated caller.
+            "backup_marker_path": "",
             "backup_reason": verdict.reason,
         }
     except Exception as exc:
@@ -254,7 +263,11 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_completed_at": None,
             "backup_age_hours": None,
             "backup_marker_path": "",
-            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+            # type(exc).__name__ only. The previous form interpolated str(exc), and the
+            # freshness evaluator raises with the marker path in the message, so an
+            # anonymous caller could read a host path out of a failure of the very probe
+            # that exists to report absence.
+            "backup_reason": f"probe_exception: {type(exc).__name__}",
         }
 def _probe_prime_lane() -> dict[str, bool | int]:
     """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
@@ -2392,7 +2405,18 @@ def create_app(
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
-            registered_providers=sorted(registered_providers),
+            # User-derived entries are NOT published. A registered provider id can be
+            # `user-<operator-user-id>-<their-configured-provider-name>`, and this route
+            # needs no credentials: measured live, /health returned
+            # `user-80946f0b-my-deepseek` among the registry, publishing a user id and
+            # that user's own provider configuration to anyone. The built-in ids carry
+            # the operational signal -- whether the registry is non-empty and which
+            # built-ins registered -- and nothing else is required by a health probe.
+            registered_providers=sorted(
+                name
+                for name in registered_providers
+                if not name.startswith(_PRIVATE_PROVIDER_PREFIX)
+            ),
             providers_ready=bool(route_ready_providers),
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
@@ -2420,11 +2444,10 @@ def create_app(
                     "indexed_row_count"
                 )
             ),
-            turbopuffer_content_hash=(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "content_hash"
-                )
-            ),
+            # The content hash of the indexed corpus is derived from private
+            # documents and is not needed by any health consumer. `_probe_backup_freshness`
+            # below is the same reasoning for filesystem paths.
+            turbopuffer_content_hash=None,
             # No bool() and no True default: both would launder "unknown"
             # into a definite answer. A missing key means the probe never ran,
             # which is exactly as unknown as a probe that raised.
