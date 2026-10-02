@@ -126,6 +126,24 @@ class EmittedEventResponse(BaseModel):
     action_type: str
 
 
+def _public_note_taker_replay(report: object) -> dict[str, str]:
+    """Expose only an admitted worker phase, without copying private report fields."""
+    if type(report) is not dict:
+        return {}
+    status = report.get("status")
+    if type(status) is not str or status not in (
+        "starting",
+        "waiting_for_database",
+        "waiting_for_writer",
+        "catching_up",
+        "current",
+        "backoff",
+        "idle",
+    ):
+        return {}
+    return {"status": status}
+
+
 class HealthResponse(BaseModel):
     status: str
     param_version: str
@@ -215,10 +233,8 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
-    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
-    # be starved of the DuckDB write lock for hours while /health says "ok";
-    # this is the field that makes that state visible without opening a log.
-    # Empty dict when the worker is disabled or has not run a pass yet.
+    # Last admitted replay worker phase only; even "current" is not a reader
+    # availability or recovery guarantee. An empty dict means no admitted phase.
     note_taker_replay: dict[str, Any] = {}
 
 
@@ -2456,8 +2472,8 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
-            note_taker_replay=dict(
-                getattr(app.state, "note_taker_recovery", {}) or {}
+            note_taker_replay=_public_note_taker_replay(
+                getattr(app.state, "note_taker_recovery", {})
             ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
