@@ -24,16 +24,6 @@ _DEFAULT_CREATIVE = "/mark-32.png"
 _INVENTORY_ID = "manual_sponsor:operator"
 
 
-def _env_truthy(name: str) -> bool:
-    raw = (os.environ.get(name) or "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
-
-
-def manual_sponsor_enabled() -> bool:
-    """True when the operator explicitly unlocked the Phase-2 sponsor slot."""
-    return _env_truthy(_ENABLE_ENV)
-
-
 def resolve_manual_sponsor_item(
     *,
     env: dict[str, str] | None = None,

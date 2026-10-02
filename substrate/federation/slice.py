@@ -18,7 +18,6 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from hashlib import sha256
 
 
 def _now_iso() -> str:
@@ -72,10 +71,6 @@ class FederationSlice:
     items: tuple[SliceItem, ...]
     manifest_signature: bytes
     signing_key_fingerprint: str
-
-
-def hash_slice_item(item_payload: bytes) -> str:
-    return sha256(item_payload).hexdigest()
 
 
 def build_manifest(
