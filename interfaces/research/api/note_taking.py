@@ -166,6 +166,28 @@ def _resolve_replay_tuning() -> tuple[float, float, float]:
     )
 
 
+def _backoff_seconds(barren_passes: int, base_s: float, max_s: float) -> float:
+    """Capped exponential backoff, with the exponent clamped BEFORE it is used.
+
+    The cap does not protect the multiplication that applies it. ``base_s`` is a float, so
+    ``base_s * (2 ** (barren_passes - 1))`` converts an unbounded int to float, and that
+    conversion raises at exponent 1024. Reproduced without importing product code:
+
+        barren_passes=1024 -> 60.0
+        barren_passes=1025 -> OverflowError: int too large to convert to float
+
+    The call site runs on every barren pass, so an idle recovery worker died instead of
+    backing off -- reachable in roughly 17 hours of idling, because the sleep caps at 60s
+    and 1025 growing passes is about that long.
+
+    Clamping at 63 is safe rather than merely large: 2**63 is ~9.2e18, well inside float
+    range, and every realistic cap is far below it, so ``min`` still returns the cap for
+    any pass count past about six. Extracted from the worker loop so the arithmetic can be
+    tested without driving the loop.
+    """
+    return min(base_s * (2 ** min(barren_passes - 1, 63)), max_s)
+
+
 def start_replay_recovery(
     *,
     db_path: str | None = None,
@@ -279,7 +301,7 @@ def start_replay_recovery(
                 continue
 
             barren_passes += 1
-            backoff_s = min(backoff_base_s * (2 ** (barren_passes - 1)), backoff_max_s)
+            backoff_s = _backoff_seconds(barren_passes, backoff_base_s, backoff_max_s)
             report.update(
                 {
                     "status": "backoff" if investigations else "idle",
