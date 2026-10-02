@@ -220,12 +220,25 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
             "(ANTIEK_SPEAK_PUBLIC_ECOSYSTEM). Private projects stay invite-only."
         )
     ensure_speak_schema(con)
+    # The active-takedown predicate, the same one the browse surfaces apply at
+    # interfaces/research/api/speak_routes.py:493 and substrate/speak/pushes.py:232.
+    # Without it this path mints a capability for a project that has been WITHDRAWN:
+    # measured, a synthetic project under takedown was absent from /speak/feed and
+    # /speak/opportunities, and `.../open-contribute` still returned 201 with an invite
+    # whose landing page then served the withdrawn subject anonymously. The browse code
+    # states the principle it is applying -- "the browsable surface has to agree with the
+    # gate that governs it" -- and this is the surface that did not.
     row = con.execute(
-        "SELECT publish_intent, invitation_mode FROM speak_projects "
-        "WHERE project_id = ?",
+        "SELECT p.publish_intent, p.invitation_mode FROM speak_projects p "
+        "WHERE p.project_id = ? "
+        "AND NOT EXISTS (SELECT 1 FROM speak_takedowns t "
+        "                WHERE t.project_id = p.project_id AND t.status = 'active')",
         [project_id],
     ).fetchone()
     if row is None:
+        # A taken-down project now reaches this branch, which is deliberate: it is
+        # reported exactly as an absent one, so this route stops confirming that a
+        # withdrawn project existed.
         raise ValueError(f"project {project_id!r} not found")
     publish_intent, invitation_mode = row[0], row[1]
     if publish_intent != "will_be_public":
