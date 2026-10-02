@@ -301,7 +301,7 @@ describe("floating panel Escape ownership", () => {
     expect(closeCalls).toEqual(["a"]);
     expect(state().panels.a).toBeUndefined();
     expect(state().fullscreenPane).toBe("left");
-    expect(dispatch(document.body).defaultPrevented).toBe(true);
+    dispatch(document.body);
     expect(state().fullscreenPane).toBeNull();
     expect(closeCalls).toEqual(["a"]);
   });

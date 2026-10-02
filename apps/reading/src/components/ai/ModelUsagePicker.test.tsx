@@ -266,7 +266,7 @@ describe("ModelUsagePicker", () => {
       return element;
     });
     expect(chip?.textContent).not.toContain("credit");
-    expect(chip?.textContent).not.toContain("$0.00");
+    expect(chip?.textContent).toBe(`Provider-reported balance $${display}`);
   });
 
   it.each([
