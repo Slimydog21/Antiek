@@ -206,6 +206,34 @@ class AttributionResult:
     page_attribution_event_id: str | None = None
 
 
+
+def _in_domain(value: float, low: float, high: float) -> float:
+    """Confine a caller-supplied weight to the domain its docstring already claims.
+
+    Every §9.3 input is documented as bounded — ``claim_confidence`` and
+    ``load_bearing_score`` in [0, 1], ``source_tier`` in [1, 5] (the
+    ``documents`` table enforces ``CHECK (source_tier BETWEEN 1 AND 5)``). The
+    math trusted those bounds without enforcing them, while
+    ``POST /attribution/compute`` accepts all three in a request body as plain
+    ``dict[str, float]`` / ``dict[str, int]`` with no range validation, so an
+    out-of-domain number reached the weighting directly.
+
+    That mattered because a negative weight survives normalisation whenever the
+    positive weights still outweigh it: ``total > 0`` passes the guard, and the
+    result is a NEGATIVE share for one document and a share above 100% for
+    another. A negative share is a negative payout. Concretely, a
+    ``source_tier`` of 7 produced ``-0.25`` / ``+1.25`` across two documents.
+
+    Clamping is a no-op for every in-domain input, so results for schema-valid
+    data are bit-identical and ``ATTRIBUTION_ALGORITHM_VERSION`` stays
+    ``attr-math-v1`` — the stamp exists to reconstruct a payout against the math
+    that produced it, and that math has not changed for any value the schema
+    permits. ``tests/test_attribution_share_invariant.py`` pins both halves of
+    that claim.
+    """
+    return min(high, max(low, value))
+
+
 def compute_attribution_option_a(
     *,
     page_id: str,
@@ -253,8 +281,8 @@ def compute_attribution_option_b(
         )
     weights: dict[str, float] = {}
     for chunk_id, doc_id in chunk_to_document.items():
-        confidence = chunk_to_claim_confidence.get(chunk_id, 0.5)
-        tier = document_to_source_tier.get(doc_id, 5)
+        confidence = _in_domain(chunk_to_claim_confidence.get(chunk_id, 0.5), 0.0, 1.0)
+        tier = _in_domain(float(document_to_source_tier.get(doc_id, 5)), 1.0, 5.0)
         # tier 1=highest trust, 5=lowest; (6 - tier) gives weight 5..1
         contribution = confidence * (6 - tier)
         weights[doc_id] = weights.get(doc_id, 0.0) + contribution
@@ -309,7 +337,7 @@ def compute_attribution_option_c(
         claim_id = chunk_to_claim_id.get(chunk_id)
         if claim_id is None:
             continue
-        score = claim_load_bearing_scores.get(claim_id, 0.0)
+        score = _in_domain(claim_load_bearing_scores.get(claim_id, 0.0), 0.0, 1.0)
         weights[doc_id] = weights.get(doc_id, 0.0) + score
 
     total = sum(weights.values())

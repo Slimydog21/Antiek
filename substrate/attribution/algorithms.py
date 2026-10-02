@@ -1,5 +1,24 @@
 """Attribution algorithm implementations (Sprint 16 phase 1).
 
+.. warning::
+
+   **This is NOT the payout path.** The live §9.3 implementation is
+   ``substrate/ad_inventory/attribution.py``
+   (``compute_attribution_option_*`` — note the ``compute_`` prefix), which is
+   what ``POST /attribution/compute``, ``contracts/accrual.py``,
+   ``speak/contributor.py`` and ``marketplace_metrics/publisher_escrow.py``
+   reach. These functions are the provenance-side lineage and are called by
+   nothing outside ``tests/``.
+
+   The two disagree: default confidence for a missing value is 0.4 here and 0.5
+   there; confidence is a 4-value string scale here (mapped through
+   ``CONFIDENCE_WEIGHTS``) and a raw float there; the tier factor is floored at
+   ``max(1, 6 - tier)`` here and is clamped to the documented 1..5 domain there.
+   Importing the wrong one silently reprices a payout instead of failing, which
+   is why ``tests/test_attribution_payout_path_is_unambiguous.py`` forbids
+   production code from reaching these names.
+
+
 Three options from the master spec §9.3:
 
 - **A — equal split per chunk citation**. Each chunk citation
