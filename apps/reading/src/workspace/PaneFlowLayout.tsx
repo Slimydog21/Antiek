@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { escOverlayOpen } from "./escapeOverlay";
-import { adjacentPane, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor } from "./paneFlowGeometry";
+import { adjacentPane, PANE_GAP, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor } from "./paneFlowGeometry";
 import type { PaneGeometry } from "./paneFlowGeometry";
 import type { PaneArrangement, PaneTarget } from "./panel.types";
 import { useViewportTier } from "./useViewportTier";
@@ -121,6 +121,9 @@ export function togglePaneArrangementAt(event: KeyboardEvent, dispatcherConsumed
   const root = event.target.closest("[data-pane-flow-root]");
   const controller = root ? controllers.get(root) : null;
   if (!controller?.flow.desktop || controller.pointerActive() || !controller.root.isConnected) return false;
+  const width = controller.root.clientWidth;
+  const height = controller.root.clientHeight;
+  if (![width, height].every(Number.isFinite) || width <= 2 * PANE_GAP || height <= 2 * PANE_GAP) return false;
   const host = event.target.closest("[data-pane-host], [data-pane], [data-cockpit-content], [data-workspace-window]");
   if (!host || !(host instanceof HTMLElement) || !visibleHost(host)
       || event.target.closest("[aria-modal='true'], [role='alertdialog']")) return false;
@@ -233,6 +236,9 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    const restoringZoom = !zoom && previousMode.current.arrangement === effective
+      && (previousMode.current.zoom !== null || restoreFocus.current !== null);
+    let restoringFocus = false;
     const pointerActive = () => {
       for (const [id, node] of captures.current) {
         if (node.isConnected && root.contains(node) && node.hasPointerCapture(id)) return true;
@@ -241,7 +247,7 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
       return false;
     };
     const reveal = (target: PaneTarget) => {
-      if (flow.arrangement !== "horizontal" || flow.geometry.kind !== "measured") return false;
+      if (restoringFocus || flow.arrangement !== "horizontal" || flow.geometry.kind !== "measured") return false;
       const placement = flow.geometry.placements.find((member) => samePane(member.target, target));
       if (!placement) return false;
       const left = revealPane({ rect: placement.rect, viewportWidth: root.clientWidth,
@@ -273,9 +279,18 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
       const pending = restoreFocus.current;
       restoreFocus.current = null;
       const current = hosts.current.get(paneKey(pending.target));
-      if (current?.node === pending.node && visibleHost(current.node)) focusConnectedPaneHost(current.node, current.target);
+      if (current?.node === pending.node && visibleHost(current.node)) {
+        // Restore focus through the existing admission guards without revealing over the saved view.
+        restoringFocus = restoringZoom;
+        try {
+          if (focusConnectedPaneHost(current.node, current.target) && restoringZoom && !samePane(focused, current.target)) {
+            // Keep the restoration guard through the render that acknowledges this focus change.
+            restoreFocus.current = current;
+          }
+        } finally { restoringFocus = false; }
+      }
     }
-    if (focused) {
+    if (!restoringZoom && focused) {
       const host = hosts.current.get(paneKey(focused));
       if (host && visibleHost(host.node) && host.node.contains(document.activeElement)) reveal(focused);
     }

@@ -3,7 +3,7 @@
 // reads the keymap (vi.hoisted runs first).
 vi.hoisted(() => { try { window.localStorage.setItem("antiek.flag.pane.flow", "on"); } catch { /* storage unavailable */ } });
 import { useEffect, useState } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WindowsLayer } from "../components/windows/WindowsLayer";
@@ -182,6 +182,39 @@ describe("actual shared PanelLayout and product hosts", () => {
     expect(useWorkspace.getState().paneZoom).toBeNull();
     expect(document.activeElement).toBe(windowHost);
     expect(element('[data-workspace-window="control:a"]')).toBe(windowHost);
+  });
+
+  it.each(["chip", "escape"])("preserves a partially visible window's saved view through the existing %s restore", (route) => {
+    for (const id of ["control:a", "control:b", "control:c"]) {
+      useWindows.getState().open("u1:non-book-control", {}, { id });
+    }
+    mountWorkspace();
+    const root = element("[data-pane-flow-root]");
+    const windowHost = element('[data-workspace-window="control:a"]');
+    const hosts = [element('[data-pane-host="core"]'), element('[data-pane-host="companion"]'), windowHost,
+      element('[data-workspace-window="control:b"]'), element('[data-workspace-window="control:c"]')];
+    const widths = hosts.map((host) => host.style.width);
+    const order = useWorkspace.getState().paneOrder;
+    const tiles = useWorkspace.getState().paneTiles;
+    act(() => { windowHost.focus(); });
+    // Five 490px columns give a 2510px extent, so 1400 is valid and exposes only this window's trailing edge.
+    fireEvent.scroll(root, { target: { scrollLeft: 1400 } });
+    fireEvent.click(within(windowHost).getByLabelText("Zoom pane"));
+    expect(useWorkspace.getState().paneZoom).toEqual({ kind: "window", id: "control:a" });
+    const chip = screen.getByLabelText("Exit fullscreen (Esc)");
+    act(() => { chip.focus(); });
+    if (route === "chip") fireEvent.click(chip);
+    else fireEvent.keyDown(chip, { key: "Escape", code: "Escape" });
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    expect(root.scrollLeft).toBe(1400);
+    expect(document.activeElement).toBe(windowHost);
+    expect([element('[data-pane-host="core"]'), element('[data-pane-host="companion"]'),
+      element('[data-workspace-window="control:a"]'), element('[data-workspace-window="control:b"]'),
+      element('[data-workspace-window="control:c"]')]).toEqual(hosts);
+    expect(hosts.map((host) => host.style.width)).toEqual(widths);
+    expect(useWorkspace.getState().paneOrder).toEqual(order);
+    expect(useWorkspace.getState().paneTiles).toEqual(tiles);
+    expect([controls.coreUnmounts, controls.companionUnmounts]).toEqual([0, 0]);
   });
 
   it("restores core zoom only from current working-area focus and retains child priority", () => {

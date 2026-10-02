@@ -2,7 +2,7 @@
 // antiek.flag.pane.flow (default OFF). The flag is set before any import
 // reads the keymap (vi.hoisted runs first).
 vi.hoisted(() => { try { window.localStorage.setItem("antiek.flag.pane.flow", "on"); } catch { /* storage unavailable */ } });
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ACTIONS, currentPlatform, KEYMAP, validateKeymap } from "../components/hotkeys/keymap";
@@ -264,6 +264,77 @@ describe("actual dispatcher and connected host admission", () => {
     expect(useWorkspace.getState().paneZoom).toBeNull();
     expect(node('[data-workspace-window="control:a"]')).toBe(a);
   });
+  it("keeps a partially visible companion's saved view through canonical F/F and still reveals subsequent navigation", () => {
+    const root = node("[data-pane-flow-root]");
+    const companion = node('[data-pane-host="companion"]');
+    const hosts = [node('[data-pane-host="core"]'), companion,
+      node('[data-workspace-window="control:a"]'), node('[data-workspace-window="control:b"]')];
+    const order = useWorkspace.getState().paneOrder;
+    const tiles = useWorkspace.getState().paneTiles;
+    const widths = hosts.map((host) => host.style.width);
+    act(() => { companion.focus(); });
+    fireEvent.scroll(root, { target: { scrollLeft: 900 } });
+    expect(press(companion, "f", "KeyF").defaultPrevented).toBe(true);
+    expect(useWorkspace.getState().paneZoom).toEqual(COMPANION_PANE);
+    expect(press(companion, "f", "KeyF").defaultPrevented).toBe(true);
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    expect(root.scrollLeft).toBe(900);
+    expect(document.activeElement).toBe(companion);
+    expect([node('[data-pane-host="core"]'), node('[data-pane-host="companion"]'),
+      node('[data-workspace-window="control:a"]'), node('[data-workspace-window="control:b"]')]).toEqual(hosts);
+    expect(hosts.map((host) => host.style.width)).toEqual(widths);
+    expect(useWorkspace.getState().paneOrder).toEqual(order);
+    expect(useWorkspace.getState().paneTiles).toEqual(tiles);
+    press(companion, "ArrowRight", "ArrowRight");
+    const a = node('[data-workspace-window="control:a"]');
+    expect(document.activeElement).toBe(a);
+    expect(press(a, "ArrowLeft", "ArrowLeft").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(companion);
+    expect(root.scrollLeft).toBe(510);
+  });
+  it.each([[0, 700], [1000, 0], [20, 700], [1000, 20]])(
+    "refuses legacy L and its configured prefix at current %i by %i bounds before any preference write",
+    (currentWidth, currentHeight) => {
+      act(() => { useWorkspace.getState().setPaneArrangement("legacy"); });
+      const a = node('[data-workspace-window="control:a"]');
+      const root = node("[data-pane-flow-root]");
+      act(() => { a.focus(); });
+      const preferenceKey = "antiek.workspace.desktop-pane-arrangement.v1";
+      const preference = window.localStorage.getItem(preferenceKey);
+      const write = vi.spyOn(Storage.prototype, "setItem");
+      const toggle = vi.spyOn(useWorkspace.getState(), "togglePaneArrangement");
+      const order = useWorkspace.getState().paneOrder;
+      const focus = useWorkspace.getState().paneFocus;
+      // Only the root collapses. The actual legacy frame keeps its connected, visible client rect.
+      Object.defineProperty(root, "clientWidth", { configurable: true, get: () => currentWidth });
+      Object.defineProperty(root, "clientHeight", { configurable: true, get: () => currentHeight });
+      expect(a.isConnected).toBe(true);
+      expect(a.getClientRects().length).toBeGreaterThan(0);
+      expect(root.dataset.paneMeasurement).toBe("unmeasured");
+      expect(press(a, "l", "KeyL").defaultPrevented).toBe(false);
+      press(a, "b", "KeyB", { altKey: false });
+      expect(prefixState.isArmed()).toBe(true);
+      // The existing prefix dispatcher owns its second key even when the action refuses.
+      expect(press(a, "I", "KeyI", { ctrlKey: false, altKey: false, shiftKey: true }).defaultPrevented).toBe(true);
+      expect(prefixState.isArmed()).toBe(false);
+      expect(toggle).not.toHaveBeenCalled();
+      expect(useWorkspace.getState().paneArrangement).toBe("legacy");
+      expect(useWorkspace.getState().paneOrder).toEqual(order);
+      expect(useWorkspace.getState().paneFocus).toEqual(focus);
+      expect(document.activeElement).toBe(a);
+      expect(a.hidden).toBe(false);
+      expect(window.localStorage.getItem(preferenceKey)).toBe(preference);
+      expect(write.mock.calls.filter(([key]) => key === preferenceKey)).toEqual([]);
+      Object.defineProperty(root, "clientWidth", { configurable: true, get: () => 1000 });
+      Object.defineProperty(root, "clientHeight", { configurable: true, get: () => 700 });
+      expect(press(a, "l", "KeyL").defaultPrevented).toBe(true);
+      expect(toggle).toHaveBeenCalledTimes(1);
+      expect(useWorkspace.getState().paneArrangement).toBe("horizontal");
+      expect(document.activeElement).toBe(a);
+      expect(a.hidden).toBe(false);
+      expect(write.mock.calls.filter(([key]) => key === preferenceKey)).toHaveLength(1);
+    },
+  );
   it("restores window zoom from a nonediting child before closing the window", () => {
     const a = node('[data-workspace-window="control:a"]');
     act(() => { a.focus(); });
