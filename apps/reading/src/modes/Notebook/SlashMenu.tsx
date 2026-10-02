@@ -1,6 +1,7 @@
 import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import { ESC_OVERLAY_PROPS, registerEscapeListenerOwnership } from "../../workspace/escapeOverlay";
 
 /**
  * Slash command menu — opens when the operator types `/` at the start
@@ -261,16 +262,24 @@ export function SlashMenu({ editor, query, onClose }: Props) {
         onClose();
       }
     }
+    // Landing (pane-flow packet → main): main's keyboard-ownership seam PLUS
+    // the packet's listener-ownership token, so escOverlayOpen() sees a
+    // mounted menu even while it renders null (empty filter).
     const removeKeyboardOwner = registerKeyboardOwner(window, {
       id: "notebook.slash-menu", scope: "overlay",
       eligible: (e) => ["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx]),
     }, onKey);
-    return () => removeKeyboardOwner();
+    const retireEscapeOwnership = registerEscapeListenerOwnership(window.document);
+    return () => {
+      removeKeyboardOwner();
+      retireEscapeOwnership();
+    };
   }, [filtered, hoverIdx, editor, onClose]);
 
   if (filtered.length === 0) return null;
   return (
     <div
+      {...ESC_OVERLAY_PROPS}
       ref={containerRef}
       className="absolute z-[120] mt-2 w-[280px] bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night py-1 max-h-[320px] overflow-y-auto"
       role="listbox"

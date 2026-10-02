@@ -19,11 +19,31 @@
  */
 export const ESC_OVERLAY_PROPS = { "data-esc-overlay": "" } as const;
 
+const listenerOwners = new WeakMap<Document, Set<symbol>>();
+
+/** Declare the actual listener's document until that listener is removed.
+ *  Unlike a DOM marker, this also covers a mounted menu that renders null. */
+export function registerEscapeListenerOwnership(ownerDocument: Document): () => void {
+  const owners = listenerOwners.get(ownerDocument) ?? new Set<symbol>();
+  const token = Symbol();
+  owners.add(token);
+  listenerOwners.set(ownerDocument, owners);
+  return () => {
+    if (!owners.delete(token)) return;
+    if (owners.size === 0) listenerOwners.delete(ownerDocument);
+  };
+}
+
+function isDocument(root: ParentNode): root is Document {
+  return root.nodeType === 9;
+}
+
 const SELECTOR = '[data-esc-overlay], [aria-modal="true"]';
 
-/** Is a transient overlay open on screen (not inside a hidden pane or a
- *  closed <details>)? */
+/** Is an overlay visible or an Escape listener mounted in this document?
+ *  Element/fragment queries keep the DOM visibility and except rules below. */
 export function escOverlayOpen(root: ParentNode = document, except: Element | null = null): boolean {
+  if (isDocument(root) && listenerOwners.get(root)?.size) return true;
   for (const el of root.querySelectorAll<HTMLElement>(SELECTOR)) {
     if (el === except || el.closest("[hidden]")) continue;
     const details = el.parentElement?.closest("details");
