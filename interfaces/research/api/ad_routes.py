@@ -62,7 +62,18 @@ from .books import _resolve_db_path
 # POST /api/ad/fills and blocked the uvicorn event loop. Fail fast → client
 # house-degrades; exact retries use connect_read / LazyRW and never flock.
 _FILLS_WRITE_TIMEOUT_S = 15.0
-_FRAME_WRITE_TIMEOUT_S = 5.0
+# Budget for a QUEUED frame writer, not a solo one: a solo cold writer is
+# never refused (connect_write does not deadline-enforce the connect itself),
+# but a writer queued on the in-process write gate spends its whole budget on
+# the wait. The session ahead can be a cold one — ~6.8s duckdb.connect on the
+# ~900MB prod store (runtime.db_lock.PROD_COLD_CONNECT_S), plus its write and
+# close — so the floor is 2 cold connects (predecessor's + this writer's own
+# worst case). At the old 5.0s the queued writer 503'd
+# (ad_frame_writer_busy) behind a single cold session with NO cross-process
+# contention — the second write-starvation defect of 2026-10-02, pinned by
+# tests/test_frame_write_timeout_budget.py. 15.0 = ceil(2 x 6.8) and matches
+# the fills precedent above, chosen for the same #3121 coexist class.
+_FRAME_WRITE_TIMEOUT_S = 15.0
 # Serialize fills DB access in-process so RO lookup cannot overlap RW
 # open (DuckDB SAME_FILE) across concurrent to_thread workers.
 _FILLS_GATE = threading.Lock()
