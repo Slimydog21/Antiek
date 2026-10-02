@@ -38,6 +38,7 @@ import sys
 import threading
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -166,6 +167,41 @@ def _resolve_replay_tuning() -> tuple[float, float, float]:
     )
 
 
+@dataclass
+class _ReplayFailureLog:
+    last_log_at: float | None = None
+    suppressed: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def record(self, investigation_id: str, exc: Exception, interval_s: float) -> int:
+        with self.lock:
+            now = time.monotonic()
+            if self.last_log_at is None or now - self.last_log_at >= interval_s:
+                unseen = "" if self.suppressed == 0 else f" (+{self.suppressed} suppressed)"
+                print(
+                    "Note-taker replay recovery remains pending for "
+                    f"{investigation_id}: {exc!r}{unseen}",
+                    file=sys.stderr,
+                )
+                self.last_log_at = now
+                self.suppressed = 0
+            else:
+                self.suppressed += 1
+            return self.suppressed
+
+
+# A physical database owns one log window, even across app instances or worker
+# restarts. Keep it for the process lifetime so a new worker cannot reset it.
+_replay_failure_logs: dict[str, _ReplayFailureLog] = {}
+_replay_failure_logs_lock = threading.Lock()
+
+
+def _replay_failure_log(db_path: str) -> _ReplayFailureLog:
+    key = os.path.realpath(os.path.expanduser(db_path))
+    with _replay_failure_logs_lock:
+        return _replay_failure_logs.setdefault(key, _ReplayFailureLog())
+
+
 def start_replay_recovery(
     *,
     db_path: str | None = None,
@@ -196,6 +232,7 @@ def start_replay_recovery(
     service = _default_replay_service(db_path=db_path, events_dir=events_dir)
     stop = stop_event or threading.Event()
     backoff_base_s, backoff_max_s, log_interval_s = _resolve_replay_tuning()
+    failure_log = _replay_failure_log(service.db_path)
     report: dict[str, Any] = state if state is not None else {}
     report.setdefault("status", "starting")
 
@@ -205,7 +242,6 @@ def start_replay_recovery(
 
         barren_passes = 0
         suppressed = 0
-        last_log_at = 0.0
         while not stop.is_set():
             if not os.path.exists(service.db_path):
                 report.update({"status": "waiting_for_database"})
@@ -234,21 +270,7 @@ def start_replay_recovery(
                     progressed = True
                 except Exception as exc:
                     failures += 1
-                    now = time.monotonic()
-                    # One line per interval, carrying what it swallowed. A
-                    # per-failure line is not observability, it is noise: at
-                    # ~1 line/second it buried the real errors around it.
-                    if now - last_log_at >= log_interval_s:
-                        unseen = "" if suppressed == 0 else f" (+{suppressed} suppressed)"
-                        print(
-                            "Note-taker replay recovery remains pending for "
-                            f"{investigation_id}: {exc!r}{unseen}",
-                            file=sys.stderr,
-                        )
-                        last_log_at = now
-                        suppressed = 0
-                    else:
-                        suppressed += 1
+                    suppressed = failure_log.record(investigation_id, exc, log_interval_s)
                     report.update(
                         {
                             "status": "catching_up",
