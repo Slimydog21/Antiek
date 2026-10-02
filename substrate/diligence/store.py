@@ -246,7 +246,8 @@ class DiligenceStore:
             [flag_id],
         )
         out = self.get_for_owner(con, owner_user_id=owner_user_id, flag_id=flag_id)
-        assert out is not None  # the update above just landed
+        if out is None:  # the update above just landed; never an assert (python -O)
+            raise RuntimeError(f"diligence flag {flag_id} vanished after its own write")
         return out
 
     def mark_spawned(
@@ -274,7 +275,8 @@ class DiligenceStore:
             [spawned_investigation_id, receipt_json, flag_id],
         )
         out = self.get_for_owner(con, owner_user_id=owner_user_id, flag_id=flag_id)
-        assert out is not None  # the update above just landed
+        if out is None:  # the update above just landed; never an assert (python -O)
+            raise RuntimeError(f"diligence flag {flag_id} vanished after its own write")
         return out
 
     def record_skip(

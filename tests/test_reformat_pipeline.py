@@ -177,9 +177,11 @@ def test_reformat_classes_and_traces_every_bite_source_byte_identical(env) -> No
     for b in bites:
         assert b.source_refs is not None
         for ref in b.source_refs:
-            payload = json.loads(ref)
-            assert payload["node_id"] in {"c-1", "c-2"}
-            assert payload["end_scalar"] > payload["start_scalar"]
+            # corespan:{doc_id}:{chunk_id}:{start}:{end}
+            parts = ref.split(":")
+            assert parts[0] == "corespan"
+            assert parts[2] in {"c-1", "c-2"}
+            assert int(parts[4]) > int(parts[3])
     # The research-supplemented bite carries its investigation.
     assert bites[3].investigation_id == "inv-diligence-1"
     # The author-verbatim bite BYTE-VERIFIES (recomputed, not trusted).
@@ -461,3 +463,131 @@ def test_verbatim_detection_rate_pinned_on_the_acceptance_fixture(env) -> None:
     # Recall: all three truly-verbatim bites detected (the pinned floor).
     assert len(verbatim) / truly_verbatim >= 0.95
     assert result.reclassed_verbatim == 0
+
+
+# ── Review hardening (2026-09-25): block offsets must be exact for ANY
+# paragraph-separator run, and the derived document must carry the caller's
+# ownership (the generation's owner and the asset's owner cannot disagree). ──
+
+
+def test_source_block_spans_are_exact_across_long_newline_runs(env) -> None:
+    from runtime.db_lock import connect_write
+    from substrate.reformat.pipeline import _source_blocks
+
+    body = "Para one before the gap.\n\n\n\nPara two after the drift."
+    with connect_write(env["db"], purpose="test/seed-drift") as con:
+        insert_document(
+            con,
+            document_id="doc-drift",
+            source_tier=2,
+            document_type="book",
+            title="Drift",
+            raw_text=body,
+            content_class="public_domain",
+            on_conflict="ignore",
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+            "section_path, text, token_count) VALUES (?, ?, ?, ?, ?, ?)",
+            ["c-1-doc-drift", "doc-drift", 0, "Page 1", body, len(body.split())],
+        )
+    con = connect_read(env["db"])
+    try:
+        blocks = _source_blocks(con, "doc-drift", body)
+    finally:
+        con.close()
+    assert [b.text for b in blocks] == [
+        "Para one before the gap.",
+        "Para two after the drift.",
+    ]
+    normalized = normalize_node_text(body)
+    for block in blocks:
+        sliced = normalized[block.start_scalar : block.end_scalar]
+        assert sliced == block.text, (
+            f"span {(block.start_scalar, block.end_scalar)} sliced {sliced!r}"
+        )
+
+
+def test_derived_document_carries_the_callers_ownership(env) -> None:
+    _seed_source(env["db"])
+    result = reformat_document(
+        env["db"],
+        owner_user_id="owner-x",
+        source_document_id="doc-1",
+        prompt=ACCEPTANCE_PROMPT,
+        generate_fn=_fixture_generator,
+        events_dir=env["events"],
+    )
+    con = connect_read(env["db"])
+    try:
+        doc_owner, gen_owner = con.execute(
+            "SELECT d.owner_user_id, g.owner_user_id FROM documents d "
+            "JOIN generation_records g ON g.derived_document_id = d.document_id "
+            "WHERE d.document_id = ?",
+            [result.derived_document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert (doc_owner, gen_owner) == ("owner-x", "owner-x")
+
+
+def test_derived_id_collision_refuses_and_attaches_nothing(env, monkeypatch) -> None:
+    """Grok counter-review probe (2026-09-25): a pre-existing derived id
+    owned by ANOTHER owner must abort the whole write scope — never attach
+    chunks or a generation record to the foreign document."""
+    import substrate.reformat.pipeline as pipeline_mod
+
+    monkeypatch.setattr(
+        pipeline_mod, "mint_generation_id", lambda: "gen-deadbeefdeadbeef"
+    )
+    _seed_source(env["db"])
+    with __import__("runtime.db_lock", fromlist=["connect_write"]).connect_write(
+        env["db"], purpose="test/seed-collision"
+    ) as con:
+        insert_document(
+            con,
+            document_id="drv-deadbeefdeadbeef",
+            source_tier=1,
+            document_type="derived",
+            title="Pre-existing foreign derived doc",
+            raw_text="original foreign body",
+            content_class="personal_reading",
+            owner_user_id="owner-b",
+            on_conflict="ignore",
+        )
+    with pytest.raises(ReformatError, match="derived document id collision"):
+        reformat_document(
+            env["db"],
+            owner_user_id="owner-a",
+            source_document_id="doc-1",
+            prompt=ACCEPTANCE_PROMPT,
+            generate_fn=_fixture_generator,
+            events_dir=env["events"],
+        )
+    con = connect_read(env["db"])
+    try:
+        doc_row = con.execute(
+            "SELECT owner_user_id, raw_text FROM documents "
+            "WHERE document_id = 'drv-deadbeefdeadbeef'"
+        ).fetchone()
+        chunk_count = con.execute(
+            "SELECT count(*) FROM chunks WHERE document_id = 'drv-deadbeefdeadbeef'"
+        ).fetchone()[0]
+        from substrate.provenance.schema import provenance_tables_exist
+
+        # The aborted write scope never even created the provenance tables
+        # (their DDL lands with the first record) — absence is the proof.
+        gen_count = (
+            0
+            if not provenance_tables_exist(con)
+            else con.execute(
+                "SELECT count(*) FROM generation_records "
+                "WHERE generation_id = 'gen-deadbeefdeadbeef' "
+                "OR derived_document_id = 'drv-deadbeefdeadbeef'"
+            ).fetchone()[0]
+        )
+    finally:
+        con.close()
+    assert doc_row == ("owner-b", "original foreign body")
+    assert chunk_count == 0
+    assert gen_count == 0

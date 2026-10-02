@@ -99,12 +99,48 @@ def test_two_owners_return_disjoint_chunk_sets(search_personal) -> None:
     owner_b = search_personal({"query": "quantum bakery", "top_k": 10}, auth_context={"user_id": "owner-b"})
 
     ids_a, ids_b = _chunk_ids(owner_a), _chunk_ids(owner_b)
-    assert ids_a == {"chunk-a-quantum", "chunk-a-bakery", "chunk-a-garden"}
+    # Retrieval is the owner-scoped lexical ranker (``search_personal_chunks``):
+    # a query returns the owner's chunks that MATCH it, not every chunk in the
+    # owner's library — "garden" shares no term with "quantum bakery" and is
+    # correctly absent. (The vector ``search()`` would have returned it as a
+    # low-similarity nearest neighbour; that path skips NULL embeddings, which
+    # is most of a personal corpus, so it is not this tool's ranker.)
+    assert ids_a == {"chunk-a-quantum", "chunk-a-bakery"}
     assert ids_b == {"chunk-b-quantum", "chunk-b-bakery"}
     assert ids_a.isdisjoint(ids_b)
     for chunk in json.loads(owner_a.content[0]["text"])["chunks"]:
         assert chunk["owner_user_id"] == "owner-a"
         assert chunk["text"] in dict(_CORPUS["owner-a"]).values()
+
+
+def test_unembedded_personal_chunks_are_still_ranked(db_path: str) -> None:
+    """The ranker must work over a personal corpus whose embeddings are NULL.
+
+    Embeddings populate lazily (``tools/reembed_chunks.py``); until then most
+    personal chunks have a NULL ``embedding``. The vector ``search()`` skips
+    those rows — a silent empty — which is why ``search_personal`` ranks
+    through ``search_personal_chunks`` instead.
+    """
+    with connect_write(db_path, purpose="seed-unembedded") as con:
+        con.execute(
+            "INSERT INTO documents (document_id, title, source_tier, document_type, "
+            "owner_user_id) VALUES ('doc-null', 'Unembedded library', 1, 'article', 'owner-n')",
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, token_count) "
+            "VALUES ('chunk-n-quantum', 'doc-null', 0, 'Quantum error correction notes.', 4)",
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, token_count) "
+            "VALUES ('chunk-n-bakery', 'doc-null', 1, 'The village bakery ledger.', 5)",
+        )
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_personal"](
+        {"query": "quantum", "top_k": 5}, auth_context={"user_id": "owner-n"},
+    )
+
+    assert result.is_error is False
+    assert _chunk_ids(result) == {"chunk-n-quantum"}
 
 
 def test_missing_auth_context_is_an_error_with_zero_chunks(search_personal) -> None:

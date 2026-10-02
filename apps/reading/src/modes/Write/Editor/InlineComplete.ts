@@ -46,7 +46,9 @@ export async function runInlineComplete(
   storage: InlineCompleteStorage,
   complete: CompleteFn = completeInline,
 ): Promise<void> {
-  const prefix = extractBlockPrefix(editor.state);
+  if (editor.isDestroyed || !editor.isEditable) return;
+  const requestState = editor.state;
+  const prefix = extractBlockPrefix(requestState);
   if (!shouldRequestCompletion(prefix, storage.pending)) return;
 
   storage.pending = true;
@@ -56,9 +58,12 @@ export async function runInlineComplete(
       prefix,
       document_context: document_context || undefined,
     });
-    if (res.text) {
-      editor.commands.insertContent(res.text);
-    }
+    if (
+      editor.isDestroyed || !editor.isEditable ||
+      editor.state.doc !== requestState.doc ||
+      !editor.state.selection.eq(requestState.selection)
+    ) return;
+    if (res.text) editor.commands.insertContent(res.text);
   } catch {
     // Best-effort — a failed completion must not interrupt the writer.
   } finally {
@@ -67,6 +72,7 @@ export async function runInlineComplete(
 }
 
 function tryTrigger(editor: Editor, storage: InlineCompleteStorage): boolean {
+  if (editor.isDestroyed || !editor.isEditable) return false;
   const prefix = extractBlockPrefix(editor.state);
   if (!shouldRequestCompletion(prefix, storage.pending)) return false;
   void runInlineComplete(editor, storage);

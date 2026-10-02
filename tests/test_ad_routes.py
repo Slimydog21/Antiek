@@ -148,6 +148,133 @@ def _batch(window_id="win-1", *, asset_id="pd-earner"):
     }
 
 
+_HOLD_DB_SCRIPT = (
+    "import duckdb, sys, time\n"
+    "con = duckdb.connect(sys.argv[1])\n"
+    "print('held', flush=True)\n"
+    "time.sleep(float(sys.argv[2]))\n"
+    "con.close()\n"
+)
+
+
+def test_frame_telemetry_bounded_never_500_under_external_duckdb_holder(
+    isolated_db, monkeypatch
+):
+    """Prod 2026-10-01: while the nightly ``arxiv_oai_sync --bulk`` held the
+    DuckDB file, this route answered 500 — 130x/3h and 6,793x/24h — because the
+    gate read opened a connection of its own with no external-lock tolerance.
+
+    Contract this test pins: an external holder is a BOUNDED wait and then an
+    honest, retryable 503 (with Retry-After so the emitter can re-send the
+    idempotent window batch) — never a 500 — and the batch still accrues the
+    moment the holder is gone.
+    """
+    import subprocess
+    import sys
+    import time
+
+    from interfaces.research.api import ad_routes
+    from runtime import db_lock
+
+    _mint_value(monkeypatch, 1000)
+    _seed_book(
+        isolated_db,
+        document_id="pd-earner",
+        title="Earner",
+        author="A",
+        content_class="public_domain",
+        raw_text="public domain body",
+        rights_holder_name="Earner Estate",
+    )
+    monkeypatch.setattr(ad_routes, "_FRAME_WRITE_TIMEOUT_S", 0.4)
+    # Force the route to open a handle instead of reusing a parked warm writer,
+    # so the test exercises the contended path deterministically.
+    db_lock.flush_warm_writers(isolated_db)
+
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _HOLD_DB_SCRIPT, isolated_db, "30"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        db_lock.flush_warm_writers(isolated_db)
+        t0 = time.monotonic()
+        resp = _client().post("/api/ad/frame-telemetry", json=_batch())
+        elapsed = time.monotonic() - t0
+        assert resp.status_code != 500, resp.text
+        assert resp.status_code == 503, resp.text
+        assert resp.json()["detail"] == "ad_frame_writer_busy"
+        assert resp.headers["retry-after"] == "1"
+        assert elapsed < 5.0, f"failure was not bounded: {elapsed:.2f}s"
+    finally:
+        holder.terminate()
+        holder.wait(timeout=10)
+
+    db_lock.flush_warm_writers(isolated_db)
+    after = _client().post("/api/ad/frame-telemetry", json=_batch())
+    assert after.status_code == 202, after.text
+    assert after.json()["total_ad_value_cents"] == 1000
+
+
+def test_frame_telemetry_config_conflict_is_503_with_retry_after(
+    isolated_db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-process RO holder must exhaust the write wait as a retryable 503."""
+    import duckdb
+
+    from runtime import db_lock
+
+    for var in (
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    _mint_value(monkeypatch, 1000)
+    _seed_book(
+        isolated_db,
+        document_id="pd-earner",
+        title="Earner",
+        author="A",
+        content_class="public_domain",
+        raw_text="public domain body",
+        rights_holder_name="Earner Estate",
+    )
+    db_lock.flush_warm_writers(isolated_db)
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False),
+        raise_server_exceptions=False,
+    )
+    with duckdb.connect(isolated_db, read_only=True) as holder:
+        # Prove this is DuckDB's real same-process configuration conflict,
+        # not a mocked exception or another process's file-lock failure.
+        with pytest.raises(duckdb.ConnectionException) as conflict:
+            duckdb.connect(isolated_db)
+        assert db_lock._SAME_FILE_DIFFERENT_CONFIG in str(conflict.value)
+        print(f"in-process open: {type(conflict.value).__name__}: {conflict.value}")
+
+        response = client.post("/api/ad/frame-telemetry", json=_batch())
+        print(
+            f"HTTP status={response.status_code} "
+            f"Retry-After={response.headers.get('Retry-After')} body={response.text}"
+        )
+        assert response.status_code == 503, response.text
+        assert response.headers["Retry-After"] == "2"
+        assert response.json() == {
+            "detail": "database connection is temporarily unavailable; retry shortly"
+        }
+        assert isolated_db not in response.text
+        # The handler must not close someone else's active reader to admit
+        # this writer. That reader remains usable after the failed request.
+        assert holder.execute("SELECT 1").fetchone() == (1,)
+
+    after = client.post("/api/ad/frame-telemetry", json=_batch())
+    assert after.status_code == 202, after.text
+    assert after.json()["total_ad_value_cents"] == 1000
+
+
 def test_frame_telemetry_accepts_and_accrues(isolated_db, monkeypatch):
     _mint_value(monkeypatch, 1000)  # SERVER prices the window (AFA-S1)
     _seed_book(isolated_db, document_id="pd-earner", title="Earner",

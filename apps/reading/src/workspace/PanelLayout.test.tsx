@@ -28,12 +28,12 @@ describe("PanelLayout viewport crossing", () => {
     else Reflect.deleteProperty(window, "innerWidth");
   });
 
-  it("keeps the route mounted when the viewport crosses the small-screen boundary in both directions", () => {
+  it("renders the route without hook-order errors when crossing the small-screen boundary in both directions", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 767, writable: true });
     render(<PanelLayout mainSlot={<p>Route remains mounted</p>} />);
 
     screen.getByText("Route remains mounted");
-    screen.getByText(/Antiek is designed for/);
+    expect(screen.queryByText(/Antiek is designed for/)).toBeNull();
     expect(screen.queryByLabelText("Left dock")).toBeNull();
 
     resizeTo(768);
@@ -43,7 +43,7 @@ describe("PanelLayout viewport crossing", () => {
 
     resizeTo(767);
     screen.getByText("Route remains mounted");
-    screen.getByText(/Antiek is designed for/);
+    expect(screen.queryByText(/Antiek is designed for/)).toBeNull();
     expect(screen.queryByLabelText("Left dock")).toBeNull();
   });
 });

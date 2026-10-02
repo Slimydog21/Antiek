@@ -190,3 +190,44 @@ def test_a_missing_or_broken_map_degrades_to_counting(tmp_path) -> None:
     assert load_duration_weights(str(broken)) is None
     broken.write_text('{"tests/a.py": 12.5, "tests/b.py": 0, "tests/c.py": "x"}', encoding="utf-8")
     assert load_duration_weights(str(broken)) == {"tests/a.py": 12.5}
+
+
+def test_unmeasured_files_are_priced_in_seconds_not_test_counts() -> None:
+    """A file with no duration must be weighed in the packer's own unit.
+
+    Weighing it by its test count puts a second currency into a sum of
+    seconds: a measured 5-second file and an unmeasured 10-test file compare
+    as 5 and 10 even though the unmeasured file really costs an estimated 50
+    seconds. Here every measured file takes 5 s per test, so the median
+    seconds-per-test is 5 and the unmeasured file is worth 50 s — heavier than
+    any other file, which must therefore leave it alone on a shard. Priced by
+    count it is worth only 10 and shares that shard instead.
+    """
+    unmeasured = "tests/test_unmeasured.py"
+    measured = [f"tests/test_measured_{index}.py" for index in range(3)]
+    nodeids = (
+        *(f"{unmeasured}::test_{index}" for index in range(10)),
+        *(f"{path}::test_case" for path in measured),
+    )
+    weights = dict.fromkeys(measured, 5.0)
+
+    shards = partition_nodeids(nodeids, 2, weights=weights)
+
+    holder = next(shard for shard in shards if any(node.startswith(unmeasured) for node in shard))
+    assert tuple(holder) == tuple(f"{unmeasured}::test_{index}" for index in range(10))
+
+
+def test_no_measurements_at_all_still_balances_by_count() -> None:
+    """Guards the documented fallback: a missing map keeps the old behaviour."""
+    nodeids = (
+        *(f"tests/test_big.py::test_{index}" for index in range(6)),
+        *(f"tests/test_small.py::test_{index}" for index in range(2)),
+    )
+    shards = partition_nodeids(nodeids, 2, weights=None)
+
+    # Whole files stay together, so 6 + 2 counts cannot balance to 4 + 4; the
+    # point is that the FILE SIZE is what decides, exactly as before the
+    # duration weights existed.
+    assert sorted(len(shard) for shard in shards) == [2, 6]
+    biggest = max(shards, key=len)
+    assert all(node.startswith("tests/test_big.py") for node in biggest)

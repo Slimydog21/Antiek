@@ -94,6 +94,11 @@ from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
+# Retry-After hint (seconds) served with every 503 mapped from
+# runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
+# Conservative client backoff hint, not a measured hold time.
+_DB_CONNECTION_RETRY_AFTER_S = "2"
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
@@ -210,6 +215,11 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
+    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
+    # be starved of the DuckDB write lock for hours while /health says "ok";
+    # this is the field that makes that state visible without opening a log.
+    # Empty dict when the worker is disabled or has not run a pass yet.
+    note_taker_replay: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -555,6 +565,11 @@ class InvestigationSummary(BaseModel):
     # translates this into the "found by the loop" badge — the raw policy_id is
     # never sent to the client, only this honest boolean.
     spawned_by_daemon: bool = False
+    # LB-2 (A1c-H1 / R8): the source document this investigation reads.
+    # Optional and additive — null when the investigation has no document
+    # (daemon-spawned or legacy runs). The frontend's source-document
+    # affordance (companionStore.sourceDocumentOf) resolves against this.
+    document_id: str | None = None
 
 
 class InvestigationListResponse(BaseModel):
@@ -675,6 +690,8 @@ class InvestigationStatusResponse(BaseModel):
     # Source-pack intent recorded on the start event. Empty for legacy runs
     # and for requests that did not choose a source pack; never recomputed.
     source_policy: list[str] = Field(default_factory=list)
+    # LB-2: parity with InvestigationSummary — the source document, or null.
+    document_id: str | None = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -852,6 +869,11 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
+    # Additive compare-and-set guard (CR-F1's surviving half). Absent = the
+    # long-standing blind write, so existing callers are unchanged. Supplied,
+    # it must equal the stored prose or the write is refused with 409
+    # `prose_revision_conflict` and nothing is written.
+    based_on_prose_text: str | None = None
     original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -1627,6 +1649,34 @@ def create_app(
         ),
     )
 
+    # Database admission conflicts share one retryable HTTP response handler.
+    # ReadLockTimeout covers an external file lock; WriteConfigurationTimeout
+    # covers an incompatible same-process handle after the write wait expires.
+    # Separate types preserve existing route-specific WriteLockTimeout handling.
+    from fastapi.responses import JSONResponse
+
+    from runtime.db_lock import ReadLockTimeout, WriteConfigurationTimeout
+
+    @app.exception_handler(WriteConfigurationTimeout)
+    @app.exception_handler(ReadLockTimeout)
+    async def _database_connection_unavailable(
+        _request: Request, _exc: ReadLockTimeout | WriteConfigurationTimeout
+    ) -> JSONResponse:
+        # Static body: no db path or holder detail leaks to clients. The
+        # 2s Retry-After is a conservative client backoff hint, not derived
+        # from measured hold times.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "database read is temporarily unavailable; retry shortly"
+                    if isinstance(_exc, ReadLockTimeout)
+                    else "database connection is temporarily unavailable; retry shortly"
+                )
+            },
+            headers={"Retry-After": _DB_CONNECTION_RETRY_AFTER_S},
+        )
+
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
     # the operator can override via env for non-default ports or staging
     # hosts. WebSocket origin checks honor the same list.
@@ -1654,20 +1704,6 @@ def create_app(
                 "https://antiek.ai",
                 "https://www.antiek.ai",
             ]
-    if cors_origins:
-        # H6 magic-link auth: ``credentials=True`` is required for the
-        # browser to carry the ANTIEK_SESSION cookie cross-origin from
-        # the Pages frontend to api.antiek.ai. Pair with explicit
-        # origins (no wildcard); the cookie itself is HttpOnly +
-        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
     # ── H4 + H4.5 + H6: operator auth middleware ──
     # THREE complementary auth paths, all opt-in via env vars:
     #
@@ -1911,6 +1947,32 @@ def create_app(
             },
         )
 
+    if cors_origins:
+        # H6 magic-link auth: ``credentials=True`` is required for the
+        # browser to carry the ANTIEK_SESSION cookie cross-origin from
+        # the Pages frontend to api.antiek.ai. Pair with explicit
+        # origins (no wildcard); the cookie itself is HttpOnly +
+        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[
+                "X-Artifact-ID",
+                "X-Artifact-Style",
+                "X-Artifact-Version",
+                "X-Content-SHA256",
+                "X-Source-SHA256",
+                "X-Artifact-Source-State",
+                "X-Artifact-Current-Source-SHA256",
+                "X-Document-ID",
+                "X-Reader-Revision",
+                "ETag",
+            ],
+        )
+
     # ── Magic-link auth routes (PostHog-style owned login surface) ──
     # Mounted unconditionally so /auth/request + /auth/callback are
     # reachable; the routes themselves no-op when the operator email
@@ -1969,6 +2031,10 @@ def create_app(
     # owner-scoped evidence reads, project scope honestly unavailable.
     from .companion_routes import register_companion_routes
     register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
@@ -2390,6 +2456,9 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
+            note_taker_replay=dict(
+                getattr(app.state, "note_taker_recovery", {}) or {}
+            ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -2428,6 +2497,18 @@ def create_app(
                 role=envelope.role,
                 policy_id=envelope.policy_id,
                 document_id=envelope.document_id,
+                # strict_write makes the except clause below reachable. It says
+                # "Pydantic ValidationError or write error", and with the emitter's
+                # default (False) a write error could never arrive here: `_safe`
+                # swallows it, prints to stderr, and emit_typed still returns a
+                # non-None event_id -- so the `event_id is None` check below, whose
+                # own comment promises to tell the client "nothing was persisted",
+                # could not fire either. A caller therefore received 201 and an
+                # event id for an event that was never written. Measured:
+                # substrate/event_log/events.py:424-428 returns event_id on both
+                # branches. This is a POST whose whole purpose is durability, and
+                # its sibling 503 already distinguishes that case by design.
+                strict_write=True,
             )
         except Exception as exc:  # Pydantic ValidationError or write error
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2941,6 +3022,14 @@ def create_app(
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
 
+        # LB-2: the source document (envelope field on any row).
+        doc_id: str | None = None
+        for r in rows:
+            _doc = r.get("document_id")
+            if isinstance(_doc, str) and _doc.strip():
+                doc_id = _doc.strip()
+                break
+
         # Walk newest-first to find the latest phase, latest delivered,
         # and any terminal verdict.
         last_phase: int | None = None
@@ -3003,6 +3092,7 @@ def create_app(
                 rubric_score=rubric_score,
                 research_tier=research_tier,
                 source_policy=source_policy,
+                document_id=doc_id,
             )
 
         return InvestigationStatusResponse(
@@ -3014,6 +3104,7 @@ def create_app(
             rubric_score=rubric_score,
             research_tier=research_tier,
             source_policy=source_policy,
+            document_id=doc_id,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -3102,6 +3193,7 @@ def create_app(
             question: str | None = None
             started_at: str | None = None
             completed_at: str | None = None
+            document_id: str | None = None
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: str | None = None
@@ -3166,6 +3258,10 @@ def create_app(
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+                if document_id is None:
+                    _doc = r.get("document_id")
+                    if isinstance(_doc, str) and _doc.strip():
+                        document_id = _doc.strip()
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -3179,6 +3275,7 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
                 spawned_by_daemon=spawned_by_daemon,
+                document_id=document_id,
             ))
 
         # Derive each session container's status from its leaves (the same
@@ -3894,7 +3991,12 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.graph.ops import (
+            ProseRevisionConflict,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
         from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
         from substrate.write.event_outbox import (
             build_typed_envelope,
@@ -3919,9 +4021,22 @@ def create_app(
                 claim_node_id: str | None = None
                 claim_event_id: str | None = None
                 with eventful_transaction(con, req.investigation_id):
-                    update_section_prose(
-                        con, section_id=section_id, prose_text=req.prose_text,
-                    )
+                    try:
+                        update_section_prose(
+                            con, section_id=section_id, prose_text=req.prose_text,
+                            based_on_prose_text=req.based_on_prose_text,
+                        )
+                    except ProseRevisionConflict as exc:
+                        # Nothing is written and nothing is enqueued: the guard
+                        # raises before the UPDATE, inside the caller's
+                        # transaction, so the whole edit rolls back.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="prose_revision_conflict",
+                            headers={
+                                "X-Prose-Updated-At": str(exc.current_updated_at)
+                            },
+                        ) from exc
                     if req.promote_to_graph:
                         label = req.prose_text.strip().splitlines()[0]
                         if len(label) > 160:
@@ -7890,17 +8005,31 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    note_taker_recovery_start_lock = threading.Lock()
+
     def _recover_note_taker_replay() -> None:
         from substrate.graph import default_db_path
 
         from .note_taking import start_replay_recovery
 
-        stop = threading.Event()
-        app.state.note_taker_recovery_stop = stop
-        app.state.note_taker_recovery_worker = start_replay_recovery(
-            db_path=default_db_path(),
-            stop_event=stop,
-        )
+        with note_taker_recovery_start_lock:
+            worker = getattr(app.state, "note_taker_recovery_worker", None)
+            # Repeated startup must retain the live worker and its stop/report
+            # handles; replacing them orphans a thread that shutdown cannot stop.
+            if worker is not None and worker.is_alive():
+                return
+            stop = threading.Event()
+            app.state.note_taker_recovery_stop = stop
+            # The worker's own report, published for /health. Prod 2026-10-01: it
+            # failed against a contended DuckDB write lock for hours — thousands of
+            # stderr lines and no projection progress — while /health answered
+            # "ok", because nothing read what the worker knew.
+            app.state.note_taker_recovery = {}
+            app.state.note_taker_recovery_worker = start_replay_recovery(
+                db_path=default_db_path(),
+                stop_event=stop,
+                state=app.state.note_taker_recovery,
+            )
 
     def _stop_note_taker_replay() -> None:
         stop = getattr(app.state, "note_taker_recovery_stop", None)

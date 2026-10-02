@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { BookSummary } from "../../api/books";
 import type { InvestigationSummary } from "../../lib/api";
+import { LibraryCatalogHttpError } from "../../api/libraryCatalog";
 import BookCard from "./BookCard";
 import Library from "./index";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
@@ -60,9 +61,10 @@ vi.mock("../../api/books", async (orig) => {
   };
 });
 
-vi.mock("../../api/libraryCatalog", () => ({
-  fetchLibraryCatalog: fetchLibraryCatalogMock,
-}));
+vi.mock("../../api/libraryCatalog", async (orig) => {
+  const actual = await orig<typeof import("../../api/libraryCatalog")>();
+  return { ...actual, fetchLibraryCatalog: fetchLibraryCatalogMock };
+});
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
@@ -217,6 +219,47 @@ describe("Library", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });
+
+  it("a failed catalog load states no count and no empty shelf", async () => {
+    // Rubric veto: the page printed "0 books readable in full" while the
+    // catalog request had failed — an invented zero from an unknown.
+    fetchLibraryCatalogMock.mockRejectedValue(new Error("HTTP 503"));
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByText("The library catalog is unavailable. Try again.")).toBeTruthy(),
+    );
+    expect(screen.getByText(/The shelf didn't load, so the count is unknown\./)).toBeTruthy();
+    expect(screen.queryByText(/0 books readable in full/)).toBeNull();
+    expect(screen.queryByText(/No books|nothing on the shelf|shelf is empty/i)).toBeNull();
+  });
+
+  it("retries a 503 lock-contention load and serves the shelf without a user action", async () => {
+    // Production 2026-10-01: a bulk arXiv sync held the DB lock ~97% of the
+    // time. The route answered 500, which left without CORS headers, so the
+    // browser surfaced a CORS failure and the shelf looked permanently gone.
+    // GET /library now answers 503 + Retry-After instead (PR #3598).
+    fetchLibraryCatalogMock
+      .mockRejectedValueOnce(new LibraryCatalogHttpError(503))
+      .mockResolvedValueOnce({ works: [servableBook], total: 1, page: 1, page_size: 20 });
+    renderLibrary();
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+      { timeout: 3000 },
+    );
+    expect(fetchLibraryCatalogMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("The library catalog is unavailable. Try again.")).toBeNull();
+  }, 10000);
+
+  it("a persistent 503 says the catalog is BUSY, not unavailable, and still states no count", async () => {
+    fetchLibraryCatalogMock.mockRejectedValue(new LibraryCatalogHttpError(503));
+    renderLibrary();
+    await waitFor(
+      () => expect(screen.getByText(/busy/i)).toBeTruthy(),
+      { timeout: 5000 },
+    );
+    expect(screen.queryByText(/0 books readable in full/)).toBeNull();
+    expect(screen.queryByText(/No books|nothing on the shelf|shelf is empty/i)).toBeNull();
+  }, 10000);
 
   it("switching to Preview reloads the gated set", async () => {
     fetchLibraryCatalogMock

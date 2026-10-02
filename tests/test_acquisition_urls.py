@@ -278,7 +278,18 @@ def test_ingest_low_word_count_skips_graph_writes(temp_substrate):
         embedder=_StubEmbedder(),
         fetched=stub,
     )
+    # All three were asserted here until a refactor kept only the first, which is
+    # the one assertion that cannot detect the regression this test names. The
+    # contract is at acquisition/urls/adapter.py:236-247: the low-word-count gate
+    # returns early BUT still carries document_loaded_event_id, because the event
+    # is emitted so the operator can see the fetch happened even when graph writes
+    # are skipped. Dropping these two made the test pass while
+    # `if md_doc.word_count >= min_word_count:` guarded emit_typed -- a mutant that
+    # suppresses the event on exactly the path under test. Verified by restoring
+    # them and re-running against that mutant.
     assert res.skipped_reason == "low_word_count"
+    assert res.chunks_written == 0
+    assert res.document_loaded_event_id is not None
 
 
 def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
