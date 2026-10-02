@@ -20,10 +20,6 @@ def research_artifacts_dir() -> Path:
     return Path.home() / ".antiek" / "research-artifacts"
 
 
-def snapshot_dir() -> Path:
-    return research_artifacts_dir() / "snapshots"
-
-
 def validate_artifact_id(artifact_id: str) -> str:
     """Return a storage-safe canonical id (never silently rewrite it)."""
     if not _ARTIFACT_ID_RE.fullmatch(artifact_id):
