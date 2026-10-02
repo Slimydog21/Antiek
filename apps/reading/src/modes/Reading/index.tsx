@@ -158,7 +158,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       ]);
       if (!current()) return;
       setLoadState((previous) => current() ? {
-        ...lifetime.resource, kind: "loading",
+        ...lifetime.resource, kind: "ready",
         data: { book: detail, body: full, housePool: previous.data?.housePool ?? [] },
       } : previous);
       // House-state candidates for the zero-buyer ad border.
@@ -171,10 +171,6 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       } catch {
         /* house pool is best-effort; a neutral house card is fine */
       }
-      if (!current()) return;
-      setLoadState((previous) => current() && previous.kind === "loading" && previous.data ? {
-        ...lifetime.resource, kind: "ready", data: previous.data,
-      } : previous);
     } catch (cause: unknown) {
       if (!current()) return;
       setLoadState((previous) => current() ? {
