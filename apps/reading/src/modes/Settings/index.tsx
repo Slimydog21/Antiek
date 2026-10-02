@@ -39,6 +39,7 @@ import {
   fetchSettingsUsage,
   type SettingsUsageKeyEntry,
 } from "../../api/settingsUsage";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import AddModelPanel from "./AddModelPanel";
 import AppearancePanel from "./AppearancePanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
@@ -951,7 +952,7 @@ function DecisionTreePanel({
   const receiptRequestVersion = useRef(0);
   const approvalRequestVersion = useRef(0);
   const [approvingChainId, setApprovingChainId] = useState<string | null>(null);
-  const [approvalError, setApprovalError] = useState<{ chainId: string; message: string } | null>(null);
+  const [approvalError, setApprovalError] = useState<{ chainId: string; failure: DescribedFailure } | null>(null);
 
   const selectedProviderBalance = useMemo(() => {
     const provider = selected?.provider ?? projection?.chosen_provider ?? null;
@@ -1019,7 +1020,7 @@ function DecisionTreePanel({
       return true;
     } catch (caught) {
       if (approvalRequestVersion.current === version) {
-        setApprovalError({ chainId: chain.chain_id, message: caught instanceof Error ? caught.message : "Could not approve exact terms" });
+        setApprovalError({ chainId: chain.chain_id, failure: describeFailure(caught, { what: "approve the exact terms" }) });
       }
       return false;
     } finally {
@@ -1223,7 +1224,7 @@ function FallbackReceiptHistory({
   unavailable: boolean;
   onLoadOlder: () => void;
   approvingChainId: string | null;
-  approvalError: { chainId: string; message: string } | null;
+  approvalError: { chainId: string; failure: DescribedFailure } | null;
   onApprove: (chain: FallbackReceiptChain) => Promise<boolean>;
 }) {
   const [reviewingChainId, setReviewingChainId] = useState<string | null>(null);
@@ -1288,7 +1289,7 @@ function FallbackReceiptHistory({
                   </div>
                 </div>
               )}
-              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-danger">{approvalError.message}</p>}
+              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-danger">{approvalError.failure.title} {approvalError.failure.detail}</p>}
             </li>
           ))}
         </ol>
