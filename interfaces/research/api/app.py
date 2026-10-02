@@ -2035,6 +2035,11 @@ def create_app(
     # provenance read the review surface renders.
     from .reformat_routes import register_reformat_routes
     register_reformat_routes(app)
+    # Mothership W1 (THREAD-CONTRACT §1.5/§1.6) — the project registry over
+    # write_folders and the per-account tab trees: owner-scoped, a version
+    # compare-and-set, append-only number registers and a retirement history.
+    from .project_routes import register_project_routes
+    register_project_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
