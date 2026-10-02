@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import os
 import sys
 import threading
@@ -155,7 +156,8 @@ def _resolve_replay_tuning() -> tuple[float, float, float]:
         if not raw:
             return default
         try:
-            return max(0.0, float(raw))
+            value = float(raw)
+            return max(0.0, value) if math.isfinite(value) else default
         except ValueError:
             return default
 
@@ -204,6 +206,8 @@ def start_replay_recovery(
         from substrate.graph.knowledge_event_projector import discover_investigations
 
         barren_passes = 0
+        retry_delays: dict[str, float] = {}
+        retry_at: dict[str, float] = {}
         suppressed = 0
         last_log_at = 0.0
         while not stop.is_set():
@@ -224,17 +228,31 @@ def start_replay_recovery(
                 continue
 
             investigations = list(discover_investigations(service.events_dir))
+            for removed in retry_at.keys() - set(investigations):
+                retry_at.pop(removed)
+                retry_delays.pop(removed)
             progressed = False
             failures = 0
             for investigation_id in investigations:
                 if stop.is_set():
                     return
+                if time.monotonic() < retry_at.get(investigation_id, 0.0):
+                    continue
                 try:
                     service.catch_up(investigation_id)
                     progressed = True
+                    retry_at.pop(investigation_id, None)
+                    retry_delays.pop(investigation_id, None)
                 except Exception as exc:
                     failures += 1
                     now = time.monotonic()
+                    previous = retry_delays.get(investigation_id)
+                    delay = min(
+                        backoff_base_s if previous is None else previous * 2.0,
+                        backoff_max_s,
+                    )
+                    retry_delays[investigation_id] = delay
+                    retry_at[investigation_id] = now + delay
                     # One line per interval, carrying what it swallowed. A
                     # per-failure line is not observability, it is noise: at
                     # ~1 line/second it buried the real errors around it.
@@ -264,34 +282,46 @@ def start_replay_recovery(
                 if yield_s > 0 and not os.environ.get("PYTEST_CURRENT_TEST"):
                     time.sleep(yield_s)
 
-            if progressed:
+            if not investigations:
                 barren_passes = 0
                 report.update(
                     {
-                        "status": "current",
+                        "status": "idle",
                         "consecutive_barren_passes": 0,
-                        "failures": failures,
-                        "investigations": len(investigations),
-                        "last_success_at": time.time(),
+                        "failures": 0,
+                        "investigations": 0,
+                        "backoff_s": 0.0,
+                        "pending_retries": 0,
                     }
                 )
                 stop.wait(poll_interval_s)
                 continue
 
-            barren_passes += 1
-            backoff_s = min(backoff_base_s * (2 ** (barren_passes - 1)), backoff_max_s)
+            if progressed:
+                barren_passes = 0
+                report["last_success_at"] = time.time()
+            elif failures:
+                barren_passes += 1
+
+            pending = len(retry_at)
+            backoff_s = (
+                max(0.0, min(retry_at.values()) - time.monotonic()) if pending else 0.0
+            )
             report.update(
                 {
-                    "status": "backoff" if investigations else "idle",
+                    "status": ("catching_up" if progressed else "backoff")
+                    if pending
+                    else "current",
                     "consecutive_barren_passes": barren_passes,
                     "failures": failures,
                     "investigations": len(investigations),
                     "backoff_s": backoff_s,
+                    "pending_retries": pending,
                     "suppressed_failures": suppressed,
                 }
             )
-            # An empty investigation list is not a failure: poll normally.
-            stop.wait(backoff_s if investigations else poll_interval_s)
+            # Retry deadlines gate failed streams without delaying healthy peers.
+            stop.wait(poll_interval_s)
 
     thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)
     thread.start()
