@@ -260,7 +260,12 @@ def commit_bulk_slice(
     db_path: str, lines: Sequence[BulkOaiLine], progress: dict[str, object],
     *, max_lock_s: float, max_high_water_date: date,
 ) -> tuple[int, dict[str, object], dict[str, int]]:
-    """Commit a bounded prefix of physical lines and its cursor together."""
+    """Commit a physical prefix and cursor in one transaction.
+
+    A positive budget includes persistence between batches of at most 32 live
+    records. One operation can exceed this cooperative cap. Zero retains the
+    single persistence batch for the whole supplied slice.
+    """
     if not lines:
         return 0, progress, {"inserted": 0, "updated": 0, "skipped_deleted": 0}
     next_progress = dict(progress)
@@ -273,6 +278,8 @@ def commit_bulk_slice(
         with con.transaction():
             live_records: list[ArxivOaiRecord] = []
             for line in lines:
+                if consumed and max_lock_s > 0 and time.monotonic() - start >= max_lock_s:
+                    break
                 record = line.record
                 if record is not None:
                     next_progress["selected_record_count"] = _as_int(next_progress["selected_record_count"]) + 1
@@ -301,12 +308,13 @@ def commit_bulk_slice(
                 next_progress["next_byte_offset"] = line.end_offset
                 next_progress["physical_line_count"] = _as_int(next_progress["physical_line_count"]) + 1
                 consumed += 1
-                if max_lock_s > 0 and time.monotonic() - start >= max_lock_s:
-                    break
-            # One insert statement and one update statement for the whole
-            # slice: DuckDB re-plans every statement, and each plan re-binds
-            # the documents FK constraints (~11-12 ms per constraint on the
-            # production catalog). Batching pays that cost once per slice.
+                if max_lock_s > 0 and len(live_records) >= 32:
+                    inserted, updated = persist_oai_records_batched(con, live_records)
+                    tally["inserted"] += inserted
+                    tally["updated"] += updated
+                    live_records.clear()
+            # Flush the admitted remainder inside the same document/cursor
+            # transaction. A disabled cap preserves one coalesced batch.
             inserted, updated = persist_oai_records_batched(con, live_records)
             tally["inserted"] += inserted
             tally["updated"] += updated
