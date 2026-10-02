@@ -96,16 +96,17 @@ To dogfood as owner **without** weakening prod gates:
    - `ANTIEK_AUTH_SECRET` — already required for signed cookies
    - `ANTIEK_OPERATOR_EMAIL` — single operator (turns enforcement on;
      empty allowlist keeps the middleware in `unauthenticated_local`)
-   - `ANTIEK_DEV_LOGIN_TOKEN` — enables `GET /auth/dev-login` (404 when unset)
+   - `ANTIEK_DEV_LOGIN_TOKEN` — enables the token-free `GET /auth/dev-login` form and its credential-body POST (404 when unset)
    - `ANTIEK_OPERATOR_TOKEN` — optional Bearer for curl smoke
 2. Restart via `./scripts/start-shared-duckdb-mac-mini.sh`
-3. Mint a session (token never printed):
+3. Mint a session (token never printed or placed in a URL):
 
 ```bash
-# Browser (preferred for UI dogfood)
+# Browser (preferred for UI dogfood): opens a token-free form.
+# Enter the token in the browser and submit; opening alone does not log in.
 ./scripts/mac-mini-owner-dev-login.sh /
 
-# Or curl cookie jar for API smoke
+# Or curl cookie jar for API smoke only; it does not log in the browser.
 ANTIEK_OWNER_LOGIN_MODE=curl ./scripts/mac-mini-owner-dev-login.sh /
 # → /tmp/antiek-owner.cookies ; curl -b that jar …
 ```

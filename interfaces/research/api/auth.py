@@ -445,17 +445,17 @@ def _format_magic_link_email(*, email: str, link: str, device_code: str) -> Outb
 
 # ── Dev-login (temporary agent / computer-use access) ─────────────────
 # A single env-gated token that lets a browser-driving agent (Codex /
-# Hermes computer-use) acquire an operator session by navigating to ONE
-# URL — no inbox round-trip, no header injection. The magic-link path
+# Hermes computer-use) acquire an operator session from a token-free form
+# page — no inbox round-trip, no header injection. The magic-link path
 # needs an email click; a Bearer token needs a header the browser can't
 # attach to a page load; this fills the gap for computer-use agents that
-# only know how to visit a URL and click.
+# only know how to visit a URL, fill a field and click.
 #
 # Disabled by default: the route 404s unless BOTH ``ANTIEK_DEV_LOGIN_TOKEN``
 # and ``ANTIEK_AUTH_SECRET`` are set, so it is invisible (not merely
 # forbidden) on any box that hasn't opted in. Kill it by unsetting the
 # token var — no redeploy needed — or rotate its value to invalidate a
-# leaked link.
+# leaked credential.
 #
 # Scope: this grants FULL operator access. It is a development /
 # verification convenience, NOT the scoped read-only public API (that is
@@ -799,7 +799,35 @@ def register_auth_routes(
         return Response(status_code=204)
 
     @app.get("/auth/dev-login", tags=["auth"])
-    async def auth_dev_login(token: str = "", next: str = "/") -> Response:
+    async def auth_dev_login_form(request: Request, next: str = "/") -> Response:
+        from fastapi.responses import HTMLResponse
+
+        if "token" in request.query_params or set(request.query_params) - {"next"}:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if not _dev_login_token() or not os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+            raise HTTPException(status_code=404, detail="Not Found")
+        safe_next = next if len(next) <= 2048 and _is_safe_relative(next) else "/"
+        form = (
+            '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<title>Operator sign in</title></head><body><main>'
+            '<h1>Operator sign in</h1><form method="post" action="/auth/dev-login">'
+            '<label for="dev-login-token">Dev login token</label>'
+            '<input id="dev-login-token" type="password" name="token" '
+            'autocomplete="off" required>'
+            f'<input type="hidden" name="next" value="{html.escape(safe_next, quote=True)}">'
+            '<button type="submit">Sign in</button></form></main></body></html>'
+        )
+        return HTMLResponse(
+            form,
+            headers={
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+                "Content-Security-Policy": "default-src 'none'; base-uri 'none'",
+            },
+        )
+
+    @app.post("/auth/dev-login", tags=["auth"])
+    async def auth_dev_login(request: Request) -> Response:
         # Disabled unless the operator opted in by setting both the
         # dev-login token AND the auth secret (the secret is what makes
         # the minted cookie verifiable by the middleware). 404 — not
@@ -808,6 +836,16 @@ def register_auth_routes(
         configured = _dev_login_token()
         secret_set = bool(os.environ.get("ANTIEK_AUTH_SECRET", "").strip())
         if not configured or not secret_set:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if request.scope.get("query_string"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        from .dev_login_transport import read_dev_login_form
+
+        try:
+            token, next = await read_dev_login_form(request)
+        except ValueError as err:
+            raise HTTPException(status_code=404, detail="Not Found") from err
+        if not token.isascii() or not configured.isascii():
             raise HTTPException(status_code=404, detail="Not Found")
         # Constant-time compare; an empty/incorrect token is also a 404 so
         # a probe can't distinguish "feature off" from "wrong token".
