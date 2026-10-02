@@ -274,11 +274,11 @@ def run_ruff(
             f"ruff binary not found at {ruff_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
-    # ruff: 0 = clean, 1 = violations found, >=2 = ruff itself failed
-    # (bad pyproject config, unknown rule, internal error). Parsing stdout
-    # alone turns that failure into "zero findings", which subtracts to zero
-    # NEW and exits 0 — a REQUIRED check green over a tool that never ran.
-    if proc.returncode >= 2:
+    # ruff: only 0 = clean and 1 = violations found are valid results.
+    # Other statuses, including negative signal codes, mean tool failure.
+    # Parsing stdout alone can turn a failed process into "zero findings"
+    # and report a passing check for a tool that never completed.
+    if proc.returncode not in (0, 1):
         raise RuntimeError(
             f"ruff exited {proc.returncode} (tool failure, not a finding). "
             f"stderr: {(proc.stderr or '').strip()[:400]!r}"
@@ -316,9 +316,9 @@ def run_mypy(
             f"mypy binary not found at {mypy_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
-    # mypy: 0 = clean, 1 = type errors found, >=2 = mypy itself failed
-    # (usage error, INTERNAL ERROR, missing plugin). Same hazard as ruff.
-    if proc.returncode >= 2:
+    # mypy: only 0 = clean and 1 = type errors found are valid results.
+    # Other statuses, including negative signal codes, mean tool failure.
+    if proc.returncode not in (0, 1):
         raise RuntimeError(
             f"mypy exited {proc.returncode} (tool failure, not a finding). "
             f"stderr: {(proc.stderr or '').strip()[:400]!r}"
