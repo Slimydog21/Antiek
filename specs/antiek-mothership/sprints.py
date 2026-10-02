@@ -4,7 +4,8 @@
 Each sprint is authored by hand below; this file only guarantees identical markup and the
 standalone-briefing preamble on every page. Run: python3 sprints.py && python3 build.py
 """
-import html, os
+import html
+import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GEN = "2026-09-24"
@@ -78,7 +79,7 @@ def render(sp):
     mlist = "\n".join(f"- [ ] M{i}: {html.escape(m['title'])} — &lt;result&gt;" for i, m in enumerate(sp["milestones"], 1))
     glist = "\n".join(f"- {html.escape(g)}: pass | fail | skipped (why)" for g, _, _ in sp["gates"])
     h = sp["harness"]
-    lenses = "".join(f"<li>{l}</li>" for l in h["lenses"])
+    lenses = "".join(f"<li>{lens}</li>" for lens in h["lenses"])
     return f'''<!doctype html>
 <html lang="en">
 <head>
@@ -1154,5 +1155,6 @@ if __name__ == "__main__":
     for sp in SPRINTS:
         n = sp["id"].split("-")[1]
         path = os.path.join(HERE, f"sprint-{n}-{sp['slug']}.src.html")
-        open(path, "w").write(render(sp))
+        with open(path, "w") as fh:
+            fh.write(render(sp))
         print(os.path.basename(path))
