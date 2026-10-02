@@ -163,10 +163,7 @@ dev = [
 
 [project.scripts]
 herdr-bridge = "infrastructure.connectors.herdr_bridge.cli:main"
-# Entry point lives at `antiek.cli:main` once we wire it. For now this is
-# a placeholder so `pip install -e .` doesn't fail; the real launcher
-# fires up Hermes with the right profile (see spec, "Compute and runtime").
-antiek = "antiek.cli:main"
+# The supported console launcher is `herdr-bridge` above.
 
 [tool.hatch.build.targets.wheel]
 # Each top-level directory in the spec is a separate Python package. We

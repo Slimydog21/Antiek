@@ -1071,6 +1071,13 @@ export async function reorderBlock(req: {
 
 export interface UpdateSectionProseRequest {
   prose_text: string;
+  /**
+   * Additive compare-and-set guard (CR-F1's surviving half). The prose this
+   * edit was made against. The server refuses a stale write with 409
+   * `prose_revision_conflict` instead of overwriting a newer draft from
+   * another tab. Absent keeps the long-standing blind write.
+   */
+  based_on_prose_text?: string;
   original_text?: string;
   promote_to_graph?: boolean;
   cited_chunk_ids?: string[];

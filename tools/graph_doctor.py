@@ -39,7 +39,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadLockTimeout, connect_read
 
 
 @dataclass
@@ -95,7 +95,9 @@ def collect(graph_path: str, now: datetime) -> GraphMetrics:
     m = GraphMetrics()
     try:
         con = connect_read(graph_path)
-    except duckdb.Error as exc:
+    except (duckdb.Error, ReadLockTimeout) as exc:
+        # ReadLockTimeout is a RuntimeError, not a duckdb.Error: a
+        # cross-process lock conflict must still degrade gracefully here.
         m.schema_notes.append(f"cannot open graph ({type(exc).__name__})")
         return m
     try:
