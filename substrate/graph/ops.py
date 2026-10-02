@@ -718,12 +718,30 @@ def attach_block_to_section(
 _PRESERVE_PROVENANCE: Any = object()
 
 
+class ProseRevisionConflict(Exception):
+    """The stored prose no longer matches the baseline this edit was made against.
+
+    Raised by :func:`update_section_prose` when the caller supplied
+    ``based_on_prose_text`` and the section has moved on since. Nothing is
+    written: the caller is expected to map this to a conflict status so the
+    editor can offer a reload instead of silently destroying the newer draft.
+    """
+
+    def __init__(
+        self, current_prose_text: str | None, current_updated_at: Any = None
+    ) -> None:
+        super().__init__("prose revision conflict")
+        self.current_prose_text = current_prose_text
+        self.current_updated_at = current_updated_at
+
+
 def update_section_prose(
     con: LockedConnection,
     *,
     section_id: str,
     prose_text: str,
     prose_provenance: Any = _PRESERVE_PROVENANCE,
+    based_on_prose_text: str | None = None,
 ) -> None:
     """Persist generated/edited prose for a section.
 
@@ -735,8 +753,33 @@ def update_section_prose(
     explicitly (including ``None`` to clear it) REPLACES the stored map — the
     inverse asymmetry: preserve by default, replace only when told to. This is
     why a one-paragraph typo fix no longer destroys the whole section's
-    X-ray / citation map."""
+    X-ray / citation map.
+
+    ``based_on_prose_text`` is a compare-and-set guard, additive and optional.
+    Absent (the default) preserves the long-standing blind write, so every
+    existing caller is unchanged. Supplied, it must equal the stored prose or
+    nothing is written and :class:`ProseRevisionConflict` is raised. Text is
+    compared rather than ``updated_at`` because ``CURRENT_TIMESTAMP`` has second
+    granularity, so two writes inside one second are indistinguishable and a
+    replayed client can match a timestamp while carrying different text.
+
+    A section with no prose yet stores NULL, while a client that has never
+    loaded one naturally sends "". They are the same state to the user, so they
+    compare equal rather than failing the first write on a JSON
+    null-versus-empty-string difference.
+    """
     _assert_write_locked(con)
+    if based_on_prose_text is not None:
+        current = con.execute(
+            "SELECT prose_text, updated_at FROM deliverable_sections "
+            "WHERE section_id = ?",
+            [section_id],
+        ).fetchone()
+        current_text = None if current is None else current[0]
+        if (current_text or "") != (based_on_prose_text or ""):
+            raise ProseRevisionConflict(
+                current_text, None if current is None else current[1]
+            )
     if prose_provenance is _PRESERVE_PROVENANCE:
         # Prose-only edit: touch prose_text, leave the provenance column intact.
         con.execute(
