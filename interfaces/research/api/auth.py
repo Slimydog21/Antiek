@@ -38,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import secrets
@@ -70,6 +71,8 @@ from substrate.auth import (
 )
 
 from .operator_allowlist import operator_allowlist_from_env
+
+_LOGGER = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -521,20 +524,12 @@ def register_auth_routes(
                     )
                 )
             except EmailDeliveryFailure as exc:
-                # Distinguish "we tried and the provider broke" from
-                # "you're not allowlisted" via a 503 — gives the
-                # operator a real signal when their email config is
-                # broken instead of silently swallowing the failure.
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "email_delivery_failed",
-                        "message": str(exc),
-                    },
-                ) from exc
-        # Non-allowlisted: silently no-op. Constant-time-ish: the
-        # branch difference is unavoidable but the response is
-        # identical, which is what enumeration protection turns on.
+                # Keep delivery failures off the public membership boundary.
+                # Provider exception text can contain credentials or addresses.
+                _LOGGER.warning("Sign-in email delivery failed (%s)", type(exc).__name__)
+        # The status and body shape do not disclose allowlist membership.
+        # Synchronous delivery can still differ in latency; this is not a
+        # constant-time endpoint.
         # device_code never leaves the server — the email is its only
         # channel, so typing it is genuine email-possession proof.
         return AuthRequestResponse(
@@ -811,7 +806,9 @@ def register_auth_routes(
             raise HTTPException(status_code=404, detail="Not Found")
         # Constant-time compare; an empty/incorrect token is also a 404 so
         # a probe can't distinguish "feature off" from "wrong token".
-        if not token or not secrets.compare_digest(token.strip(), configured):
+        if not token or not secrets.compare_digest(
+            token.strip().encode("utf-8"), configured.encode("utf-8")
+        ):
             raise HTTPException(status_code=404, detail="Not Found")
         # Mint under the operator identity so the existing cookie path in
         # the middleware (which checks cookie-email == ANTIEK_OPERATOR_EMAIL)
@@ -826,7 +823,11 @@ def register_auth_routes(
                 status_code=503,
                 detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
             )
-        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        cookie = mint_session_cookie(
+            user_id="__operator__",
+            email=allow[0],
+            max_age_seconds=_DEV_LOGIN_SESSION_MAX_AGE,
+        )
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
