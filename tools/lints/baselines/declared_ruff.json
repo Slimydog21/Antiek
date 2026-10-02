@@ -1,120 +1,8 @@
 {
-  "generated_at": "2026-09-20T04:11:38.361183+00:00",
+  "generated_at": "2026-10-02T07:06:00.530046+00:00",
   "lint": "declared_bar_ruff",
   "schema_version": 1,
   "violations": [
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 60,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 61,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "from acquisition.arxiv.throttle import (  # noqa: F401  (re-export for callers)"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 65,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "from acquisition.openaccess.unpaywall import NotAPdf, _looks_like_pdf"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 65,
-      "path": "acquisition/corpus_quality.py",
-      "snippet": "class CheckResultKind(str, enum.Enum):"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM108",
-      "line": 70,
-      "path": "acquisition/papers/core.py",
-      "snippet": "if isinstance(a, dict):"
-    },
-    {
-      "col": 37,
-      "kind": "ruff:F401",
-      "line": 32,
-      "path": "acquisition/search/__init__.py",
-      "snippet": "from datetime import UTC, datetime, timezone"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:F401",
-      "line": 34,
-      "path": "acquisition/search/__init__.py",
-      "snippet": "from typing import Optional"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 52,
-      "path": "acquisition/search/exa/adapter.py",
-      "snippet": "from substrate.constants import ("
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM108",
-      "line": 37,
-      "path": "acquisition/search/exa/budget.py",
-      "snippet": "if base:"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 181,
-      "path": "acquisition/search/retention.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 197,
-      "path": "acquisition/search/retention.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:B905",
-      "line": 320,
-      "path": "acquisition/search/retention.py",
-      "snippet": "return [dict(zip(cols, row)) for row in rows]"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 98,
-      "path": "acquisition/textbooks/doab.py",
-      "snippet": "return val"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM103",
-      "line": 136,
-      "path": "acquisition/urls/paulgraham.py",
-      "snippet": "if slug in _NON_ESSAY_SLUGS:"
-    },
-    {
-      "col": 8,
-      "kind": "ruff:F401",
-      "line": 32,
-      "path": "acquisition/video/__init__.py",
-      "snippet": "import uuid"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:F401",
-      "line": 34,
-      "path": "acquisition/video/__init__.py",
-      "snippet": "from typing import Optional, Protocol"
-    },
     {
       "col": 5,
       "kind": "ruff:SIM103",
@@ -130,165 +18,39 @@
       "snippet": "return payload"
     },
     {
-      "col": 5,
-      "kind": "ruff:SIM108",
-      "line": 141,
-      "path": "compounding/benchmark/aggregate.py",
-      "snippet": "if prop <= 0.0 or prop >= 1.0:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 18,
-      "path": "compounding/quality_gate/gate.py",
-      "snippet": "class QualityGateReason(str, enum.Enum):"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 87,
-      "path": "interfaces/research/api/broadcast.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 92,
-      "path": "interfaces/research/api/broadcast.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:E741",
-      "line": 165,
-      "path": "interfaces/research/api/coordination.py",
-      "snippet": "for l in rm.substrate_layers"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 12,
-      "path": "interfaces/research/api/creator_payouts.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 27,
-      "path": "interfaces/research/api/creator_payouts.py",
-      "snippet": "stripe_transfer_id: Optional[str]"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 36,
-      "path": "interfaces/research/api/creator_payouts.py",
-      "snippet": "kyc_state: Optional[str]"
-    },
-    {
-      "col": 49,
-      "kind": "ruff:UP045",
-      "line": 60,
-      "path": "interfaces/research/api/creator_payouts.py",
-      "snippet": "def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 67,
-      "path": "interfaces/research/api/cross_doc.py",
-      "snippet": "from .broadcast import EventBroadcaster"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 94,
-      "path": "interfaces/research/api/cross_doc.py",
-      "snippet": "num = sum(x * y for x, y in zip(a, b))"
-    },
-    {
       "col": 9,
       "kind": "ruff:B904",
-      "line": 139,
-      "path": "interfaces/research/api/distill_routes.py",
-      "snippet": "raise HTTPException("
-    },
-    {
-      "col": 9,
-      "kind": "ruff:B904",
-      "line": 150,
-      "path": "interfaces/research/api/distill_routes.py",
-      "snippet": "raise HTTPException("
-    },
-    {
-      "col": 9,
-      "kind": "ruff:B904",
-      "line": 149,
+      "line": 197,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "raise HTTPException(status_code=403, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
-      "line": 151,
+      "line": 199,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "raise HTTPException(status_code=409, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
-      "line": 157,
+      "line": 205,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "raise HTTPException(status_code=503, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
-      "line": 159,
+      "line": 207,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "raise HTTPException(status_code=404, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
-      "line": 166,
+      "line": 214,
       "path": "interfaces/research/api/speak_routes.py",
       "snippet": "raise HTTPException(status_code=400, detail=f\"{field} must be a decimal string\")"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 117,
-      "path": "middleware/constraint_check/loop.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 31,
-      "path": "middleware/ip_holder_resolver/__init__.py",
-      "snippet": "from typing import Any, Optional"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:SIM105",
-      "line": 40,
-      "path": "middleware/source_tier/rules.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:F401",
-      "line": 47,
-      "path": "middleware/supersession/supersession.py",
-      "snippet": "SupersessionTarget,"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:F401",
-      "line": 43,
-      "path": "orchestration/audit/phase_audit.py",
-      "snippet": "AuditSeverity,"
     },
     {
       "col": 1,
@@ -370,98 +132,77 @@
     {
       "col": 1,
       "kind": "ruff:I001",
-      "line": 23,
+      "line": 33,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "from __future__ import annotations"
     },
     {
       "col": 21,
       "kind": "ruff:F401",
-      "line": 31,
+      "line": 41,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "from pathlib import Path"
     },
     {
-      "col": 1,
-      "kind": "ruff:UP035",
-      "line": 32,
-      "path": "orchestration/continuous/daemon.py",
-      "snippet": "from typing import Any, Callable, Optional"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:UP045",
-      "line": 49,
-      "path": "orchestration/continuous/daemon.py",
-      "snippet": "SpawnFn = Callable[[str, dict], Optional[str]]"
-    },
-    {
-      "col": 50,
-      "kind": "ruff:UP045",
-      "line": 52,
-      "path": "orchestration/continuous/daemon.py",
-      "snippet": "def no_op_spawn(question: str, context: dict) -> Optional[str]:  # noqa: ARG001"
-    },
-    {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 62,
+      "line": 73,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "events_dir: Optional[str] = None"
     },
     {
       "col": 33,
       "kind": "ruff:UP017",
-      "line": 113,
+      "line": 273,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "return datetime.now(timezone.utc)"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
-      "line": 114,
+      "line": 274,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "return datetime.now(timezone.utc)"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 118,
+      "line": 278,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "events_dir: Optional[str] = None,"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 120,
+      "line": 280,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "investigation_filter: Optional[set[str]] = None,"
     },
     {
       "col": 10,
       "kind": "ruff:UP045",
-      "line": 187,
+      "line": 391,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "now: Optional[datetime] = None,"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 281,
+      "line": 648,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "config: Optional[DaemonConfig] = None,"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 282,
+      "line": 649,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "budget: Optional[DaemonBudget] = None,"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 284,
+      "line": 652,
       "path": "orchestration/continuous/daemon.py",
       "snippet": "iterations: Optional[int] = None,"
     },
@@ -543,991 +284,11 @@
       "snippet": "def score_gap(entry: GapEntry, *, now: Optional[datetime] = None) -> float:"
     },
     {
-      "col": 16,
-      "kind": "ruff:SIM115",
-      "line": 176,
-      "path": "orchestration/phase_runner/postconditions.py",
-      "snippet": "text = open(path, encoding=\"utf-8\").read()"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:SIM115",
-      "line": 251,
-      "path": "orchestration/phase_runner/postconditions.py",
-      "snippet": "text = open(path, encoding=\"utf-8\").read().lower()"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM102",
-      "line": 519,
-      "path": "orchestration/phase_runner/postconditions.py",
-      "snippet": "if isinstance(e.payload, AutoPatchAppliedPayload):"
-    },
-    {
-      "col": 40,
-      "kind": "ruff:F401",
-      "line": 52,
-      "path": "processing/extraction/extract.py",
-      "snippet": "from ...substrate.event_log import emit_typed"
-    },
-    {
-      "col": 32,
-      "kind": "ruff:F401",
-      "line": 30,
-      "path": "roles/cascade_planner/approval.py",
-      "snippet": "from .tree_contract import PlanTree"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 189,
-      "path": "roles/connector/prompt.py",
-      "snippet": "return out"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:B904",
-      "line": 53,
-      "path": "roles/creative_writer/parser.py",
-      "snippet": "raise CreativeWriterValidationError("
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 53,
-      "path": "roles/decomposer/paraphrase.py",
-      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 121,
-      "path": "roles/decomposer/prompt.py",
-      "snippet": "return out"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 156,
-      "path": "roles/evidence_retriever/prompt.py",
-      "snippet": "return out"
-    },
-    {
-      "col": 32,
-      "kind": "ruff:F401",
-      "line": 29,
-      "path": "roles/note_taker/scheduler.py",
-      "snippet": "from .document_pass import PassResult, run_document_pass"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:SIM105",
-      "line": 119,
-      "path": "roles/note_taker/scheduler.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 117,
-      "path": "roles/style_extractor/prompt.py",
-      "snippet": "return out"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 201,
-      "path": "roles/synthesizer/prompt.py",
-      "snippet": "return out"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 94,
-      "path": "runtime/remote_exec/provider.py",
-      "snippet": "class RemoteSignal(str, enum.Enum):"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 281,
-      "path": "runtime/remote_exec/runner.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 312,
-      "path": "runtime/remote_exec/runner.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 359,
-      "path": "runtime/remote_exec/runner.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 401,
-      "path": "runtime/remote_exec/runner.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:F841",
-      "line": 129,
-      "path": "runtime/research_runner/budget.py",
-      "snippet": "led = self._ledgers.setdefault("
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 42,
-      "path": "runtime/research_runner/protocol.py",
-      "snippet": "class RunState(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 60,
-      "path": "runtime/research_runner/protocol.py",
-      "snippet": "class CommandKind(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM103",
-      "line": 58,
-      "path": "skills/domain/extract.py",
-      "snippet": "if val in (\"0\", \"false\", \"no\", \"off\"):"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:B905",
-      "line": 220,
-      "path": "skills/verification/rlm.py",
-      "snippet": "for orig, norm in zip(responses, norms):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 21,
-      "path": "substrate/ad_inventory/ad_bidding.py",
-      "snippet": "class BiddingPolicy(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 45,
-      "path": "substrate/ad_inventory/advertiser_onboarding.py",
-      "snippet": "class AdvertiserStatus(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 362,
-      "path": "substrate/ad_inventory/advertiser_onboarding.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 42,
-      "path": "substrate/ad_inventory/attribution.py",
-      "snippet": "class AttributionAlgorithm(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 28,
-      "path": "substrate/ad_inventory/decisions_log.py",
-      "snippet": "class DecisionGate(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 75,
-      "path": "substrate/ad_inventory/decisions_log.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 130,
-      "path": "substrate/ad_inventory/intent_targeting.py",
-      "snippet": "if targeting.target_sectors and context.sector is not None:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 133,
-      "path": "substrate/ad_inventory/intent_targeting.py",
-      "snippet": "if targeting.target_sub_sectors and context.sub_sector is not None:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 136,
-      "path": "substrate/ad_inventory/intent_targeting.py",
-      "snippet": "if targeting.target_audience_intents and context.audience_intents:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 84,
-      "path": "substrate/ad_inventory/inventory_persistence.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP017",
-      "line": 26,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "return datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\")"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 34,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "class RevShareKind(str, enum.Enum):"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 49,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "document_id: Optional[str]"
-    },
-    {
-      "col": 44,
-      "kind": "ruff:UP037",
-      "line": 162,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "document_to_recipient: dict[str, tuple[\"RevShareKind\", str, bool]],"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:I001",
-      "line": 188,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "from substrate.billing.kyc import ("
-    },
-    {
-      "col": 37,
-      "kind": "ruff:F401",
-      "line": 189,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "KYC_PAYOUT_FLOOR_USD_CENTS, KycState, can_settle,"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM102",
-      "line": 219,
-      "path": "substrate/ad_inventory/payout.py",
-      "snippet": "if kyc_registry is not None:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 70,
-      "path": "substrate/ad_inventory/transfer_initiator.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 19,
-      "path": "substrate/advertisers/store.py",
-      "snippet": "class CampaignStatus(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 36,
-      "path": "substrate/anti_gaming/red_team.py",
-      "snippet": "class AttackClass(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 15,
-      "path": "substrate/anti_gaming/verdict.py",
-      "snippet": "class FraudVerdictKind(str, enum.Enum):"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:UP035",
-      "line": 16,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "from typing import Mapping, Optional"
-    },
-    {
-      "col": 39,
-      "kind": "ruff:UP045",
-      "line": 54,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "document_ip_holders: Mapping[str, Optional[str]] = field(default_factory=dict)"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 97,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "db_path: Optional[str] = None,"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 99,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "investigation_id: Optional[str] = None,"
-    },
-    {
-      "col": 41,
-      "kind": "ruff:UP045",
-      "line": 157,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}"
-    },
-    {
-      "col": 37,
-      "kind": "ruff:UP045",
-      "line": 158,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}"
-    },
-    {
-      "col": 50,
-      "kind": "ruff:SIM118",
-      "line": 221,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "owners = {k: doc_to_ip_holder.get(k) for k in shares.keys()}"
-    },
-    {
-      "col": 61,
-      "kind": "ruff:SIM118",
-      "line": 225,
-      "path": "substrate/attribution/compute.py",
-      "snippet": "document_titles={k: doc_to_title.get(k, \"\") for k in shares.keys()},"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 66,
-      "path": "substrate/autoresearch/proposal.py",
-      "snippet": "class OperatorVerdictKind(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 57,
-      "path": "substrate/billing/kyc.py",
-      "snippet": "class KycState(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 288,
-      "path": "substrate/billing/kyc.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 177,
-      "path": "substrate/billing/tax_reports.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM108",
-      "line": 107,
-      "path": "substrate/books/passage_research.py",
-      "snippet": "if served.servable:"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 279,
-      "path": "substrate/books/personal_space.py",
-      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 46,
-      "path": "substrate/books/servability.py",
-      "snippet": "class ServabilityStatus(str, Enum):"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:F401",
-      "line": 35,
-      "path": "substrate/context_pack/note_injection.py",
-      "snippet": "from .note_retrieval import RetrievedNote, retrieve_project_notes"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 101,
-      "path": "substrate/context_pack/note_retrieval.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 190,
-      "path": "substrate/contracts/dependency_map.py",
-      "snippet": "return overall"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 72,
-      "path": "substrate/coordination/cost_view.py",
-      "snippet": "class Workflow(str, Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 141,
-      "path": "substrate/coordination/cost_view.py",
-      "snippet": "class MarginStatus(str, Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 59,
-      "path": "substrate/coordination/gate_ledger.py",
-      "snippet": "class GateStatus(str, Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 86,
-      "path": "substrate/coordination/gate_ledger.py",
-      "snippet": "class Product(str, Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 71,
-      "path": "substrate/coordination/roadmap.py",
-      "snippet": "class SprintStatus(str, Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 31,
-      "path": "substrate/cross_graph/federation_config_store.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 68,
-      "path": "substrate/cross_graph/inbound.py",
-      "snippet": "class InboundRejection(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 287,
-      "path": "substrate/cross_graph/inbound.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 84,
-      "path": "substrate/cross_graph/partner_identity.py",
-      "snippet": "class PartnerTrustState(str, enum.Enum):"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:B904",
-      "line": 350,
-      "path": "substrate/cross_graph/partner_identity.py",
-      "snippet": "raise PartnerIdentityError(\"shared_secret_hex is not valid hex\")"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 390,
-      "path": "substrate/cross_graph/partner_identity.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 85,
-      "path": "substrate/cross_graph_writer/queue.py",
-      "snippet": "class RulePropagationEventKind(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 91,
-      "path": "substrate/dedup.py",
-      "snippet": "class KeyType(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 124,
-      "path": "substrate/dedup.py",
-      "snippet": "class Confidence(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 35,
-      "path": "substrate/deletion_worker/worker.py",
-      "snippet": "class DeletionRequestStatus(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 55,
-      "path": "substrate/deletion_worker/worker.py",
-      "snippet": "class DeletionResultKind(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 122,
-      "path": "substrate/deletion_worker/worker.py",
-      "snippet": "if req.status == DeletionRequestStatus.PENDING:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 43,
-      "path": "substrate/dispatch/multi_cloud.py",
-      "snippet": "class VendorClass(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 181,
-      "path": "substrate/dispatch/multi_cloud.py",
-      "snippet": "if env_val in (\"0\", \"false\", \"no\", \"off\", \"\"):"
-    },
-    {
-      "col": 39,
-      "kind": "ruff:B008",
-      "line": 44,
-      "path": "substrate/ducklake/migration.py",
-      "snippet": "from_strategy: ShardingStrategy = NoSharding(),"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 8,
-      "path": "substrate/ducklake/stage.py",
-      "snippet": "class SubstrateStage(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 41,
-      "path": "substrate/federation/protocol.py",
-      "snippet": "class QualityGateResult(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 100,
-      "path": "substrate/federation/slice.py",
-      "snippet": "class NegotiationStatus(str, enum.Enum):"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:UP035",
-      "line": 19,
-      "path": "substrate/gap_detection/__init__.py",
-      "snippet": "from typing import Any, List, Optional"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 19,
-      "path": "substrate/gap_detection/__init__.py",
-      "snippet": "from typing import Any, List, Optional"
-    },
-    {
-      "col": 31,
-      "kind": "ruff:F401",
-      "line": 19,
-      "path": "substrate/gap_detection/__init__.py",
-      "snippet": "from typing import Any, List, Optional"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 63,
-      "path": "substrate/gap_detection/contradiction.py",
-      "snippet": "dot = sum(x * y for x, y in zip(u, v))"
-    },
-    {
-      "col": 32,
-      "kind": "ruff:F401",
-      "line": 20,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from typing import Optional as _Optional"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 51,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from .ops import ("
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 67,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from .rlm_tools import ("
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 82,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from .schema import ("
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 89,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from .search import ("
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 97,
-      "path": "substrate/graph/__init__.py",
-      "snippet": "from .traverse import ("
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 118,
-      "path": "substrate/graph/retrieval_adapters/ducklake.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 49,
-      "path": "substrate/graph_per_user/lifecycle.py",
-      "snippet": "class PerUserStorageEventKind(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 217,
-      "path": "substrate/graph_per_user/lifecycle.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 108,
-      "path": "substrate/ingest_budget.py",
-      "snippet": "class BudgetState(str, enum.Enum):"
-    },
-    {
-      "col": 37,
-      "kind": "ruff:F401",
-      "line": 21,
-      "path": "substrate/ip_holders/__init__.py",
-      "snippet": "from datetime import UTC, datetime, timezone"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 23,
-      "path": "substrate/ip_holders/__init__.py",
-      "snippet": "from typing import Any, Optional"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:F401",
-      "line": 25,
-      "path": "substrate/ip_holders/__init__.py",
-      "snippet": "from substrate.event_log import emit_typed"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:F401",
-      "line": 44,
-      "path": "substrate/legal_gate/__init__.py",
-      "snippet": "from typing import Literal, Optional, Protocol"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 46,
-      "path": "substrate/loop_3/checklist_store.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 10,
-      "path": "substrate/loop_3/unlock_gate.py",
-      "snippet": "class Loop3UnlockCriterion(str, enum.Enum):"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM102",
-      "line": 255,
-      "path": "substrate/marketplace_metrics/book_escrow.py",
-      "snippet": "if d.kind is RevShareKind.PUBLISHER and d.recipient_ref == holder_id:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 25,
-      "path": "substrate/marketplace_metrics/dashboard.py",
-      "snippet": "class MarketplaceHealth(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F841",
-      "line": 66,
-      "path": "substrate/marketplace_metrics/dashboard.py",
-      "snippet": "paid_creators = sum(1 for b in creators.buckets if b.lower_cents >= 1_000 for _ in range(b.creator_count))"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 53,
-      "path": "substrate/multi_user/crdt_scaffold/access_control.py",
-      "snippet": "class EditOutcome(str, enum.Enum):"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:F841",
-      "line": 192,
-      "path": "substrate/multi_user/crdt_scaffold/interfaces.py",
-      "snippet": "labels = list(self.replica_snapshots)"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 23,
-      "path": "substrate/multi_user/partition.py",
-      "snippet": "class PartitionKind(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM102",
-      "line": 115,
-      "path": "substrate/multi_user/partition.py",
-      "snippet": "if partition == PartitionKind.PRIVATE:"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM118",
-      "line": 226,
-      "path": "substrate/multi_user/skill_accumulator.py",
-      "snippet": "for rule_id in self._digests_by_rule.keys():"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 165,
-      "path": "substrate/multi_user/skill_writer.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 37,
-      "kind": "ruff:F401",
-      "line": 35,
-      "path": "substrate/notebooks/__init__.py",
-      "snippet": "from datetime import UTC, datetime, timezone"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 36,
-      "path": "substrate/notebooks/__init__.py",
-      "snippet": "from typing import Any, Optional"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 345,
-      "path": "substrate/notebooks/__init__.py",
-      "snippet": "try:"
-    },
-    {
       "col": 23,
       "kind": "ruff:UP046",
       "line": 64,
       "path": "substrate/ownership.py",
       "snippet": "class OwnershipHandle(Generic[T]):"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 70,
-      "path": "substrate/payouts/contact_guard.py",
-      "snippet": "record: Optional[EmailRecord] = None"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:F401",
-      "line": 67,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 154,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "orcid: Optional[str]"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 171,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "arxiv_id: Optional[str]"
-    },
-    {
-      "col": 51,
-      "kind": "ruff:UP045",
-      "line": 205,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "def _load_metadata(con: Any, document_id: str) -> Optional[dict]:"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:RET504",
-      "line": 338,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "return lines"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 352,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "impression_ids: Optional[Sequence[str]] = None,"
-    },
-    {
-      "col": 51,
-      "kind": "ruff:UP045",
-      "line": 503,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "ad_event_id: str, document_id: str, arxiv_id: Optional[str], reason: str"
-    },
-    {
-      "col": 35,
-      "kind": "ruff:UP045",
-      "line": 565,
-      "path": "substrate/payouts/ledger.py",
-      "snippet": "def reconcile(con: Any, arxiv_id: Optional[str] = None) -> dict[str, int]:"
-    },
-    {
-      "col": 8,
-      "kind": "ruff:F401",
-      "line": 44,
-      "path": "substrate/public_graph/__init__.py",
-      "snippet": "import re"
-    },
-    {
-      "col": 36,
-      "kind": "ruff:F401",
-      "line": 45,
-      "path": "substrate/public_graph/__init__.py",
-      "snippet": "from dataclasses import dataclass, field"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 46,
-      "path": "substrate/public_graph/__init__.py",
-      "snippet": "from typing import Any, Optional"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 77,
-      "path": "substrate/public_graph/__init__.py",
-      "snippet": "class QualityGateOutcome(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 86,
-      "path": "substrate/public_graph/__init__.py",
-      "snippet": "class QualityFailureReason(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 26,
-      "path": "substrate/public_notes_ingest/pipeline.py",
-      "snippet": "class IngestEventKind(str, enum.Enum):"
-    },
-    {
-      "col": 32,
-      "kind": "ruff:B008",
-      "line": 67,
-      "path": "substrate/quality_gate/checks.py",
-      "snippet": "bounds: SourceTierBounds = SourceTierBounds(),"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 29,
-      "path": "substrate/quality_gate/gate.py",
-      "snippet": "class CheckResultKind(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 45,
-      "path": "substrate/quality_gate/gate.py",
-      "snippet": "class QualityGateVerdict(str, enum.Enum):"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:F401",
-      "line": 26,
-      "path": "substrate/research_bridge/extractor.py",
-      "snippet": "from ..graph.ops import content_addressed_id, insert_node, new_random_id"
-    },
-    {
-      "col": 54,
-      "kind": "ruff:F401",
-      "line": 24,
-      "path": "substrate/research_bridge/versioning.py",
-      "snippet": "from ...runtime.db_lock import LockedConnection, connect_read, connect_write"
-    },
-    {
-      "col": 68,
-      "kind": "ruff:F401",
-      "line": 24,
-      "path": "substrate/research_bridge/versioning.py",
-      "snippet": "from ...runtime.db_lock import LockedConnection, connect_read, connect_write"
-    },
-    {
-      "col": 42,
-      "kind": "ruff:F401",
-      "line": 25,
-      "path": "substrate/research_bridge/versioning.py",
-      "snippet": "from ..graph.insight_question import graph_db_path"
     },
     {
       "col": 5,
@@ -1542,223 +303,6 @@
       "line": 160,
       "path": "substrate/result_helpers.py",
       "snippet": "def try_call("
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 25,
-      "path": "substrate/rev_share/rollover.py",
-      "snippet": "class RolloverState(str, enum.Enum):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM105",
-      "line": 31,
-      "path": "substrate/rev_share/rollover_persistence.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:B007",
-      "line": 84,
-      "path": "substrate/rev_share/rollover_persistence.py",
-      "snippet": "for recipient_ref, entry in ledger.entries.items():"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 47,
-      "path": "substrate/schemas/documents.py",
-      "snippet": "class RightsTier(str, Enum):"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 277,
-      "path": "substrate/source_throttle.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 46,
-      "path": "substrate/speak/consent.py",
-      "snippet": "class ConsentScope(str, enum.Enum):"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 84,
-      "path": "substrate/speak/corroboration.py",
-      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM102",
-      "line": 135,
-      "path": "substrate/speak/corroboration.py",
-      "snippet": "if embeddings is not None:"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 45,
-      "path": "substrate/speak/economics_mode.py",
-      "snippet": "class InvitationMode(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 50,
-      "path": "substrate/speak/economics_mode.py",
-      "snippet": "class PublishingMode(str, enum.Enum):"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 64,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:UP035",
-      "line": 70,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "from typing import Any, Callable, Optional"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 244,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "transcript_turns: Optional[list[dict]] = None,"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 245,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "dispatch_fn: Optional[Callable[..., Any]] = None,"
-    },
-    {
-      "col": 47,
-      "kind": "ruff:UP045",
-      "line": 342,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "def get_grade(con: Any, interview_id: str) -> Optional[InterviewGrade]:"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 387,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "publication_id: Optional[str] = None,"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 388,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "impression_ref: Optional[str] = None,"
-    },
-    {
-      "col": 35,
-      "kind": "ruff:E741",
-      "line": 442,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "spent = sum((l.amount_usd for l in lines if not l.slop_gated), Decimal(\"0\"))"
-    },
-    {
-      "col": 34,
-      "kind": "ruff:E741",
-      "line": 443,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "capped = [l.interview_id for l in lines if l.capped]"
-    },
-    {
-      "col": 42,
-      "kind": "ruff:E741",
-      "line": 444,
-      "path": "substrate/speak/payout_verifier.py",
-      "snippet": "exhausted = any(l.budget_clamped for l in lines)"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM103",
-      "line": 94,
-      "path": "substrate/speak/publish_gate.py",
-      "snippet": "if claim.subject_ref and takedown_mod.is_taken_down("
-    },
-    {
-      "col": 5,
-      "kind": "ruff:SIM103",
-      "line": 201,
-      "path": "substrate/unit_dedup.py",
-      "snippet": "if ("
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 52,
-      "path": "substrate/voice_style/ab_runner.py",
-      "snippet": "class AuditVerdictKind(str, enum.Enum):"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 25,
-      "path": "substrate/voice_style/rubric.py",
-      "snippet": "class ViolationKind(str, enum.Enum):"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:E741",
-      "line": 82,
-      "path": "substrate/voice_style/rubric.py",
-      "snippet": "lines = [l for l in text.splitlines() if l.strip()]"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:E741",
-      "line": 87,
-      "path": "substrate/voice_style/rubric.py",
-      "snippet": "1 for l in lines"
-    },
-    {
-      "col": 28,
-      "kind": "ruff:E741",
-      "line": 143,
-      "path": "substrate/voice_style/rubric.py",
-      "snippet": "lines = [l.strip() for l in text.splitlines() if l.strip()]"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 30,
-      "path": "substrate/voice_style/suppression.py",
-      "snippet": "class SuppressionVerdictKind(str, enum.Enum):"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 72,
-      "path": "substrate/write/block_search.py",
-      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:B905",
-      "line": 35,
-      "path": "substrate/write/clustering.py",
-      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
-    },
-    {
-      "col": 51,
-      "kind": "ruff:F401",
-      "line": 40,
-      "path": "substrate/write/style_profile.py",
-      "snippet": "from ..graph.ops import content_addressed_id, new_random_id"
     },
     {
       "col": 1,
@@ -1793,77 +337,77 @@
       "kind": "ruff:F821",
       "line": 7,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
+      "snippet": "con = duckdb.connect(\"path.db\") # type: ignore[name-defined]"
     },
     {
       "col": 16,
       "kind": "ruff:F821",
       "line": 12,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "response = requests.get(\"https://example.com\")  # type: ignore[name-defined]"
+      "snippet": "response = requests.get(\"https://example.com\") # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 17,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "with escape_hatch(reason=\"benchmark-needs-raw-duckdb\"):  # type: ignore[name-defined]"
+      "snippet": "with escape_hatch(reason=\"benchmark-needs-raw-duckdb\"): # type: ignore[name-defined]"
     },
     {
       "col": 15,
       "kind": "ruff:F821",
       "line": 18,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
+      "snippet": "con = duckdb.connect(\"path.db\") # type: ignore[name-defined]"
     },
     {
       "col": 2,
       "kind": "ruff:F821",
       "line": 22,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "@escape_hatch(reason=\"weekly-compaction-script\")  # type: ignore[name-defined]"
+      "snippet": "@escape_hatch(reason=\"weekly-compaction-script\") # type: ignore[name-defined]"
     },
     {
       "col": 11,
       "kind": "ruff:F821",
       "line": 24,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
+      "snippet": "con = duckdb.connect(\"path.db\") # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 29,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "with escape_hatch(reason=\"benchmark\"):  # type: ignore[name-defined]"
+      "snippet": "with escape_hatch(reason=\"benchmark\"): # type: ignore[name-defined]"
     },
     {
       "col": 24,
       "kind": "ruff:F821",
       "line": 31,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "response = requests.get(\"https://example.com\")  # type: ignore[name-defined]"
+      "snippet": "response = requests.get(\"https://example.com\") # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 36,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "with escape_hatch(reason=\"ok-fine\"):  # type: ignore[name-defined]"
+      "snippet": "with escape_hatch(reason=\"ok-fine\"): # type: ignore[name-defined]"
     },
     {
       "col": 15,
       "kind": "ruff:F821",
       "line": 37,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "con = duckdb.connect(\"p1.db\")  # type: ignore[name-defined]"
+      "snippet": "con = duckdb.connect(\"p1.db\") # type: ignore[name-defined]"
     },
     {
       "col": 18,
       "kind": "ruff:F821",
       "line": 39,
       "path": "tests/fixtures/lints/bypass_sample.py",
-      "snippet": "second_con = duckdb.connect(\"p2.db\")  # type: ignore[name-defined]"
+      "snippet": "second_con = duckdb.connect(\"p2.db\") # type: ignore[name-defined]"
     },
     {
       "col": 13,
@@ -1924,21 +468,21 @@
     {
       "col": 5,
       "kind": "ruff:F811",
-      "line": 231,
+      "line": 232,
       "path": "tests/test_acquisition_paulgraham.py",
       "snippet": "def test_robots_fetch_failure_records_fail_open_warning():"
     },
     {
       "col": 5,
       "kind": "ruff:F811",
-      "line": 248,
+      "line": 249,
       "path": "tests/test_acquisition_paulgraham.py",
       "snippet": "def test_robots_applied_records_no_fail_open():"
     },
     {
       "col": 5,
       "kind": "ruff:F811",
-      "line": 253,
+      "line": 254,
       "path": "tests/test_acquisition_paulgraham.py",
       "snippet": "def test_run_surfaces_robots_fail_open_warning(temp_substrate):"
     },
@@ -2416,7 +960,7 @@
       "kind": "ruff:UP031",
       "line": 434,
       "path": "tests/test_corpus_audit.py",
-      "snippet": "metadata='{\"doi\": \"%s\"}' % doi,  # distinct DOIs"
+      "snippet": "metadata='{\"doi\": \"%s\"}' % doi, # distinct DOIs"
     },
     {
       "col": 1,
@@ -2591,7 +1135,7 @@
       "kind": "ruff:F841",
       "line": 436,
       "path": "tests/test_knowledge_reuse_spr06.py",
-      "snippet": "db = os.path.join(tmp_path, \"budget.duckdb\")  # unused dir for events only"
+      "snippet": "db = os.path.join(tmp_path, \"budget.duckdb\") # unused dir for events only"
     },
     {
       "col": 10,
@@ -2783,20 +1327,6 @@
       "snippet": "with pytest.raises(Exception):"
     },
     {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 3,
-      "path": "tests/test_payout_decisions_log.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F401",
-      "line": 22,
-      "path": "tests/test_payout_decisions_log.py",
-      "snippet": "distribute_session_ad_revenue,"
-    },
-    {
       "col": 5,
       "kind": "ruff:F841",
       "line": 121,
@@ -2920,7 +1450,7 @@
       "kind": "ruff:B017",
       "line": 257,
       "path": "tests/test_results.py",
-      "snippet": "with pytest.raises(Exception):  # pydantic raises ValidationError on frozen"
+      "snippet": "with pytest.raises(Exception): # pydantic raises ValidationError on frozen"
     },
     {
       "col": 10,
@@ -2928,13 +1458,6 @@
       "line": 263,
       "path": "tests/test_results.py",
       "snippet": "with pytest.raises(Exception):"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F841",
-      "line": 146,
-      "path": "tests/test_retrieval_bench.py",
-      "snippet": "artifact = rb.run_benchmark("
     },
     {
       "col": 60,
@@ -3035,13 +1558,6 @@
       "snippet": "for lo, hi in zip(delays_min, delays_max):"
     },
     {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 22,
-      "path": "tests/test_sources_ingest.py",
-      "snippet": "from interfaces.research.api.app import ("
-    },
-    {
       "col": 54,
       "kind": "ruff:E741",
       "line": 422,
@@ -3049,30 +1565,23 @@
       "snippet": "assert any(l[\"interview_id\"] == interview_id for l in body[\"accrual_lines\"])"
     },
     {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 10,
-      "path": "tests/test_speak_payout_verifier.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
       "col": 49,
       "kind": "ruff:E741",
-      "line": 280,
+      "line": 282,
       "path": "tests/test_speak_payout_verifier.py",
       "snippet": "earning_before = {l.interview_id: l for l in release_before.accrual_lines"
     },
     {
       "col": 48,
       "kind": "ruff:E741",
-      "line": 295,
+      "line": 297,
       "path": "tests/test_speak_payout_verifier.py",
       "snippet": "earning_after = {l.interview_id: l for l in release_after.accrual_lines"
     },
     {
       "col": 42,
       "kind": "ruff:E741",
-      "line": 347,
+      "line": 349,
       "path": "tests/test_speak_payout_verifier.py",
       "snippet": "earning = {l.interview_id: l for l in release.accrual_lines if not l.slop_gated}"
     },
@@ -3110,76 +1619,6 @@
       "line": 106,
       "path": "tests/test_sprint16_interviews.py",
       "snippet": "with connect_write(temp_substrate[\"db_path\"], purpose=\"test\") as con:"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 3,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
-      "col": 8,
-      "kind": "ruff:F401",
-      "line": 7,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "import pytest"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F401",
-      "line": 10,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "BillingEvent,"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F401",
-      "line": 14,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "StripeConnectAccount,"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F401",
-      "line": 16,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "TokenUsageRecord,"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:SIM300",
-      "line": 56,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "assert CREATOR_AD_REV_SHARE == Decimal(\"0.70\")"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:SIM300",
-      "line": 57,
-      "path": "tests/test_stripe_connect.py",
-      "snippet": "assert PUBLISHER_AD_REV_SHARE == Decimal(\"0.70\")"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 6,
-      "path": "tests/test_stripe_payouts.py",
-      "snippet": "from __future__ import annotations"
-    },
-    {
-      "col": 8,
-      "kind": "ruff:F401",
-      "line": 8,
-      "path": "tests/test_stripe_payouts.py",
-      "snippet": "import pytest"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP017",
-      "line": 259,
-      "path": "tests/test_stripe_payouts.py",
-      "snippet": "year = datetime.now(timezone.utc).year"
     },
     {
       "col": 1,
@@ -3245,13 +1684,6 @@
       "snippet": "assert \"style_guide\" not in {l.kind for l in pack.layers}"
     },
     {
-      "col": 5,
-      "kind": "ruff:F841",
-      "line": 188,
-      "path": "tests/test_substrate_end_to_end.py",
-      "snippet": "apply_result_v2 = apply_harness("
-    },
-    {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
@@ -3284,7 +1716,7 @@
       "kind": "ruff:E402",
       "line": 28,
       "path": "tests/test_textbooks_doab.py",
-      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
+      "snippet": "from tests._textbook_fixtures import ( # noqa: F401 (temp_substrate fixture)"
     },
     {
       "col": 40,
@@ -3333,7 +1765,7 @@
       "kind": "ruff:E402",
       "line": 29,
       "path": "tests/test_textbooks_libretexts.py",
-      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
+      "snippet": "from tests._textbook_fixtures import ( # noqa: F401 (temp_substrate fixture)"
     },
     {
       "col": 34,
@@ -3389,7 +1821,7 @@
       "kind": "ruff:E402",
       "line": 27,
       "path": "tests/test_textbooks_mit_ocw.py",
-      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
+      "snippet": "from tests._textbook_fixtures import ( # noqa: F401 (temp_substrate fixture)"
     },
     {
       "col": 45,
@@ -3431,7 +1863,7 @@
       "kind": "ruff:E402",
       "line": 23,
       "path": "tests/test_textbooks_openstax.py",
-      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
+      "snippet": "from tests._textbook_fixtures import ( # noqa: F401 (temp_substrate fixture)"
     },
     {
       "col": 56,
@@ -3506,35 +1938,35 @@
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 29,
+      "line": 28,
       "path": "tests/test_write_routes.py",
       "snippet": "from interfaces.research.api import create_app"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 30,
+      "line": 29,
       "path": "tests/test_write_routes.py",
       "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 31,
+      "line": 30,
       "path": "tests/test_write_routes.py",
       "snippet": "from substrate.auth.magic_link import mint_session_cookie"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 32,
+      "line": 31,
       "path": "tests/test_write_routes.py",
       "snippet": "from substrate.graph import default_db_path, ensure_initialized"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 33,
+      "line": 32,
       "path": "tests/test_write_routes.py",
       "snippet": "from substrate.graph.ops import ("
     },
@@ -3548,7 +1980,7 @@
     {
       "col": 13,
       "kind": "ruff:SIM105",
-      "line": 413,
+      "line": 419,
       "path": "tools/arxiv_census.py",
       "snippet": "try:"
     },
@@ -3590,21 +2022,21 @@
     {
       "col": 5,
       "kind": "ruff:SIM103",
-      "line": 183,
+      "line": 184,
       "path": "tools/lint/reachability_gate.py",
       "snippet": "if \".test.\" in name or \".compose.\" in name:"
     },
     {
       "col": 12,
       "kind": "ruff:SIM109",
-      "line": 240,
+      "line": 241,
       "path": "tools/lint/reachability_gate.py",
       "snippet": "if resolved == target_resolved or resolved == target_noext:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
-      "line": 495,
+      "line": 508,
       "path": "tools/lint/reachability_gate.py",
       "snippet": "if baseline is None:"
     },
@@ -3753,7 +2185,7 @@
       "kind": "ruff:UP045",
       "line": 93,
       "path": "tools/stripe_connect/pricing.py",
-      "snippet": "chunk_id: Optional[str]       # for attribution flow"
+      "snippet": "chunk_id: Optional[str] # for attribution flow"
     },
     {
       "col": 23,
