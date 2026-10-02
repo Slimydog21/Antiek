@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { NavRail } from "./NavRail";
 import { WindowsLayer } from "../components/windows/WindowsLayer";
 import { WorkspaceWindow } from "../components/windows/WorkspaceWindow";
-import { MAX_WINDOWS, useWindows } from "../workspace/windowsStore";
+import { useWindows } from "../workspace/windowsStore";
 import { installShortcuts } from "../workspace/shortcuts";
 import { currentPlatform } from "../components/hotkeys/keymap";
 import { emitProductActivate } from "../components/hotkeys/bindings";
@@ -157,23 +157,38 @@ describe("global mothership to product window keyboard journey", () => {
     sameScene();
   });
 
-  it("a failed entry at the window cap keeps actual modal keyboard focus", async () => {
+  it.each([8, 14])("entry after %d windows preserves hosts and Back restores the retained topmost pane", async (count) => {
     mount();
     act(() => {
-      for (let index = 0; index < MAX_WINDOWS; index++) {
+      for (let index = 0; index < count; index++) {
         const id = `cap:${index}`;
         useWindows.getState().open("subaction", { workflow: "read", __windowId: id }, { id, title: id });
       }
     });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("dialog", { name: `cap:${MAX_WINDOWS - 1}` })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("dialog", { name: `cap:${count - 1}` })));
+    const before = useWindows.getState();
+    const hosts = before.order.map((id) => ({ id, element: screen.getByRole("dialog", { name: id }) }));
     const opener = more(); opener.focus(); moreKey(opener);
     const input = filter(); fireEvent.change(input, { target: { value: "Read" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const modal = screen.getByRole("dialog", { name: "More" });
-    expect(within(modal).getByRole("status").textContent).toContain("Window limit reached");
-    expect(useWindows.getState().order).toHaveLength(MAX_WINDOWS);
-    expect(useWindows.getState().windows["win:subaction:read"]).toBeUndefined();
-    expect(document.activeElement).toBe(input);
+    const dialog = await readWindow();
+    const id = "win:subaction:read";
+    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
+    expect(useWindows.getState().order).toEqual([...before.order, id]);
+    expect(useWindows.getState().cycleOrder).toEqual([...before.cycleOrder, id]);
+    expect(useWindows.getState().focusedId).toBe(id);
+    await waitFor(() => expect(document.activeElement).toBe(dialog));
+    for (const host of hosts) {
+      expect(screen.getByRole("dialog", { name: host.id })).toBe(host.element);
+      expect(useWindows.getState().windows[host.id]).toBe(before.windows[host.id]);
+    }
+    sameScene();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back to mothership" }));
+    expect(useWindows.getState().windows[id]).toBeUndefined();
+    expect(useWindows.getState().cycleOrder).toEqual(before.cycleOrder);
+    for (const host of hosts) expect(screen.getByRole("dialog", { name: host.id })).toBe(host.element);
+    expect(useWindows.getState().focusedId).toBe(before.focusedId);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("dialog", { name: `cap:${count - 1}` })));
     sameScene();
   });
 

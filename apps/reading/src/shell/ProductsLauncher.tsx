@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { LemonModal } from "../components/lemon/LemonModal";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
-import { MAX_WINDOWS, useWindows } from "../workspace/windowsStore";
 import { MODE_TAXONOMY, WORKFLOWS, WORKFLOW_ORDER, type ModeEntry, type Workflow } from "./workflowTaxonomy";
 
 const BARE_ROUTES = new Set(MODE_TAXONOMY.flatMap((mode) => mode.route && !mode.route.includes(":") ? [mode.route] : []));
@@ -77,14 +76,6 @@ export function ProductsLauncher({ open, onClose }: { open: boolean; onClose: ()
     inputRef.current?.focus();
   }, [open]);
 
-  const canEnterWindow = (requestedId: string, label: string) => {
-    const current = useWindows.getState();
-    if (!current.windows[requestedId] && current.order.length >= MAX_WINDOWS) {
-      setNotice(`Window limit reached. Close a window before opening ${label}.`);
-      return false;
-    }
-    return true;
-  };
   const finishWindowEntry = (openedId: string, requestedId: string, label: string) => {
     if (openedId === requestedId) onClose();
     else setNotice(`Window limit reached. Close a window before opening ${label}.`);
@@ -99,7 +90,6 @@ export function ProductsLauncher({ open, onClose }: { open: boolean; onClose: ()
         return;
       case "product": {
         const id = `win:subaction:${item.workflow}`;
-        if (!canEnterWindow(id, item.label)) return;
         const openedId = openWindow("subaction", { workflow: item.workflow, __windowId: id }, { id, title: item.label });
         finishWindowEntry(openedId, id, item.label);
         return;
@@ -117,7 +107,7 @@ export function ProductsLauncher({ open, onClose }: { open: boolean; onClose: ()
   };
   const openModeInWindow = (mode: ModeEntry) => {
     const kind = windowKindForRoute(mode.route);
-    if (!open || !mode.built || !kind || !canEnterWindow(`win:${kind}`, mode.label)) return;
+    if (!open || !mode.built || !kind) return;
     finishWindowEntry(openWindow(kind), `win:${kind}`, mode.label);
   };
   const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {

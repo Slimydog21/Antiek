@@ -163,10 +163,44 @@ describe("ProductsLauncher actual keyboard inventory", () => {
     expect(route()).toBe(originalRoute);
   });
 
-  it("does not pretend a capped spawn opened the requested product", () => {
-    for (let i = 0; i < MAX_WINDOWS; i++) useWindows.getState().open("stats", {}, { id: `existing-${i}` });
+  it.each([8, 14])("opens the requested product after %d existing windows without replacing them", (count) => {
+    for (let i = 0; i < count; i++) useWindows.getState().open("stats", {}, { id: `existing-${i}` });
+    const before = useWindows.getState();
+    mount(); fireEvent.keyDown(filter("Write"), { key: "Enter" });
+    const id = "win:subaction:write";
+    const after = useWindows.getState();
+    expect(after.windows[id]?.payload).toEqual({ workflow: "write", __windowId: id });
+    expect(after.order).toEqual([...before.order, id]);
+    expect(after.cycleOrder).toEqual([...before.cycleOrder, id]);
+    expect(after.focusedId).toBe(id);
+    for (const peer of before.order) expect(after.windows[peer]).toBe(before.windows[peer]);
+    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
+    expect(route()).toBe(originalRoute);
+  });
+
+  it.each([8, 14])("opens the requested inline reference after %d existing windows", (count) => {
+    for (let i = 0; i < count; i++) useWindows.getState().open("stats", {}, { id: `existing-${i}` });
+    const before = useWindows.getState();
+    mount(); filter("Substrate stats");
+    fireEvent.click(screen.getByRole("button", { name: "Open Substrate stats in a window" }));
+    const id = "win:stats";
+    const after = useWindows.getState();
+    expect(after.windows[id]?.kind).toBe("stats");
+    expect(after.order).toEqual([...before.order, id]);
+    expect(after.cycleOrder).toEqual([...before.cycleOrder, id]);
+    expect(after.focusedId).toBe(id);
+    for (const peer of before.order) expect(after.windows[peer]).toBe(before.windows[peer]);
+    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
+    expect(route()).toBe(originalRoute);
+  });
+
+  it("still refuses a returned identity different from the requested product", () => {
+    for (let i = 0; i < 8; i++) useWindows.getState().open("stats", {}, { id: `existing-${i}` });
+    const before = useWindows.getState();
+    const open = vi.spyOn(before, "open").mockReturnValue("existing-0");
     mount(); fireEvent.click(screen.getByRole("button", { name: "Open Write workflow in a window" }));
-    expect(useWindows.getState().order.length).toBe(MAX_WINDOWS);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(useWindows.getState().order).toEqual(before.order);
     expect(useWindows.getState().windows["win:subaction:write"]).toBeUndefined();
     expect(screen.getByRole("dialog", { name: "More" })).toBeTruthy();
     expect(screen.getByRole("dialog", { name: "More" }).querySelector('[role="status"]')?.textContent).toMatch(/limit|Close a window/i);

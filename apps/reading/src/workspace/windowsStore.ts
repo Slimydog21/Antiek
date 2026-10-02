@@ -40,9 +40,8 @@
  * `components/windows/README.md`. This store is the same; the change is that
  * its guarantees are now load-bearing on the hot path, not an optional extra.
  * Two guarantees matter most for the default flow:
- *   - Bounded fan-out (MAX_WINDOWS, below) — a default click can never blow
- *     past the cap; at the cap, open() FOCUSES the oldest and returns its id
- *     (no phantom window, caller sees a real id).
+ *   - Requested identity — a new open creates that window without replacing
+ *     another artifact; reopening the same id focuses its existing host.
  *   - Focus restack — newest-focused window is topmost; closing the focused
  *     window refocuses the next-topmost (or null when none remain), so the
  *     keyboard target is never orphaned.
@@ -57,9 +56,9 @@
  * the operator more than it helps. If persistence is later desired it is a
  * NAMED future task, NOT a silent assumption: wrap `useWindows` with zustand's
  * `persist` middleware keyed on the restorable subset of each descriptor —
- * `{ kind, payload, rect, mode }` — and rehydrate through `open()` so the cap
+ * `{ kind, payload, rect, mode }` — and rehydrate through `open()` so identity
  * and z-restack invariants still hold (do NOT rehydrate `z`/`order`/`zCounter`
- * verbatim — replay opens so the monotonic counter and bound are respected).
+ * verbatim — replay opens so the monotonic counter is respected).
  */
 
 import { create } from "zustand";
@@ -113,9 +112,8 @@ export type OpenWindowOptions = {
   rect?: Partial<WindowRect>;
   /** Open already expanded to full. */
   mode?: WindowMode;
-  /** At the hard cap, replace the oldest window instead of redirecting this
-   * exact-identity open to an unrelated surface. Opt-in because replacement
-   * is appropriate only when showing the requested asset is load-bearing. */
+  /** @deprecated Retained for existing exact-identity callers. New window
+   * admission no longer evicts another host, regardless of this option. */
   replaceOldestAtLimit?: boolean;
 };
 
@@ -133,23 +131,8 @@ export type WindowsActions = {
 
 type Store = WindowsSnapshot & WindowsActions;
 
-/**
- * Bounded fan-out. The operator can spin up several windows ("multiple
- * terminals") but a transparent, ad-bordered, scene-backed window is the
- * most expensive surface in the shell. Beyond this the perf budget (SPR-09
- * M7) and the operator's ability to tell windows apart both collapse, so we
- * cap hard and surface the cap honestly rather than silently dropping or
- * letting the count run away. 8 mirrors a developer's realistic terminal
- * fan-out and keeps the worst case (8 transparent frames + the animated
- * scene) inside the SPR-11 FPS budget.
- *
- * Now that a default within-contract click opens a window (AMS2-SPR-04), this
- * bound is the hard backstop on the hot path: a rapid run of default activations
- * cannot exceed 8 windows — at the cap, open() focuses the oldest and returns
- * its id (see open() below). Kept at 8 deliberately; do NOT change the value or
- * the at-cap action shape without recording a new reason here and in
- * components/windows/README.md.
- */
+/** @deprecated Historical fixture size, retained for existing imports.
+ * This value no longer limits logical window admission. */
 export const MAX_WINDOWS = 8;
 
 /** Base z so a window always paints over the scene (z≈0) but under the
@@ -201,17 +184,6 @@ export const useWindows = create<Store>()((set, get) => ({
     if (get().windows[id]) {
       get().focus(id);
       return id;
-    }
-    // Bounded fan-out — at the cap, focus the oldest rather than exceeding it.
-    // Returning the existing id keeps callers honest (no phantom new window).
-    if (get().order.length >= MAX_WINDOWS && !opts.replaceOldestAtLimit) {
-      const oldest = get().order[0];
-      if (oldest) get().focus(oldest);
-      return oldest ?? id;
-    }
-    if (get().order.length >= MAX_WINDOWS) {
-      const oldest = get().order[0];
-      if (oldest) get().close(oldest);
     }
     set((s) => {
       const z = s.zCounter + 1;
