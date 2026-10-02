@@ -374,6 +374,27 @@ export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 export const edgeWidth = "2.5px" as const;
 
 /**
+ * The seven-step type scale (CFEEL-S2 M2), mirrored from tailwind.config.js
+ * fontSize — the same values tokens.css exposes as var(--fs-xxs) …
+ * var(--fs-2xl). A STANDALONE document (a Blob-URL artifact preview in a
+ * sandboxed iframe) cannot see the app's :root, so a var(--fs-*) reference
+ * inside one never resolves; a template that builds such a document inlines
+ * these values instead. type-scale.test.ts pins this map byte-identical to
+ * the Tailwind scale.
+ */
+export const fontSize = {
+  xxs: "11px", // legibility floor (10px retired)
+  xs: "12px",
+  sm: "14px",
+  base: "16px",
+  lg: "18px",
+  xl: "20px",
+  "2xl": "24px", // chrome ceiling
+} as const;
+
+export type FontSizeToken = keyof typeof fontSize;
+
+/**
  * Three faces, one job each. Inter (interface) and JetBrains Mono (data,
  * provenance) ship as self-hosted woff2; the fallbacks name installed faces
  * so a missing file never lands on Courier. Charter is the reading face.
