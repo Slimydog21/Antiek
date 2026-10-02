@@ -20,7 +20,7 @@ Scope of this file:
   set is stated. Deliberately no count here: this paragraph used to read "the 20
   currently-schemaed action types" and "a discriminated union over those 20
   variants", with the 20 composed as 1 + 1 + 17 wrestling + 1. Measured, the
-  union holds 122 members and the module declares 123 ``*Payload`` classes, so
+  union holds 123 members and the module declares 123 ``*Payload`` classes, so
   the number had been wrong for a long time and nothing could notice -- a count
   written into prose has no mechanism that fails when the set it describes grows.
   Enumerating the kinds instead of tallying them is also why the old text went
