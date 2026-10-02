@@ -16,7 +16,6 @@ import duckdb
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.event_log import (
     default_events_dir,
-    normalize_semantic_event,
     read_physical_event_page,
 )
 from substrate.event_log.events import PhysicalStorageCursor
@@ -97,19 +96,6 @@ def discover_investigations(events_dir: str) -> list[str]:
                 raise EventConsumerCorruption(f"unsafe event file: {entry.name}")
             investigations.add(investigation_id)
     return sorted(investigations)
-
-
-def canonical_event_bytes(event: dict[str, Any]) -> bytes:
-    try:
-        return json.dumps(
-            normalize_semantic_event(event),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            default=str,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise EventConsumerCorruption("event cannot be canonically encoded") from exc
 
 
 def _payload_error(event: dict[str, Any]) -> str | None:

@@ -38,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import secrets
@@ -52,7 +53,6 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 from substrate.auth import (
-    EmailDeliveryFailure,
     InvalidToken,
     OutboundEmail,
     PasskeyError,
@@ -70,6 +70,8 @@ from substrate.auth import (
 )
 
 from .operator_allowlist import operator_allowlist_from_env
+
+_LOGGER = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -509,10 +511,21 @@ def register_auth_routes(
         allowlist = _resolve_allowlist()
         attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if email in allowlist:
-            token = mint_magic_link_token(email)
-            link = _build_magic_link(token, next_path, attempt_id)
-            provider = get_email_provider()
+            # THE WHOLE BRANCH IS GUARDED, not just the send. Three calls here run only for
+            # allowlisted addresses, and guarding one of them left the other two able to
+            # raise a 500 that a non-allowlisted address never sees -- the same membership
+            # oracle this block was fixed once already to remove, through a different
+            # exception. `get_email_provider()` raises on a misconfigured provider, which
+            # is the ordinary state of a dev or freshly-provisioned box, and
+            # `mint_magic_link_token` can raise on a token/key problem.
+            #
+            # The rule: everything reachable only by an allowlisted address must fail the
+            # same way an unlisted address succeeds. Whatever breaks, the caller gets the
+            # same 200 every other caller gets, and the operator gets the type in the log.
             try:
+                token = mint_magic_link_token(email)
+                link = _build_magic_link(token, next_path, attempt_id)
+                provider = get_email_provider()
                 provider.send(
                     _format_magic_link_email(
                         email=email,
@@ -520,21 +533,26 @@ def register_auth_routes(
                         device_code=device_code,
                     )
                 )
-            except EmailDeliveryFailure as exc:
-                # Distinguish "we tried and the provider broke" from
-                # "you're not allowlisted" via a 503 — gives the
-                # operator a real signal when their email config is
-                # broken instead of silently swallowing the failure.
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "email_delivery_failed",
-                        "message": str(exc),
-                    },
-                ) from exc
-        # Non-allowlisted: silently no-op. Constant-time-ish: the
-        # branch difference is unavoidable but the response is
-        # identical, which is what enumeration protection turns on.
+            except Exception as exc:  # noqa: BLE001 -- see below, the breadth IS the fix
+                # BROAD ON PURPOSE, and this is the third iteration on this one branch.
+                #
+                # v1 returned 503 for an allowlisted address and 200 otherwise: a membership
+                # oracle in the status code. v2 replaced the 503 with a fall-through and
+                # guarded only `provider.send()`, leaving three calls that run exclusively for
+                # allowlisted addresses able to raise a 500 nobody else sees. v3 catches
+                # `EmailDeliveryFailure` and STILL leaked, because the failure that actually
+                # happens in practice -- a provider that is not configured -- raises a
+                # config error, not a delivery error. My own test caught that.
+                #
+                # The property is not "handle the exception this layer defines". It is
+                # "nothing reachable only by an allowlisted address may change the response".
+                # Catching narrowly cannot express that, because the set of possible failures
+                # is owned by everything downstream. So the breadth is the specification:
+                # log the type, return what everyone else gets.
+                _LOGGER.warning("Sign-in email dispatch failed (%s)", type(exc).__name__)
+        # The status and body shape do not disclose allowlist membership.
+        # Synchronous delivery can still differ in latency; this is not a
+        # constant-time endpoint.
         # device_code never leaves the server — the email is its only
         # channel, so typing it is genuine email-possession proof.
         return AuthRequestResponse(
@@ -811,7 +829,9 @@ def register_auth_routes(
             raise HTTPException(status_code=404, detail="Not Found")
         # Constant-time compare; an empty/incorrect token is also a 404 so
         # a probe can't distinguish "feature off" from "wrong token".
-        if not token or not secrets.compare_digest(token.strip(), configured):
+        if not token or not secrets.compare_digest(
+            token.strip().encode("utf-8"), configured.encode("utf-8")
+        ):
             raise HTTPException(status_code=404, detail="Not Found")
         # Mint under the operator identity so the existing cookie path in
         # the middleware (which checks cookie-email == ANTIEK_OPERATOR_EMAIL)
@@ -826,7 +846,11 @@ def register_auth_routes(
                 status_code=503,
                 detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
             )
-        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        cookie = mint_session_cookie(
+            user_id="__operator__",
+            email=allow[0],
+            max_age_seconds=_DEV_LOGIN_SESSION_MAX_AGE,
+        )
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,

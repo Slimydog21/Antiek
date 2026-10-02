@@ -497,24 +497,3 @@ def render_coverage_report(
         lines.append(f"_Generated at {when} (UTC)._")
     lines.append("")
     return "\n".join(lines)
-
-
-def write_coverage_report(
-    coverage: EnrichmentCoverage,
-    out_path: str,
-    *,
-    db_path: str | None = None,
-    generated_at: datetime | None = None,
-    provisional_note: str | None = None,
-) -> None:
-    """Write the coverage report to ``out_path``. ``provisional_note`` (when set)
-    renders the PROVISIONAL banner — pass it for a seeded/fixture pass, leave it
-    ``None`` for a live operator run."""
-    text = render_coverage_report(
-        coverage,
-        db_path=db_path,
-        generated_at=generated_at,
-        provisional_note=provisional_note,
-    )
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(text)
