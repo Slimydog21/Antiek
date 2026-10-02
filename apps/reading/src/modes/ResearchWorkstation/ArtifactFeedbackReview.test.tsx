@@ -14,7 +14,88 @@ vi.mock("../../api/feedback", async () => {
   };
 });
 
+import { ApiError } from "../../lib/api";
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
+
+const openThread = {
+  thread_id: "fth-1",
+  investigation_id: "inv-1",
+  state: "open",
+  artifact: {
+    artifact_id: "artifact-1",
+    version: 2,
+    content_sha256: "a".repeat(64),
+    source_sha256: "b".repeat(64),
+  },
+  anchor: {
+    normalization: "unicode-nfc-v1",
+    node_id: "insight-1",
+    node_text_sha256: "c".repeat(64),
+    start_scalar: 0,
+    end_scalar: 4,
+    quote: "Fact",
+    prefix: "",
+    suffix: " remains.",
+  },
+  items: [
+    {
+      item_id: "fit-1",
+      author_kind: "operator",
+      author_id: "owner-1",
+      body_markdown: "Verify the source.",
+      sequence: 1,
+    },
+  ],
+  work: {
+    work_id: "wrk-1",
+    logical_worker_id: "research-owner",
+    state: "queued",
+    attempt_count: 0,
+  },
+};
+
+function renderReview() {
+  render(
+    <ArtifactFeedbackReview
+      investigationId="inv-1"
+      previewUrl="about:blank"
+      receipt={{
+        artifactId: "artifact-1",
+        version: "2",
+        hash: "a".repeat(64),
+        sourceHash: "b".repeat(64),
+      }}
+      title="Folio artifact"
+    />,
+  );
+}
+
+/** Select the word "Fact" inside the preview frame and type a comment. */
+async function composeFeedback() {
+  const frame = screen.getByTitle("Folio artifact");
+  if (!(frame instanceof HTMLIFrameElement) || !frame.contentDocument) {
+    throw new Error("review frame unavailable");
+  }
+  frame.contentDocument.body.innerHTML =
+    '<p data-antiek-node-id="insight-1">Fact remains.</p>';
+  const text = frame.contentDocument.querySelector("p")?.firstChild;
+  const frameWindow = frame.contentWindow;
+  if (!frameWindow || !text || text.nodeType !== Node.TEXT_NODE) {
+    throw new Error("text unavailable");
+  }
+  const range = frame.contentDocument.createRange();
+  range.setStart(text, 0);
+  range.setEnd(text, 4);
+  const selection = frameWindow.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  fireEvent.load(frame);
+  fireEvent.mouseUp(frame.contentDocument.body);
+  expect(await screen.findByText("“Fact”")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Comment for the research agent"), {
+    target: { value: "Verify the source." },
+  });
+}
 
 describe("ArtifactFeedbackReview", () => {
   afterEach(() => {
@@ -106,5 +187,35 @@ describe("ArtifactFeedbackReview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resolve thread" }));
     await waitFor(() => expect(resolveFeedbackMock).toHaveBeenCalledOnce());
     expect(await screen.findByText("Resolved")).toBeTruthy();
+  });
+
+  it("describes a failed send in plain words, never the raw request failure", async () => {
+    createFeedbackMock.mockRejectedValue(
+      new ApiError("GET /books failed: HTTP 503", 503, "raw server body"),
+    );
+    renderReview();
+    await composeFeedback();
+    fireEvent.click(screen.getByRole("button", { name: "Send to research agent" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't send your feedback.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
+    // The send is retryable: the same affordance stays reachable.
+    expect(screen.getByRole("button", { name: "Send to research agent" })).toBeTruthy();
+  });
+
+  it("describes a failed resolve in plain words, never the raw request failure", async () => {
+    createFeedbackMock.mockResolvedValue(openThread);
+    resolveFeedbackMock.mockRejectedValue(
+      new ApiError("GET /books failed: HTTP 503", 503, "raw server body"),
+    );
+    renderReview();
+    await composeFeedback();
+    fireEvent.click(screen.getByRole("button", { name: "Send to research agent" }));
+    expect(await screen.findByText("Queued for research-owner")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Resolve thread" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't resolve the thread.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
+    expect(screen.getByRole("button", { name: "Resolve thread" })).toBeTruthy();
   });
 });

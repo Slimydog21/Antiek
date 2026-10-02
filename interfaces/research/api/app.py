@@ -215,6 +215,11 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
+    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
+    # be starved of the DuckDB write lock for hours while /health says "ok";
+    # this is the field that makes that state visible without opening a log.
+    # Empty dict when the worker is disabled or has not run a pass yet.
+    note_taker_replay: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -864,6 +869,11 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
+    # Additive compare-and-set guard (CR-F1's surviving half). Absent = the
+    # long-standing blind write, so existing callers are unchanged. Supplied,
+    # it must equal the stored prose or the write is refused with 409
+    # `prose_revision_conflict` and nothing is written.
+    based_on_prose_text: str | None = None
     original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -2446,6 +2456,9 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
+            note_taker_replay=dict(
+                getattr(app.state, "note_taker_recovery", {}) or {}
+            ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -3966,7 +3979,12 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.graph.ops import (
+            ProseRevisionConflict,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
         from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
         from substrate.write.event_outbox import (
             build_typed_envelope,
@@ -3991,9 +4009,22 @@ def create_app(
                 claim_node_id: str | None = None
                 claim_event_id: str | None = None
                 with eventful_transaction(con, req.investigation_id):
-                    update_section_prose(
-                        con, section_id=section_id, prose_text=req.prose_text,
-                    )
+                    try:
+                        update_section_prose(
+                            con, section_id=section_id, prose_text=req.prose_text,
+                            based_on_prose_text=req.based_on_prose_text,
+                        )
+                    except ProseRevisionConflict as exc:
+                        # Nothing is written and nothing is enqueued: the guard
+                        # raises before the UPDATE, inside the caller's
+                        # transaction, so the whole edit rolls back.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="prose_revision_conflict",
+                            headers={
+                                "X-Prose-Updated-At": str(exc.current_updated_at)
+                            },
+                        ) from exc
                     if req.promote_to_graph:
                         label = req.prose_text.strip().splitlines()[0]
                         if len(label) > 160:
@@ -7969,9 +8000,15 @@ def create_app(
 
         stop = threading.Event()
         app.state.note_taker_recovery_stop = stop
+        # The worker's own report, published for /health. Prod 2026-10-01: it
+        # failed against a contended DuckDB write lock for hours — thousands of
+        # stderr lines and no projection progress — while /health answered
+        # "ok", because nothing read what the worker knew.
+        app.state.note_taker_recovery = {}
         app.state.note_taker_recovery_worker = start_replay_recovery(
             db_path=default_db_path(),
             stop_event=stop,
+            state=app.state.note_taker_recovery,
         )
 
     def _stop_note_taker_replay() -> None:
