@@ -204,3 +204,27 @@ def test_recovery_state_dict_is_updated_in_place(tmp_path, monkeypatch, worker_e
         assert state is not None and "status" in state
     finally:
         _settle(stop, thread)
+
+
+def test_backoff_survives_a_pass_count_that_overflows_a_float() -> None:
+    """The cap must not be the only thing between the worker and a crash.
+
+    `base_s` is a float, so the multiplication converts the exponent's result to float and
+    raises at exponent 1024. Before the clamp, a recovery worker that stayed barren long
+    enough died instead of backing off:
+
+        barren_passes=1024 -> 60.0
+        barren_passes=1025 -> OverflowError: int too large to convert to float
+
+    Reachable in roughly 17 hours of idling, because the sleep caps at 60s.
+    """
+    from interfaces.research.api.note_taking import _backoff_seconds
+
+    # Normal behaviour is unchanged.
+    assert _backoff_seconds(1, 1.0, 60.0) == 1.0
+    assert _backoff_seconds(2, 1.0, 60.0) == 2.0
+    assert _backoff_seconds(10, 1.0, 60.0) == 60.0
+
+    # And a pass count beyond any float exponent returns the cap rather than raising.
+    for passes in (1024, 1025, 10_000, 10**6):
+        assert _backoff_seconds(passes, 1.0, 60.0) == 60.0, passes
