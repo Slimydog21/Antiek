@@ -1,0 +1,206 @@
+
+> antiek-reading@0.1.0 build:check
+> npm run build && tsx scripts/check_bundle.ts
+
+
+> antiek-reading@0.1.0 build
+> tsc -b && vite build
+
+vite v6.4.3 building for production...
+transforming...
+node_modules/p5/node_modules/zod/v4/core/util.js (400:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "node_modules/p5/node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/p5/node_modules/zod/v4/core/regexes.js (74:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "node_modules/p5/node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 3303 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/modes/Notebook/index.tsx is dynamically imported by /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/App.tsx but also statically imported by /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/workspace/PanelRegistry.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/components/CommandPalette.tsx is dynamically imported by /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/workspace/PanelRegistry.tsx but also statically imported by /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/src/App.tsx, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                               2.74 kB │ gzip:   1.21 kB
+dist/assets/ice-fishing-station-key-art-v1-CHxZlIDy.webp     28.05 kB
+dist/assets/paperclip-archive-key-art-v1-STIMO81w.webp       37.83 kB
+dist/assets/jetbrains-mono-latin-var-D000Msq0.woff2          40.48 kB
+dist/assets/inter-latin-var-8kRkwJBP.woff2                   48.43 kB
+dist/assets/notebooks-512-BlKI4fGM.png                      111.31 kB
+dist/assets/pricing-512-DxqNpuxq.png                        121.29 kB
+dist/assets/outcomes-512-DANR6BGo.png                       122.04 kB
+dist/assets/interviews-512-A7qzyGly.png                     123.60 kB
+dist/assets/speak-512-CISjxoo4.png                          129.26 kB
+dist/assets/read-512-B90XiWqN.png                           131.32 kB
+dist/assets/biography-512-Bo_j-rYY.png                      132.90 kB
+dist/assets/write-512-B58bYJPb.png                          135.70 kB
+dist/assets/wrestler-512-26p7Bm-G.png                       135.95 kB
+dist/assets/trust-512-BiXOwjDC.png                          136.11 kB
+dist/assets/library-512-B11gE6v1.png                        144.84 kB
+dist/assets/research-512-orDS5VFT.png                       148.26 kB
+dist/assets/sources-512-BocZ6zd1.png                        149.43 kB
+dist/assets/mood_sleepy-DrFgEgDd.png                        283.95 kB
+dist/assets/01_hero_front_transparent-TM7dYXiD.png          284.22 kB
+dist/assets/blink_closed_transparent-FfbWDfkN.png           298.81 kB
+dist/assets/mood_thinking-Bm8ZwIol.png                      320.05 kB
+dist/assets/mood_excited-C-j-C28C.png                       327.25 kB
+dist/assets/pdf.worker-BgryrOlp.mjs                       2,209.73 kB
+dist/assets/KeySheet-B9aDTnQ3.css                             3.32 kB │ gzip:   1.01 kB
+dist/assets/ResearchWaitArcade-CtuYQ4vc.css                   3.64 kB │ gzip:   0.91 kB
+dist/assets/LinkMonster-txPvnYRH.css                          5.46 kB │ gzip:   1.71 kB
+dist/assets/index-CTn70m6N.css                              154.62 kB │ gzip:  26.04 kB
+dist/assets/dragToOutline-dgx-q7xH.js                         0.27 kB │ gzip:   0.22 kB
+dist/assets/ModeLink-CGXu0vZQ.js                              0.30 kB │ gzip:   0.20 kB
+dist/assets/useModeNavigate-BP6O4Z2C.js                       0.32 kB │ gzip:   0.23 kB
+dist/assets/Thinking-BqwUi9zA.js                              0.41 kB │ gzip:   0.28 kB
+dist/assets/thoughtPartnerOnce-BYOqEclD.js                    0.53 kB │ gzip:   0.36 kB
+dist/assets/routeSync-D__d8vCz.js                             0.62 kB │ gzip:   0.34 kB
+dist/assets/useBranchTo-Dptwww_k.js                           0.63 kB │ gzip:   0.36 kB
+dist/assets/useCelebrate-BcAjXxCd.js                          0.65 kB │ gzip:   0.40 kB
+dist/assets/ModePage-DXd3pURQ.js                              0.66 kB │ gzip:   0.39 kB
+dist/assets/WatchForLaterPanel-C9fvJVyC.js                    0.69 kB │ gzip:   0.46 kB
+dist/assets/Lightbox-CP1q9uZK.js                              0.75 kB │ gzip:   0.42 kB
+dist/assets/PanelHost-Dz9TNDej.js                             0.80 kB │ gzip:   0.51 kB
+dist/assets/branchNavigation-NIiXfTZt.js                      0.85 kB │ gzip:   0.52 kB
+dist/assets/RecordCrumb-DHhDYSW0.js                           0.94 kB │ gzip:   0.58 kB
+dist/assets/WorkflowArt-JVhjMuII.js                           0.96 kB │ gzip:   0.56 kB
+dist/assets/FakeSidebar-Bw0rmQns.js                           0.98 kB │ gzip:   0.55 kB
+dist/assets/servedImpression-BZomW5wj.js                      0.99 kB │ gzip:   0.55 kB
+dist/assets/useInvestigationTree-BjVq3uf-.js                  1.05 kB │ gzip:   0.53 kB
+dist/assets/AIActionFailure-BAj27CIl.js                       1.05 kB │ gzip:   0.56 kB
+dist/assets/asr-DPvNk0Q1.js                                   1.15 kB │ gzip:   0.68 kB
+dist/assets/useEventStream-FD_6SzYN.js                        1.16 kB │ gzip:   0.63 kB
+dist/assets/flagCopy-DZbYVx2E.js                              1.31 kB │ gzip:   0.64 kB
+dist/assets/VoiceChaseButton-BaAxySHY.js                      1.31 kB │ gzip:   0.77 kB
+dist/assets/FakeNotebook-DrjEwx2P.js                          1.32 kB │ gzip:   0.73 kB
+dist/assets/useVoiceRecorder-mFPMOlXb.js                      1.39 kB │ gzip:   0.71 kB
+dist/assets/FakeChat-DI5bPNz7.js                              1.44 kB │ gzip:   0.83 kB
+dist/assets/useThoughtPartnerThread-Csj67DkK.js               1.61 kB │ gzip:   0.84 kB
+dist/assets/chaseHandoffs-B7NGbuFl.js                         1.61 kB │ gzip:   0.72 kB
+dist/assets/InterviewNotes-CijjYYjw.js                        1.65 kB │ gzip:   0.80 kB
+dist/assets/researchSuggestion-DM6ryePC.js                    1.67 kB │ gzip:   0.73 kB
+dist/assets/research-Ldgkae3B.js                              1.69 kB │ gzip:   0.69 kB
+dist/assets/stripOverflow-DEvrUOlx.js                         1.69 kB │ gzip:   0.86 kB
+dist/assets/WatchForLaterFolder-5knr6GiC.js                   1.84 kB │ gzip:   0.87 kB
+dist/assets/ContextPicker-DsHqwFRc.js                         1.91 kB │ gzip:   0.88 kB
+dist/assets/Trail-C0et7ZQz.js                                 2.06 kB │ gzip:   0.92 kB
+dist/assets/SubActionList-eN8oLvPA.js                         2.11 kB │ gzip:   1.00 kB
+dist/assets/useInvestigation-DRT2JcUW.js                      2.13 kB │ gzip:   0.96 kB
+dist/assets/BlockPalette-BFyAanyG.js                          2.15 kB │ gzip:   1.03 kB
+dist/assets/FlagForDiligence-DUXMUBcl.js                      2.19 kB │ gzip:   1.03 kB
+dist/assets/sourceDrag-kzDoSk5n.js                            2.28 kB │ gzip:   0.74 kB
+dist/assets/PanelWindowApp-PfWv0MQ2.js                        2.42 kB │ gzip:   1.00 kB
+dist/assets/ChatInputArea-CytjdoNV.js                         2.54 kB │ gzip:   1.29 kB
+dist/assets/companionStore-BlCtTXj9.js                        2.66 kB │ gzip:   1.22 kB
+dist/assets/index-oG5097oA.js                                 2.75 kB │ gzip:   1.17 kB
+dist/assets/ReplayStepList-Bva6kJxS.js                        2.80 kB │ gzip:   1.25 kB
+dist/assets/ChaseSlideOver-ayCKWb7W.js                        2.81 kB │ gzip:   1.27 kB
+dist/assets/index-DQ7ByISV.js                                 2.85 kB │ gzip:   1.32 kB
+dist/assets/index-K9ITs4xH.js                                 3.06 kB │ gzip:   1.45 kB
+dist/assets/CrossDocSidebar-Bo9gixQ-.js                       3.07 kB │ gzip:   1.09 kB
+dist/assets/InterviewTranscript-D73quTW4.js                   3.07 kB │ gzip:   1.21 kB
+dist/assets/synthesisParser-DXHUMn94.js                       3.08 kB │ gzip:   1.28 kB
+dist/assets/index-BQTHNdzC.js                                 3.09 kB │ gzip:   1.20 kB
+dist/assets/settingsUsage-BtCzoS9S.js                         3.11 kB │ gzip:   1.04 kB
+dist/assets/Home-X_w3nrf-.js                                  3.21 kB │ gzip:   1.25 kB
+dist/assets/ResearchArtifactReceipt-BIKSbEpu.js               3.27 kB │ gzip:   1.46 kB
+dist/assets/toolConnections-D7u2fxdi.js                       3.34 kB │ gzip:   1.17 kB
+dist/assets/composerProjection-CHmd7TA3.js                    3.49 kB │ gzip:   1.45 kB
+dist/assets/ReadAloud-CstUWQOW.js                             3.50 kB │ gzip:   1.60 kB
+dist/assets/InvestigationSidebar-CZ9tX3m4.js                  3.62 kB │ gzip:   1.54 kB
+dist/assets/DeliverableSidebar-BNxpLx7M.js                    3.63 kB │ gzip:   1.43 kB
+dist/assets/ChaseThread-Dmv3b5Zx.js                           3.95 kB │ gzip:   1.73 kB
+dist/assets/index-CLF6cDZg.js                                 3.95 kB │ gzip:   1.56 kB
+dist/assets/index-Bs9S7Nle.js                                 4.10 kB │ gzip:   1.62 kB
+dist/assets/StyleRail-BqH94YBs.js                             4.16 kB │ gzip:   1.81 kB
+dist/assets/placeholderSpine-DvGeyYpJ.js                      4.25 kB │ gzip:   1.56 kB
+dist/assets/index-CYWe1MZZ.js                                 4.39 kB │ gzip:   1.81 kB
+dist/assets/DocumentStylePreview-CWkSwfwJ.js                  4.42 kB │ gzip:   1.84 kB
+dist/assets/index-CL-irJ6Y.js                                 4.48 kB │ gzip:   1.61 kB
+dist/assets/index-CF91NcU5.js                                 4.50 kB │ gzip:   1.73 kB
+dist/assets/index-CvcvfLmh.js                                 4.75 kB │ gzip:   2.11 kB
+dist/assets/createLucideIcon-B2H9y_m7.js                      4.86 kB │ gzip:   1.66 kB
+dist/assets/index-IiTVP13a.js                                 4.92 kB │ gzip:   1.65 kB
+dist/assets/index-DjRwekk-.js                                 4.98 kB │ gzip:   1.89 kB
+dist/assets/index-RFRMLHqP.js                                 5.02 kB │ gzip:   2.16 kB
+dist/assets/index-ClOdh4Cl.js                                 5.11 kB │ gzip:   2.01 kB
+dist/assets/index-Dhlk672L.js                                 5.28 kB │ gzip:   2.31 kB
+dist/assets/ClaimCard-DY3yYdus.js                             5.28 kB │ gzip:   1.86 kB
+dist/assets/index-C2e2M6VR.js                                 5.39 kB │ gzip:   2.00 kB
+dist/assets/index-D9NNgrHq.js                                 5.41 kB │ gzip:   2.14 kB
+dist/assets/index-DJTUbvJC.js                                 5.42 kB │ gzip:   1.91 kB
+dist/assets/index-Dq0XG5Tj.js                                 5.57 kB │ gzip:   2.05 kB
+dist/assets/NotesPanel-CNIpE_8s.js                            5.58 kB │ gzip:   1.89 kB
+dist/assets/index-B0DYNymk.js                                 5.71 kB │ gzip:   2.13 kB
+dist/assets/ProjectTree-eyjWyeu6.js                           5.87 kB │ gzip:   2.23 kB
+dist/assets/PublicLane-BBrj8Dpl.js                            5.89 kB │ gzip:   1.99 kB
+dist/assets/speakVocab-BeOzSJhA.js                            6.28 kB │ gzip:   2.40 kB
+dist/assets/index-CdZKE7Xq.js                                 6.28 kB │ gzip:   2.13 kB
+dist/assets/ResearchWaitArcade-CX3374HE.js                    6.71 kB │ gzip:   2.74 kB
+dist/assets/ModelUsagePicker.impl-BfA91MIE.js                 6.92 kB │ gzip:   2.60 kB
+dist/assets/LibraryView-DL9FcLdN.js                           7.04 kB │ gzip:   2.97 kB
+dist/assets/index-0dD2PYzO.js                                 7.17 kB │ gzip:   2.73 kB
+dist/assets/index-B6LbbbHu.js                                 7.57 kB │ gzip:   2.37 kB
+dist/assets/SketchCanvas-C3HkRmFE.js                          7.69 kB │ gzip:   3.28 kB
+dist/assets/index-06NbmDk0.js                                 7.99 kB │ gzip:   2.63 kB
+dist/assets/index-BKkBAFLe.js                                 8.03 kB │ gzip:   2.78 kB
+dist/assets/KeySheet-qifz_Jjh.js                              8.04 kB │ gzip:   2.97 kB
+dist/assets/index-Cnko_yPi.js                                 8.12 kB │ gzip:   2.60 kB
+dist/assets/index-KpAF9AAI.js                                 8.23 kB │ gzip:   2.81 kB
+dist/assets/index-K_lBSMnE.js                                 8.79 kB │ gzip:   3.32 kB
+dist/assets/CostConsent-WqcebkUq.js                           8.91 kB │ gzip:   2.64 kB
+dist/assets/index-B1l5cBGj.js                                 9.24 kB │ gzip:   2.96 kB
+dist/assets/index-DPpGm1UL.js                                 9.51 kB │ gzip:   3.36 kB
+dist/assets/NotesPanel-DdQwIGvt.js                            9.51 kB │ gzip:   3.12 kB
+dist/assets/speakApi-Db165ZvX.js                              9.59 kB │ gzip:   2.46 kB
+dist/assets/ThoughtPartnerPanel-C4Qyw3q-.js                   9.73 kB │ gzip:   3.48 kB
+dist/assets/index-60HU4sJX.js                                 9.89 kB │ gzip:   3.00 kB
+dist/assets/index-bvAPjgc5.js                                10.27 kB │ gzip:   2.77 kB
+dist/assets/ConnectedToolSearch-9LknVAmA.js                  10.87 kB │ gzip:   3.63 kB
+dist/assets/AISidecar-BNv8bMHS.js                            11.47 kB │ gzip:   4.00 kB
+dist/assets/WriteOutlinePane-Cahvlj2J.js                     11.67 kB │ gzip:   4.31 kB
+dist/assets/AutoNotebook-Cy2mdv0e.js                         11.81 kB │ gzip:   3.49 kB
+dist/assets/Canvas-Dxv7UlfO.js                               12.20 kB │ gzip:   4.50 kB
+dist/assets/useFloatMenuSelection-7OQyYA7O.js                13.39 kB │ gzip:   4.70 kB
+dist/assets/index-BUM9fARz.js                                13.81 kB │ gzip:   4.17 kB
+dist/assets/ResearchWaitArcadeGame-COWXaEjp.js               14.83 kB │ gzip:   5.47 kB
+dist/assets/CompanionPane-LmYfqUr6.js                        15.34 kB │ gzip:   5.36 kB
+dist/assets/MyResearch-Den1Dz6H.js                           15.55 kB │ gzip:   4.94 kB
+dist/assets/index-TNCyN4Dc.js                                16.87 kB │ gzip:   4.11 kB
+dist/assets/index-DQT1DCmP.js                                17.50 kB │ gzip:   5.62 kB
+dist/assets/index-BRKizCXM.js                                18.83 kB │ gzip:   6.75 kB
+dist/assets/ThinkingStream-B9fa8oph.js                       18.92 kB │ gzip:   6.33 kB
+dist/assets/index-3fOmvKWg.js                                22.59 kB │ gzip:   6.31 kB
+dist/assets/index-DT859Yx4.js                                23.30 kB │ gzip:   7.61 kB
+dist/assets/EditorPanel-DtYsM9wA.js                          23.52 kB │ gzip:   6.45 kB
+dist/assets/DocumentTabStrip-CBThYDCD.js                     24.41 kB │ gzip:   8.19 kB
+dist/assets/tabTreeStore-C9EVjzFI.js                         32.84 kB │ gzip:  10.64 kB
+dist/assets/index-DNXmbGUC.js                                47.04 kB │ gzip:  10.42 kB
+dist/assets/WriteHome-D4loFCqx.js                            59.39 kB │ gzip:  17.74 kB
+dist/assets/index-Cs9hTonR.js                                71.16 kB │ gzip:  20.37 kB
+dist/assets/index-r3SpGqLy.js                                95.46 kB │ gzip:  28.90 kB
+dist/assets/index-TIcmNLC_.js                               107.52 kB │ gzip:  28.90 kB
+dist/assets/index-CwjzhZr6.js                               130.04 kB │ gzip:  29.44 kB
+dist/assets/lemon-CFJ7VlCJ.js                               163.87 kB │ gzip:  53.07 kB
+dist/assets/attrHelpers-B0meOVDA.js                         409.46 kB │ gzip: 129.74 kB
+dist/assets/index-l9vwmADS.js                             1,158.80 kB │ gzip: 360.11 kB
+dist/assets/LinkMonster-CQauCbpX.js                       1,177.96 kB │ gzip: 347.61 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 6.99s
+== bundle budget check ==
+[✓] index        index-l9vwmADS.js                        gz= 351.67 KB  budget= 683.59 KB  headroom= 331.92 KB
+[✓] lemon        lemon-CFJ7VlCJ.js                        gz=  51.82 KB  budget=  58.59 KB  headroom=   6.77 KB
+
+All chunks within budget.
