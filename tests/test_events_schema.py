@@ -484,3 +484,50 @@ def test_artifact_action_types_are_not_in_wrestling_set():
     the project-scoped artifact case breaks (no document_id available)."""
     assert ActionType.ARTIFACT_GENERATED.value not in WRESTLING_ACTION_TYPES
     assert ActionType.ARTIFACT_INTERACTED.value not in WRESTLING_ACTION_TYPES
+
+
+def test_strict_write_raises_where_the_default_returns_an_id(tmp_path, monkeypatch):
+    """The two postures, pinned, because POST /events/typed depends on the difference.
+
+    With the default (`strict_write=False`) the append runs through `_safe`, which prints to
+    stderr and returns None -- and `emit_typed` returns `event_id` anyway. That is the correct
+    posture for telemetry: `_safe`'s docstring says "Telemetry must never break a real
+    synthesis".
+
+    It is the wrong posture for a POST whose purpose is durability, and the handler already
+    says so in two places that were unreachable:
+
+        except Exception as exc:  # Pydantic ValidationError or write error
+        if event_id is None:      # "surface so the client knows nothing was persisted"
+
+    With the default, a write error never raised and event_id was never None, so a client got
+    201 plus an event id for an event that is not on disk.
+    """
+    from substrate.event_log import events as _ev
+
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_ev, "_append_jsonl", _boom)
+
+    payload = DispatchCallPayload(
+        provider="p",
+        model="m",
+        tier="flash",
+        target_role="decomposer",
+        input_tokens=1,
+        output_tokens=1,
+        cost_usd=0.0,
+        latency_ms=1,
+        prompt_hash="sha",
+    )
+
+    # The telemetry posture: the failure is swallowed and an id comes back anyway.
+    swallowed = emit_typed("rt-strict-a", payload)
+    assert swallowed, "the default is documented to return an id regardless of the write"
+
+    # The durable posture: the caller is told.
+    with pytest.raises(OSError, match="disk full"):
+        emit_typed("rt-strict-b", payload, strict_write=True)
