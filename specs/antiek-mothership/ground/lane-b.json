@@ -1,0 +1,1296 @@
+{
+ "lane": "B",
+ "ground_truth": "main 15e78e276",
+ "generated": "2026-09-24",
+ "method": "Six grounding lanes (B1-B5 and X) merged, then two refuter passes applied after re-checking each disputed claim in the read-only worktree ground-main-20260924 (paths are relative to that root unless absolute). New RUN evidence from this synthesis: tests/test_block_repository.py, tests/test_marginalia_promotion.py and tests/test_passage_research.py gave 28 passed; a python probe showed ResearchArtifactBody.content_hash differs across investigation ids for identical content. Frontend tests (vitest) were not run, so every UI claim is READ at best. Production state was not measured (no network).",
+ "capabilities": [
+  {
+   "id": "B1.1",
+   "capability": "Thread identity: a thread is an investigation_id; what else identifies it (owner, title, project, kind)",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN] InvestigationSummary fields are investigation_id, question, status, started_at, completed_at, cost_usd_total, parent_investigation_id, spawned_by_daemon; no owner, title, project, document or anchor (interfaces/research/api/app.py:543-560)",
+    "[RUN] InvestigationStartRequest fields are question, context, topic_slug, max_sub_questions, investigation_id, parent_investigation_id, spawn_context, research_tier, source_policy, model_choice, operation_id (app.py:441-488)",
+    "[READ] Primary mint is req.investigation_id or canonical_owner_id or inv-<uuid12> (app.py:2758); owner launches mint inv-sha(operation_id) (app.py:2752-2755)",
+    "[READ] Id namespaces are heterogeneous: inv-12 spin (interfaces/research/api/books.py:2186), inv-12 chase child (orchestration/loop_one/orchestrator.py:2354), inv-16 reserved escalation (roles/note_taker/living_note.py:185), session-<root> and <session>-leaf-<i> (cascade_routes.py:1368,1500), read-<documentId> (apps/reading/src/modes/Reading/index.tsx:130), read-spin (substrate/books/passage_research.py:140), __sidecar__ (app.py:6708), __operator__ (app.py:582)",
+    "[READ] The event envelope carries investigation_id, synthesis_id, document_id, parent_event_id and policy_id, and no owner, project or title (substrate/schemas/events.py:4568-4580)",
+    "[READ] owner_user_id is a start-payload field (events.py:2425) set only on owner-BYOT launches, which must be roots (app.py:2717-2743)",
+    "[READ] No title or rename event exists; INVESTIGATION_* is start_requested, completed, failed, spawned_from, chase_halted (events.py:82-92)",
+    "[READ] Owner lives only in adjacent stores: research_artifacts.owner_user_id (substrate/research_artifact/store.py:16-27), feedback_threads.owner_user_id (substrate/feedback/schema.py:8-11), notebooks.owner_user_id (substrate/graph/schema.py:507)",
+    "[READ] GET /trajectory/{id} (app.py:2608-2620) and GET /investigations (app.py:3001-3200) apply no owner filter",
+    "[READ] The id is not integrity-checked (see B1.8)"
+   ],
+   "ui_reachable": "Partly: /inv/:investigationId (apps/reading/src/App.tsx:141) addresses a thread by id and labels it with its start question; no owner, project or title is shown",
+   "extend_not_substitute": "Keep thread = investigation_id plus its per-investigation event log (substrate/event_log/events.py:752 trajectory). Add owner_user_id on every launch and optional title, kind and project_id to InvestigationStartRequestedPayload (events.py:2360); record renames as a typed INVESTIGATION_* event (events.py:82-92); surface them through InvestigationSummary (app.py:543) and apps/reading/src/generated/types.ts. No threads table.",
+   "gap": "Durable and addressable, but identity has no owner (except BYOT), project, title or kind discriminator; namespaces are heterogeneous; reads are not owner-scoped, acceptable only under the single-operator invariant.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.2a",
+   "capability": "Scoping a thread to a PROJECT / workstation that groups investigations",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, CORRECTED from SPEC_ONLY by refuter 2, verified] Cross-investigation grouping primitives exist in code, so SPEC_ONLY was wrong; none of them groups investigations as a user project",
+    "[READ] write_folders and write_folder_members group graph NODES across investigations as views, not copies (substrate/write/folders.py:1-18,55-78); folder writes emit no typed event (folders.py:47-52); routes POST/GET /write/folders and folder block add/remove (interfaces/research/api/write_routes.py:315-346)",
+    "[READ, CORRECTED] write_folders is not owner-enforced: owner_user_id defaults to __operator__ (folders.py:58) and the create and list routes take no request identity (write_routes.py:315-330)",
+    "[READ] Folder chips filter the Write block repository (apps/reading/src/modes/Write/BlockRepository.tsx:53-55,104-120, mounted at WriteHome.tsx:388); createFolder and addFolderBlock (modes/Write/writeApi.ts:86-108) have no UI caller (grep), so folder creation and membership are UI-unreachable",
+    "[READ] Investigation-as-project filing sets documents.investigation_id through document.filed_into_investigation (app.py:2455-2500; events.py:458-465); see B1.10",
+    "[READ] topic_slug is the only investigation-level grouping key on the start payload and threads to chase children (app.py:454; events.py:2378; orchestrator.py:2091,2361); see B1.9",
+    "[READ] notebooks bind at most one investigation and one document (substrate/graph/schema.py:502-519); deliverables.investigation_root_id ties one deliverable to one root (schema.py:279-294); a cascade session groups its leaves through spawned_from (orchestration/cascade_session.py:14-17,445)",
+    "[READ] Workspace layout persists only to localStorage (apps/reading/src/workspace/WorkspaceStore.ts:275-310); MyResearch groups only by parent (modes/ResearchWorkstation/MyResearch.tsx:78-100)",
+    "[PRIOR] specs/antiek-mothership/DECISIONS.md D1 and D5: three motherships over one shared project/workstation registry; THREAD-CONTRACT.md section 2.1 lists the workstation fields lane A needs"
+   ],
+   "ui_reachable": "No project or workstation UI. Folder chips in /write filter blocks only; the /readings filing suggestion files one document into one investigation.",
+   "extend_not_substitute": "Extend write_folders (substrate/write/folders.py:55-78) into the project/workstation registry: kind (research | writing | reading_session), title, order, pinned and archived, request-derived owner, the typed Folder* payloads folders.py:47-52 says were never registered, and a member_kind (node | investigation | document | deliverable) on write_folder_members while keeping the block_search base query node-only (substrate/write/block_search.py:118-124). Carry project_id on InvestigationStartRequestedPayload (events.py:2360). Reconcile topic_slug and documents.investigation_id filing into it. No projects table; do not reuse interview_projects (schema.py:322-337).",
+   "gap": "Nothing groups investigations, documents and deliverables into a user project shared across motherships. The nearest store groups nodes only, is not owner-enforced and cannot be populated from the UI.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B1.2b",
+   "capability": "Scoping a thread to a DOCUMENT (threads spawned from a document or passage)",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] POST /books/{document_id}/spin-research mints inv-<uuid12> and emits start_requested with envelope document_id and no parent_investigation_id (books.py:2186-2198)",
+    "[READ] The passage link is question.escalated_to_research on the synthetic read-spin trajectory with question_id passage:<doc>:p<page> (substrate/books/passage_research.py:44-56,135-156; called at books.py:2225-2229)",
+    "[RUN] researches_for_passage and passage_for_research (passage_research.py:158,180) work: tests/test_passage_research.py passed in this synthesis (28 passed together with block repository and marginalia tests); neither has an API route",
+    "[READ] Loop One copies the envelope document_id into ctx (orchestrator.py:2090) and uses it only for same-document reuse affinity (orchestrator.py:1860-1864)",
+    "[READ] UI launch: ResearchThis (modes/Reading/ResearchThis.tsx:38-67) and highlight -> spinResearch (modes/Reading/index.tsx:243-258)",
+    "[READ] Document lineage is split: the reader treats read-<documentId> as the per-book thread (Reading/index.tsx:130) while spins link under read-spin with no parent",
+    "[READ] GET /investigations never returns document_id (app.py:543-560) and drops non-inv trajectories without lifecycle markers, so read-<doc> is never listed (app.py:3077-3080)",
+    "[READ, CORRECTED by refuter 1, verified] The ReadingCompanion per-document chase list never populates: it filters handoffs to parent read-<doc> (chaseHandoffs.ts:33-38; ReadingCompanion.tsx:88) and the only recorder, ChaseThread (ChaseThread.tsx:111-117), is opened only with the /inv/:id route id as parent (ResearchWorkstation/index.tsx:150-178)"
+   ],
+   "ui_reachable": "Launching is reachable (ResearchThis, highlight -> spin). Listing the threads of a document is not reachable anywhere.",
+   "extend_not_substitute": "Make spin-research set parent_investigation_id=read-<documentId> (books.py:2190) and write question.escalated_to_research on read-<documentId> rather than read-spin (passage_research.py:140). Route researches_for_passage and passage_for_research beside spin-research in books.py. Add document_id to InvestigationSummary from the envelope. No link table.",
+   "gap": "The server knows which document a spun research came from only through an unrouted synthetic-trajectory scan; spins are unparented roots; nobody can list the threads of a document from the API or UI.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.2c",
+   "capability": "Scoping a thread to a SELECTION ANCHOR (character span or HTML anchor in a document)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] The live spin anchor is page-level only, passage:<document_id>:p<page_index> (passage_research.py:44-56); the reader discards the selection Range (Reading/index.tsx:199-206,243-258)",
+    "[READ] ChaseThread sends only the highlighted text as context and spawn_context, with no document id, offsets or event id (modes/ResearchWorkstation/ChaseThread.tsx:99-108)",
+    "[READ] InvestigationSpawnedFromPayload.parent_event_id is declared (events.py:2472) and never populated; POST /investigations passes the CHILD start event as envelope parent_event_id (app.py:2842-2856)",
+    "[READ] A canonical anchor contract exists: CanonicalDocumentRegion and RegionStore (table document_regions) with projection_id, source_locator, html_anchor_id, char_start/char_end and exact_text_sha256 (substrate/reading/regions.py:19-89); SourceLocator variants pdf_page_bbox, semantic and text{start,end,text_sha256} (substrate/contracts/html_projection.py:39-88); AnchorMapping resolved | ambiguous | unresolved (html_projection.py:90-119); derive_anchor_id(projection_id, locator) (html_projection.py:195)",
+    "[READ, this synthesis] RegionStore has zero references outside regions.py across interfaces, substrate, orchestration, services, runtime and roles (grep), so it has no writer and no route",
+    "[READ] anchor_region_id exists only on QuestionIdentifiedPayload and ClaimChallengeRaised (events.py:1260-1264,1200)",
+    "[RUN, grounder] Artifact-anchored feedback threads (NodeTextAnchor quote plus 32-scalar prefix/suffix, substrate/feedback/domain.py:24-71) pass tests/test_feedback_routes.py and tests/test_feedback_artifact_anchor.py, gated by ANTIEK_FEEDBACK_ENABLED (feedback_routes.py:52-53,118-120) and anchored to research-artifact nodes only",
+    "[READ] Write SubAgentProposal spawns from claim text and the host drops the child id (modes/Write/SubAgentProposal.tsx:69-76; Write/Outline.tsx:602-607)"
+   ],
+   "ui_reachable": "Page-level spin and text-only chase are reachable. Region anchors are not. Artifact-anchored feedback is reachable only with VITE_ANTIEK_FEEDBACK_ENABLED (StyleWheel.tsx:566).",
+   "extend_not_substitute": "Use SourceLocator (TextLocator over source text, html_projection.py:71-88) as the durable, projection-independent anchor and RegionStore region_id (regions.py:75) as its per-projection resolution, remapped through AnchorMapping on re-projection; add optional anchor {document_id, source_locator, region_id?, quote?} to InvestigationStartRequestedPayload (events.py:2360) and InvestigationSpawnedFromPayload (events.py:2456); populate parent_event_id; give RegionStore its first writer. Keep NodeTextAnchor for artifact-node anchors. No new anchor model.",
+   "gap": "Threads anchor to a page or to copied text, never to a character span or HTML anchor; the contract that can do this has no writer or route; Write-side spawns lose their anchor.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.3a",
+   "capability": "PROCESS persistence (trajectory / event log) for every thread kind",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] Append-only JSONL per investigation (substrate/event_log/events.py:125-137), sealed to Parquet (events.py:602-744); trajectory() merges both (events.py:752-800)",
+    "[READ] Routes GET /trajectory/{id} (app.py:2608-2620) and GET /trajectory (app.py:2655-2670, reads .parquet and .jsonl at app.py:2630-2636)",
+    "[READ] UI: useInvestigation seeds from /trajectory then follows /ws/events (hooks/useInvestigation.ts:33-55); ThinkingStream (ChaseThread.tsx:266); /replay/:investigationId (App.tsx:256)",
+    "[READ] DRW leaves persist lifecycle markers only; the step stream stays in memory (runtime/research_runner/host_local.py:330-336); after eviction the stream replays status only (cascade_routes.py:1942-1953); cascades launch with seal_on_complete=False (cascade_routes.py:1658-1664)",
+    "[READ] Talk-to-book turns persist as read.book_answered on read-<doc> (books.py:2442-2473) but thread and branch structure lives in sessionStorage (modes/Reading/useTalkThread.ts:10-27)",
+    "[READ] Thought-partner history is sessionStorage only (hooks/useThoughtPartnerThread.ts:1-9,36-53); the server attributes the dispatch to __sidecar__ (app.py:6704-6709)"
+   ],
+   "ui_reachable": "Yes for Loop One (/inv/:id, /replay/:id); live-only for DRW leaves (/deep-research/:sessionId); browser-session-only for thought partner and talk-to-book",
+   "extend_not_substitute": "Keep substrate/event_log (events.py:294 log_event, :358 emit_typed) as the only process store. Persist DRW StepEvents through HostLocalRunner._push (runtime/research_runner/host_local.py:385) onto the leaf trajectory. Write conversational turns as typed events on the addressed trajectory following ReadBookAnsweredPayload (events.py:3965; books.py:2442-2473).",
+   "gap": "Loop One threads have a complete replayable log; DRW leaf steps and every conversational turn do not, so those threads cannot be reopened with their process.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.3b",
+   "capability": "OUTCOME persistence (synthesis archive, research artifact, distilled notes)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, CORRECTED from BUILT_AND_WIRED by refuter 1, verified] Missing part: automatic post-outcome research-artifact persistence and a working receipt link",
+    "[READ] syntheses keyed by investigation_id (substrate/graph/schema.py:197-224); _deposit_synthesis_to_substrate is the sole production caller of archive_synthesis_via_db (orchestrator.py:1950,1969-2054) with synthesis_id=syn-<investigation_id> (orchestrator.py:2046); investigation.completed carries thesis_summary and master_md_path (orchestrator.py:1951-1965)",
+    "[READ] research_artifacts and research_artifact_versions carry owner_user_id (substrate/research_artifact/store.py:16-39); routes export, status, twin-notes.html, artifact.html, blocks (interfaces/research/api/artifact_routes.py:254,272,309,565,610)",
+    "[READ] The post-complete export runs only with ANTIEK_EXPORT_RESEARCH_ARTIFACT=1 (substrate/research_artifact/hooks.py:8-15; orchestrator.py:2057-2066)",
+    "[READ, verified] ResearchThis spins with export_artifact=true (modes/Reading/ResearchThis.tsx:42) and the server exports with db_path right after the broadcast, before Loop One has run (books.py:2231-2239), recording a pre-outcome research_artifacts row (substrate/research_artifact/export.py:57-60)",
+    "[READ, verified] The receipt Open link builds /research/{id}/artifact/html (components/windows/ResearchArtifactReceipt.tsx:24-28) while the route is /{id}/artifact.html (artifact_routes.py:565-569), so the link hits no route",
+    "[READ] Distilled insights and questions at GET /research/{investigation_id}/distill (distill_routes.py:103-116); trajectory-to-context loader problem_question_from_events and synthesis_from_events (substrate/research_artifact/context.py:10-60)"
+   ],
+   "ui_reachable": "Syntheses and distill view yes (/inv/:id); ArtifactOutlineShelf export and artifact.html yes for terminal researches with distilled nodes; the spin-time receipt shows a pre-outcome snapshot with a broken Open link",
+   "extend_not_substitute": "Reuse syntheses (schema.py:197), research_artifacts (store.py:16) and research_artifact/context.py:10-60 as the thread outcome and as the context source for follow-ups; trigger export from the existing post-complete hook with db_path; fix the receipt href. No thread-outcome store.",
+   "gap": "Outcomes are keyed and durable, but automatic artifact persistence is off by default, the only automatic export captures an empty pre-outcome snapshot, and outcomes carry no project or anchor scope.",
+   "severity": "minor"
+  },
+  {
+   "id": "B1.4",
+   "capability": "ADDRESSABLE FOLLOW-UP: ask a thread and get an answer built on its accumulated context",
+   "status": "ABSENT",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] A start event with parent_investigation_id and spawn_context fed to the Loop One handler (orchestrator.py:2082-2098) yields empty ctx.context, no spawn_context, empty evidence and no synthesis; InvestigationContext has no parent context (orchestrator.py:533-562)",
+    "[RUN, grounder] DecomposeQuestionRequestedPayload carries only question and context (orchestrator.py:661-671; interfaces/research/api/decomposer.py:159-173)",
+    "[READ] The schema docstring states parent_investigation_id and spawn_context are metadata-only (events.py:2367-2371); ctx.parent_investigation_id is assigned (orchestrator.py:2096) and read only for chase depth and cost (orchestrator.py:2190-2245)",
+    "[READ, verified] Start-time knowledge reuse is called (orchestrator.py:1851-1866) but maybe_reuse_prior_knowledge_at_start returns only reuse_event_id and discards the pack (substrate/flywheel/investigation_start_reuse.py:89-102); it is global similarity retrieval, not parent-scoped",
+    "[READ] Every UI follow-up is a cold run: ChaseThread sends highlight text (ChaseThread.tsx:99-108); the docked Chat this investigation panel (ResearchWorkstation/index.tsx:104-112) is ChatInputArea sending only parent_investigation_id (ChatInputArea.tsx:62-67); Write SubAgentProposal sends a claim string (SubAgentProposal.tsx:69-76)",
+    "[READ] Near misses: DRW steer works only while the session is live (cascade_routes.py:1874-1888; host_local.py:443-466); deepen appends a follow_up nothing consumes (host_local.py:464-466,478); POST /research/notes/{node_id}/challenge passes only the note text (distill_routes.py:121-164); feedback threads allow one agent action per thread (agent_work.thread_id UNIQUE, substrate/feedback/schema.py:31-46)",
+    "[READ] /thought-partner accepts investigation_id but uses it only for dispatch attribution (app.py:6704-6709); the document-scoped analogue POST /books/{id}/ask does load scoped retrieval plus history and persists turns (see B1.12)"
+   ],
+   "ui_reachable": "No. The UI implies it (Chat this investigation, Follow this) but both start context-free child runs.",
+   "extend_not_substitute": "Two tiers on existing seams. Cheap ask: extend POST /thought-partner (app.py:6647) to load the addressed trajectory via research_artifact/context.py:10-60 and roles/note_taker/distill_query.py, answer under the section 9.0 resolver, and append typed turn events to that trajectory like read.book_answered (events.py:3965). Full follow-up research: extend POST /investigations (app.py:2679) and the Loop One handler (orchestrator.py:2082-2098) to build a parent-scoped layer injected via assemble_context_pack_with_reuse (substrate/context_pack/knowledge_reuse.py:752) into DecomposeQuestionRequestedPayload.context and the evidence prompts, recording the pack on the child trajectory. No chat store.",
+   "gap": "No path answers a follow-up with the thread context; every follow-up is a cold run linked by metadata, a live-only steer, or a one-note refine.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B1.5",
+   "capability": "CONTEXTLESS ASK with manually attached documents, notes or prior threads",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] POST /investigations accepts only a free-text context (app.py:452-458), which reaches only the decomposer (orchestrator.py:666); source_policy is metadata-only (app.py:480-485)",
+    "[RUN, grounder] An unknown context_items field on InvestigationStartRequest is silently ignored",
+    "[READ, verified] ContextItem.kind is Literal doc | insight (app.py:1318-1323) although the request docstring advertises @investigation and @note (app.py:1326-1332); RUN (grounder): investigation and note kinds are rejected and tests/test_compose_context.py passed",
+    "[READ] /compose-context (app.py:6765-6783; _compose_context app.py:1348-1422) feeds only /thought-partner system_context; ContextPicker mounts in AISidecar.tsx:358 and ThoughtPartnerPanel.tsx:265",
+    "[READ] A source can be attached to an existing thread by PasteIngest, but only in name (see B1.15)"
+   ],
+   "ui_reachable": "Partly: ContextPicker in AISidecar and BrainstormStation reaches /thought-partner; the research composer (ChatInputArea, StartResearch) has no attachment UI",
+   "extend_not_substitute": "Widen ContextItem.kind (app.py:1322) to investigation and note, resolved in _compose_context (app.py:1348) through research_artifact/context.py and distill_query under the same section 9.0 gate; add context_items to InvestigationStartRequest (app.py:441), compose server-side, and record item ids on InvestigationStartRequestedPayload (events.py:2360).",
+   "gap": "Attached asks exist only as stateless thought-partner turns over docs and insights; notes and prior threads cannot be attached and a research thread cannot start with attachments.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.6",
+   "capability": "Thread LISTING per project, document or anchor",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] tests/test_sprint11_api.py::test_list_investigations_carries_parent_lineage passed; GET /investigations (app.py:3001-3200) filters only by status and limit and returns the parent from start_requested or spawned_from (app.py:3108-3124)",
+    "[READ] It reads every trajectory on every request (app.py:3066-3071) and enumerates only .jsonl (app.py:3068) while GET /trajectory also reads sealed .parquet (app.py:2630-2636); latent today because cascades set seal_on_complete=False (cascade_routes.py:1662)",
+    "[READ] No children, by-document, by-anchor or by-project route; researches_for_passage is unrouted (passage_research.py:158); feedback threads fetch only by id (feedback_routes.py:187); notebooks list by investigation or document (app.py:5434-5460)",
+    "[READ] UI tree: InvestigationSidebar (InvestigationSidebar.tsx:27-28) merges a localStorage parent map (hooks/useInvestigationTree.ts:5,40-46,83-101); MyResearch at /my-research (App.tsx:289)",
+    "[READ, CORRECTED by refuter 1, verified] Per-document listing in ReadingCompanion is never populated (see B1.2b), so per-document listing is not UI-reachable at all",
+    "[READ, CORRECTED by refuter 2, verified] seam.* events do have a production producer: acceptPromotion posts seam.read_to_research (apps/reading/src/lib/researchSuggestion.ts:57-96), called from modes/Reading/MetaReading/index.tsx:140 at /read/meta-reading/:assetId (App.tsx:198,202); GET /thread/{node_id} (interfaces/research/api/thread.py:171-186) is still unfetched by the UI"
+   ],
+   "ui_reachable": "Global tree only (/inv sidebar, /my-research, /deep-research/:sessionId); per-document, per-project and per-anchor listing are not reachable",
+   "extend_not_substitute": "Extend GET /investigations (app.py:3001) and InvestigationSummary (app.py:543) with document_id, project_id, anchor and kind filters derived from the start and spawned_from payloads and the envelope; enumerate .parquet as GET /trajectory already does; route researches_for_passage; add list-by-investigation on FeedbackStore (substrate/feedback/store.py:153). Any index must be derived from the event log. Retire the localStorage tree map once the server carries lineage.",
+   "gap": "Only a global parent/child tree exists; per-project, per-document and per-anchor lists do not; the endpoint is O(all events) per call and blind to sealed logs.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.7",
+   "capability": "Lineage single source of truth: no parallel client stores for thread relationships (CEO P0 doctrine)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] Server lineage exists: InvestigationSpawnedFromPayload (events.py:2456-2473), start-payload parent (events.py:2384-2385), HostLocalRunner spawned_from for cascade leaves (host_local.py:232-238)",
+    "[READ] Client substitute 1: localStorage antiek:investigation_tree merged into the tree (useInvestigationTree.ts:17-30,40-46,83-101), although events.py:2463-2466 promised to retire it once the server consumer was wired, which it is (app.py:3108-3124)",
+    "[READ] Client substitute 2: localStorage antiek.chase.draftHandoffs.v1 (modes/ResearchWorkstation/chaseHandoffs.ts:3-4,80-102)",
+    "[READ] Client substitute 3: talk-to-book and thought-partner threads in sessionStorage (useTalkThread.ts:19,80,92; useThoughtPartnerThread.ts:4-5)",
+    "[READ, CORRECTED] Document-to-thread lineage runs through four channels, not three: spawned_from, read-spin question.escalated_to_research, localStorage chase handoffs, and the meta-reading seam.read_to_research event plus a free-text spawn_context read-meta-asset:<id> (researchSuggestion.ts:57-96); the seam event is best-effort (researchSuggestion.ts:91-93) and ignored by every listing",
+    "[READ] substrate/seams/thread.py:9-31 defines thread as a derived cross-workflow view, not a store"
+   ],
+   "ui_reachable": "Yes, and that is the problem: the tree fallback and the reader chase list are driven by browser-local stores",
+   "extend_not_substitute": "Route every thread relationship through the event log: spawned_from with parent_event_id populated, question.escalated_to_research for passages and escalations, seam events folded into the same lineage read, typed turn events for conversations; read back through GET /investigations and trajectory(). Keep the seams/thread.py rule: derive on read, never materialize.",
+   "gap": "Browser-local stores carry lineage and conversations the substrate does not, so they do not survive another device and cannot be merged, forked or listed server-side.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.8",
+   "capability": "Thread id and lineage integrity: uniqueness of a client-supplied investigation_id, existence and ownership of the parent, binding of merge-event thread ids",
+   "status": "ABSENT",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, verified] POST /investigations uses req.investigation_id verbatim (app.py:2758); emit_typed is idempotent and strict only when operation_id is set (app.py:2808-2811), and non-owner launches always broadcast (should_broadcast is true when operation_id is None, app.py:2860-2877)",
+    "[READ, verified] ChaseThread launches INTO a reserved escalation id (ChaseThread.tsx:99-108; ResearchWorkstation/index.tsx:163-178), so chasing the same escalated question twice appends a second start_requested to the same id and broadcasts it again",
+    "[READ, verified] commit_start_acu is idempotent on investigation_id (app.py:2879-2884), so a repeated launch on one id is not metered again",
+    "[NOT MEASURED] Whether the Loop One handler suppresses a second run on an existing id; the handler builds ctx directly from the event (orchestrator.py:2082-2098) with no visible guard",
+    "[READ] spawned_from is emitted for any parent string with no existence or owner check (app.py:2842-2856)",
+    "[READ, verified] Source-merge events are logged into a client-chosen parent_reading_thread_id bound to nothing (artifact_routes.py:118-126,182-186; source_merge.py:434-442)"
+   ],
+   "ui_reachable": "n/a (API behaviour, reachable from ChaseThread)",
+   "extend_not_substitute": "Enforce in POST /investigations (app.py:2679): refuse a client id that already has investigation.start_requested unless it is an owner exact replay, reusing the claim pattern research_owner_dispatch.claim_owner_launch (app.py:2760-2789); require parent_investigation_id to exist and be owned. No separate thread registry.",
+   "gap": "A thread contract cannot rely on investigation_id or parent lineage being unique, existing or owned; the reserved-id path can double-start a run.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.9",
+   "capability": "topic_slug: the only grouping key on the investigation start payload (MASTER.md topic directory)",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] InvestigationStartRequest.topic_slug (app.py:454), forwarded on start (app.py:2796) and to chase children (orchestrator.py:2091,2361); generate_master_md(row, topic_slug=...) (orchestrator.py:1334; skills/domain/master_md.py:347-414)",
+    "[READ] The only UI that sets it is modes/InvestigationsIndex/index.tsx:59, and that mode is retired from routing (/investigations redirects, App.tsx:290)",
+    "[READ] InvestigationSummary does not return it (app.py:543-560)"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Fold topic_slug into the project registry (B1.2a) rather than adding a second grouping field.",
+   "gap": "An investigation grouping key exists end to end in the backend but no routed UI sets it and no list returns it.",
+   "severity": "minor"
+  },
+  {
+   "id": "B1.10",
+   "capability": "Document-to-project filing (an investigation treated as a research project a document is filed into)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] _list_candidate_projects reconstructs (investigation_id, question) candidates and match_document_to_investigations suggests with threshold 0.45 and never double-files (substrate/books/personal_space.py:444,454-532)",
+    "[READ, verified] acceptFiling emits document.filed_into_investigation through POST /events/typed and the handler sets documents.investigation_id (lib/researchSuggestion.ts:141-169; app.py:2455-2500)",
+    "[READ, verified, resolves refuter NOT MEASURED] The caller is modes/Reading/PersonalSpace/index.tsx:249-256, routed at /readings and /meta-readings (App.tsx:205,208)",
+    "[READ] Ingest routes also stamp investigation_id on documents (app.py:3317-3420, used by PasteIngest, see B1.15)",
+    "[READ] No retrieval path scopes a later run to documents.investigation_id (grep of substrate, orchestration, roles and interfaces found only the index at schema.py:175)"
+   ],
+   "ui_reachable": "Yes: the /readings and /meta-readings filing suggestion",
+   "extend_not_substitute": "The workstation registry should absorb documents.investigation_id plus document.filed_into_investigation as its document membership and reuse match_document_to_investigations for suggestions; no parallel membership table.",
+   "gap": "A document belongs to at most one investigation-project (single column), nothing groups several investigations, and filing does not change what later runs retrieve.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.11",
+   "capability": "Meta-reading -> research promotion lineage",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, verified] acceptPromotion starts an investigation with spawn_context read-meta-asset:<assetId> and no parent, then posts seam.read_to_research with launched_investigation_id (lib/researchSuggestion.ts:57-96)",
+    "[READ, verified] Caller modes/Reading/MetaReading/index.tsx:140 at /read/meta-reading and /read/meta-reading/:assetId (App.tsx:198,202)",
+    "[READ] GET /thread/{node_id} is the only reader of seam events (interfaces/research/api/thread.py:140-186)"
+   ],
+   "ui_reachable": "Yes: /read/meta-reading/:assetId",
+   "extend_not_substitute": "Fold into InvestigationSpawnedFromPayload (events.py:2456) and the seam event family (events.py:3739-3772); no link table.",
+   "gap": "The link is a free-text spawn_context plus a best-effort seam event that no thread listing reads.",
+   "severity": "minor"
+  },
+  {
+   "id": "B1.12",
+   "capability": "Ask this book: multi-turn document-scoped Q&A persisted per turn on the reading thread (closest existing pattern for ask this thread)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] POST /books/{document_id}/ask (books.py:2261-2269) calls answer_book_question with investigation_id read-<document_id>, client history and a section 9.0 policy tag (books.py:2411-2423)",
+    "[READ] Each turn persists as typed read.book_answered on read-<document_id> with citations, grounded, cost and dispatch_event_id (books.py:2450-2473; events.py:3965)",
+    "[READ] History is client-supplied (req.history), not re-read from the persisted events; branch structure lives in sessionStorage (useTalkThread.ts:10-27)"
+   ],
+   "ui_reachable": "Yes: TalkToBook in /read/:documentId",
+   "extend_not_substitute": "Generalize this pattern (scoped retrieval, history, typed answer event) to an investigation scope for ask this thread, seeded from research_artifact/context.py; rebuild history from the persisted events.",
+   "gap": "Only documents are addressable this way; history is trusted from the client.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.13",
+   "capability": "FloatMenu Dialogue: one-shot ask over a highlight via /thought-partner",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] modes/shared/FloatMenu/floatMenuActions.ts:206-242 posts /thought-partner with investigation_id, prompt and system_context",
+    "[READ] The reader passes investigationId read-<doc> (Reading/index.tsx:395-399); the server uses investigation_id only for dispatch attribution (app.py:6704-6709)"
+   ],
+   "ui_reachable": "Yes: highlight in /read/:id and /inv/:id",
+   "extend_not_substitute": "Natural host for the cheap tier of B1.4: load the addressed thread context and persist the exchange.",
+   "gap": "No thread context is loaded and the exchange is not persisted.",
+   "severity": "minor"
+  },
+  {
+   "id": "B1.14",
+   "capability": "Living-note challenge this from the Distill view (near miss for ask this thread)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] DistillView.tsx:182-186 calls challengeNote(node_id, {investigation_id}) with no challenge text",
+    "[READ] challenge_text defaults to empty (distill_routes.py:83-85); the resolver is built for req.investigation_id without validating it against the node (distill_routes.py:121-135)"
+   ],
+   "ui_reachable": "Yes: /inv/:id completed research with insights",
+   "extend_not_substitute": "Extend POST /research/notes/{node_id}/challenge and living_note.challenge_note with user text and thread context.",
+   "gap": "The UI can only trigger a contentless re-weigh.",
+   "severity": "minor"
+  },
+  {
+   "id": "B1.15",
+   "capability": "Attach a source to an existing thread (PasteIngest absorb into this research)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, verified] PasteIngest sends investigation_id with URL ingest (POST /sources/ingest) and text ingest (modes/ResearchWorkstation/PasteIngest.tsx:70-112), mounted under every completed or failed research (ResearchWorkstation/index.tsx:280)",
+    "[READ, verified] The ingest handler passes investigation_id into the document ingest (app.py:3317-3420)",
+    "[READ] A later run or chase reads only question, context and the envelope document_id (orchestrator.py:2082-2098); nothing scopes retrieval to the attached document"
+   ],
+   "ui_reachable": "Yes: /inv/:id (completed or failed)",
+   "extend_not_substitute": "Extend documents.investigation_id plus InvestigationStartRequest context_items (B1.5) so a follow-up consumes attached documents; no attachment table.",
+   "gap": "Attached in name only.",
+   "severity": "major"
+  },
+  {
+   "id": "B1.16",
+   "capability": "Live push of thread events to the client",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, verified] WebSocket /ws/events with an optional investigation_id filter, auth-checked before accept, 30 s keepalive (app.py:4959-4985)",
+    "[READ] Consumers hooks/useEventStream.ts:72, hooks/useInvestigation.ts:34, modes/Replay/index.tsx:78; cascade sessions also stream at GET /research/sessions/{id}/stream (cascade_routes.py:1891)",
+    "[READ] Only broadcast events reach it; emit_typed alone only appends JSONL (books.py:2204-2208 comment)"
+   ],
+   "ui_reachable": "Yes",
+   "extend_not_substitute": "Use /ws/events for thread state, inbox and flag changes (answers THREAD-CONTRACT Q-A2); broadcast every event the UI must see.",
+   "gap": "No owner filter beyond operator auth; events that are only appended never reach the socket.",
+   "severity": "minor"
+  },
+  {
+   "id": "B2.1",
+   "capability": "MANUAL merge: select N threads and produce one merged context a new or existing thread can consume",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] 45 passed across tests/test_research_artifact_compose.py, tests/test_artifact_routes.py, tests/test_session_evidence_pack.py and tests/test_twin_notes_store.py",
+    "[READ] POST /research/artifacts/compose (artifact_routes.py:354-380) and GET /research/artifacts/compose/draft-merge.html (artifact_routes.py:325-351) call compose_artifacts (substrate/research_artifact/compose.py:30-104) and produce a filesystem HTML review page whose member links are file:// server paths (compose.py:62-69,137-138)",
+    "[READ, CORRECTED by refuter 1, verified] It is not side-effect free: compose re-exports every member (compose.py:41-47), rewriting <inv>.html and twin notes and saving a research_artifacts row under default owner __operator__ (export.py:30-60), and the GET re-runs compose with write_draft_merge=True on every request (artifact_routes.py:325-340)",
+    "[RUN, this synthesis] Compose conflict detection is dead code: ResearchArtifactBody.content_hash hashes the whole body including investigation_id (substrate/research_artifact/schema.py:28-45), so identical content from two investigations never collides; the conflict list (compose.py:55-59) and acknowledge_hash_conflicts can never trigger",
+    "[READ] The draft renders insight and question text plus node_id only; ArtifactInsight.source_document_id (schema.py:14-18) is dropped",
+    "[READ, CORRECTED] UI reach: ArtifactOutlineShelf Draft merge (ArtifactOutlineShelf.tsx:129-152,242-261) mounted in DistillView (DistillView.tsx:153), which renders only for completed or failed researches with at least one distilled node (ResearchWorkstation/index.tsx:245-265; DistillView.tsx:106-122); the ReadingCompanion draft path is unreachable (see X.12)",
+    "[READ] The typed merged carrier SessionEvidencePack (orchestration/session_evidence_pack.py:28-105; builder at :195-202 takes arbitrary (investigation_id, sub_question) pairs) is produced only by CascadeSession.build_evidence_pack (cascade_session.py:368-383) and consumed only by the synthesis tail (orchestrator.py:1660-1736); it is never persisted",
+    "[READ] No start contract accepts merged context: context is free text (app.py:453) and the parent is single (app.py:457); merged_from exists nowhere (grep)",
+    "[READ] POST /twins/merge (twin_notes_routes.py:100-119) has no UI caller"
+   ],
+   "ui_reachable": "Review-only draft merge from ArtifactOutlineShelf on terminal researches with distilled nodes; no merge-to-thread UI or route",
+   "extend_not_substitute": "Generalize SessionEvidencePack and build_session_evidence_pack (session_evidence_pack.py:53-64,195) to user-selected investigations, expose it through POST /research/artifacts/compose (which already takes investigation_ids), and feed it to threads through a pack or member-id field on InvestigationStartRequest (app.py:441) consumed by _investigation_context_from_pack (orchestrator.py:1660). Claim conflicts go to supersession_candidates (schema.py:1186; supersession_routes.py:109,169), not the dead hash list. Make the GET side-effect free.",
+   "gap": "No API turns N threads into context a thread consumes; compose yields a filesystem page and writes on GET; the only typed pack is cascade-internal and ephemeral; no merged_from; conflict detection cannot fire.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B2.2",
+   "capability": "AUTOMATIC merge driven by overlap, similarity or duplicate questions",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] 57 passed across flywheel reuse, start reuse, unit dedup, cascade session and derived-asset tests; the start-reuse tests assert only that knowledge.reused is emitted",
+    "[READ] retrieve_prior_units (knowledge_reuse.py:339-537) applies section 9.0, trust, relevance and budget partitioning (:627-695,752-914) and emits knowledge.reused (:917-954; events.py:1063-1091) from HostLocalRunner (host_local.py:261-305) and Loop One (orchestrator.py:1851-1867)",
+    "[READ, verified] The pack is discarded at both call sites (host_local.py:296-303; investigation_start_reuse.py:89-102); no dispatch prompt receives the reuse layer",
+    "[READ] Cascade join_and_merge links promoted insights to their sub-question (cascade_session.py:221-278); hard-ceiling sessions skip pack and tail (cascade_routes.py:1751)",
+    "[READ] Near-duplicate dedup is opt-in (dedup=False) with no production caller (insight_question.py:287-305,366-384,576-690)",
+    "[READ] Exact-text collisions hit insert_node on_conflict=ignore and return with no row and no event (ops.py:519-520), so the second thread contribution disappears from event-derived views",
+    "[READ] Duplicate questions suppress suggestions (orchestration/continuous/suggestions.py:91-118,150-175) instead of proposing merges"
+   ],
+   "ui_reachable": "Only indirectly: reuse provenance renders in MasterMdViewer (MasterMdViewer.tsx:394-398,1119-1122) although no model saw the reused units; no merge-suggestion UI",
+   "extend_not_substitute": "Pass PackWithReuse.pack (knowledge_reuse.py:733-749) into the role dispatch at host_local.py:296 and investigation_start_reuse.py:94; turn on promote_*(dedup=...) with unit_dedup.find_near_duplicate instead of a new similarity engine; derive merge suggestions from GapEntry.investigation_ids (orchestration/continuous/scoring.py:58-119); emit provenance on exact-text collisions.",
+   "gap": "Automatic reuse is logged but never consumed while the UI presents it as reused knowledge; dedup is off; collisions drop lineage; no merge-suggestion inbox.",
+   "severity": "major"
+  },
+  {
+   "id": "B2.3",
+   "capability": "Provenance and rights across a merge",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[RUN, grounder] tests/test_session_evidence_pack.py validates chunk -> document existence, ip_holder agreement and a content hash (session_evidence_pack.py:66-105)",
+    "[READ] On main the pack mints non-resolving pointers doc-gather-<session>-<iid> and chunk-<node_id> (session_evidence_pack.py:264-271); the synthesis tail drops edges (edge_ids empty at orchestrator.py:1697)",
+    "[PR] c2r2-export @5e9b8f3c5 (origin/fix/audit-wave5-c2-export, not on main) admits only existing chunks and documents and routes build_body through RightsAwareResolver",
+    "[READ] build_body copies insight and question text verbatim (build_body.py:23-40) and synthesis_from_events hard-codes withheld=False (context.py:59), so the draft merge carries restricted-source-derived text unfiltered (compose.py:115-143)",
+    "[READ, verified] Source-merge commit runs UPDATE documents SET raw_text (source_merge.py:411-414; restore at :580-583), appends the draft plus an absolute server path comment (source_merge.py:214-225), and reads a client-supplied path with only is_file (source_merge.py:189-193)",
+    "[READ, CORRECTED by refuter 1, verified] The rewrite is reachable only through the operator API; its UI controls never render (see X.12)",
+    "[READ, verified] The commit event asserts twin_document_body_rewritten True (source_merge.py:431-432) but the only twin body is a JSON manifest of member ids and hashes stored in source_merge_body_commits.twin_body_json (source_merge.py:443-481)",
+    "[READ] forbidden_evidence_write_patterns is linted only against schema.py (test_derived_asset_evidence_boundary.py:23,40-44), so source_merge.py is unguarded",
+    "[PR] In flight and uncommitted: worktree fix/source-merge-path-confinement (HEAD 15e78e276) adds reviewed_draft_merge_path, which confines the draft to a regular draft-merge-*.html file directly under research_artifacts_dir (substrate/research_artifact/paths.py diff), uses it in _read_reviewed_draft, and adds untracked tests/test_source_merge_draft_confinement.py"
+   ],
+   "ui_reachable": "The mutation is API-only; the reachable draft merge (ArtifactOutlineShelf) is ungated review HTML",
+   "extend_not_substitute": "Route every merge member through RightsAwareResolver (services/html_projection/adapters/notebook.py:79) and resolve_refs (services/html_projection/resolvers/substrate_refs.py:85) via build_body; keep the SessionEvidencePack validator and carry real edge_ids; replace documents.raw_text mutation with derived_asset_revisions and members (substrate/graph/schema.py:1222-1357) admitted only through validate_commit_boundary (substrate/write/derived_asset_boundary.py:61-74).",
+   "gap": "Rights gating does not apply to merge on main; the one merge-into-asset path mutates evidence against the binding SDAM decision and reads a client path (fix in flight, uncommitted); pack pointers do not resolve on main.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B2.4",
+   "capability": "Merge LINEAGE: a stored record that context X came from threads A and B",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[RUN, grounder] Source-merge receipt tests pass (tests/test_artifact_routes.py)",
+    "[READ] Legacy lineage: source_merge_revisions, source_merge_body_commits and source_merge_body_restores with member ids (source_merge.py:92-182) and untyped events source_merge.applied/committed/restored (source_merge.py:21-23)",
+    "[READ, CORRECTED] twin_revision_id labels a hash of member ids, not a revision of any twin document; before_twin_hash is always the hash of an empty string (source_merge.py:247-249,265-282)",
+    "[READ] KnowledgeReusedPayload.source_investigation_ids is parallel to decisions, not to reused_unit_ids (events.py:1063-1091; knowledge_reuse.py:657-685,943-944), but synthesisParser.ts:318-333 zips it with reused_unit_ids and MasterMdViewer.tsx:1119-1122 links each reused insight to that id, which can point at the wrong thread",
+    "[READ] Cascade pack lineage is in memory only (cascade_routes.py:1753-1759)",
+    "[READ] Fork lineage is single-parent (events.py:2456-2473; app.py:457); derived_asset_revisions (parent_revision_id, restored_from_revision_id) and derived_asset_revision_members (investigation_id) are schema-only (schema.py:1222-1357)",
+    "[PR] goal/safe-derived-asset-merge-spr01 and -spr02 (tip 80288d326, 2026-07-15, unmerged) add merge_asset_routes.py, merge_draft.py and merge_commit.py"
+   ],
+   "ui_reachable": "Receipts UI in ReadingCompanion is unreachable; reuse links in MasterMdViewer can mis-attribute",
+   "extend_not_substitute": "Make derived_asset_revisions and members (schema.py:1222-1357) the single document-merge lineage record, written with write_event_outbox (schema.py:1361) in one transaction; rebase the spr02 repository; add merged_from as a typed field on InvestigationSpawnedFromPayload for thread merges; fix the client zip; retire the source_merge.* strings and tables.",
+   "gap": "Lineage is split across four stores and the one the UI shows can link to the wrong thread; no merged_from.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1",
+   "capability": "Per-evidence-document companion: what all threads learned about one document, stored and addressable",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] No per-document companion store, route or builder exists",
+    "[READ, CORRECTED by refuter 2, verified; RUN in this synthesis] A routed cross-thread per-document query exists: GET /write/blocks/search?source_document_id= (write_routes.py:349-371) resolves nodes through chunk -> document and falls back to metadata.source_document_id for marginalia (substrate/write/block_search.py:93-100,141-172); test_search_source_document_filter and test_roundtrip_note_then_search_returns_per_book_node passed (28 passed); see B3.3c",
+    "[READ] distillation_for is per investigation (roles/note_taker/distill_query.py:112); nodes carry no investigation_id (distill_query.py:1-21)",
+    "[READ] Durable document-to-thread links exist but are never aggregated: read-<doc> events (marginalia, voice notes, source.read, read.book_answered), read-spin escalations (passage_research.py:135-196) and parent lineage (events.py:2384)",
+    "[READ] Marginalia become user-sourced insight nodes grounded by metadata source_document_id with chunk_id often null (insight_question.py:1276-1358)"
+   ],
+   "ui_reachable": "Partial: the ReadingCompanion rail on /read/:documentId (see B3.1a); no cross-thread stored companion",
+   "extend_not_substitute": "A document-scope body builder beside build_body (build_body.py:12) emitting ResearchArtifactBody (schema.py:28-45) from block_search per-document hits, distillation over read-<doc>, escalation links and lineage; render through research_projection_doc_model and the artifact.html pattern (export.py:95-148; artifact_routes.py:565-607); record refreshes with NOTE_COMPRESSED_DOC_WRITTEN (events.py:1248). No new store.",
+   "gap": "No stored, versioned, addressable per-document companion; the cross-thread query exists but carries no thread ids, no owner filter and no rights filter.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1a",
+   "capability": "ReadingCompanion rail: per-book notes, open questions and saved chases",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, CORRECTED from BUILT_AND_WIRED by refuter 1, verified] The notes half is wired; the saved-chase and merge half never renders (see X.12)",
+    "[READ] Notes derive client-side from read-<documentId> via useInvestigation and deriveNotes (ReadingCompanion.tsx:86-89; NotesPanel.tsx:66-130); mounted at Reading/index.tsx:561-566",
+    "[READ, verified] useInvestigation derives in_progress whenever a trajectory has no investigation.completed or failed (hooks/useInvestigation.ts:153-160); source.read is posted to read-<doc> after 30 s of dwell (modes/Reading/sourceRead.ts:44-90), so the rail working state (ReadingCompanion.tsx:120) persists indefinitely, contradicting the component contract (ReadingCompanion.tsx:33-37)"
+   ],
+   "ui_reachable": "Notes yes, /read/:documentId at lg; chases and merge no",
+   "extend_not_substitute": "This is the UI that should render the stored per-document companion; replace localStorage handoffs with server lineage and give reading threads a non-terminal idle state in the shared status derivation.",
+   "gap": "Ephemeral, single-thread, permanently shows working after dwell, chase half dead.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1b",
+   "capability": "Twin document per information asset (twin_note_taker, twin_recursion ledger)",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] substrate/twin_note_taker/generate.py:1-32 quotes the operator keystone and emits ResearchArtifactBody, advisory (TWIN_AUTHORITY at :54)",
+    "[READ] Every document gets a twin_source_envelope at insert (substrate/graph/ops.py:205-240; schema.py:1401; source_registration.py:104,237,269)",
+    "[READ] TwinRecursionLedger is a separate sqlite store (substrate/twin_recursion/ledger.py:285-300; render_twin_html at :529-534); no production caller of project_twin_sources, apply_completion or render_twin_html",
+    "[RUN, grounder] twin generate, ledger and source-registration tests pass"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Project its ResearchArtifactBody as the model-proposed layer of the per-document companion; reconcile the sqlite ledger with the DuckDB single-writer doctrine before exposure.",
+   "gap": "Never triggered, served or shown; sidecar sqlite authority outside DuckDB.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1c",
+   "capability": "TwinNotesStore /twins API",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] JSON files under ~/.antiek/twins (substrate/twin_notes/store.py:1-18,61-67) with no owner, provenance or rights fields (store.py:91-101)",
+    "[READ] POST /twins, GET /twins/by-parent/{id}, GET /twins/{id} and POST /twins/merge with no owner or rights checks (twin_notes_routes.py:24,60-119; app.py:2072-2073); no apps/reading caller",
+    "[RUN, grounder] tests/test_twin_notes_store.py passes"
+   ],
+   "ui_reachable": "No (API only)",
+   "extend_not_substitute": "Do not extend; supersede by the twin_note_taker body and record the supersession (CEO-DIRECTIVE collision protocol).",
+   "gap": "A second unowned, unprovenanced twin store mounted on the API.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1d",
+   "capability": "Compressed per-document note doc (note.compressed_doc_written)",
+   "status": "SPEC_ONLY",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] Declared at events.py:207 with payload at events.py:1248-1254; deferred per interfaces/research/api/note_taking.py:26-29 and roles/note_taker/__init__.py:19; no emitter"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Use it as the per-document companion refresh receipt, extended additively with content_hash and source_event_ids.",
+   "gap": "Schema only.",
+   "severity": "minor"
+  },
+  {
+   "id": "B3.1e",
+   "capability": "Per-document reverse provenance: GET /docs/{document_id}/explain and the Explain page",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[RUN, grounder] tests/test_explain_routes.py passes; resolve_document_explain returns document, chunks, citing edges and nodes (explain_routes.py:347-414; route at :448-455)",
+    "[READ, CORRECTED, verified; resolves refuter NOT MEASURED] No in-app link reaches /explain/document/:id: the only /explain references in apps/reading/src are the route (App.tsx:251), a claim link inside Explain itself (modes/Explain/index.tsx:701) and a taxonomy entry that is not a launcher item (shell/workflowTaxonomy.ts:476-485); Explain document links go to /read/:id (Explain/index.tsx:151-160)",
+    "[READ] Up to 500 chars of chunk text are returned with no content_class, servability or takedown check (explain_routes.py:72-75,148-168,366-376)",
+    "[READ] Chunkless marginalia insights are invisible because citing nodes come only from edges.chunk_id"
+   ],
+   "ui_reachable": "Only by typing /explain/document/:id",
+   "extend_not_substitute": "Reuse resolve_document_explain as the provenance section of the per-document companion after routing chunk text through serve_full_text_guarded or RightsAwareResolver.",
+   "gap": "Unlinked, rights-ungated provenance dump that misses chunkless insights.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.1f",
+   "capability": "Reader sidecars: document_reader_html body and the .antiek pdf sidecar",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] document_reader_html is the rights-gated body (substrate/reader_html/store.py:1-26,122-156; app.py:1958-1959)",
+    "[READ] services/antiek_format/sidecar_writer.py:1-44 and SPEC.md:374-410 define highlights.jsonl and anchors.jsonl; no route or UI caller"
+   ],
+   "ui_reachable": "Reader body yes; .antiek sidecar no",
+   "extend_not_substitute": "Anchor to the reader body without writing into it; use sidecar_writer as the portable export of user-derived companion data.",
+   "gap": "No portable per-document user-data export is reachable.",
+   "severity": "minor"
+  },
+  {
+   "id": "B3.2",
+   "capability": "Per-project (workstation) companion across its threads",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] No research project entity (see B1.2a); per-investigation companions exist (B3.2a-c); multi-thread compose needs two or more hand-picked ids and writes filesystem HTML (artifact_routes.py:325-380; compose.py:30-104)",
+    "[READ] ProjectTree is a per-workflow noun list, not a project object (shell/ProjectTree.tsx:17-33)"
+   ],
+   "ui_reachable": "Per investigation only",
+   "extend_not_substitute": "Project = registry row (B1.2a) whose members feed compose_artifacts and ResearchArtifactStore versions, with AutoNotebook-style derived rendering. No project companion store.",
+   "gap": "No project identity, membership query or stored per-project companion.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.2a",
+   "capability": "Research artifact per investigation: export, artifact.html, twin-notes.html, blocks",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Artifact routes, export, import, hooks and compose tests pass (65-passed run)",
+    "[READ] Routes artifact_routes.py:254-322,565-616, router included at app.py:7714-7715; export writes HTML plus a content-addressed source and emits artifact.generated with source_event_ids and content_hash (export.py:32-92)",
+    "[READ, CORRECTED] UI reach is ArtifactOutlineShelf only (ArtifactOutlineShelf.tsx:180,291), which renders for terminal researches with distilled nodes (DistillView.tsx:106-122,153); the reading-companion compose flow is unreachable; the spin-time export is a pre-outcome snapshot with a broken receipt link (B1.3b)",
+    "[READ] artifact.html and twin-notes.html perform no owner check (artifact_routes.py:309-322,565-607) unlike the status route (:272-291)",
+    "[READ] twin-notes.html carries inline script (twin_notes.py:72-108)"
+   ],
+   "ui_reachable": "Yes: Research workstation shelf on terminal researches with distilled nodes",
+   "extend_not_substitute": "The canonical per-thread companion; extend ResearchArtifactBody, build_body and these routes; no parallel artifact contract.",
+   "gap": "Not rights-gated on main, no owner check on the HTML routes, pre-outcome auto snapshot, broken receipt link.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.2b",
+   "capability": "AutoNotebook: live narrative view of one research",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] modes/Notebook/AutoNotebook.tsx:22-51,90-121, a derived leaf, route /notebook/auto/:investigationId (App.tsx:171)"
+   ],
+   "ui_reachable": "Yes",
+   "extend_not_substitute": "Renderer for a stored project companion body; stay a derived leaf.",
+   "gap": "Not stored, versioned or multi-investigation.",
+   "severity": "minor"
+  },
+  {
+   "id": "B3.2c",
+   "capability": "MASTER.md per investigation",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] skills/domain/master_md.py:1-20,56-63,344; called at orchestrator.py:1334; not served (export_routes.py:34-44)",
+    "[RUN, grounder] tests/test_skills_domain_master_md.py passes"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Keep as the operator filesystem deliverable and reference its MASTER_MD_WRITTEN event.",
+   "gap": "Automatic but unservable.",
+   "severity": "minor"
+  },
+  {
+   "id": "B3.3",
+   "capability": "Agent-facing evidence base and retrieval",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[READ] Graph (nodes, edges, chunks, documents) with provenance edges (insight_question.py:1-44,273-330); synthesis_substrate_manifest (schema.py:229-237) resolved by GET /syntheses/{id}/explain (explain_routes.py:296-345,438-445)",
+    "[READ, resolves grounder NOT MEASURED] Loop One calls start-time reuse (orchestrator.py:1851-1866) and discards the pack (investigation_start_reuse.py:89-102)",
+    "[READ] SessionEvidencePack is built in memory at the cascade tail (cascade_routes.py:1753); EVIDENCE_PACK_BUILT (events.py:118) has no emitter",
+    "[READ] GET /export/my-graph (export_routes.py:113); POST /research/{id}/artifact/import-notes takes an arbitrary server path (artifact_routes.py:294-305; import_notes.py:60-68)",
+    "[RUN, grounder] Session evidence pack and memory MCP tests pass"
+   ],
+   "ui_reachable": "Provenance explain for syntheses yes; MCP and packs agent-only or internal",
+   "extend_not_substitute": "Serve companion resources through the MCP resource_handler (tools/antiek_memory/__main__.py:271) after hardening merges; persist packs via EVIDENCE_PACK_BUILT; keep in-run retrieval on context_pack.",
+   "gap": "No per-document or per-project evidence object for agents; packs are ephemeral; the import-notes path is unconstrained.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.3a",
+   "capability": "Antiek Memory MCP (stdio)",
+   "status": "PARTIAL",
+   "evidence_class": "PR",
+   "evidence": [
+    "[READ] search_public ignores the query and applies no rights filter (tools/antiek_memory/__main__.py:166-197); antiek://books/{isbn}/{chunk_id} returns full chunk text unchecked (:335-360); the private notes resource takes user_id from the URI (:274-305)",
+    "[PR] origin/fix/w5-mcp-hardening-20260923 head 44f26ba23, not merged into 15e78e276, adds SERVABLE_CONTENT_CLASSES filtering",
+    "[PRIOR] docs/goal-2026-09-23/README.md:36-37 reproduced private body, note, book-body and citation reads on main and a residual NULL-rights title gap on 44f26ba"
+   ],
+   "ui_reachable": "Agent-only via stdio",
+   "extend_not_substitute": "The only agent retrieval transport; merge the hardening, then add companion resources.",
+   "gap": "Agents can pull gated text and other owner notes on main.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B3.3b",
+   "capability": "Owner account memory as agent-facing context",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] /memory AccountMemory route (App.tsx:215-232); account_memory_context injected into /thought-partner (app.py:6690-6697); write-back gated off by env (app.py:6716-6727); account_memory_router mounted (app.py:7747-7748)"
+   ],
+   "ui_reachable": "Yes: /memory; injection is agent-side only",
+   "extend_not_substitute": "Extend account_memory for thread and companion memory under claim codex-r15-memory-origin-confirm; no new agent-memory store.",
+   "gap": "Not injected into Loop One runs; population is off by default.",
+   "severity": "minor"
+  },
+  {
+   "id": "B3.3c",
+   "capability": "Per-document cross-thread knowledge query (all insight, question and claim nodes grounded in one document)",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, this synthesis] tests/test_block_repository.py::test_search_source_document_filter and tests/test_marginalia_promotion.py::test_roundtrip_note_then_search_returns_per_book_node passed (28 passed with tests/test_passage_research.py)",
+    "[READ, verified] GET /write/blocks/search with q, folder_id, source_document_id and limit (write_routes.py:349-371) over search_blocks (block_search.py:103-172)",
+    "[READ, verified] writeApi.ts:62-71 supports sourceDocumentId but no UI caller passes it (grep of modes/Write)",
+    "[READ] The route takes no request identity; the base query scans every node with no owner, servability or content_class filter (block_search.py:118-138); hits carry no investigation_id"
+   ],
+   "ui_reachable": "No (the filter is API-only)",
+   "extend_not_substitute": "Extend search_blocks and the route with owner and servability filtering and an investigation-provenance column resolved through the events and distill path; this is the read path for the per-document companion and the rail.",
+   "gap": "Unused by the UI, unfiltered by owner or rights, no thread attribution, full node scan per call.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.4",
+   "capability": "Update semantics: a new thread outcome refreshes the companion with provenance",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] The post-complete export hook is env-gated off by default and called without db_path, so no version row is written (hooks.py:8-18; orchestrator.py:2057-2066; export.py:57-64)",
+    "[READ] When export runs, artifact.generated carries source_event_ids and content_hash (export.py:66-83)",
+    "[READ] MASTER.md regenerates per synthesis (master_md.py:1-20); client views re-derive per event (ReadingCompanion.tsx:86-87; AutoNotebook.tsx:107-121)",
+    "[READ] Seams are explicit and terminating with no auto-fire (substrate/seams/__init__.py:1-10; contracts.py:119-141)"
+   ],
+   "ui_reachable": "Client-side re-derive only",
+   "extend_not_substitute": "Trigger companion refresh from the post-complete hook with db_path; record it with artifact.generated and NOTE_COMPRESSED_DOC_WRITTEN; spend-free read-side projection only.",
+   "gap": "No automatic, provenance-stamped companion refresh on main.",
+   "severity": "major"
+  },
+  {
+   "id": "B3.5",
+   "capability": "Rights: the companion obeys the source-aware excerpt gate and servability",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] The branch test file tests/test_research_artifact_excerpt_rights.py run against main code gave 55 failed and 11 passed; failing asserts show a verbatim paywalled passage exported as synthesis_excerpt",
+    "[READ] Main build_body.py:12-53 has no _excerpt_cleared; context.py:59 sets withheld=False",
+    "[PR] _exportable_text and _excerpt_cleared land in commit ab1553e69 on origin/fix/audit-wave5-c2-export, not merged",
+    "[READ] Chokepoints exist on main: RightsAwareResolver (services/html_projection/adapters/notebook.py:79-111), resolve_refs (substrate_refs.py:85-137), synthesis adapter RightsRefusal (synthesis_artifact.py:131-177)"
+   ],
+   "ui_reachable": "n/a (policy)",
+   "extend_not_substitute": "Merge the c2r2-export gate first; every companion builder calls build_body or its helpers.",
+   "gap": "Main exports restricted text, so no companion can ship on main build_body.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B4.1",
+   "capability": "Merge thread insights and answers into a writing document with provenance",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] tests/test_write_promote_investigation.py and tests/test_write_routes.py pass",
+    "[READ] POST /write/blocks -> place_block with outbox outline.block.placed (write_routes.py:209-221; outline_block.py:250-369,304-352); provenance read-back GET /write/blocks/{id}/provenance (write_routes.py:276-287)",
+    "[READ] POST /write/deliverables/from-investigation -> promote_investigation_to_deliverable always inserts a new deliverable (write_routes.py:590-645; promote_context.py:151-282,232)",
+    "[READ] PlaceBlockRequest exposes no investigation_id, parent_event_id or metadata (write_routes.py:160-170), so merges log under __operator__ (outline_block.py:264)",
+    "[READ] Node-backed blocks forbid content and synthesized blocks forbid node_id (outline_block.py:187-213), so answer prose cannot carry a thread pointer",
+    "[READ, CORRECTED by refuter 1, verified] The cited drag from ArtifactOutlineShelf (/inv/:id) to the Write outline (/write/:deliverableId) cannot be performed in-app: ResearchWorkstation is excluded from windows and WINDOW_PAGES has no Write page (components/windows/openWindow.ts:36-56,83-110); drag across two browser windows NOT MEASURED; the reachable path is the Write door (B4.1b)",
+    "[READ] No backend emits a research -> write seam event (substrate/seams/thread.py:56-64)"
+   ],
+   "ui_reachable": "Via the Write door only (B4.1b)",
+   "extend_not_substitute": "Expose investigation_id, parent_event_id and metadata on PlaceBlockRequest (place_block already takes them); add an optional target deliverable_id or section_id to promote_investigation_to_deliverable; add a provenance_kind pointing at synthesis_id or event_id in _COHERENT_PAIRS; emit a typed research_to_write seam through write_event_outbox (schema.py:1361).",
+   "gap": "No merge into an existing document, no thread pointer for answer prose, and the hop is not recorded on the thread log.",
+   "severity": "major"
+  },
+  {
+   "id": "B4.1b",
+   "capability": "Write-door research-to-document path: ConnectResearch, promote into a new piece, research canvas, BlockRepository tap or drag",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] WriteHome.tsx:144-175 createDeliverableFromInvestigation, else createDeliverable with investigation_root_id; :326-370 research canvas; :387-389 BlockRepository",
+    "[READ] BlockRepository.tsx:53-82 searchRepository with a folder filter; :125-140 tap or drag of graph_node blocks",
+    "[READ] ConnectResearch.tsx:81-105 connects an existing investigation or launches a paid research purely to act as a research folder"
+   ],
+   "ui_reachable": "Yes: /write and /write/:deliverableId (repository aside at lg+)",
+   "extend_not_substitute": "Extend POST /write/deliverables/from-investigation and place_block (B4.1) and give the repository a per-thread filter; no merge-to-document store.",
+   "gap": "No merge into an existing deliverable, no per-thread repository filter, and Start without a project spends on a research to create a folder.",
+   "severity": "major"
+  },
+  {
+   "id": "B4.2",
+   "capability": "Fork a document into a new version with lineage",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Derived-asset schema, rights derivation and user style store tests pass",
+    "[READ] The only live fork lineage is style lineage: ProjectionStyle.parent (services/html_projection/styles.py:45-61), POST /styles parent validation (style_routes.py:133-200), StyleWheel (StyleWheel.tsx:63,227-243)",
+    "[READ] research_artifact_versions are linear style re-renders with no parent column (research_artifact/store.py:30-39,182-233)",
+    "[READ] derived_assets, derived_asset_revisions (create | revise | restore, parent and restore lineage), members and the current-revision pointer are schema only (schema.py:1222-1357, init at :2180); no writer, route or UI",
+    "[READ, new in this synthesis] create_document_version (substrate/research_bridge/versioning.py:72-108) writes a NEW documents row with metadata parent_document_id and version and inherits the source content_class and ip_holder_id; it has no caller anywhere (grep); it is an insert into documents, which the SDAM boundary forbids for merges (derived_asset_boundary.py:24-32)",
+    "[READ] Deliverable prose is overwritten in place (ops.py:719-752); PUT /notebooks/{id}/content deletes and reinserts all blocks (app.py:5726-5743)",
+    "[READ] derived_content_class (substrate/rights/register.py:88-158) has no production caller"
+   ],
+   "ui_reachable": "Style fork (StyleWheel) and artifact style versions only; no document fork",
+   "extend_not_substitute": "Make derived_asset_revisions the one fork and version store and build the SPR-02 repository (append-only revision plus an UPDATE ... RETURNING compare-and-swap on derived_asset_current_revisions), stamping class with derived_content_class. Do not use create_document_version or the style parent for document forks.",
+   "gap": "No user-invocable document fork; the lineage-capable schema has no repository; edits are destructive in place.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B4.3",
+   "capability": "Diff or preview between a document and its fork or a proposed merge",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Source-merge preview no-write tests pass",
+    "[READ] POST /research/artifacts/source-merge/preview returns hashes and byte counts only (artifact_routes.py:432-471; source_merge.py:228-284)",
+    "[READ, CORRECTED] The ReadingCompanion hash preview (ReadingCompanion.tsx:453-490) never renders; the only reachable preview is draft-merge.html from ArtifactOutlineShelf, which writes on GET (artifact_routes.py:325-340)",
+    "[READ] No diff implementation in substrate, interfaces, services, orchestration or roles; raw material exists in edit.captured before and after text (events.py:3624-3661) and ai.action.applied prev and next state (events.py:3392-3428)"
+   ],
+   "ui_reachable": "Draft-merge HTML only; no diff UI",
+   "extend_not_substitute": "Diff derived_asset_revisions.canonical_html between parent_revision_id and the proposal keyed by review_id, block-level via the html_projection island (services/html_projection/island.py).",
+   "gap": "No content or structural diff anywhere.",
+   "severity": "major"
+  },
+  {
+   "id": "B4.4",
+   "capability": "Accept or reject a proposed merge as a typed event with provenance",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Source-merge apply and commit tests and tests/test_ai_actions.py pass",
+    "[READ] Accept exists only as untyped source_merge.* strings (source_merge.py:21-23); there is no reject",
+    "[READ] Commit is non-atomic: UPDATE (source_merge.py:411-414), log_event (:434-442) and INSERT (:448-481) run in autocommit",
+    "[READ] The reviewer is client-asserted: operator_reviewer reader-companion is hard-coded (ReadingCompanion.tsx:190,256) and the routes take no owner",
+    "[READ, CORRECTED] The apply, commit and restore controls are not UI-reachable (X.12), and the commit event asserts a twin rewrite that does not happen",
+    "[READ] Precedents: supersession apply, dismiss or coexist with 409 on re-review (supersession_routes.py:160-203; events.py:1591); ai.action.applied and undone linked by inverted_event_id (events.py:3392-3452)"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Model a proposal as a derived_asset review (review_id, schema.py:1284); add typed accept and reject payloads on the supersession and AIAction pattern, enqueued through write_event_outbox with the revision insert; take the reviewer from middleware identity (write_routes.py:71-88).",
+   "gap": "No typed accept or reject pair exists for merging into a user document.",
+   "severity": "major"
+  },
+  {
+   "id": "B4.5",
+   "capability": "Shipped remnant of the P0 highlight -> research branch -> draft merge path (closed PR #712)",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] PR #712 commits 09c0d229e, 26352eea0 and ea6cfaf31 are not ancestors of 15e78e276; its engagement_spine, floating_session and engagement_routes files are absent",
+    "[RUN, grounder] The reader source-merge was revived by dc0e37d2b (2026-09-20)",
+    "[READ, CORRECTED by refuter 1, verified] The chain breaks at step one: the reader no longer opens ChaseThread (Reading/index.tsx:183-186,239-258), so no read-<doc>-parented handoff is produced and the ReadingCompanion draft, preview, apply, rewrite and restore controls never render (ReadingCompanion.tsx:88,334)",
+    "[RUN, grounder] tests/test_artifact_routes.py:441-484 asserts that commit rewrites the source book raw_text"
+   ],
+   "ui_reachable": "No; the backend chain is reachable through the operator API only",
+   "extend_not_substitute": "Keep highlight -> child investigation; move handoffs to server lineage; render drafts through services/html_projection; repoint commit to derived_asset revisions whose members are the chase investigations; refuse source_merge commit and restore through validate_commit_boundary (422).",
+   "gap": "The only end-to-end remnant mutates the purchased source and is not reachable from the UI.",
+   "severity": "blocker"
+  },
+  {
+   "id": "X.12",
+   "capability": "Source-merge commit mutates the source document in place (contract collision with T01, H1 and the SDAM decision)",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ, CORRECTED from BUILT_AND_WIRED by refuter 1, verified] Only ChaseThread records handoffs (grep: ChaseThread.tsx:111-117,222) and it is opened only from ResearchWorkstation with the /inv/:id route id as parent (ResearchWorkstation/index.tsx:150-178); ReadingCompanion filters to read-<doc> (chaseHandoffs.ts:33-38); GET /investigations never lists read-* (app.py:3077-3080); nothing links to /inv/read-<doc>, so the controls could render only if someone typed that URL and chased from it",
+    "[RUN, grounder] test_source_merge_commit_rewrites_source_body_and_emits_metadata_event passes",
+    "[READ, verified] UPDATE documents SET raw_text (source_merge.py:411-414); no entitlement, content_class or owner check in the preflight (artifact_routes.py:219-253)",
+    "[PRIOR] T01 without changing the purchased original (PRODUCT-JOURNEYS.md:22); H1 distinct revision (INGEST-MEMORY-CONTRACT.md:152); SDAM decision: never mutate a source document and never revive source-body mutation",
+    "[READ, verified] The fix grounder X proposed (insert_document of a new fork document) also violates SDAM: derived_asset_boundary.py:24-32 forbids INSERT INTO documents"
+   ],
+   "ui_reachable": "API only (and a typed /inv/read-<doc> URL)",
+   "extend_not_substitute": "Retire commit and restore behind validate_commit_boundary; the fork target is derived_asset_revisions, never documents.",
+   "gap": "A binding decision is violated by live, API-reachable code with an unconfined path read (fix in flight, uncommitted).",
+   "severity": "blocker"
+  },
+  {
+   "id": "B5.1",
+   "capability": "Flagging: a user or agent parks a concept, question or insight for later follow-up",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] question.identified, question.escalated_to_research and question.resolved_by_doc (events.py:208-211,1260-1278)",
+    "[READ] GET /watch-for-later (app.py:5011-5063) and POST /watch-for-later/{question_id}/launch (app.py:5065-5170); /brainstorm lists and launches (BrainstormStation/index.tsx:47,85-90)",
+    "[READ, verified] Both handlers skip every file not starting with inv- (app.py:5036-5038,5096-5098), so voice-note parks on read-<doc> (Reading/index.tsx:130,507-511) never appear",
+    "[READ] No flag-for-autonomy affordance; AI-action target watch_for_later_question is declared (substrate/ai_actions/actions.py:66) with no handler; the question card ask later is unbuilt (QuestionCardBlock.tsx:6-12)",
+    "[READ] Event question_id is random (document_pass.py:120; voice_note.py:205) while graph question node ids are content-addressed (insight_question.py:139,458)",
+    "[READ] The launch bypasses the ACU capacity gate that POST /investigations applies (app.py:2696-2705 vs 5070-5170)"
+   ],
+   "ui_reachable": "/brainstorm for inv-* parks; voice-note parks unreachable; no autonomy flag",
+   "extend_not_substitute": "Extend question.identified with a typed opt-in event on the same question_id; replace the inv- filter with the daemon enumerator (daemon.py:90-102); carry origin_question_id to node_id on promotion. No flags table.",
+   "gap": "Reading-side parks are invisible, there is no autonomy flag, parks never feed the runner, and identities do not join.",
+   "severity": "major"
+  },
+  {
+   "id": "B5.1b",
+   "capability": "Agent-found evidentiary gaps shown as threads worth chasing",
+   "status": "BUILT_AND_WIRED",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Suggestions surface and API tests pass",
+    "[READ] build_suggestions (orchestration/continuous/suggestions.py:121-181); GET /research/suggestions (cascade_routes.py:569-602); SuggestedResearch.tsx:99-117,231-263 at /my-research and /inv/:id",
+    "[READ] The found by the loop badge cannot fire because nothing spawns with the daemon policy_id on main (daemon.py:66)",
+    "[READ] Every request scans every trajectory twice (suggestions.py:140-148; daemon.py:127-160)"
+   ],
+   "ui_reachable": "Yes",
+   "extend_not_substitute": "Keep this single read; add an opt-in event keyed by Suggestion.key (scoring.py:156-169).",
+   "gap": "Read-only, not owner-scoped, O(event log) per request, and the copy claims a loop that does not run.",
+   "severity": "minor"
+  },
+  {
+   "id": "B5.1c",
+   "capability": "Voice-note park -> Thought Partner discuss seed",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] VoiceNote.tsx:22-24,68-104 seeds Thought Partner on parked questions; watch-for-later excludes read-* (app.py:5036-5038,5096-5098)"
+   ],
+   "ui_reachable": "Yes: /read/:documentId voice note",
+   "extend_not_substitute": "Include read-* trajectories in watch-for-later; no separate park store.",
+   "gap": "Parks can be discussed but not listed or launched, and the discussion is session-only.",
+   "severity": "minor"
+  },
+  {
+   "id": "B5.2",
+   "capability": "Autonomous runner: continuous-research daemon trigger, budget and spawn",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] Probe: run_forever defaults to no_op_spawn; daemon.main and __main__.main pass no spawn function; test_run_one_iteration_spawns_with_no_op_default passes",
+    "[READ] A 60 s loop scans and scores evidentiary gaps (daemon.py:117-216,279-322); the module docstring admits no live spawning (daemon.py:12-15) while the unit template claims it spawns via the API (antiek-continuous-research.service.j2:8-14)",
+    "[READ, verified] orchestration/continuous has no live_spawn.py on main, and no commit on any ref ever touched that path, although lane A GAPS.md cites it as reuse",
+    "[READ] Latent defects once enabled: in-memory chase counts (daemon.py:74-84), text-keyed topics (research_topic.py:33-46), no record_actual_cb (daemon.py:246-252), and a separate-process emit cannot wake the in-process broadcaster (orchestrator.py:2074-2098,2177-2180)",
+    "[PR] origin/fix/spr14-loop-one-spawn 113651e33 and origin/fix/settled-spend-spawn-cost are unmerged",
+    "[NOT MEASURED] Whether the service runs in production; sources conflict (origin/docs/continuous-daemon-honest-status 547a48355 vs agent-board active_agents[654])"
+   ],
+   "ui_reachable": "Only via B5.1b",
+   "extend_not_substitute": "Inject a real SpawnFn at the unfrozen seam orchestration/continuous/__main__.py:55-62 that goes through the API process (POST /investigations or /internal/agent-work/daemon/* per D3), deriving chase counts from the event log (suggestions._chased_question_keys).",
+   "gap": "Zero autonomous actions on main.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B5.2b",
+   "capability": "Chase mode: auto-spawn children under depth, duration and budget caps",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] _maybe_spawn_chase_child (orchestrator.py:2168-2171,2274-2390); payload fields chase_mode, chase_value and chase_budget_usd (events.py:2390-2392)",
+    "[READ] InvestigationStartRequest has no chase fields (app.py:441-488) and post_investigation does not forward them (app.py:2793-2811)",
+    "[RUN, grounder] tests/test_orchestrator_chase.py passes"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Add the chase fields to InvestigationStartRequest and forward them; the halted state already reaches the list via investigation.chase_halted.",
+   "gap": "The only working autonomous spawner cannot be switched on.",
+   "severity": "major"
+  },
+  {
+   "id": "B5.2c",
+   "capability": "Monitoring mode: a saved feed with resumable refresh",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] orchestration/monitoring/monitor.py:253-325,487-569; CLI only (__main__.py:24-101); no API or UI (grep)",
+    "[RUN, grounder] tests/test_monitoring_mode.py passes"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Mount owner routes over monitors and schedule through the daemon seam.",
+   "gap": "Shell-only.",
+   "severity": "minor"
+  },
+  {
+   "id": "B5.2d",
+   "capability": "Durable reserve-before-spend ledger (Midnight Oil BudgetLedger)",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] substrate/midnight_oil/budget_ledger.py:1-13 is an integer-cents reserve and settle ledger imported only by multimedia krea_submit.py:22 and krea_reconcile.py:15; Midnight Oil stops at preflight (midnight_oil_routes.py:18-27)",
+    "[PRIOR] D3 decision C: BudgetLedger is the sole scheduled spend authority"
+   ],
+   "ui_reachable": "Preflight only",
+   "extend_not_substitute": "Use BudgetLedger for the daily diligence cap (run_id continuous:<owner>:<period>) after coordinating with the Midnight Oil owner.",
+   "gap": "The only durable spend kernel is not wired to any research path.",
+   "severity": "major"
+  },
+  {
+   "id": "B5.3",
+   "capability": "Results land back on the originating thread, question, document and companion",
+   "status": "PARTIAL",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] Lineage metadata only (app.py:2793-2856; events.py:2367-2371)",
+    "[READ] The watch-for-later launch marks the question sharpened at launch (app.py:5143-5154), hiding it before any answer exists",
+    "[READ] question.resolved_by_doc has consumers but no producer; promote_question(resolved_by=...) is never called outside tests",
+    "[READ, CORRECTED by refuter 1, verified] The living-note reserved child IS launched: distill serves reserved_child_investigation_id (distill_routes.py:66-74,103-113), chase this passes it (DistillView.tsx:268-285; ResearchWorkstation/index.tsx:163-178) and ChaseThread posts it as investigation_id (ChaseThread.tsx:99-108); this relies on the unchecked id path (B1.8)",
+    "[READ] A suggestion chased from the /inv/:id beside lane is parented to the open research (ResearchWorkstation/index.tsx:272-275), not to the gap source (SuggestedResearch.tsx:246-255)",
+    "[READ] The cross_doc answer linker keeps state in memory per investigation (cross_doc.py:25-27,130-131,208-210); parent artifacts are not refreshed when a child completes (hooks.py:8-18)"
+   ],
+   "ui_reachable": "Parent/child tree and badge in /my-research only",
+   "extend_not_substitute": "On child completion (orchestrator.py:2060-2064) emit question.resolved_by_doc on the source investigation, add resolved_by edges, update the parent ResearchArtifactBody open_questions and re-export; route researches_for_passage.",
+   "gap": "Children never merge back, and launch counts as resolution.",
+   "severity": "blocker"
+  },
+  {
+   "id": "B5.4",
+   "capability": "Operator controls and spend caps for autonomous work",
+   "status": "PARTIAL",
+   "evidence_class": "RUN",
+   "evidence": [
+    "[RUN, grounder] With ANTIEK_DAEMON_BUDGET_USD_PER_DAY=0.25, DaemonBudget.from_env().daily_cap_usd is 5.0: the module reads only ANTIEK_DAEMON_HOURLY_BUDGET_USD (budget.py:36,67-77,134-138) while the unit and __main__.py document the other name",
+    "[RUN, grounder] Section 7.4 tripwire tests pass (tests/test_suggestions_surface.py:104-142)",
+    "[READ] reserve() is an unlocked read-modify-write (budget.py:165-178); GET /settings/budget and /ops/objective-card are read-only; there is no pause or cancel"
+   ],
+   "ui_reachable": "Read-only settings and /objective",
+   "extend_not_substitute": "Alias the env name in the unfrozen __main__.py; reuse run_capacity_precheck and commit_start_acu in the watch-for-later launch; use BudgetLedger for real holds, surfaced through GET /settings/budget.",
+   "gap": "The documented cap knob is dead; there is no pause; reservations are never reconciled.",
+   "severity": "major"
+  },
+  {
+   "id": "X.1",
+   "capability": "Cross-workflow thread VIEW (seams/thread.py and GET /thread/{node_id})",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] substrate/seams/thread.py:1-31 (a view, not a store); route interfaces/research/api/thread.py:164-188 mounted at app.py:7688-7689",
+    "[READ] SceneChrome accepts a thread prop (SceneChrome.tsx:135-147,250-255) but AppShell mounts it with none (AppShell.tsx:151); no UI fetch of /thread",
+    "[READ, CORRECTED] It does have a production producer (seam.read_to_research from meta-reading promotion, B1.11)",
+    "[RUN, grounder] tests/test_thread_no_duplicate.py and tests/test_thread_reconstruct.py pass"
+   ],
+   "ui_reachable": "No",
+   "extend_not_substitute": "Keep it as the derived lineage view; rename its UI noun (trail or lineage) so thread means one subagent investigation.",
+   "gap": "A name collision with the mothership thread, and unreachable.",
+   "severity": "major"
+  },
+  {
+   "id": "X.8",
+   "capability": "Thread-addressable agent work queue (feedback_threads, agent_work, herdr bridge)",
+   "status": "BUILT_UNREACHABLE",
+   "evidence_class": "READ",
+   "evidence": [
+    "[READ] agent_work.thread_id UNIQUE (substrate/feedback/schema.py:31-46); agent_work_attempts.herdr_target_observed (:60-79); bridge routes /internal/agent-work (agent_work_routes.py:44,224-404); herdr adapter infrastructure/connectors/herdr_bridge/herdr_adapter.py",
+    "[READ] Routes return 404 unless ANTIEK_FEEDBACK_ENABLED (feedback_routes.py:52-53,118-120); no repo-managed deploy sets it (grep)",
+    "[RUN, grounder] tests/test_herdr_bridge.py and tests/test_agent_work_routes.py pass",
+    "[PRIOR] D2: one lifetime action per feedback thread"
+   ],
+   "ui_reachable": "Only with VITE_ANTIEK_FEEDBACK_ENABLED (StyleWheel.tsx:566); production flag state NOT MEASURED",
+   "extend_not_substitute": "The executor for anchored agent work on research artifacts; multi-turn ask this thread must extend the investigation trajectory unless D2 is amended.",
+   "gap": "Off by default, and one action per thread.",
+   "severity": "major"
+  }
+ ],
+ "prior_art": [
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-mothership/THREAD-CONTRACT.md (created 2026-09-24 15:03; Part 2 by lane A, Part 1 placeholder, both unsigned)",
+   "says": "A thread is an investigation; companions derive from research-artifact and html_projection; fork and merge-into-document reuse the HTML-projection fork lineage and Write documents; island anchors use a text-quote plus position locator, the same kind passage_research uses; a research branch is written into the PARENT event log before the child starts.",
+   "reconciliation": "The grounders reported this file absent; it now exists. Three statements are wrong against main and must be corrected in Part 1 before signing: passage_research anchors are page-level passage:<doc>:p<page> (substrate/books/passage_research.py:44-56), and the projection-robust anchor is SourceLocator plus RegionStore (html_projection.py:71-119; reading/regions.py:19-89); HTML projections carry no fork lineage, only the style parent (style_routes.py:133-200), so document lineage must be derived_asset_revisions (schema.py:1222-1357); the branch record is written today on the CHILD log (spawned_from, app.py:2842-2856) and the parent-side record must reuse question.escalated_to_research (events.py:1267)."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md D1-D6 and lane split",
+   "says": "Three motherships (Research, Writing, Reading) share one project/workstation registry; companion as project tab plus per-evidence rail derived from research-artifact projections; opt-in per-flag diligence under a user-set daily cap with an attention inbox; tabs form an unbounded tree; lane A must not edit research_artifact/{context,build_body}.py, event_log/events.py, provenance/pointers.py.",
+   "reconciliation": "Code confirms investigation_id plus event log as the thread seam and confirms the gaps: no project registry (B1.2a), page-only anchors (B1.2c), no follow-up with context (B1.4). substrate/provenance/pointers.py does not exist on main."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-mothership/GAPS.md (lane A, Antiek Nudge v2)",
+   "says": "Routes to lane B: C03 continuation, C01 GET /documents/{id}/threads, SW-01 workstation registry, SW-06 session list, RE-16 durable position, F8 serve non-book documents, C13 fork repository and create_document_version, AD-04/05 daemon SpawnFn and chase_mode, AD-09 cap ledger, F7 Write sub-agent drop, R1 unconfined path reads. Cites orchestration/continuous/live_spawn.py as reuse.",
+   "reconciliation": "live_spawn.py does not exist on main and no commit on any ref touched that path; it is a D3 plan name. create_document_version (substrate/research_bridge/versioning.py:72) exists but inserts a documents row inheriting the source content_class, which the SDAM boundary forbids; the fork repository must be derived_asset_revisions. R1 has an uncommitted fix in worktree fix/source-merge-path-confinement."
+  },
+  {
+   "source": "substrate/schemas/events.py:2367-2371 and :2463-2466 (start and spawned_from docstrings)",
+   "says": "parent_investigation_id and spawn_context are metadata-only; the web tree will leave localStorage once the substrate consumer is wired.",
+   "reconciliation": "Accurate on behaviour (B1.4 RUN probe). The migration TODO is stale: GET /investigations surfaces lineage (app.py:3108-3124) yet useInvestigationTree still merges localStorage."
+  },
+  {
+   "source": "substrate/books/passage_research.py:4-6 (module docstring)",
+   "says": "The reader-side UI layers on a DRW reading surface that is unbuilt.",
+   "reconciliation": "Stale: ResearchThis and highlight spin are mounted (Reading/index.tsx:243-258,504). Read-back (researches_for_passage, passage_for_research) is what remains unrouted."
+  },
+  {
+   "source": "platform docs/decisions/safe-derived-asset-merge-boundary.md (accepted 2026-07-15)",
+   "says": "Merge into the asset never mutates a book, source document, HTML projection or compose snapshot; it creates operator-owned derived_asset revisions; browser-supplied draft_merge_path and acknowledge_body_rewrite are rejected; never revive source-body mutation.",
+   "reconciliation": "Main violates it through the API-reachable source-merge commit (source_merge.py:411-414); only the schema and the pure validator landed; the boundary lint covers schema.py only; SPR-01/02 exist only on unmerged local branches (goal/safe-derived-asset-merge-spr02 at 80288d326)."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/.infinite/goal-2026-09-18-operational/production-handoff-2026-09-20/PRODUCT-JOURNEYS.md (J01, J02, J05, J09, T01, T04, T05) and REQUIREMENTS.json (R13 H1, R15, R18-B, R19)",
+   "says": "Highlight chase to child tree and reopen history with a wrong-owner edge; branch research while reading; park then launch explicitly; budget-bounded continuous jobs whose results return; merge chosen notes into a new fork without changing the purchased original; two-book merge with both lineages; fork identity after restart; all 27 rows NOT_PRODUCTION_PROVED.",
+   "reconciliation": "No lane B row can close on code alone. T01 and R18-B fail on main (source mutation, no rights gate on merge); J05 holds only because nothing autonomous runs; the J09 positive path is absent; the J01 wrong-owner edge is unguarded on GET /trajectory/{id}."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments (D2, spec-only)",
+   "says": "Extend substrate/feedback and agent_work; preserve thread_id UNIQUE; one lifetime D2 action per feedback thread; D2 owns EVENT_SCHEMA_VERSION 40 -> 41.",
+   "reconciliation": "The substrate exists and is tested but flag-gated; D2 is unimplemented (EVENT_SCHEMA_VERSION still 40 at events.py:806) and its implementation claim was never registered. Multi-turn ask this thread must extend the investigation trajectory, or D2 must be amended by its owner."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent (D3, spec-only, blocked on D2)",
+   "says": "Daemon mutations only through /internal/agent-work/daemon/{spawn,reingest,refresh}; BudgetLedger is the sole scheduled spend authority; owner lineage; D3 takes one schema bump after D2; refreshes create new immutable versions.",
+   "reconciliation": "Baseline confirmed: the production entrypoint wires no_op_spawn (B5.2). Lane B B5 is D3 and must extend orchestration/continuous and BudgetLedger."
+  },
+  {
+   "source": "substrate/seams/thread.py:1-41 and interfaces/research/api/thread.py (antiek-unified SPR-06)",
+   "says": "A thread is the cross-workflow trajectory of one graph entity, derived on read; a stored Thread row was rejected as a second source of truth.",
+   "reconciliation": "The doctrine (derive, do not store) carries over to the mothership thread; the noun must be disambiguated (X.1). It has one production producer (the meta-reading seam) and no UI reader."
+  },
+  {
+   "source": "substrate/write/folders.py:1-18",
+   "says": "Notes are scoped only by investigation_id; folders are the cross-investigation collection, views not copies.",
+   "reconciliation": "Nearest registry seam for workstations, but not owner-enforced, event-less and node-only (B1.2a)."
+  },
+  {
+   "source": "substrate/research_bridge/versioning.py:1-13 (DRW SPR-08 M6)",
+   "says": "An edit creates a new documents row linked by metadata.parent_document_id and version; the original stays intact.",
+   "reconciliation": "Unused (no caller). Suitable for user-owned ingested material only; for purchased or restricted sources it copies evidence into a new documents row with the same content_class, so it is not the mothership fork store."
+  },
+  {
+   "source": "substrate/context_pack/knowledge_reuse.py module docstring and events.py:1063-1091",
+   "says": "Prior units are injected into the role context pack with provenance markers; source_investigation_ids is parallel to decisions.",
+   "reconciliation": "Injection is event-only (the pack is discarded at host_local.py:296-303 and investigation_start_reuse.py:89-102); the web client zips source_investigation_ids against reused_unit_ids (synthesisParser.ts:318-333)."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/.infinite/CEO-DIRECTIVE.md:64-68,118-122 and PR #712 (caffen/research-reading-vertical-slice, tip b0dbff6af)",
+   "says": "The P0 owner of highlight -> research branch -> draft merge is PR #712; avoid parallel substitutes; never leave two authoritative APIs for one concept.",
+   "reconciliation": "#712 never merged; main shipped research_artifact compose plus source-merge instead. A supersession record is required before lane B claims the merge and spawn seams."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-reader (handoff-to-activation.md, PRCROUCH-HOLD.md)",
+   "says": "One Reader via openDocument(); a passage-anchored Dialogue thread; a REAL table for Reader.tsx and openDocument.ts.",
+   "reconciliation": "The REAL items are branch-only (caffen/RDR-SPR-01..09 and reader/integration are not merged); the main reader is BookReader at /read/:documentId with FloatMenu and ReadingCompanion; the operator ruled HOLD on 2026-06-11."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine I-1..I-9 and antiek-deep-research-hardening SPR-08",
+   "says": "One writer for synthesis, never parallel section writing; explicit budget and brief gate before spend; durable resumable runner; dual-run reconciliation never averages.",
+   "reconciliation": "Binds merge (one writer produces merged text) and diligence (explicit budget tuple). The ADRH meaning of merge is engine reconciliation, a term collision. substrate/run_durability is absent on main."
+  },
+  {
+   "source": "Open branches: c2r2-export @5e9b8f3c5 (origin/fix/audit-wave5-c2-export), origin/fix/w5-mcp-hardening-20260923 @44f26ba23, origin/fix/spr14-loop-one-spawn @113651e33, goal/safe-derived-asset-merge-spr02 @80288d326, worktree fix/source-merge-path-confinement (uncommitted)",
+   "says": "Rights gate in build_body and pack pointer validation; MCP servability filtering; daemon spawn adapter; derived-asset merge repository; draft path confinement.",
+   "reconciliation": "All PR-class and none on main 15e78e276. Companion export, MCP resources, merge and fork work depend on them landing through the Nudge train."
+  },
+  {
+   "source": "/Users/slimydog/Antiek/.infinite/goal-2026-09-23-v1-forensic/OPERATOR-GOAL-VERBATIM.md:11",
+   "says": "Research branches while reading can be left as notes or merged with the book to create a forked version; two books can be read merged as a cocktail; research-only purchases expose only notes and analysis.",
+   "reconciliation": "Confirms that a merge yields a fork and preserves the original, which main contradicts (X.12)."
+  },
+  {
+   "source": "apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx:38 and ChatInputArea.tsx:46-47 inline citations",
+   "says": "Mint at app.py:1406; owner_model_root_required at app.py:2374.",
+   "reconciliation": "Stale line references; on main they are app.py:2758 and app.py:2742-2743."
+  }
+ ],
+ "term_collisions": [
+  {
+   "term": "thread",
+   "existing_meanings": [
+    "seams cross-workflow entity view, derived, GET /thread/{node_id} (substrate/seams/thread.py:1-31; interfaces/research/api/thread.py:164-188)",
+    "reading thread read-<documentId> (Reading/index.tsx:130)",
+    "feedback_threads anchored comment threads (substrate/feedback/schema.py:8-58)",
+    "talk-to-book thread with branches in sessionStorage (useTalkThread.ts:11-25)",
+    "thought-partner thread in sessionStorage (useThoughtPartnerThread.ts:1-9)",
+    "ChaseThread panel (ChaseThread.tsx:20; PanelKind at workspace/panel.types.ts:40)",
+    "daemon gaps shown as threads worth chasing (SuggestedResearch.tsx:17)",
+    "ThreadBreadcrumb / threadModel UI (shell/threadModel.ts:1-12)"
+   ],
+   "collision": "The mothership thread (a stored, addressable subagent investigation) collides with the only backend thread, which forbids storage, and with feedback threads that allow one agent action per lifetime.",
+   "contract_choice": "thread = investigation_id and its event log, one meaning. Rename the seams view and ThreadBreadcrumb to trail (or lineage). Refer to feedback_threads as comment threads. Conversational turns become typed events on an investigation trajectory."
+  },
+  {
+   "term": "companion",
+   "existing_meanings": [
+    "ReadingCompanion rail component (ReadingCompanion.tsx:26) and operator_reviewer string reader-companion persisted in source_merge_revisions (ReadingCompanion.tsx:190,256)",
+    "companion docs = operator status documents (docs/master-product-spec.md:39-84; memento skill)",
+    "handoff-bundle companion bytes and companion receipts on the agent board (e.g. codex-antiek-companion-integrity-receipt-20260924)",
+    "antiek_format sidecar writer described as companion to native_writer (services/antiek_format/sidecar_writer.py:3)",
+    "thought partner described as an advisory thinking companion (substrate/dispatch/lineup_catalog.py:68)"
+   ],
+   "collision": "Bare companion already names a UI rail, a doc-maintenance practice and a handoff artifact (THREAD-CONTRACT Q-A3).",
+   "contract_choice": "companion document (data) with two renderings: companion tab (project) and companion rail (document); the rail is the stored successor of ReadingCompanion; never use bare companion in event or table names; the data body is ResearchArtifactBody."
+  },
+  {
+   "term": "twin",
+   "existing_meanings": [
+    "TwinNotesStore JSON /twins (substrate/twin_notes/store.py)",
+    "research artifact <inv>.notes.html twin notes (research_artifact/twin_notes.py; paths.py:174-176)",
+    "twin_note_taker and twin_recursion per-asset twin (substrate/twin_note_taker/generate.py:1-32; substrate/twin_recursion/ledger.py)",
+    "source-merge twin_revision_id, a hash label over member ids (source_merge.py:241-282)"
+   ],
+   "collision": "Four meanings across three stores, two of them outside DuckDB.",
+   "contract_choice": "twin = the twin_note_taker model-proposed layer of a companion document; supersede TwinNotesStore; never call a merge manifest a twin."
+  },
+  {
+   "term": "fork",
+   "existing_meanings": [
+    "style fork with parent lineage (style_routes.py:133-200; StyleWheel.tsx)",
+    "talk-to-book branch fork in sessionStorage (useTalkThread.ts:25,61-62)",
+    "forked = integrity failure in the thread view (threadModel.ts:87-96; interfaces/research/api/thread.py:159-179)",
+    "document version via create_document_version (research_bridge/versioning.py:72), unused",
+    "the operator document fork (T01, T05; OPERATOR-GOAL-VERBATIM.md:11)"
+   ],
+   "collision": "THREAD-CONTRACT assumes an HTML-projection fork lineage that is really style lineage.",
+   "contract_choice": "document fork = a derived_asset revision (schema.py:1222-1357); thread fork = child investigation via spawned_from; style fork keeps its name; never reuse forked for integrity errors in new UI."
+  },
+  {
+   "term": "merge",
+   "existing_meanings": [
+    "research_artifact compose draft merge (compose.py:107)",
+    "source merge that rewrites documents.raw_text (source_merge.py)",
+    "twin merge within one parent (twin_notes_routes.py:100)",
+    "per-request context merge /compose-context (app.py:6765)",
+    "cascade join_and_merge (cascade_session.py:221-278)",
+    "graph.node.merge ActionType declared with no emitter (events.py:138)",
+    "ADRH dual-run reconciliation",
+    "PR merge train (CEO-DIRECTIVE.md:139-164)",
+    "PR #712 engagement_spine merge (unmerged)"
+   ],
+   "collision": "Two authoritative merge APIs (main source merge vs #712) and several unrelated meanings.",
+   "contract_choice": "thread merge = a merged evidence pack consumed by a thread with merged_from lineage; document merge = a derived_asset revision; source merge is retired, never extended."
+  },
+  {
+   "term": "workstation / project",
+   "existing_meanings": [
+    "ResearchWorkstation mode and J01 product name (App.tsx:140-141; PRODUCT-JOURNEYS.md:9)",
+    "Speak interview_projects (schema.py:322-337)",
+    "research projects = investigations in UI copy and personal_space filing (ConnectResearch.tsx:53; personal_space.py:454-532)",
+    "shell ProjectTree panel (shell/ProjectTree.tsx:17-33)",
+    "Write research folders (substrate/write/folders.py)",
+    "memory project/partition field (INGEST-MEMORY-CONTRACT.md:106,123)",
+    "PR #712 engagement_spine/project.py (unmerged)"
+   ],
+   "collision": "Workstation already names the Research mode; project names five different things.",
+   "contract_choice": "data noun project (stored as an extended write_folders row, id = workstation_id); UI noun workstation; keep ResearchWorkstation as a mode name until lane A renames it; bind the memory partition to the same id."
+  },
+  {
+   "term": "island",
+   "existing_meanings": [
+    "html_projection data island embedded in every projection and read by restyle, feedback anchoring and export (services/html_projection/island.py:1-55)",
+    "frontend-craft island pages (design term)"
+   ],
+   "collision": "Load-bearing data-contract term.",
+   "contract_choice": "island is a lane A presentation state of a thread; backend and events never use island."
+  },
+  {
+   "term": "anchor / locator",
+   "existing_meanings": [
+    "passage_id passage:<doc>:p<page> (passage_research.py:44-56)",
+    "CanonicalDocumentRegion region_id plus SourceLocator (regions.py; html_projection.py)",
+    "NodeTextAnchor quote prefix suffix on artifact nodes (feedback/domain.py:24-71)",
+    "reading-physics semantic anchors (reading-physics/augmentations)"
+   ],
+   "collision": "THREAD-CONTRACT 2.3 assumes passage_research is text-quote plus position.",
+   "contract_choice": "anchor = {document_id, source_locator (TextLocator), region_id?, quote, prefix, suffix}; passage_id stays a legacy read path."
+  },
+  {
+   "term": "diligence / flag",
+   "existing_meanings": [
+    "diligence as a five-values rubric word (seams/thread.py:20-22; unit_dedup.py:89)",
+    "feature flags (ANTIEK_FEEDBACK_ENABLED and similar)",
+    "*.flagged ActionTypes (decomposer.paraphrase.flagged, graph.staleness.flagged at events.py:108,137)",
+    "watch-for-later parked questions (app.py:5011)"
+   ],
+   "collision": "Flag and diligence each carry an unrelated existing sense.",
+   "contract_choice": "flag entity with intent read | diligence, typed events on question.identified lineage; name events flag.* only after checking the ActionType enum; diligence = D3 continuous daemon run."
+  },
+  {
+   "term": "sidecar",
+   "existing_meanings": [
+    "AISidecar component posting investigation_id __sidecar__ (components/AISidecar.tsx:223-230)",
+    "reader-HTML sidecar body (substrate/reader_html/store.py)",
+    ".antiek pdf sidecar (services/antiek_format/sidecar_writer.py)"
+   ],
+   "collision": "__sidecar__ is a pseudo investigation id that is not a thread.",
+   "contract_choice": "exclude __sidecar__, __operator__ and read-spin from the thread kind set; they are attribution buckets."
+  }
+ ],
+ "ownership_overlaps": [
+  {
+   "surface": "/Users/slimydog/Antiek/specs/antiek-mothership/** (THREAD-CONTRACT.md Part 1, ground/lane-b.json)",
+   "owners": [
+    "mothership-ux-2026-09-24 (lane A, Nudge v2 236c36bd) owns specs/antiek-mothership/** (agent-board.json:25754-25756)",
+    "mothership-data-2026-09-24 (lane B, Sweep v2 a59f7aa2) owns ground/lane-b.json and THREAD-CONTRACT.md Part 1 (agent-board.json:25774-25777)"
+   ],
+   "conflict": "Lane A glob covers lane B files; ground/lane-b.json does not exist yet; THREAD-CONTRACT.md exists with Part 1 empty and both signatures blank.",
+   "resolution": "Narrow lane A glob to exclude ground/lane-b.json and THREAD-CONTRACT.md Part 1, or record the split in the claim; lane B writes Part 1 from this grounding and both sign."
+  },
+  {
+   "surface": "highlight -> research branch -> draft merge (merge and spawn seams)",
+   "owners": [
+    "CEO portfolio research-reading-vertical, owner pr-712, status review (agent-board.json:23350-23357)",
+    "mothership-data-2026-09-24 (B2, B4)"
+   ],
+   "conflict": "The control plane names an unmerged, ten-week-old PR as owner of the exact seams lane B needs, while main ships a different contract.",
+   "resolution": "Record a supersession decision (CEO-DIRECTIVE.md:118-122) before lane B mutates merge or spawn code."
+  },
+  {
+   "surface": "substrate/feedback + agent_work (anchored agent work, D2)",
+   "owners": [
+    "prime-voicenote-2026-08-28-spec-lane owns the D2/D3 specs (agent-board.json:23502-23520)",
+    "prime-feedback-spr01-impl named as successor but never claimed (agent-board.json:23521-23548)"
+   ],
+   "conflict": "The most binding anchored-thread contract has no implementation owner, and its one-action-per-thread invariant blocks multi-turn ask.",
+   "resolution": "Lane B either claims the D2 implementation explicitly or keeps ask this thread on the investigation trajectory and leaves feedback_threads to D2."
+  },
+  {
+   "surface": "substrate/research_artifact/{build_body,context,export}.py, orchestration/cascade_session.py, modes/Reading/index.tsx, hooks/useInvestigation.ts",
+   "owners": [
+    "sweep-v2-audit-wave4-and-repo-hygiene wave-5 (agent-board.json:23750-23828)",
+    "mothership-data-2026-09-24 (same owner lineage)",
+    "mothership-ux-2026-09-24 (reading-island surface includes Reading/index.tsx)"
+   ],
+   "conflict": "Overlapping hunks across three claims; c2r2-export is still unmerged.",
+   "resolution": "Sequence lane A and B edits behind wave-5 landing on the Nudge train."
+  },
+  {
+   "surface": "substrate/research_artifact/build_body.py, import_notes.py, note_store.py, render.py",
+   "owners": [
+    "research-note-persistence (rework_required, agent-board.json:23091-23122)",
+    "research-note-html-serialization (rework_required, agent-board.json:23181-23208)",
+    "mothership-data-2026-09-24"
+   ],
+   "conflict": "build_body.py is double-claimed while one owner is in rework with a known crash window.",
+   "resolution": "Resolve or release the rework lanes before companion builders land on build_body."
+  },
+  {
+   "surface": "substrate/research_artifact/source_merge.py, paths.py, interfaces/research/api/artifact_routes.py",
+   "owners": [
+    "uncommitted worktree fix/source-merge-path-confinement (HEAD 15e78e276)",
+    "mothership-data-2026-09-24 (B4 retirement of source merge)",
+    "audit wave 4/5 (R1 routed from lane A GAPS.md)"
+   ],
+   "conflict": "A confinement fix is in flight on the code lane B intends to retire.",
+   "resolution": "Land the confinement fix as defence in depth, then refuse commit and restore via validate_commit_boundary; do not extend source_merge."
+  },
+  {
+   "surface": "AISidecar, ThoughtPartnerPanel, /thought-partner handler, account memory",
+   "owners": [
+    "thought-partner-owner-model PR #3278 (review, agent-board.json:23148-23180)",
+    "codex-r15-memory-origin-confirm-20260924 (running)",
+    "mothership-data-2026-09-24 (B1.4 cheap ask, B2 context merge)"
+   ],
+   "conflict": "The cheap ask-this-thread tier and context merge sit on surfaces owned by two in-flight lanes.",
+   "resolution": "Extend /thought-partner and /compose-context only after those owners land, or coordinate hunks through the board."
+  },
+  {
+   "surface": "interfaces/research/api/write_routes.py, substrate/write/promote_context.py; cascade_routes.py launch hunk",
+   "owners": [
+    "write-authenticated-deliverable-owner PR #3011 (review, agent-board.json:23429-23452)",
+    "codex-r24-docker-async-launch-20260923 (review, agent-board.json:23951-23978)",
+    "mothership-data-2026-09-24 (B4.1, spawn)"
+   ],
+   "conflict": "Unmerged owner and launch fixes sit under merge-into-Write and thread spawning.",
+   "resolution": "Take the owner binding from #3011 for B4.1; rebase spawn changes after #r24 lands."
+  },
+  {
+   "surface": "EVENT_SCHEMA_VERSION (substrate/schemas/events.py:806, value 40)",
+   "owners": [
+    "D2 owns 40 -> 41",
+    "D3 takes one bump after D2",
+    "mothership-data-2026-09-24 needs new typed events (rename, anchor, merged_from, accept/reject, flag, turn)"
+   ],
+   "conflict": "No sequencing agreement exists for the next bump.",
+   "resolution": "Lane B joins the next sequenced bump after D2, never an independent one; the source_merge.* strings are retired, not typed."
+  },
+  {
+   "surface": "apps/reading/src/modes/Reading/*Panel.tsx and floating DR tray paths",
+   "owners": [
+    "closed-unmerged July compose lanes #951, #953, #958, #961, #963, #965, #967 with ownership not released (agent-board.json:19250-19672)",
+    "mothership-ux-2026-09-24"
+   ],
+   "conflict": "Stale ownership on Reading-mode panel paths.",
+   "resolution": "Mark superseded and release before lane A creates Reading-mode panels."
+  }
+ ],
+ "grades": {
+  "B1": 29,
+  "B2": 24,
+  "B3": 31,
+  "B4": 21,
+  "B5": 30,
+  "X_reconciliation": 30,
+  "B1_B5_mean": 27,
+  "basis": "Scored against a stored, addressable, mergeable, forkable subagent-thread fabric across research, reading and writing. Grounder grades (31, 27, 32, 22, 30) adjusted for verified refuter corrections and for the new findings in this synthesis; see the grades array for each rationale."
+ }
+}

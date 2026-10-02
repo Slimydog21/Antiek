@@ -1,0 +1,20 @@
+[33m(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vitest.config.ts:12:40). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.[39m
+[2m3:46:35 PM[22m [33m[1m[vite][22m[39m [33mwarning: `esbuild` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `oxc` instead.[39m
+[2m3:46:35 PM[22m [33m[1m[vite][22m[39m [33mwarning: `optimizeDeps.esbuildOptions` option was specified by "vite:react-babel" plugin. This option is deprecated, please use `optimizeDeps.rolldownOptions` instead.[39m
+[33mBoth esbuild and oxc options were set. oxc options will be used and esbuild options will be ignored.[39m The following esbuild options were set: `{ jsx: 'automatic', jsxImportSource: undefined }`
+
+ RUN  v4.1.11 /Users/slimydog/.claude/jobs/a59f7aa2/tmp/wt-c5/c5/apps/reading
+
+stdout | src/workspace/c5probe2.test.ts > P13 load/assign race with a latent backend
+P13 first save sent: {"b-2":[{"document_id":"docB","document_title":"B","assigned_at":"2026-09-26T12:46:36.810Z"}]}
+P13 UI record after load: {"b-1":[{"document_id":"docA","document_title":"A","assigned_at":"t0"}]}
+
+ ✓ src/workspace/c5probe2.test.ts > P13 load/assign race with a latent backend 53ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  15:46:35
+   Duration  998ms (transform 22ms, setup 0ms, import 35ms, tests 54ms, environment 711ms)
+

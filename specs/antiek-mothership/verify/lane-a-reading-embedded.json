@@ -1,0 +1,186 @@
+{
+  "area": "reading-embedded",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "RE-01",
+      "claimed": "PARTIAL: /read/:documentId BookReader works only for documents with a book_assets row; URL/web ingests 404 as 'That book isn't in the library.'",
+      "holds": true,
+      "evidence": "READ App.tsx:209 route. READ interfaces/research/api/books.py:2014-2027 raises 404 book_not_found when get_book_asset is None; substrate/books/model.py:205-211 returns None without a book_assets row. READ api/books.ts:96-100 maps 404 to Error('book_not_found'), and modes/Reading/index.tsx:324-325 turns that into \"That book isn't in the library.\" Every other error prints raw e.message. Re-checked the URL path more deeply than the grounding did: acquisition/urls/adapter.py:57-60 calls substrate.rights.register.register_source_document, and that function (register.py:201-307) only updates the gate columns. It never calls upsert_book_asset. The only book_assets writers are substrate/books/model.py:105 upsert_book_asset and substrate/books/ingest.py:64 register_book (plus upload_routes.py:656,690). grep of acquisition/urls, doc_ingest_routes.py and doc_to_html/converter.py for book_asset or register_book returned nothing (rc=1). Library doors (Library/index.tsx:544,561,1419) and the other /read doors (Sources:332, MetaReading:104, AutoNotebook:359, WriteHome:111, Explain:156,370, LibraryView:71, AdCreative:62) are confirmed."
+    },
+    {
+      "id": "RE-02",
+      "claimed": "BUILT_AND_WIRED: Library, /library/browse, meta-reading, /readings, /meta-readings",
+      "holds": true,
+      "evidence": "READ App.tsx:188-208 routes. components/hotkeys/bindings.ts:331 (mod+e \u2192 /library) and :349 (mod+; \u2192 /library). shell/ProjectTree.tsx:50-56 Read 'All' links. MetaReading/index.tsx:93-106 seeds sessionStorage antiek.read.pos then navigates; the 'Proposed \u2014 sign-off pending' banner string is at MetaReading/index.tsx:34. components/windows/openWindow.ts:88-91 and 124-127 make library window-eligible. The Library opens through navigate() even when it is hosted in a window (Library/index.tsx:544), so it changes the route behind the window."
+    },
+    {
+      "id": "RE-03",
+      "claimed": "BUILT_AND_WIRED: arXiv T2/T3 link-back ArxivFrame in the reader",
+      "holds": true,
+      "evidence": "READ modes/Reading/index.tsx: isArxivT2T3/isArxivLinkBack is computed from body.tier and body.canonical_url, and <ArxivFrame> renders in the reader main column (lines ~344-356 and 414-443). The honest 'link unavailable' notice branch is present. No FloatMenu applies over the cross-origin iframe; the only in-page research action is ResearchThis, which is rendered only in the hosted-body branch."
+    },
+    {
+      "id": "RE-04",
+      "claimed": "PARTIAL: WrestleApp needs locally-selected bytes; PdfViewer renders page 1 only and ignores initialPage; no PDF-bytes endpoint",
+      "holds": true,
+      "evidence": "READ modes/WrestleApp/index.tsx:55 (pdfBytes state), :86 (set only inside onFileSelected), :136 (renders PdfViewer only when pdfBytes && documentId), :146-166 (EmptyState 'Load a PDF to wrestle.'). READ components/PdfViewer.tsx:60-65: the destructure omits initialPage (the prop is declared at :35 with a comment admitting 'renders page 1 only'), and :100 calls pdf.getPage(1). No GET route serving PDF bytes was found in the /books, /documents or /sources route listing. Also missed by the grounding: openPdfPanel (workspace/actions.ts:56-67) passes neither pdfBytes nor investigationId, so a region selection from that panel would post investigation_id undefined even if bytes existed. PR: w7-crashes commit 1b8d637ef 'fix(wrestle): a /wrestle/:documentId link names the document and where to read it' is on 86a03898b, NOT_MERGED (ahead=6), and `gh pr list --head design/w7-crashes-20260924` returns []."
+    },
+    {
+      "id": "RE-05",
+      "claimed": "PARTIAL: /documents is classified shared/More; row click goes to /wrestle/:id",
+      "holds": true,
+      "evidence": "READ shell/workflowTaxonomy.ts:259-268 (workflow 'shared', sharedReason cites raw ids). READ modes/DocumentsIndex/index.tsx:168 navigate(`/wrestle/${...}`). Note: the Read door still surfaces Documents in SceneChrome Read actions/tabs (shell/SceneChrome.tsx:89,94) and in ProjectTree Read links (ProjectTree.tsx:54). The shared/More reclassification is therefore only partial in the UI."
+    },
+    {
+      "id": "RE-06",
+      "claimed": "PARTIAL: sanitized reader HTML renders via ReadingColumn; /sources/{id}/reader-html and /ingest/asset have no frontend consumer; HTML does not paginate; no prose layer",
+      "holds": true,
+      "evidence": "READ components/reader/ReadingColumn.tsx:112-115 (dangerouslySetInnerHTML when contentFormat==='html') and :71-80 (#/##/### all become one h2 text-lg). READ books.py:953 _prefer_reader_html_body, called at :2040 (public) and :2079 (owner). READ reader_html_routes.py:66-68 GET /sources/{document_id}/reader-html and doc_ingest_routes.py:144 POST, both registered at app.py:1958-1959 and 1972-1973. `grep 'reader-html\\|/ingest/asset' apps/reading/src` (non-test) returned nothing. READ modes/Reading/paginate.ts:34-56: with no '## Page N' markers the result is one window. PR: design/w3-shell-states-prose-20260923 contains de3b35932 'feat(prose): one prose layer for the reader and both editors' (git log HEAD..0d68b6213 -- ReadingColumn.tsx), NOT_MERGED."
+    },
+    {
+      "id": "RE-07",
+      "claimed": "PARTIAL: reader window kind exists; the only caller is the DRW canvas 'read source'; evidenceSourceContext is unused; windows are not persisted",
+      "holds": true,
+      "evidence": "READ components/windows/openWindow.ts:103-110 (reader \u2192 lazy modes/Reading). `grep openWindow(` (non-test) shows only ResearchThis.tsx:49 (receipt kind), DeepResearchWorkspace/index.tsx:432 (reader), and ProductsLauncher.tsx:156,170. READ WindowsLayer.tsx:52 `<Renderer {...win.payload} />`, so BookReader receives evidenceSourceContext as a prop it never declares (index.tsx:41-46 has documentId only). grep evidenceSourceContext \u2192 only DRW index.tsx:434 and a test. READ DRW index.tsx:529-536: the canvas entry is 'view as canvas' \u2192 session.researches.find(done), the first completed research. windowsStore.ts:50-62 (no persist), :150 (MAX_WINDOWS=8), :169-174 (720x520 default). PR: gh pr view 2846 \u2192 OPEN 6221932ed4; gh pr view 3384 \u2192 MERGED d437bc6e9. STRENGTHENING the grounding did not connect: DRW research-found web sources enter through Exa and Parallel, which call ingest_url (acquisition/search/exa/adapter.py:556; acquisition/search/parallel/adapter.py:198) and never create book_assets. So 'read source' on a web-grounded block opens a window showing \"That book isn't in the library.\" (by code path; NOT MEASURED in a browser)."
+    },
+    {
+      "id": "RE-08",
+      "claimed": "PARTIAL: no Reader PanelKind; /inv/:id opens ChunkModal; \u2318-click opens a byte-less PdfViewer panel",
+      "holds": true,
+      "evidence": "READ workspace/panel.types.ts:31-58: the PanelKind union has no Reader/Document kind. PanelRegistry.tsx:68 maps PdfViewer directly. MasterMdViewer.tsx:420-423 mounts ChunkModal. MasterMdViewer.tsx:788-807: \u2318-click \u2192 getChunk \u2192 openPdfPanel({documentId, page, title}). actions.ts:62-66 passes props {documentId, initialPage} only. PdfViewer.tsx:98 `pdfBytes.slice()` on undefined throws, which is caught at :145-149 into 'PDF render failed: \u2026'. openWindow.ts:37-50 declares ResearchWorkstation out-of-contract for windows. AppShell.tsx:151-158 mounts PanelLayout and WindowsLayer on every route, so a reader window over /inv/:id is technically possible, but no caller does it."
+    },
+    {
+      "id": "RE-09",
+      "claimed": "ABSENT: no reader embedded in Write/Notebook; RegionEmbed and ClaimInspector doors are broken; ux note says Write is the only product where highlight-to-island survives",
+      "holds": true,
+      "evidence": "STATUS HOLDS. READ Write/WriteHome.tsx:96-123: trace intent \u2192 navigate(`/read/...`) full-page (comment: 'The shared reader (DRW SPR-10) is still unbuilt'). Notebook/blocks/RegionEmbedBlock.tsx:34 openPdfPanel. ClaimCardBlock.tsx:32 openClaimInspector({claimId, investigationId}). PanelRegistry.tsx:71 ClaimInspector = lazy(ClaimCard). ClaimCard.tsx:56-62 destructures a `claim` prop and renders {claim.text} (~line 95), so claim is undefined and it throws a TypeError ('reading text'). THREE ERRORS in the grounding's supporting text. (1) The ux_note 'Write is the only product where the highlight-to-island gesture survives' is FALSE. ResearchWorkstation keeps highlight \u2192 floating ChaseThread in place: HighlightToolbar.tsx:45-52 \u2192 onChaseThis \u2192 ResearchWorkstation/index.tsx:151-160 openPanel('ChaseThread', \u2026, {mode:'floating'}). DRW BlockDetail.tsx:90-95 also hosts FloatMenu deep-research. (2) The PRIOR manifest evidence is mis-cited. RUN over the manifest: only 3 of 6 loop-2-claimcard stories error (pending-grounding, with-failed-grounding, with-passed-grounding), all with \"reading 'length'\" in the grounding-prop path. high/low/moderate-confidence have render_error null. So these story crashes do not demonstrate the ClaimInspector claimId bug, which would fail on 'text'. (3) AutoNotebook.tsx:359 is a Link, as claimed."
+    },
+    {
+      "id": "RE-10",
+      "claimed": "PARTIAL: only ChunkModal (chunk text) and TalkToBook (page jump) work in place; the other citation doors go to /wrestle or navigate",
+      "holds": true,
+      "evidence": "READ ChunkModal.tsx:92 (title = <code>{chunkId}</code>) and :171-197 (OpenInDocumentButton is a plain <a href='/wrestle/\u2026?page=N'>). CommandPalette.tsx:470 path `/wrestle/${doc.document_id}`. ProjectTree.tsx:66-75 (document \u2192 /wrestle) and :184-190 (\u2318-click \u2192 openPanel('PdfViewer', {id: n.id}, floating); the prop is `id`, not documentId, and there are no bytes). Reading/index.tsx:104-114 jumpToPage and :574-579 TalkToBook. `grep /explain/` (non-test) finds links only inside Explain/index.tsx:701 plus the taxonomy entry workflowTaxonomy.ts:484. ProductsLauncher.tsx:133-134 reduces a param route to its index ('/explain'), which is not a route."
+    },
+    {
+      "id": "RE-11",
+      "claimed": "PARTIAL: reader highlight Deep-research spins research and navigates to /inv; the island was removed by 2ff9518e6; failure is console-only",
+      "holds": true,
+      "evidence": "READ Reading/index.tsx:243-259 (spinResearch \u2192 navigate; catch \u2192 console.error at :252). RUN `git show 2ff9518e6 -- apps/reading/src/modes/Reading/index.tsx` shows `-      openPanel(` / `-        \"ChaseThread\",` replaced by `+ spinResearch \u2026 navigate(/inv/\u2026)` (commit dated 2026-09-18). ResearchThis.tsx:38-67 spins, opens a researchArtifactReceipt window, then navigates. CORRECTION: 'a failed spin is only logged to the console' is not fully true. api/books.ts spinResearch raises toast.err(formatCapacityExhaustedToast) for capacity-exhausted responses before throwing, so that failure class is visible. Other failures (404 book_not_found, HTTP 5xx, network) are console-only. The grounding also under-weights an in-place engagement that survives: FloatMenu Dialogue (FloatMenu.tsx:418-513) keeps a multi-turn follow-up over the highlighted passage inside the anchored menu via /thought-partner (floatMenuActions.ts:209-230). It is not deep research and is not persisted (NOT MEASURED server-side)."
+    },
+    {
+      "id": "RE-12",
+      "claimed": "PARTIAL: context is page-scoped via a singleton readingFocus bus; talk threads are sessionStorage",
+      "holds": true,
+      "evidence": "READ lib/readingFocus.ts:27-40 (module-level `let current`). hooks/useThoughtPartnerThread.ts:26-29 scopes the key by getReadingFocus().documentId, and it too is sessionStorage (:31-45). Reading/index.tsx:211-230 set/clear on mount/unmount. useTalkThread.ts:80,92 sessionStorage. MISSED EVIDENCE for 'give it context without a highlight'. (a) components/AISidecar.tsx:358 mounts ContextPicker (components/ai/ContextPicker.tsx:29-60), which lets the user add @doc/@insight items and POST /compose-context for a \u00a79.0-aware system_context. It is wired, but the operator has to type raw ids. (b) Reading/index.tsx ResearchThis passes passageText={selection?.text ?? page.text}, so 'Research this page' with no highlight already launches a research subagent seeded with the whole page as context (then navigates away). The status stays PARTIAL, but the gap text should say that a document-level (not page-level) and project-level context launch is what's missing, not the whole 'no-highlight research agent' path."
+    },
+    {
+      "id": "RE-13",
+      "claimed": "BUILT_UNREACHABLE: passage\u2192research links exist with no endpoint/UI",
+      "holds": true,
+      "evidence": "READ substrate/books/passage_research.py:135,158,180, all defaulting parent 'read-spin' (:140,162,183). `grep researches_for_passage|passage_for_research|link_passage_to_research` (non-test, outside the module) \u2192 only books.py:2144 import and :2225 link call. The /books route list has no /researches route: /books/{id}, ad-impressions, answer-evaluations, answers/{id}/judgment, ask, full-text, owner-full-text, spin-research, voice-note. resolveCitationHistory.ts has no non-test importer. MIS-SCOPE: the 'ask an existing thread to dig deeper' half already exists outside the reader. DRW ResearchPanel.tsx:71,82 steers a running research with 'deepen' (extra_budget_usd) and 'redirect' (sub_question) via POST /sessions/{session_id}/researches/{investigation_id}/steer (api/research.ts:137 SteerKind). What is missing is discovering threads per document, and any steer or continue for non-DRW investigations. That should be built on the existing steer contract, not a new 'continue-investigation endpoint'."
+    },
+    {
+      "id": "RE-14",
+      "claimed": "BUILT_UNREACHABLE: companion saved-chase \u2192 draft merge \u2192 preview/commit/restore chain never receives input from the reader",
+      "holds": true,
+      "evidence": "READ ReadingCompanion.tsx:88 useChaseDraftHandoffs(readingThreadId); the handoff list renders only when handoffs.length>0 (:334); draftReadyChases needs \u22652 completed (:282-285). chaseHandoffs.ts:4 localStorage key antiek.chase.draftHandoffs.v1. The sole writer, recordChaseDraftHandoff (ChaseThread.tsx:111), uses parentInvestigationId from ResearchWorkstation/index.tsx:154-168 = the /inv id. artifact_routes.py:384,433,475,528 hold the source-merge apply/preview/commit/restore routes. Branch caffen/reader-source-merge-refresh-proof 91423bf56 is NOT_MERGED, ahead=6. MISSED ADJACENT CAPABILITY: a manual merge of research contexts IS wired in Research. DistillView.tsx:153 mounts ArtifactOutlineShelf, whose onDraftMerge (ArtifactOutlineShelf.tsx:128-151) composes the current investigation with selected children, handoffs and typed sibling ids through composeResearchArtifacts (POST compose). So 'merge subagent contexts manually' is BUILT_AND_WIRED at project/investigation level. Only the reader-side and fork-into-document parts are unreachable or absent."
+    },
+    {
+      "id": "RE-15",
+      "claimed": "PARTIAL: marginalia notes store excerpt + chunk_id only, never offsets; nothing repaints highlights",
+      "holds": true,
+      "evidence": "READ floatMenuActions.ts:83-111 (payload: note_id, note_text, excerpt, source_kind, chunk_id; document_id on the envelope). Reading/index.tsx:150 representativeChunkId=null. ReadingColumn.tsx:96-121 has no mark or decoration rendering. `grep reading-physics|Decoration` in modes/Reading/*.tsx \u2192 none. insight_question.py:1276 and app.py:2446-2455 promote marginalia. CORRECTION to 'highlights are never saved with offsets': PdfViewer.tsx:157-215 posts document.region_selected with page, char_start, char_end, bbox and text_excerpt. Anchored regions therefore exist for PDFs, but only for a PDF loaded locally in /wrestle (RE-04), and nothing repaints them either. The accurate framing is: no anchored, repaintable highlight model exists for reader (HTML/markdown) bodies; the one offset-bearing selection event lives on the unreachable PDF path."
+    },
+    {
+      "id": "RE-16",
+      "claimed": "PARTIAL: position is a sessionStorage page index; windows not persisted",
+      "holds": true,
+      "evidence": "READ usePosition.ts:18,53 sessionStorage antiek.read.pos.<id>. windowsStore.ts:50-62 deliberately has no persist. `grep reading_position|last_read_page|resume_page` across interfaces, substrate and apps \u2192 none. MISSED CONTEXT: WorkspaceStore panel layouts ARE persisted to localStorage per global, route and investigation scope (workspace/persistence.ts:1-50, keys antiek.workspace.global|route.<key>|inv.<id>). A 'persist the workstation layout' requirement can extend that existing mechanism instead of inventing one. Windows are the unpersisted system."
+    },
+    {
+      "id": "RE-17",
+      "claimed": "PARTIAL: only DRW can put two reader windows side by side; no split/compare; viewport-breakpoint rails squeeze the window",
+      "holds": true,
+      "evidence": "READ DRW index.tsx:432-441 per-document id win:reader:<docId>; windowsStore.ts:150 cap. Reading/index.tsx:370 TOC `w-64 \u2026 hidden md:block`; ReadingCompanion.tsx:315 `w-80 \u2026 hidden lg:flex`. 256+320=576px of the 720px default window (arithmetic from classes; NOT MEASURED visually). No split, tile or compare mode in windowsStore actions (:120-129: open, close, focus, setRect, expand, restore, toggleMode, reset). Missed nuance: PanelHandle.tsx:241 'Pop out window' \u2192 /_panel/:panelId (PanelWindowApp.tsx) pops a WorkspaceStore panel into its own OS window. That is a real multi-surface affordance for panels, not for reader windows."
+    },
+    {
+      "id": "RE-18",
+      "claimed": "ABSENT: no reader- or window-specific hotkeys; \u2318[ \u2318] cycle panels only",
+      "holds": false,
+      "evidence": "The partial claims are true. bindings.ts:280-288 builtins; shortcuts.ts:334-343 cycleFocus covers WorkspaceStore only (no useWindows import in shortcuts.ts); no keydown handler in modes/Reading (non-test) except TalkToBook.tsx:460's input; RESERVED_COMBOS mod+1..mod+0 at bindings.ts:464-473. But ABSENT is wrong on two counts. (1) Window-local keyboard control is BUILT_AND_WIRED: WorkspaceWindow.tsx:172-215 onKeyDown gives Escape=close, Enter/F=toggle full, arrows=move, \u2318/Ctrl+arrows=resize when the window chrome has focus (titlebar tabIndex=0 at :284). (2) A Herdr-style per-entity hop mechanism is BUILT_UNREACHABLE. components/hotkeys/AssignHotkey.tsx:18-60 binds a \u2318+key to one entity: entityKind 'document', route '/read/<id>' (workspace/persistence.ts:230-275, localStorage antiek.workspace.custom-hotkeys). workspace/shortcuts.ts:236-247 hydrates and dispatches those bindings on every app load. `grep '<AssignHotkey'` (non-test) \u2192 zero product mounts, only AssignHotkey.test.tsx, so no user can create a binding.",
+      "corrected_status": "PARTIAL"
+    },
+    {
+      "id": "RE-19",
+      "claimed": "SPEC_ONLY: the one Reader / openDocument convergence exists only on unmerged branches",
+      "holds": true,
+      "evidence": "RUN test -e \u2192 ABSENT for apps/reading/src/lib/openDocument.ts, components/reader/Reader.tsx and components/UnifiedSearch.tsx. substrate/contracts/reading_surface.py:1-24 still says 'PROVISIONAL \u2026 DRW SPR-10 is not yet implemented'. RUN git merge-base --is-ancestor: caffen/RDR-SPR-09 d1ab66f35 NOT_MERGED (ahead=26); reader/integration 1d3f22c29 NOT_MERGED (ahead=33). 'SPEC_ONLY' is defensible for main, though the more precise label is 'code exists only on unmerged branches'."
+    },
+    {
+      "id": "CRAFT-measure",
+      "claimed": "ReadingColumn claims to be width-capped but uses flex-1; measure 85-96 cpl",
+      "holds": false,
+      "evidence": "READ ReadingColumn.tsx:33-36 comment says centered and width-capped, and :110 uses flex-1. But the parent in BookReader caps it: Reading/index.tsx:404 `max-w-2xl mx-auto px-6` gives a 672px box and about 624px of text. So the column IS capped. The defect is that the cap (about 80+ cpl at 16px serif) exceeds the 60-78 target, not that no cap exists. The 85-96 cpl figure is PRIOR (full-audit-type-copy.md), not re-measured.",
+      "corrected_status": "Cap exists (max-w-2xl on parent); cap too wide for the 60-78 cpl target"
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "Per-entity custom hotkeys (AssignHotkey \u2192 bind \u2318+key to a document/investigation/deliverable route)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ components/hotkeys/AssignHotkey.tsx:18-60 (entityKind document|investigation|deliverable|project|mode, route e.g. '/read/doc-9'). workspace/persistence.ts:230-275 (localStorage antiek.workspace.custom-hotkeys v1). workspace/shortcuts.ts:236-247 installShortcuts hydrates and dispatches custom bindings on load. HotkeyHud lists them. `grep -rn '<AssignHotkey'` outside tests \u2192 0 product mounts. For a Herdr-style hop this is the nearest existing lever: mount <AssignHotkey> in the reader header, ProjectTree rows and /inv headers."
+    },
+    {
+      "name": "Workspace-window keyboard control (Esc close, Enter/F full, arrows move, \u2318+arrows resize)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ components/windows/WorkspaceWindow.tsx:172-215 onKeyDown, active when the window root or [data-window-titlebar] (tabIndex=0, :282-284) has focus. It applies to every reader window. There is no global chord to focus or cycle windows (shortcuts.ts has no windowsStore reference)."
+    },
+    {
+      "name": "ContextPicker in the AI sidecar (@doc/@insight \u2192 POST /compose-context \u00a79.0-aware system_context)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ components/AISidecar.tsx:15,358 mounts components/ai/ContextPicker.tsx:29-60 (composeContext; withheld and missing items shown). It feeds thoughtPartnerSeed.ts:26-35. This is the existing 'ask with no highlight and give it context' door for the Thought Partner. It takes raw ids typed into a text box (a craft gap) and does not launch a research subagent."
+    },
+    {
+      "name": "FloatMenu Dialogue: in-place, multi-turn follow-up over a highlighted passage",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ modes/shared/FloatMenu/FloatMenu.tsx:418-513 (followUp state, send(followUp)); floatMenuActions.ts:209-230 dialogueOverSelection \u2192 POST /thought-partner with investigation_id=read-<docId> in the reader. It is the only anchored in-place LLM engagement left in BookReader. Persistence of these turns is NOT MEASURED."
+    },
+    {
+      "name": "Research-side highlight \u2192 floating ChaseThread island (in place)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ ResearchWorkstation/HighlightToolbar.tsx:45-52 \u2192 index.tsx:151-160 openPanel('ChaseThread', {spawnContext, parentInvestigationId}, {mode:'floating'}); ChaseThread.tsx:99-117 starts the child and records a handoff. This contradicts the grounding's RE-09 note that Write is the only surviving island. Reverting the reader to it (with book provenance) is a small, known-good path."
+    },
+    {
+      "name": "Manual merge of research threads (ArtifactOutlineShelf draft merge)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ ResearchWorkstation/DistillView.tsx:153 mounts ArtifactOutlineShelf; ArtifactOutlineShelf.tsx:128-151 onDraftMerge composes the investigation plus selected children, handoffs and typed sibling ids through composeResearchArtifacts (lib/api.ts:1408). This is the existing 'merge subagent contexts manually' at investigation level; the reader companion reuses the same composeResearchArtifacts (ReadingCompanion.tsx:290)."
+    },
+    {
+      "name": "DRW steer an existing research (deepen / redirect)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ modes/DeepResearchWorkspace/ResearchPanel.tsx:71 (Deepen, extra_budget_usd 0.25) and :75-92 (redirect sub_question); api/research.ts:137 SteerKind; backend POST /sessions/{session_id}/researches/{investigation_id}/steer. This is the existing 'ask that thread to dig deeper' contract. It is limited to DRW sessions and cannot be reached from a document."
+    },
+    {
+      "name": "Offset-anchored PDF region selection (document.region_selected with page/char_start/char_end/bbox)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ components/PdfViewer.tsx:157-215. It reaches users only through a locally chosen PDF in /wrestle (WrestleApp/index.tsx:61-86). It is the one offset-bearing highlight event on main and has no repaint. Any anchored-highlight design should reconcile with it or retire it."
+    },
+    {
+      "name": "Panel pop-out to an OS window (/_panel/:panelId)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ workspace/PanelHandle.tsx:241 'Pop out window'; workspace/popout.ts:53 window.open('/_panel/\u2026'); PanelWindowApp.tsx:32 renders PanelRegistry[kind] full-window with BroadcastChannel sync. It works for WorkspaceStore panels. A future Reader PanelKind would inherit it, whereas windowsStore reader windows cannot pop out."
+    },
+    {
+      "name": "WorkspaceStore layout persistence (global / per-route / per-investigation, plus ?ws= URL param)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ workspace/persistence.ts:1-50 (antiek.workspace.global|route.<key>|inv.<id>, schemaVersion 1). This is the existing mechanism a per-workstation reader-tab/layout persistence should extend. windowsStore deliberately does not persist (windowsStore.ts:50-62)."
+    },
+    {
+      "name": "Web-sourced DRW evidence opens a reader window that 404s",
+      "status": "PARTIAL",
+      "evidence": "READ acquisition/search/exa/adapter.py:556 and acquisition/search/parallel/adapter.py:198 \u2192 acquisition.urls.adapter.ingest_url \u2192 register_source_document (no book_assets). DRW index.tsx:432 then opens a reader window whose getBook 404s \u2192 \"That book isn't in the library.\" (Reading/index.tsx:325). By code path; NOT MEASURED in a browser. This is the one shipped embed, and it fails for the web-found half of research evidence."
+    }
+  ],
+  "summary": "I re-checked all 19 capabilities against main at 15e78e276 (worktree HEAD confirmed 15e78e2761b9). Of the checks, 17 hold on status and 2 do not. node_modules is absent, so no vitest ran; behaviour claims rest on code-path reading, git history and gh, plus the screenshot manifest.\n\n**The grounding is accurate on the load-bearing facts.** Each of these was confirmed at the cited or equivalent lines:\n- BookReader requires a book_assets row. register_source_document never creates one, so URL, Exa and Parallel ingests 404.\n- Four broken doors: ChunkModal's plain `<a href>` into the /wrestle upload screen; openPdfPanel and ProjectTree \u2318-click opening PdfViewer with no bytes (`pdfBytes.slice()` on undefined); ClaimInspector passing claimId where ClaimCard needs a claim.\n- `openWindow('reader')` has exactly one caller, the DRW canvas 'read source', and the evidenceSourceContext payload is never read.\n- Commit 2ff9518e6 replaced the reader's floating ChaseThread with spin-and-navigate. That left the ReadingCompanion handoff and source-merge chain with no writer.\n- The passage\u2192research helpers have no endpoint.\n- The antiek-reader, w3, w7 and source-merge branches are all NOT_MERGED. PR #2846 is OPEN and #3384 is MERGED.\n\n**Failed or corrected:**\n- **RE-18 (hotkeys) is not ABSENT; corrected to PARTIAL.** WorkspaceWindow has wired window-local keys: Esc closes, Enter/F toggles full, arrows move, \u2318+arrows resize. A complete per-entity hop system (AssignHotkey plus persisted custom bindings that dispatch on load, including `/read/<id>`) is built, but no product surface mounts `<AssignHotkey>`.\n- **The craft claim that ReadingColumn is uncapped is wrong.** The parent sets `max-w-2xl` (672px). The real defect is that the cap is too wide for the 60\u201378 character target.\n\n**Wrong supporting details inside claims that otherwise hold:**\n- The RE-09 note that 'Write is the only product where highlight-to-island survives' is false. The Research workstation's HighlightToolbar still opens a floating ChaseThread, and DRW BlockDetail hosts FloatMenu deep-research.\n- RE-09's PRIOR screenshot-manifest evidence is mis-cited. Only 3 of 6 ClaimCard stories crash, all on 'length' in the grounding-prop stories, so they do not show the ClaimInspector bug.\n- RE-11's 'only logged to the console' is incomplete. A capacity-exhausted spin raises a toast.\n- RE-15's 'never saved with offsets' misses PdfViewer's `document.region_selected` event, which carries page, char offsets and bbox (though only on the unreachable PDF path).\n\n**Mis-scoped capabilities:**\n- **RE-12:** misses the wired ContextPicker in the AI sidecar (POST /compose-context), and that 'Research this page' already seeds a research agent with the whole page when nothing is highlighted.\n- **RE-13:** the 'dig deeper on an existing thread' contract already exists as DRW steer deepen/redirect.\n- **RE-14:** a manual research-thread merge is wired in Research (ArtifactOutlineShelf in DistillView).\n- **RE-16:** WorkspaceStore layout persistence per investigation already exists to extend.\n- **RE-07 needs strengthening:** DRW web-found sources go through ingest_url, so the one shipped reader embed shows \"That book isn't in the library.\" for them (by code path; NOT MEASURED).\n\n**Other missed capabilities:**\n- The panel pop-out to a separate OS window (/_panel/:panelId).\n- The in-place, multi-turn FloatMenu Dialogue over a highlighted passage.\n\n**Coordination:** I did not message the 'Antiek Sweep' peer session. This subagent has no verified channel to it, and cross-session coordination belongs to the orchestrator. No scratch files were needed under /tmp/mothership-ground/reading-embedded-refute/."
+}
