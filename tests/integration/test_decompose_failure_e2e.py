@@ -1,4 +1,16 @@
-"""DRW decompose failure — live route through dispatch (SPR-04)."""
+"""DRW decompose failure — live route through dispatch (SPR-04).
+
+NOT an integration test, and the mark that said otherwise has been removed. This
+module builds an in-process FastAPI app, drives it with TestClient, points the
+store at a tmpdir and stubs the embedding provider. It needs no external service,
+no live LLM, no network and no credentials -- which is exactly the definition
+`pyproject.toml:252` gives for the `integration` marker, so applying it here was
+wrong in both directions: the marker excluded these three tests from every run,
+and CI selects with `-m "not integration"` while no workflow anywhere passes
+`-m integration`. The marker's entire population therefore executed nowhere.
+
+Verified before removing: 3 passed in 0.99s with no ambient services.
+"""
 
 from __future__ import annotations
 
@@ -12,8 +24,6 @@ from fastapi.testclient import TestClient
 import interfaces.research.api.cascade_routes as cr
 from interfaces.research.api.cascade_routes import cascade_router
 from substrate.dispatch.base import ProviderError
-
-pytestmark = pytest.mark.integration
 
 
 class _StubEmbedding:
