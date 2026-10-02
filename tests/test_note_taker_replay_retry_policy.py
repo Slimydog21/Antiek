@@ -1,4 +1,9 @@
-"""Deterministic recovery schedules, with no provider, database or real thread."""
+"""Source controls for inline recovery with a stub replay service.
+
+The harness replaces the recovery thread and replay service. Real module
+imports and conftest effects, including database effects, need separate
+runtime admission. These source declarations are not execution evidence.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,10 @@ from runtime import db_lock
 from substrate.graph import knowledge_event_projector
 
 
-def run_passes(monkeypatch, tmp_path, streams, catch_up, *, passes, tuning):
+def run_passes(
+    monkeypatch, tmp_path, streams, catch_up, *, passes, tuning,
+    discover=None, observe_pass=None,
+):
     clock = {"now": 0.0, "passes": 0}
     db = tmp_path / "catalog-presence-only"
     db.touch()
@@ -26,6 +34,8 @@ def run_passes(monkeypatch, tmp_path, streams, catch_up, *, passes, tuning):
             return clock["passes"] >= passes
 
         def wait(self, delay):
+            if observe_pass is not None:
+                observe_pass(dict(state))
             clock["now"] += delay
             clock["passes"] += 1
 
@@ -45,7 +55,10 @@ def run_passes(monkeypatch, tmp_path, streams, catch_up, *, passes, tuning):
         lambda **kwargs: SimpleNamespace(db_path=str(db), events_dir="unused", catch_up=attempt),
     )
     monkeypatch.setattr(db_lock, "write_handoff_requested", lambda path: False)
-    monkeypatch.setattr(knowledge_event_projector, "discover_investigations", lambda path: streams)
+    def discovered_streams(path):
+        return streams if discover is None else discover(clock["passes"])
+
+    monkeypatch.setattr(knowledge_event_projector, "discover_investigations", discovered_streams)
     monkeypatch.setenv("ANTIEK_NOTE_TAKER_REPLAY_LOCK_YIELD_S", "0")
     state = {}
     note_taking.start_replay_recovery(stop_event=Stop(), poll_interval_s=1.0, state=state)
@@ -106,3 +119,80 @@ def test_nonfinite_retry_tuning_uses_finite_defaults(monkeypatch, value):
     ):
         monkeypatch.setenv(key, value)
     assert note_taking._resolve_replay_tuning() == (2.0, 30.0, 30.0)
+
+
+def test_failed_stream_uses_exact_capped_retry_schedule(monkeypatch, tmp_path):
+    def fail(stream):
+        raise RuntimeError("controlled unavailable stream")
+
+    calls, state = run_passes(
+        monkeypatch, tmp_path, ["A"], fail,
+        passes=31, tuning=(2.0, 8.0, 30.0),
+    )
+    assert calls == [("A", at) for at in (0.0, 2.0, 6.0, 14.0, 22.0, 30.0)]
+    assert state["status"] == "backoff"
+    assert state["pending_retries"] == 1
+    assert state["backoff_s"] == 8.0
+
+
+def test_success_resets_only_its_own_stream_retry(monkeypatch, tmp_path):
+    current_pass = {"index": 0}
+
+    def discover(index):
+        current_pass["index"] = index
+        return ["A", "B"]
+
+    def catch_up(stream):
+        if stream == "B" or current_pass["index"] in (0, 4):
+            raise RuntimeError("controlled unavailable stream")
+
+    calls, state = run_passes(
+        monkeypatch, tmp_path, [], catch_up,
+        passes=7, tuning=(2.0, 8.0, 30.0), discover=discover,
+    )
+    assert [at for stream, at in calls if stream == "A"] == [0.0, 2.0, 3.0, 4.0, 6.0]
+    assert [at for stream, at in calls if stream == "B"] == [0.0, 2.0, 6.0]
+    assert state["status"] == "catching_up"
+    assert state["pending_retries"] == 1
+
+
+def test_removal_prunes_retry_and_reappearance_is_fresh(monkeypatch, tmp_path):
+    reports = []
+
+    def fail(stream):
+        raise RuntimeError("controlled unavailable stream")
+
+    calls, state = run_passes(
+        monkeypatch, tmp_path, [], fail,
+        passes=3, tuning=(8.0, 8.0, 30.0),
+        discover=lambda index: [] if index == 1 else ["A"],
+        observe_pass=reports.append,
+    )
+    assert calls == [("A", 0.0), ("A", 2.0)]
+    assert [report["pending_retries"] for report in reports] == [1, 0, 1]
+    assert [report["status"] for report in reports] == ["backoff", "idle", "backoff"]
+    assert reports[1]["failures"] == 0
+    assert reports[1]["backoff_s"] == 0.0
+    assert state["backoff_s"] == 8.0
+
+
+def test_report_distinguishes_failure_deferred_and_current(monkeypatch, tmp_path):
+    reports = []
+    attempts = {"count": 0}
+
+    def catch_up(stream):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("controlled first failure")
+
+    calls, state = run_passes(
+        monkeypatch, tmp_path, ["A"], catch_up,
+        passes=4, tuning=(2.0, 8.0, 30.0), observe_pass=reports.append,
+    )
+    assert calls == [("A", 0.0), ("A", 2.0), ("A", 3.0)]
+    assert [report["status"] for report in reports] == [
+        "backoff", "backoff", "current", "current",
+    ]
+    assert [report["pending_retries"] for report in reports] == [1, 1, 0, 0]
+    assert [report["failures"] for report in reports] == [1, 0, 0, 0]
+    assert state["status"] == "current"
