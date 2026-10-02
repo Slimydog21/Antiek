@@ -635,6 +635,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: latestText, original_text: firstText, promote_to_graph: false,
+      based_on_prose_text: firstText,
     });
     expect(screen.queryByText(/^Saved\./)).toBeNull();
     expect(editor().getText()).toBe(latestText);
@@ -653,6 +654,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
     expect(updateSectionProseMock).toHaveBeenCalledWith("sec-1", {
       prose_text: latestText, original_text: "Saved prose.", promote_to_graph: false,
+      based_on_prose_text: "Saved prose.",
     });
   });
 
@@ -673,6 +675,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: latestText, original_text: firstText, promote_to_graph: false,
+      based_on_prose_text: firstText,
     });
   });
 
@@ -695,6 +698,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     await act(async () => { first.resolve({}); });
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: newest, original_text: oldText, promote_to_graph: false,
+      based_on_prose_text: oldText,
     });
     expect(editor().getText()).toBe(newest);
   });
@@ -729,6 +733,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     await act(async () => { screen.getByRole("button", { name: /retry/i }).click(); });
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: draft, original_text: "Saved prose.", promote_to_graph: false,
+      based_on_prose_text: "Saved prose.",
     });
     expect(screen.getByText(/^Saved\./)).toBeTruthy();
   });
@@ -747,6 +752,7 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     await act(async () => { setSectionProseOwner("writing-test-owner"); });
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: draft, original_text: "Saved prose.", promote_to_graph: false,
+      based_on_prose_text: "Saved prose.",
     });
   });
 

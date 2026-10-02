@@ -28,7 +28,8 @@ import {
   runBookHtmlIndexJob,
   runBookHtmlPublishJob,
 } from "../../api/books";
-import { fetchLibraryCatalog } from "../../api/libraryCatalog";
+import { LibraryCatalogHttpError, fetchLibraryCatalog } from "../../api/libraryCatalog";
+import type { LibraryPage } from "../../api/libraryCatalog";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -66,6 +67,28 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
   { key: "all", label: "All", hint: "Everything, flagged" },
 ];
 const PAGE_SIZE = 20;
+
+/**
+ * A contended database is a RETRYABLE state, not a missing catalog.
+ *
+ * GET /library answers 503 + Retry-After while another process holds the
+ * DuckDB file - a bulk arXiv ingest holds it ~97% of the time. Production
+ * showed the cost of conflating the two: a 500 carrying no CORS headers reached
+ * the browser as a CORS failure, and this mode rendered "the catalog is
+ * unavailable" for a corpus that was intact.
+ */
+const CATALOG_BUSY_RETRIES = 2;
+const CATALOG_BUSY_RETRY_MS = 200;
+
+function isCatalogBusy(e: unknown): boolean {
+  return e instanceof LibraryCatalogHttpError && e.status === 503;
+}
+
+function catalogFailureCopy(e: unknown): string {
+  return isCatalogBusy(e)
+    ? "The library is busy: another job is using the database. Try again in a moment."
+    : "The library catalog is unavailable. Try again.";
+}
 
 export default function Library() {
   const navigate = useNavigate();
@@ -170,9 +193,21 @@ export default function Library() {
     setCatalogFailed(false);
     setBooks([]);
     try {
-      const data = await fetchLibraryCatalog(
-        { filter: status, search, page, page_size: PAGE_SIZE }, signal,
-      );
+      let attempt = 0;
+      let data: LibraryPage;
+      for (;;) {
+        try {
+          data = await fetchLibraryCatalog(
+            { filter: status, search, page, page_size: PAGE_SIZE }, signal,
+          );
+          break;
+        } catch (e: unknown) {
+          if (!isCatalogBusy(e) || attempt >= CATALOG_BUSY_RETRIES) throw e;
+          attempt += 1;
+          await new Promise((resolve) => setTimeout(resolve, CATALOG_BUSY_RETRY_MS * attempt));
+          if (signal.aborted) throw e;
+        }
+      }
       if (generation !== requestGeneration.current || signal.aborted) return;
       const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
       if (page > lastPage) {
@@ -199,7 +234,7 @@ export default function Library() {
     } catch (e: unknown) {
       if (generation !== requestGeneration.current || signal.aborted) return;
       setCatalogFailed(true);
-      setError("The library catalog is unavailable. Try again.");
+      setError(catalogFailureCopy(e));
     } finally {
       if (generation === requestGeneration.current && !signal.aborted) setLoading(false);
     }

@@ -22,6 +22,7 @@ vi.mock("../../lib/api", async (orig) => ({
   startInvestigation: startInvestigationMock,
 }));
 
+import { ApiError } from "../../lib/api";
 import ConnectResearch from "./ConnectResearch";
 
 beforeEach(() => {
@@ -74,6 +75,17 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
     await userEvent.click(await screen.findByText(/start without a project/i));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it("describes a failed spawn in plain words, never the raw request failure", async () => {
+    startInvestigationMock.mockRejectedValue(new ApiError("GET /books failed: HTTP 503", 503, "raw server body"));
+    const onConnect = vi.fn();
+    render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't start a research folder.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
     expect(onConnect).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   startInvestigation,
   type InvestigationSummary,
 } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 /**
  * ConnectResearch — the M1 connect step (Write SPR-09).
@@ -53,7 +54,7 @@ export default function ConnectResearch({
   const [projects, setProjects] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [spawning, setSpawning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   // The auto-spawned folder is a real research launch — it spends. So the
   // writer picks the route that runs it, the same control the research home
   // offers. The spawn carries no parent and no chased passage, which is what
@@ -66,9 +67,9 @@ export default function ConnectResearch({
       .then((r) => {
         if (!cancelled) setProjects(r.investigations);
       })
-      .catch(() => {
+      .catch((cause) => {
         // A failed list is shown plainly — the writer can still start fresh.
-        if (!cancelled) setError("Couldn't load your research projects.");
+        if (!cancelled) setError(describeFailure(cause, { what: "load your research projects" }));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -104,11 +105,7 @@ export default function ConnectResearch({
         label: "a new research folder",
       });
     } catch (e) {
-      setError(
-        e instanceof Error
-          ? `Couldn't start a research folder: ${e.message}`
-          : "Couldn't start a research folder.",
-      );
+      setError(describeFailure(e, { what: "start a research folder" }));
     } finally {
       setSpawning(false);
     }
@@ -129,7 +126,7 @@ export default function ConnectResearch({
 
       {error && (
         <p className="text-xs text-emperor" role="alert">
-          {error}
+          {error.title} {error.detail}
         </p>
       )}
 
