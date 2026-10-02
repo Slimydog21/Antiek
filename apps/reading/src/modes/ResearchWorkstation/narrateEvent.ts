@@ -343,6 +343,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.FEEDBACK_THREAD_RESOLVED]: null,
   [ActionType.AGENT_WORK_TRANSITIONED]: null,
   [ActionType.ARTIFACT_FEEDBACK_REPLIED]: null,
+  [ActionType.PROJECT_TABS_VERSION_BUMPED]: null,
 
 };
 
