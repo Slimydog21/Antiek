@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { inventory, search, ingest } = vi.hoisted(() => ({ inventory: vi.fn(), search: vi.fn(), ingest: vi.fn() }));
 vi.mock("../../api/toolConnections", () => ({ fetchToolConnections: inventory }));
 vi.mock("../../api/researchToolSearch", () => ({ searchResearchTool: search, ingestResearchToolCandidate: ingest }));
+import { ApiError } from "../../lib/api";
 import ConnectedToolSearch from "./ConnectedToolSearch";
 
 const candidate = { external_id: "1", title_or_text: "A source", url: "https://x.com/a/status/1", published_at: null, author: "a", ingestable: true };
@@ -57,15 +58,31 @@ describe("ConnectedToolSearch", () => {
   });
 
   it("retries a failed ingest with the same operation_id", async () => {
-    ingest.mockRejectedValueOnce(new Error("This ingest has an unresolved outcome. Check your library before trying again."))
+    ingest.mockRejectedValueOnce(new ApiError("GET /books failed: HTTP 503", 503, "raw server body"))
       .mockResolvedValueOnce({ ...ingestResult, status: "replayed" });
     await searchForCandidate();
     fireEvent.click(screen.getByRole("button", { name: /ingest/i }));
-    expect((await screen.findByRole("alert")).textContent).toContain("This ingest has an unresolved outcome");
+    const alert = await screen.findByRole("alert");
+    // Plain words only: the method, path, status and body stay out of the render.
+    expect(alert.textContent).toContain("Couldn't ingest this candidate.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
     fireEvent.click(screen.getByRole("button", { name: /ingest/i }));
     await screen.findByText("Ingested · personal reading");
     expect(ingest).toHaveBeenCalledTimes(2);
     expect(ingest.mock.calls[0][0].operationId).toBe(ingest.mock.calls[1][0].operationId);
+  });
+
+  it("describes a failed search in plain words, never the raw request failure", async () => {
+    search.mockRejectedValue(new ApiError("GET /books failed: HTTP 503", 503, "raw server body"));
+    render(<ConnectedToolSearch />);
+    await screen.findByRole("option", { name: "X" });
+    fireEvent.change(screen.getByLabelText("What sources are you looking for?"), { target: { value: "battery" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't search this provider.");
+    expect(alert.textContent).not.toMatch(/HTTP|503|GET \/?books|raw server body/);
+    // The search form stays usable — the retry affordance is the same Search button.
+    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
   });
 
   it("shows why a skipped ingest wrote nothing", async () => {

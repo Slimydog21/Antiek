@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Link } from "react-router-dom";
 import type { Editor } from "@tiptap/react";
 
 import ModelPicker from "../../components/ModelPicker";
@@ -198,6 +199,13 @@ function SectionCard({
   }, [proseSession]);
   const [view, setView] = useState<"draft" | "xray">("draft");
   const [proposal, setProposal] = useState<{ text: string } | null>(null);
+  // F7: the child investigation a sub-agent accept actually spawned. The
+  // proposal PRODUCES this id (SubAgentProposal.tsx calls
+  // `onAccept(child.investigation_id)`); it used to be discarded here, so the
+  // writer paid for a spawn and had no way back to it. Retained and linked
+  // below, mirroring the Reading companion's child-investigation row
+  // (modes/Reading/ReadingCompanion.tsx:259).
+  const [spawnedChild, setSpawnedChild] = useState<string | null>(null);
 
   // M4: the FloatMenu host over the rendered editor. The page region is the
   // selection SCOPE; highlighting prose opens the SHARED FloatMenu with the
@@ -525,9 +533,40 @@ function SectionCard({
           <SubAgentProposal
             claimText={proposal.text}
             parentInvestigationId={investigationId}
-            onAccept={() => setProposal(null)}
+            onAccept={(childInvestigationId) => {
+              setProposal(null);
+              setSpawnedChild(childInvestigationId);
+            }}
             onReject={() => setProposal(null)}
           />
+        </div>
+      )}
+
+      {/* F7: the accepted child investigation returns to its writer. The spawn
+          already happened; without this the id lived only in the callback. */}
+      {spawnedChild && (
+        <div
+          data-testid="write-sub-agent-spawned"
+          className="mt-3 flex items-center justify-between gap-2 rounded-md border border-rule bg-ice-0 px-3 py-2 text-sm dark:bg-charcoal-2"
+        >
+          <span className="text-shadow-1 dark:text-moonlight">
+            Sub-agent research started.
+          </span>
+          <span className="flex items-center gap-3">
+            <Link
+              to={`/inv/${encodeURIComponent(spawnedChild)}`}
+              className="font-mono text-xs text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+            >
+              open research
+            </Link>
+            <button
+              type="button"
+              onClick={() => setSpawnedChild(null)}
+              className="font-mono text-xs text-shadow-1 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+            >
+              dismiss
+            </button>
+          </span>
         </div>
       )}
 
