@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import { fetchToolConnections } from "../../api/toolConnections";
 import { ingestResearchToolCandidate, searchResearchTool, type ResearchToolCandidate, type SearchToolVendor } from "../../api/researchToolSearch";
 import { LemonButton } from "../../components/lemon";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 const SEARCHABLE = new Set<SearchToolVendor>(["youtube", "x"]);
 
 type RowIngestState =
   | { status: "ingesting" | "ingested"; operationId: string }
   | { status: "skipped"; operationId: string; reason: string }
-  | { status: "error"; operationId: string; message: string };
+  | { status: "error"; operationId: string; failure: DescribedFailure };
 
 function skippedReason(reason: string | null): string {
   if (reason === "no_transcript") return "no captions available";
@@ -24,7 +25,7 @@ export default function ConnectedToolSearch() {
   const [results, setResults] = useState<ResearchToolCandidate[]>([]);
   const [busy, setBusy] = useState(false);
   const [inventoryError, setInventoryError] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [pending, setPending] = useState<{ operationId: string; vendor: SearchToolVendor; query: string } | null>(null);
   const [ingestByKey, setIngestByKey] = useState<Record<string, RowIngestState>>({});
   const generation = useRef(0);
@@ -74,7 +75,7 @@ export default function ConnectedToolSearch() {
       if (current === generation.current) { setResults(response.candidates); setPending(null); }
     } catch (cause) {
       if (current === generation.current) {
-        setError(cause instanceof Error ? cause.message : "Can't search this provider.");
+        setError(describeFailure(cause, { what: "search this provider" }));
       }
     } finally {
       if (current === generation.current) setBusy(false);
@@ -97,7 +98,7 @@ export default function ConnectedToolSearch() {
     } catch (cause) {
       if (current !== ingestGeneration.current) return;
       setIngestByKey((rows) => ({ ...rows, [key]: {
-        status: "error", operationId, message: cause instanceof Error ? cause.message : "Can't ingest this candidate.",
+        status: "error", operationId, failure: describeFailure(cause, { what: "ingest this candidate" }),
       } }));
     }
   }
@@ -141,7 +142,7 @@ export default function ConnectedToolSearch() {
       )}
 
       {busy && <p role="status" aria-live="polite" className="mt-4 text-sm text-ink-soft dark:text-starlight">Searching {vendor === "x" ? "X" : "YouTube"} with your connected account…</p>}
-      {error && <p role="alert" className="mt-4 text-sm text-emperor">{error}</p>}
+      {error && <p role="alert" className="mt-4 text-sm text-emperor">{error.title} {error.detail}</p>}
       {!busy && !error && results.length === 0 && query.trim() && available.length > 0 && (
         <p role="status" className="mt-4 text-sm text-ink-soft dark:text-starlight">No candidates yet. Try a more specific query or another connected provider.</p>
       )}
@@ -171,7 +172,7 @@ export default function ConnectedToolSearch() {
                     disabled={state?.status === "ingesting"} onClick={() => void ingest(result)}>
                     {state?.status === "ingesting" ? "Ingesting…" : "Ingest"}
                   </LemonButton>
-                  {state?.status === "error" && <p role="alert" className="mt-2 text-xs text-emperor">{state.message}</p>}
+                  {state?.status === "error" && <p role="alert" className="mt-2 text-xs text-emperor">{state.failure.title} {state.failure.detail}</p>}
                 </div>
               )}
             </li>;

@@ -8,6 +8,7 @@ import {
   type FeedbackThread,
 } from "../../api/feedback";
 import LemonButton from "../../components/lemon/LemonButton";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import { anchorFromRange, type ArtifactFeedbackSelection } from "./artifactFeedbackSelection";
 import "./ArtifactFeedbackReview.css";
 
@@ -46,14 +47,14 @@ type ReviewState =
       resolution:
         | { kind: "ready" }
         | { kind: "submitting"; idempotencyKey: string }
-        | { kind: "error"; idempotencyKey: string; message: string };
+        | { kind: "error"; idempotencyKey: string; failure: DescribedFailure };
     }
   | {
       kind: "error";
       selection: ArtifactFeedbackSelection;
       body: string;
       idempotencyKey: string;
-      message: string;
+      failure: DescribedFailure;
     };
 
 const TERMINAL_WORK_STATES = new Set([
@@ -62,10 +63,6 @@ const TERMINAL_WORK_STATES = new Set([
   "approval_requested",
   "failed",
 ]);
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Feedback could not be saved.";
-}
 
 function feedbackAnchor(selection: ArtifactFeedbackSelection): FeedbackAnchor {
   return {
@@ -180,7 +177,7 @@ export default function ArtifactFeedbackReview({
       });
       setState({ kind: "active", thread, etag: null, resolution: { kind: "ready" } });
     } catch (error) {
-      setState({ ...command, kind: "error", body, message: messageOf(error) });
+      setState({ ...command, kind: "error", body, failure: describeFailure(error, { what: "send your feedback" }) });
     }
   };
 
@@ -206,7 +203,7 @@ export default function ArtifactFeedbackReview({
     } catch (error) {
       setState({
         ...current,
-        resolution: { kind: "error", idempotencyKey, message: messageOf(error) },
+        resolution: { kind: "error", idempotencyKey, failure: describeFailure(error, { what: "resolve the thread" }) },
       });
     }
   };
@@ -249,7 +246,7 @@ export default function ArtifactFeedbackReview({
                 onChange={(event) => updateBody(event.target.value)}
               />
             </label>
-            {state.kind === "error" ? <p role="alert">{state.message}</p> : null}
+            {state.kind === "error" ? <p role="alert">{state.failure.title} {state.failure.detail}</p> : null}
             <LemonButton
               size="sm"
               disabled={state.kind === "submitting" || !state.body.trim()}
@@ -288,7 +285,7 @@ export default function ArtifactFeedbackReview({
               </LemonButton>
             ) : null}
             {state.resolution.kind === "error" ? (
-              <p role="alert">{state.resolution.message}</p>
+              <p role="alert">{state.resolution.failure.title} {state.resolution.failure.detail}</p>
             ) : null}
           </div>
         ) : null}
