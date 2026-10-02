@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 import { ApiError, updateSectionProse } from "../../lib/api";
 import { generateSection, type GenerationResult } from "./writeApi";
+import { describeFailure } from "../../shared/failure";
 import { getSectionProseOwner, subscribeSectionProseOwner } from "./sectionProseOwner";
 export { setSectionProseOwner, suspendSectionProseDispatch } from "./sectionProseOwner";
 
@@ -177,10 +178,25 @@ class SectionProse {
       try {
         await updateSectionProse(this.sectionId, {
           prose_text: text, original_text: original ?? undefined, promote_to_graph: false,
+          // What this edit was made against. `saved` is the last confirmed
+          // server state, so it is exactly the baseline the guard compares to.
+          // A section with no prose yet compares as "" on the server.
+          based_on_prose_text: original ?? "",
         });
       } catch (error) {
         if (!this.current()) return false;
-        const message = error instanceof ApiError ? `HTTP ${error.status}` : error instanceof Error ? error.message : String(error);
+        // A 409 is the revision guard: the section moved on in another tab.
+        // Surface the sentence already written for exactly this case
+        // (shared/failure.ts:57) rather than a bare status - and keep the
+        // draft, because the draft is not the stale thing, the server's copy is.
+        const message =
+          error instanceof ApiError && error.status === 409
+            ? describeFailure(error).detail
+            : error instanceof ApiError
+              ? `HTTP ${error.status}`
+              : error instanceof Error
+                ? error.message
+                : String(error);
         this.publish({ save: { status: "error", message } });
         return false;
       }

@@ -319,20 +319,37 @@ def test_discover_custom_budget_override(isolated_env):
     ])
     # Pre-spent past the env cap, but operator passes a higher
     # per-call cap — the call succeeds.
+    # ABOVE the env cap, or the override is not load-bearing. This was 4.9
+    # against a 5.0 cap -- UNDER it -- so even with assertions the test could
+    # not have shown the override doing anything. DEFAULT_DAILY_BUDGET_USD is
+    # 5.0 (acquisition/search/exa/budget.py:28).
     state = BudgetState(
-        date_stamp="2026-01-01", spent_usd=4.9, call_count=1, cap_usd=5.0
+        date_stamp="2026-01-01", spent_usd=DEFAULT_DAILY_BUDGET_USD + 0.5,
+        call_count=1, cap_usd=DEFAULT_DAILY_BUDGET_USD,
     )
     # Use today's date_stamp so the read picks it up.
     from acquisition.search.exa.budget import _utc_date_stamp
     state.date_stamp = _utc_date_stamp()
     write_state(state)
-    discover(
+
+    # CONTROL FIRST, or this test cannot fail. The original version called
+    # discover() as a bare statement and asserted nothing, so it passed whether
+    # or not the per-call override worked -- while the docstring above promised
+    # exactly that it would catch this. The sibling assertion two tests up is
+    # what made it READ as covered.
+    with pytest.raises(DiscoveryBudgetExceeded):
+        discover(query="q", investigation_id="inv-1", num_results=1, client=cli)
+
+    # TREATMENT: the same call, same state, with the override.
+    result = discover(
         query="q",
         investigation_id="inv-1",
         num_results=1,
         client=cli,
         daily_budget_usd=100.0,
     )
+    assert result, "the override should let a call through the env cap"
+    assert read_state().spent_usd > state.spent_usd, "the call should have spent budget"
 
 
 # ── promote_discovery() ───────────────────────────────────────────
