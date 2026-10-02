@@ -20,7 +20,7 @@
  *     composer inside the card; Open research navigates to /inv/:id.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
@@ -30,6 +30,7 @@ import { useWindows } from "../../workspace/windowsStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
+import { resetReadingTypography, setReadingTypography } from "../../lib/readingTypography";
 
 const {
   getBookMock,
@@ -287,6 +288,40 @@ async function awaitIsland(id: string) {
 // ── Proof 1: both mounts, expand/collapse, never a workspace window ───────
 
 describe("the island widget in BOTH mounts", () => {
+  it("keeps the island at its passage after typography and font loading move glyphs inside an unchanged root box", async () => {
+    route({ anchors: [islandAnchor()], investigations: [summary()] });
+    const fonts = new EventTarget();
+    const previousFonts = Object.getOwnPropertyDescriptor(document, "fonts");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    let markTop = 40;
+    const rects = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.anchorId ? new DOMRect(30, markTop, 80, 20) : new DOMRect(0, 0, 900, 600);
+    });
+    try {
+      resetReadingTypography();
+      const view = await renderReader();
+      await awaitIsland("a-island");
+      const position = () => document.querySelector<HTMLElement>("[data-island-layer] > div")?.style.top;
+      expect(position()).toBe("40px");
+      markTop = 120;
+      act(() => setReadingTypography({ font: "source-sans" }));
+      await waitFor(() => expect(position()).toBe("120px"));
+      markTop = 160;
+      act(() => fonts.dispatchEvent(new Event("loadingdone")));
+      await waitFor(() => expect(position()).toBe("160px"));
+      view.unmount();
+      const reads = rects.mock.calls.length;
+      fonts.dispatchEvent(new Event("loadingdone"));
+      expect(rects.mock.calls.length).toBe(reads);
+    } finally {
+      cleanup();
+      resetReadingTypography();
+      rects.mockRestore();
+      if (previousFonts) Object.defineProperty(document, "fonts", previousFonts);
+      else Reflect.deleteProperty(document, "fonts");
+    }
+  });
+
   it("standalone route: the collapsed glyph renders at the passage; expanding opens the pinned card; Esc and Dismiss collapse; never a workspace window", async () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();

@@ -1,0 +1,185 @@
+
+> antiek-reading@0.1.0 test
+> vitest run src/modes/Reading/Reading.islands.test.tsx src/modes/ResearchWorkstation/MasterMdViewer.test.tsx -t unchanged root box|without a ResizeObserver notification
+
+
+ RUN  v4.1.11 /private/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-typography-geometry-mutant-v39oy81i
+
+ ❯ src/modes/ResearchWorkstation/MasterMdViewer.test.tsx (32 tests | 1 failed | 31 skipped) 35ms
+     × remeasures after typography changes and font loading without a ResizeObserver notification 34ms
+ ❯ src/modes/Reading/Reading.islands.test.tsx (14 tests | 1 failed | 13 skipped) 2627ms
+     × keeps the island at its passage after typography and font loading move glyphs inside an unchanged root box 2626ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modes/Reading/Reading.islands.test.tsx > the island widget in BOTH mounts > keeps the island at its passage after typography and font loading move glyphs inside an unchanged root box
+AssertionError: expected '40px' to be '120px' // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"container-reader relative flex h-full bg-ice-0 dark:bg-charcoal-2"[39m
+        [33mdata-testid[39m=[32m"book-reader-root"[39m
+      [36m>[39m
+        [36m<aside[39m
+          [33maria-label[39m=[32m"Contents"[39m
+          [33mclass[39m=[32m"w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden reader-md:block"[39m
+          [33mdata-open[39m=[32m"false"[39m
+          [33mdata-reader-toc[39m=[32m"true"[39m
+          [33mid[39m=[32m"reader-toc-doc-1"[39m
+        [36m>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"font-serif text-sm text-ink dark:text-bright mb-1 truncate"[39m
+          [36m>[39m
+            [0mA Servable Book[0m
+          [36m</p>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate"[39m
+          [36m>[39m
+            [0mAuth[0m
+          [36m</p>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Table of contents"[39m
+            [33mclass[39m=[32m"space-y-0.5"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"w-full text-left pr-2 py-1 rounded text-sm font-serif truncate transition-colors bg-ink text-white dark:bg-bright dark:text-ink"[39m
+              [33mstyle[39m=[32m"padding-left: 8px;"[39m
+              [33mtitle[39m=[32m"Chapter 1"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mChapter 1[0m
+            [36m</button>[39m
+          [36m</nav>[39m
+        [36m</aside>[39m
+        [36m<main[39m
+          [33mclass[39m=[32m"flex-1 min-w-0 min-h-0 flex flex-col"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"shrink-0 w-full max-w-3xl mx-auto px-6 pt-6"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"pb-2 border-b border-hairline"[39m
+            [36m>[39m
+              [36m<header[39m
+                [33mclass[39m=[32m"flex flex-wrap items-center justify-between gap-3"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-1.5 min-w-0"[39m
+                [36m>[39m
+                  [36m<button[39m
+                    [33maria-controls[39m=[32m"reader-toc-doc-1"[39m
+                    [33maria-expanded[39m=[32m"false"[39m
+                    [33maria-label[39m=[32m"Contents"[39m
+                    [33mclass[39m=[32m"reader-md:hidden shrink-0 rounded px-1.5 py-1 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"[39m
+                    [33mtitle[39m=[32m"Contents (prefix ⇧C)"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [36m<svg[39m
+                      [33maria-hidden[39m=[32m"true"[39m
+                      [33mclass[39m=[32m"lucide lucide-list"[39m
+                      [33mfill[39m=[32m"none"[39m
+                      [33mheight[39m=[32m"16"[39m
+                      [33mstroke[39m=[32m"currentColor"[39m
+                      [33mstroke-linecap[39m=[32m"round"[39m
+                      [33mstroke-linejoin[39m=[32m"round"[39m
+                      [33mstroke-width[39m=[32m"1.75"[39m
+                      [33mviewBox[39m=[32m"0 0 24 24"[39m
+                      [33mwidth[39m=[32m"16"[39m
+                      [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                    [36m>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M3 5h.01"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M3 12h.01"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M3 19h.01"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M8 5h13"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M8 12h13"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M8 19h13"[39m
+                      [36m/>[39m
+                    [36m</svg>[39m
+                  [36m</button>[39m
+                  [36m<h1[39m
+                    [33mclass[39m=[32m"text-2xl font-serif font-semibold text-ink dark:text-bright truncate"[39m
+                  [36m>[39m
+                    [0mA Servable Book[0m
+                  [36m</h1>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"flex items-center gap-2 shrink-0"[39m
+                [36m>[39m
+                  [36m<button[39m
+                    [33maria-expanded[39m=[32m"false"[39m
+                    [33maria-haspopup[39m=[32m"dialog"[39m
+                    [33maria-label[39m=[32m"Reading type"[39m
+                    [33mclass[39m=[32m"shrink-0 min-h-11 min-w-11 rounded border border-rule px-2 py-1 font-serif text-base text-1 hover:bg-inset"[39m
+                    [33mtitle[39m=[32m"Reading type"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [0mAa[0m
+                  [36m</button>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full font-mono text-xs font-semibold border-edge border-sun shadow-z1 dark:shadow-z1-night bg-success text-ice-0 dark:text-ink "[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33maria-hidden[39m=[32m"true"[39m
+                      [33mclass[39m=[32m"w-1.5 h-1.5 rounded-full bg-ink dark:bg-bright shrink-0"[39m
+                    [36m/>[39m
+                    [0mPublic domain[0m
+                  [36m</span>[39m
+                  [36m<button[39m
+                    [33mclass[39m=[32m"flex min-h-11 sm:min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-xs font-serif text-white hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun dark:bg-bright dark:text-ink"[39m
+                    [33mdata-testid[39m=[32m"talk-to-book-bookmark"[39m
+                    [33mtitle[39m=[32m"Thought partner — this book"[39m
+                    [33mtype[39m=[32m"button"[39m
+                  [36m>[39m
+                    [0mThought partner[0m
+                  [36m</button>[39m
+     ...
+
+Expected: "120px"
+Received: "40px"
+
+ ❯ src/modes/Reading/Reading.islands.test.tsx:308:46
+    306|       markTop = 120;
+    307|       act(() => setReadingTypography({ font: "source-sans" }));
+    308|       await waitFor(() => expect(position()).toBe("120px"));
+       |                                              ^
+    309|       markTop = 160;
+    310|       act(() => fonts.dispatchEvent(new Event("loadingdone")));
+ ❯ runWithExpensiveErrorDiagnosticsDisabled ../../../../../../../Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/@testing-library/dom/dist/config.js:47:12
+ ❯ checkCallback ../../../../../../../Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/@testing-library/dom/dist/wait-for.js:124:77
+ ❯ Timeout.checkRealTimersCallback ../../../../../../../Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/node_modules/@testing-library/dom/dist/wait-for.js:118:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/modes/ResearchWorkstation/MasterMdViewer.test.tsx > MasterMdViewer — ResizeObserver recompute trigger (Living-Roadmap SPR-02 round 2) > remeasures after typography changes and font loading without a ResizeObserver notification
+AssertionError: expected 2 to be greater than 2
+ ❯ src/modes/ResearchWorkstation/MasterMdViewer.test.tsx:681:39
+    679|       const initial = reads.mock.calls.length;
+    680|       act(() => setReadingTypography({ font: "source-sans" }));
+    681|       expect(reads.mock.calls.length).toBeGreaterThan(initial);
+       |                                       ^
+    682|       const changed = reads.mock.calls.length;
+    683|       act(() => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 44 skipped (46)
+   Start at  08:21:35
+   Duration  4.86s (transform 2.81s, setup 0ms, import 2.82s, tests 2.66s, environment 2.24s)
+
