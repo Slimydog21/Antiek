@@ -54,9 +54,13 @@ def _imports_router_dispatch(tree: ast.Module) -> bool:
     an unrelated function called ``dispatch`` must not be reported as a role caller.
     """
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and "dispatch" in node.module:
-            if any(alias.name == "dispatch" for alias in node.names):
-                return True
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and "dispatch" in node.module
+            and any(alias.name == "dispatch" for alias in node.names)
+        ):
+            return True
     return False
 
 
