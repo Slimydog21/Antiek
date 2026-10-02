@@ -5,7 +5,7 @@ import type { RefObject } from "react";
 import { opaquePanelShadowClasses } from "../design/elevation";
 import { surfaceSpring } from "../design/motion";
 
-import { escOverlayOpen, ESC_OVERLAY_PROPS } from "./escapeOverlay";
+import { escOverlayOpen, ESC_OVERLAY_PROPS, topModal } from "./escapeOverlay";
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
@@ -91,17 +91,41 @@ export function PanelLayoutPanel({ id }: Props) {
   useEffect(() => {
     if (!panel || panel.mode !== "floating" || !isFocused) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (rootRef.current?.closest("[hidden]")) return;
-      if (escOverlayOpen(document, rootRef.current)) return;
-      const t = e.target as HTMLElement | null;
-      if (t) {
-        const tag = t.tagName.toLowerCase();
-        if (tag === "input" || tag === "textarea" || tag === "select") return;
-        if (t.isContentEditable) return;
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing ||
+          e.ctrlKey || e.metaKey || e.altKey || e.shiftKey ||
+          e.getModifierState("AltGraph")) return;
+      const current = useWorkspace.getState();
+      if (!Object.hasOwn(current.panels, id) ||
+          current.panels[id].mode !== "floating" ||
+          current.focusedPanelId !== id) return;
+      const root = rootRef.current;
+      const target = e.target;
+      const active = document.activeElement;
+      if (!root?.isConnected || !(target instanceof Element) ||
+          !target.isConnected || !root.contains(target) ||
+          !(active instanceof Element) || !active.isConnected ||
+          !root.contains(active) ||
+          (target !== active && !active.contains(target))) return;
+      for (let node: Element | null = target; node && node !== active; node = node.parentElement) {
+        if (node.hasAttribute("tabindex") ||
+            (node instanceof HTMLElement && node.tabIndex >= 0)) return;
+      }
+      const unavailable = '[hidden], [aria-hidden="true"], [inert]';
+      if (root.closest(unavailable) || target.closest(unavailable) ||
+          active.closest(unavailable)) return;
+      if (topModal(document) || escOverlayOpen(document, root)) return;
+      if (target.closest("input, textarea, select") ||
+          (target instanceof HTMLElement && target.isContentEditable) ||
+          (active instanceof HTMLElement && active.isContentEditable)) return;
+      for (const origin of [target, active]) {
+        for (let node: Element | null = origin; node; node = node.parentElement) {
+          const editable = node.getAttribute("contenteditable")?.toLowerCase();
+          if (editable === "false") break;
+          if (editable === "" || editable === "true" || editable === "plaintext-only") return;
+        }
       }
       e.preventDefault();
-      useWorkspace.getState().close(id);
+      current.close(id);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

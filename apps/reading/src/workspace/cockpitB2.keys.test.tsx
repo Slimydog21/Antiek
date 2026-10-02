@@ -570,7 +570,9 @@ describe("A1c Escape ownership", () => {
     await flush();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(ws().panels.notes).toBeDefined();
-    esc();
+    const panelTitle = screen.getByRole("group", { name: "Notes — panel controls" });
+    act(() => panelTitle.focus());
+    esc(panelTitle);
     expect(ws().panels.notes).toBeUndefined();
   });
 
