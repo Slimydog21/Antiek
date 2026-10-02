@@ -53,7 +53,6 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 from substrate.auth import (
-    EmailDeliveryFailure,
     InvalidToken,
     OutboundEmail,
     PasskeyError,
@@ -512,10 +511,21 @@ def register_auth_routes(
         allowlist = _resolve_allowlist()
         attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if email in allowlist:
-            token = mint_magic_link_token(email)
-            link = _build_magic_link(token, next_path, attempt_id)
-            provider = get_email_provider()
+            # THE WHOLE BRANCH IS GUARDED, not just the send. Three calls here run only for
+            # allowlisted addresses, and guarding one of them left the other two able to
+            # raise a 500 that a non-allowlisted address never sees -- the same membership
+            # oracle this block was fixed once already to remove, through a different
+            # exception. `get_email_provider()` raises on a misconfigured provider, which
+            # is the ordinary state of a dev or freshly-provisioned box, and
+            # `mint_magic_link_token` can raise on a token/key problem.
+            #
+            # The rule: everything reachable only by an allowlisted address must fail the
+            # same way an unlisted address succeeds. Whatever breaks, the caller gets the
+            # same 200 every other caller gets, and the operator gets the type in the log.
             try:
+                token = mint_magic_link_token(email)
+                link = _build_magic_link(token, next_path, attempt_id)
+                provider = get_email_provider()
                 provider.send(
                     _format_magic_link_email(
                         email=email,
@@ -523,10 +533,23 @@ def register_auth_routes(
                         device_code=device_code,
                     )
                 )
-            except EmailDeliveryFailure as exc:
-                # Keep delivery failures off the public membership boundary.
-                # Provider exception text can contain credentials or addresses.
-                _LOGGER.warning("Sign-in email delivery failed (%s)", type(exc).__name__)
+            except Exception as exc:  # noqa: BLE001 -- see below, the breadth IS the fix
+                # BROAD ON PURPOSE, and this is the third iteration on this one branch.
+                #
+                # v1 returned 503 for an allowlisted address and 200 otherwise: a membership
+                # oracle in the status code. v2 replaced the 503 with a fall-through and
+                # guarded only `provider.send()`, leaving three calls that run exclusively for
+                # allowlisted addresses able to raise a 500 nobody else sees. v3 catches
+                # `EmailDeliveryFailure` and STILL leaked, because the failure that actually
+                # happens in practice -- a provider that is not configured -- raises a
+                # config error, not a delivery error. My own test caught that.
+                #
+                # The property is not "handle the exception this layer defines". It is
+                # "nothing reachable only by an allowlisted address may change the response".
+                # Catching narrowly cannot express that, because the set of possible failures
+                # is owned by everything downstream. So the breadth is the specification:
+                # log the type, return what everyone else gets.
+                _LOGGER.warning("Sign-in email dispatch failed (%s)", type(exc).__name__)
         # The status and body shape do not disclose allowlist membership.
         # Synchronous delivery can still differ in latency; this is not a
         # constant-time endpoint.
