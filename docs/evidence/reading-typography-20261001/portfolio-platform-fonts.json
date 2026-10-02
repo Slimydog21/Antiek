@@ -1,0 +1,162 @@
+[
+  {
+    "regular": {
+      "fonts": [
+        {
+          "familyName": "Source Serif 4",
+          "postScriptName": "SourceSerif4Roman-Regular",
+          "isCustomFont": true,
+          "glyphCount": 136
+        }
+      ]
+    },
+    "italic": {
+      "fonts": [
+        {
+          "familyName": "Source Serif 4",
+          "postScriptName": "SourceSerif4Italic-Italic",
+          "isCustomFont": true,
+          "glyphCount": 22
+        }
+      ]
+    },
+    "bold": {
+      "fonts": [
+        {
+          "familyName": "Source Serif 4",
+          "postScriptName": "SourceSerif4Roman-Bold",
+          "isCustomFont": true,
+          "glyphCount": 18
+        }
+      ]
+    }
+  },
+  {
+    "regular": {
+      "fonts": [
+        {
+          "familyName": "Source Sans 3 ExtraLight",
+          "postScriptName": "SourceSans3-Roman_Regular",
+          "isCustomFont": true,
+          "glyphCount": 136
+        }
+      ]
+    },
+    "italic": {
+      "fonts": [
+        {
+          "familyName": "Source Sans 3 ExtraLight",
+          "postScriptName": "SourceSans3-Italic_Italic",
+          "isCustomFont": true,
+          "glyphCount": 22
+        }
+      ]
+    },
+    "bold": {
+      "fonts": [
+        {
+          "familyName": "Source Sans 3 ExtraLight",
+          "postScriptName": "SourceSans3-Roman_Bold",
+          "isCustomFont": true,
+          "glyphCount": 18
+        }
+      ]
+    }
+  },
+  {
+    "regular": {
+      "fonts": [
+        {
+          "familyName": "Literata",
+          "postScriptName": "Literata-Regular_opsz140000_wght",
+          "isCustomFont": true,
+          "glyphCount": 135
+        }
+      ]
+    },
+    "italic": {
+      "fonts": [
+        {
+          "familyName": "Literata",
+          "postScriptName": "Literata-Italic_opsz140000_wght",
+          "isCustomFont": true,
+          "glyphCount": 22
+        }
+      ]
+    },
+    "bold": {
+      "fonts": [
+        {
+          "familyName": "Literata",
+          "postScriptName": "Literata-Regular_opsz140000_wght2BC0000",
+          "isCustomFont": true,
+          "glyphCount": 18
+        }
+      ]
+    }
+  },
+  {
+    "regular": {
+      "fonts": [
+        {
+          "familyName": "Atkinson Hyperlegible Next",
+          "postScriptName": "AtkinsonHyperlegibleNext-Regular",
+          "isCustomFont": true,
+          "glyphCount": 136
+        }
+      ]
+    },
+    "italic": {
+      "fonts": [
+        {
+          "familyName": "Atkinson Hyperlegible Next",
+          "postScriptName": "AtkinsonHyperlegibleNext-Italic",
+          "isCustomFont": true,
+          "glyphCount": 22
+        }
+      ]
+    },
+    "bold": {
+      "fonts": [
+        {
+          "familyName": "Atkinson Hyperlegible Next",
+          "postScriptName": "AtkinsonHyperlegibleNext-Regular_Bold",
+          "isCustomFont": true,
+          "glyphCount": 18
+        }
+      ]
+    }
+  },
+  {
+    "regular": {
+      "fonts": [
+        {
+          "familyName": "Georgia",
+          "postScriptName": "Georgia",
+          "isCustomFont": false,
+          "glyphCount": 136
+        }
+      ]
+    },
+    "italic": {
+      "fonts": [
+        {
+          "familyName": "Georgia",
+          "postScriptName": "Georgia-Italic",
+          "isCustomFont": false,
+          "glyphCount": 22
+        }
+      ]
+    },
+    "bold": {
+      "fonts": [
+        {
+          "familyName": "Georgia",
+          "postScriptName": "Georgia-Bold",
+          "isCustomFont": false,
+          "glyphCount": 18
+        }
+      ]
+    }
+  }
+]

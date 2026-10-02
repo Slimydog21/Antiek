@@ -401,6 +401,15 @@ class _DeadBranchGuards:
 
 _EMPTY_DEAD_BRANCH_GUARDS = _DeadBranchGuards()
 
+# Answers about a parsed module cannot change while a run is in progress: trees are
+# parsed once, never mutated, and the fixed-point loops below ask the same questions
+# about the same nodes on every iteration. Profiled over the real tree, that produced
+# 122.9M visits of one inner walker, 325.5M `iter_child_nodes` calls and 1.49B
+# `isinstance` calls, for a gate that took 5.07 minutes on CI. Keyed on the node
+# objects themselves — ast nodes hash by identity — so the cache also keeps each tree
+# alive and no id can be recycled underneath it.
+_PER_RUN_MEMO: dict[tuple[object, ...], object] = {}
+
 
 def _dead_branch_guards(statements: list[ast.stmt]) -> _DeadBranchGuards:
     """Statically-known names that make an ``if`` body non-product code.
@@ -573,8 +582,12 @@ def _function_body_nodes(
     dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
 ) -> list[ast.AST]:
     """Nodes in an already-proven-reachable function body."""
+    memo_key = (_function_body_nodes, node, route_bases, dead_guards)
+    cached = _PER_RUN_MEMO.get(memo_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
     body_guards = _dead_branch_guards(list(node.body))
-    return [
+    result = [
         node,
         *_reachable_statement_nodes(
             list(node.body),
@@ -585,10 +598,16 @@ def _function_body_nodes(
             dead_guards=_merge_dead_branch_guards(dead_guards, body_guards),
         ),
     ]
+    _PER_RUN_MEMO[memo_key] = result
+    return result
 
 
 def _reachable_function_nodes(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     """Module-level functions whose definitions are not under static-dead code."""
+    memo_key = (_reachable_function_nodes, tree)
+    cached = _PER_RUN_MEMO.get(memo_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
     out: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     dead_guards = _dead_branch_guards(tree.body)
 
@@ -609,11 +628,16 @@ def _reachable_function_nodes(tree: ast.Module) -> dict[str, ast.FunctionDef | a
 
     for stmt in tree.body:
         visit_stmt(stmt)
+    _PER_RUN_MEMO[memo_key] = out
     return out
 
 
 def _reachable_class_nodes(tree: ast.Module) -> dict[str, ast.ClassDef]:
     """Module-level classes whose definitions are not under static-dead code."""
+    memo_key = (_reachable_class_nodes, tree)
+    cached = _PER_RUN_MEMO.get(memo_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
     out: dict[str, ast.ClassDef] = {}
     dead_guards = _dead_branch_guards(tree.body)
 
@@ -634,6 +658,7 @@ def _reachable_class_nodes(tree: ast.Module) -> dict[str, ast.ClassDef]:
 
     for stmt in tree.body:
         visit_stmt(stmt)
+    _PER_RUN_MEMO[memo_key] = out
     return out
 
 

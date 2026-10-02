@@ -94,6 +94,11 @@ from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
+# Retry-After hint (seconds) served with every 503 mapped from
+# runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
+# Conservative client backoff hint, not a measured hold time.
+_DB_CONNECTION_RETRY_AFTER_S = "2"
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
@@ -210,6 +215,11 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
+    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
+    # be starved of the DuckDB write lock for hours while /health says "ok";
+    # this is the field that makes that state visible without opening a log.
+    # Empty dict when the worker is disabled or has not run a pass yet.
+    note_taker_replay: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -1634,6 +1644,34 @@ def create_app(
         ),
     )
 
+    # Database admission conflicts share one retryable HTTP response handler.
+    # ReadLockTimeout covers an external file lock; WriteConfigurationTimeout
+    # covers an incompatible same-process handle after the write wait expires.
+    # Separate types preserve existing route-specific WriteLockTimeout handling.
+    from fastapi.responses import JSONResponse
+
+    from runtime.db_lock import ReadLockTimeout, WriteConfigurationTimeout
+
+    @app.exception_handler(WriteConfigurationTimeout)
+    @app.exception_handler(ReadLockTimeout)
+    async def _database_connection_unavailable(
+        _request: Request, _exc: ReadLockTimeout | WriteConfigurationTimeout
+    ) -> JSONResponse:
+        # Static body: no db path or holder detail leaks to clients. The
+        # 2s Retry-After is a conservative client backoff hint, not derived
+        # from measured hold times.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "database read is temporarily unavailable; retry shortly"
+                    if isinstance(_exc, ReadLockTimeout)
+                    else "database connection is temporarily unavailable; retry shortly"
+                )
+            },
+            headers={"Retry-After": _DB_CONNECTION_RETRY_AFTER_S},
+        )
+
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
     # the operator can override via env for non-default ports or staging
     # hosts. WebSocket origin checks honor the same list.
@@ -2413,6 +2451,9 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
+            note_taker_replay=dict(
+                getattr(app.state, "note_taker_recovery", {}) or {}
+            ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -7936,9 +7977,15 @@ def create_app(
 
         stop = threading.Event()
         app.state.note_taker_recovery_stop = stop
+        # The worker's own report, published for /health. Prod 2026-10-01: it
+        # failed against a contended DuckDB write lock for hours — thousands of
+        # stderr lines and no projection progress — while /health answered
+        # "ok", because nothing read what the worker knew.
+        app.state.note_taker_recovery = {}
         app.state.note_taker_recovery_worker = start_replay_recovery(
             db_path=default_db_path(),
             stop_event=stop,
+            state=app.state.note_taker_recovery,
         )
 
     def _stop_note_taker_replay() -> None:
