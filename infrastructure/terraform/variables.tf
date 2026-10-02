@@ -109,10 +109,10 @@ variable "image" {
   type        = string
   default     = "ubuntu-24.04"
   description = <<-EOT
-    Base OS image. Ubuntu 24.04 LTS ships Python 3.12, which satisfies the
-    substrate's `pyproject.toml` `requires-python = ">=3.11"`. The Ansible
-    playbook installs the rest. If you switch to a different image, expect
-    to revisit package names in setup.yml.
+    Base OS image. Ubuntu 24.04 LTS ships Python 3.12, the minimum required by
+    the substrate's PEP 695 syntax and `pyproject.toml`
+    `requires-python = ">=3.12"`. The Ansible playbook installs the rest. If
+    you switch to a different image, expect to revisit package names in setup.yml.
   EOT
 }
 
