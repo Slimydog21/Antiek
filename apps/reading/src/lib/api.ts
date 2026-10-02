@@ -13,6 +13,7 @@ import {
   parseCapacityExhaustedDetail,
   parseCapacityWarning,
   stashCapacityWarning,
+  type CapacityWarning,
 } from "./capacityWarn";
 
 // Mirrors the FastAPI response model. Not in substrate/schemas because
@@ -340,9 +341,37 @@ export interface StartInvestigationResponse {
   capacity_warning?: import("./capacityWarn").CapacityWarning | null;
 }
 
+export type StartCapacityEffect =
+  | { kind: "hard"; exhaustion: CapacityWarning }
+  | { kind: "soft"; investigationId: string; warning: CapacityWarning };
+
+/** Apply a start's capacity effect after its caller admits the result. */
+export function publishStartCapacityEffect(effect: StartCapacityEffect): void {
+  switch (effect.kind) {
+    case "hard":
+      toast.err(formatCapacityExhaustedToast(effect.exhaustion), {
+        ttl: 10000,
+        target: { path: "/settings" },
+      });
+      return;
+    case "soft":
+      stashCapacityWarning(effect.investigationId, effect.warning);
+      toast.warn(formatCapacityWarnToast(effect.warning), {
+        ttl: 8000,
+        target: { path: "/inv/" + encodeURIComponent(effect.investigationId) },
+      });
+      return;
+    default: {
+      const exhaustive: never = effect;
+      return exhaustive;
+    }
+  }
+}
+
 /** POST /investigations — kick off a cold research investigation. */
 export async function startInvestigation(
   req: StartInvestigationRequest,
+  options?: { capacityEffects: "deferred" },
 ): Promise<StartInvestigationResponse> {
   const resp = await apiFetch(`${API_BASE}/investigations`, {
     method: "POST",
@@ -353,10 +382,9 @@ export async function startInvestigation(
     const body = await resp.text();
     const exhausted = parseCapacityExhaustedDetail(resp.status, body);
     if (exhausted) {
-      toast.err(formatCapacityExhaustedToast(exhausted), {
-        ttl: 10000,
-        target: { path: "/settings" },
-      });
+      if (options?.capacityEffects !== "deferred") {
+        publishStartCapacityEffect({ kind: "hard", exhaustion: exhausted });
+      }
       throw new CapacityExhaustedError(exhausted);
     }
     throw new ApiError(
@@ -373,11 +401,9 @@ export async function startInvestigation(
     ...raw,
     capacity_warning,
   };
-  if (capacity_warning) {
-    stashCapacityWarning(out.investigation_id, capacity_warning);
-    toast.warn(formatCapacityWarnToast(capacity_warning), {
-      ttl: 8000,
-      target: { path: "/inv/" + encodeURIComponent(out.investigation_id) },
+  if (capacity_warning && options?.capacityEffects !== "deferred") {
+    publishStartCapacityEffect({
+      kind: "soft", investigationId: out.investigation_id, warning: capacity_warning,
     });
   }
   return out;

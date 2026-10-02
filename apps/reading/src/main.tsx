@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { unstable_HistoryRouter as HistoryRouter } from "react-router-dom";
 import "./index.css";
 import "./design/tokens.css";
 import "./design/motion.css";
@@ -10,6 +10,7 @@ import { PostHogRoot } from "./lib/PostHogRoot";
 import { AppErrorBoundary } from "./lib/AppErrorBoundary";
 import { installChunkLoadRecovery } from "./lib/chunkLoadRecovery";
 import { RouteTitle } from "./lib/RouteTitle";
+import { initializeNavigationHistory } from "./workspace/navigationLifetime";
 
 /**
  * S12 cutover flag.
@@ -35,11 +36,12 @@ if (import.meta.env.DEV) {
 // P-05: a stale tab whose hashed chunks were replaced by a deploy reloads
 // once per failed asset, then falls through to the boundary (never a loop).
 installChunkLoadRecovery();
+const navigationHistory = initializeNavigationHistory(window);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <PostHogRoot>
-      <BrowserRouter>
+      <HistoryRouter history={navigationHistory}>
         {/* F-01: the one root boundary, covering both UI trees. Inside the
             router only so it can reset on pathname change; its fallback
             never depends on the router (see AppErrorBoundary.tsx). */}
@@ -48,7 +50,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <RouteTitle />
           {uiVersion === "v1" ? <AppLegacy /> : <App />}
         </AppErrorBoundary>
-      </BrowserRouter>
+      </HistoryRouter>
     </PostHogRoot>
   </React.StrictMode>,
 );

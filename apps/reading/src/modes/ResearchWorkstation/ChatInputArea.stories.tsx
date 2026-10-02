@@ -1,6 +1,60 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useLayoutEffect, type ReactNode } from "react";
+import { AuthProvider } from "../../lib/auth";
 
 import ChatInputArea from "./ChatInputArea";
+
+const fixture: typeof fetch = async (input, init) => {
+  const path = new URL(String(input), window.location.origin).pathname;
+  if (path === "/auth/me")
+    return Response.json({
+      user_id: "story-fixture",
+      email: null,
+      auth_method: "antiek_session_cookie",
+    });
+  if (path === "/settings/models/user")
+    return Response.json({
+      models: [],
+      count: 0,
+      stale_registered: [],
+      source: "story fixture",
+    });
+  if (path === "/settings/usage")
+    return Response.json({ keys: [], count: 0 });
+  if (path === "/investigations" && init?.method === "POST")
+    return Response.json({
+      investigation_id: "inv-story-fixture",
+      status: "in_progress",
+      start_event_id: "story-start",
+    });
+  return new Response(null, { status: 404 });
+};
+
+let installation: { original: typeof fetch; owners: number } | undefined;
+
+/** Fixture-only auth/API boundary for this one composer story. */
+export function ChatStoryFixture({ children }: { children: ReactNode }) {
+  useLayoutEffect(() => {
+    if (!installation) {
+      installation = { original: globalThis.fetch, owners: 0 };
+      globalThis.fetch = fixture;
+    }
+    const ownedInstallation = installation;
+    ownedInstallation.owners += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      ownedInstallation.owners -= 1;
+      if (ownedInstallation.owners === 0) {
+        if (globalThis.fetch === fixture)
+          globalThis.fetch = ownedInstallation.original;
+        installation = undefined;
+      }
+    };
+  }, []);
+  return <AuthProvider>{children}</AuthProvider>;
+}
 
 /**
  * ChatInputArea — the pinned-bottom composer in the ResearchWorkstation.
@@ -11,7 +65,15 @@ import ChatInputArea from "./ChatInputArea";
 const meta = {
   title: "Loop 1 / ChatInputArea",
   component: ChatInputArea,
+  excludeStories: ["ChatStoryFixture"],
   parameters: { layout: "padded" },
+  decorators: [
+    (Story) => (
+      <ChatStoryFixture>
+        <Story />
+      </ChatStoryFixture>
+    ),
+  ],
   tags: ["autodocs"],
 } satisfies Meta<typeof ChatInputArea>;
 

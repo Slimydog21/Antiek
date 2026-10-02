@@ -25,6 +25,7 @@
 
 import type { WorkspaceSnapshot } from "./panel.types";
 import type { LayoutPreset } from "./panel.types";
+import { replaceNavigationStateWithoutPublication } from "./navigationLifetime";
 
 const LS_PREFIX = "antiek.workspace.";
 
@@ -211,7 +212,7 @@ export function clearWsFromUrl(): void {
     window.location.pathname +
     (search ? "?" + search : "") +
     window.location.hash;
-  window.history.replaceState({}, "", next);
+  replaceNavigationStateWithoutPublication({}, next);
 }
 
 /** Build a shareable URL for the current workspace state. */

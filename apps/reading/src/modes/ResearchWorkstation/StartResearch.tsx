@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useModeNavigate } from "../../workspace/useModeNavigate";
+import { readNavigationEpoch, subscribeNavigationLifetime } from "../../workspace/navigationLifetime";
+import { locationStamp, useTabTrees } from "../../workspace/tabTreeStore";
+import { getHydrationGeneration, useWorkspace } from "../../workspace/WorkspaceStore";
+import type { ReadyModelScope } from "../../lib/modelExecutionScope";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
-import LemonSelect from "../../components/lemon/LemonSelect";
+import OwnerModelUsagePicker from "../../components/ai/OwnerModelUsagePicker";
+import { useOwnerModelController, type OwnerModelController } from "../../hooks/useOwnerModelController";
+import { useAuth } from "../../lib/auth";
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { ErrorState } from "../../components/states";
@@ -15,11 +22,10 @@ import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type {
   ResearchSourcePolicy,
   ResearchTier,
-  UserModelChoice,
 } from "../../lib/api";
-import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
+import QuickAsk from "./QuickAsk";
 import VoiceChaseButton from "./VoiceChaseButton";
 
 /**
@@ -81,42 +87,10 @@ const EXAMPLE_PROMPTS: readonly string[] = [
   "Where do these authors disagree, and which side has the better-grounded claims?",
 ];
 
-const OWNER_LAUNCH_KEY = "antiek.research.pending-owner-launch.session.v1";
-const modelKey = (providerId: string, modelId: string) => `${providerId}\u0000${modelId}`;
-const isExecutable = (model: UserModelRow) =>
-  model.enabled && model.key_present && model.registered && model.route_eligible &&
-  model.pricing_status === "known" && model.hard_ceiling_eligible &&
-  model.execution_status === "executable";
-
-const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string; hint: string }> = [
-  { value: "fast", label: "Fast", hint: "lower-latency established route" },
-  { value: "deep", label: "Deep", hint: "reasoning-heavier established route" },
+const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string }> = [
+  { value: "fast", label: "Fast" },
+  { value: "deep", label: "Deep" },
 ];
-
-interface PendingOwnerLaunch {
-  question: string;
-  modelChoice: UserModelChoice;
-  operationId: string;
-}
-
-function readPendingOwnerLaunch(): PendingOwnerLaunch | null {
-  try {
-    const raw = window.sessionStorage.getItem(OWNER_LAUNCH_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PendingOwnerLaunch>;
-    if (
-      typeof value.question !== "string" ||
-      typeof value.operationId !== "string" ||
-      value.operationId.length === 0 ||
-      value.modelChoice?.authority !== "user_model" ||
-      typeof value.modelChoice.provider_id !== "string" ||
-      typeof value.modelChoice.model_id !== "string"
-    ) return null;
-    return value as PendingOwnerLaunch;
-  } catch {
-    return null;
-  }
-}
 
 const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
   value: ResearchSourcePolicy;
@@ -162,25 +136,132 @@ type AttachState =
   | { kind: "rejected"; why: string }
   | { kind: "failed"; reason: string | null };
 
+type ResearchHome = Readonly<{
+  scope: ReadyModelScope;
+  navigationEpoch: number;
+  contextEpoch: number;
+  hydrationGeneration: number;
+  stamp: string;
+}>;
+const readContextEpoch = () => useTabTrees.getState().contextEpoch;
+
+/** The root research route's observed lifetime, never project authority. */
+export function useResearchHomeBinding() {
+  const location = useLocation();
+  const { modelExecution } = useAuth();
+  const scope = modelExecution.current;
+  useSyncExternalStore(subscribeNavigationLifetime, readNavigationEpoch, readNavigationEpoch);
+  useSyncExternalStore(useTabTrees.subscribe, readContextEpoch, readContextEpoch);
+  useSyncExternalStore(useWorkspace.subscribe, getHydrationGeneration, getHydrationGeneration);
+  const current = useRef<ResearchHome | null>(null);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; current.current = null; };
+  }, []);
+  const [, notify] = useState(0);
+  const readHome = useCallback((): ResearchHome | null => {
+    const home = current.current;
+    return mounted.current && home && modelExecution.readCurrent() === home.scope &&
+      readNavigationEpoch() === home.navigationEpoch && readContextEpoch() === home.contextEpoch &&
+      getHydrationGeneration() === home.hydrationGeneration && locationStamp() === home.stamp
+      ? home : null;
+  }, [modelExecution.readCurrent]);
+  const isHomeCurrent = useCallback((home: object) => readHome() === home, [readHome]);
+  useEffect(() => {
+    if (readHome()) return;
+    // Every shell layout effect, including route hydration, has already run.
+    // Never use this new baseline to update an earlier issued operation.
+    const actualEpoch = readNavigationEpoch();
+    if (scope.kind !== "ready" || modelExecution.readCurrent() !== scope || actualEpoch === null ||
+        location.pathname !== "/" || window.location.pathname !== "/") {
+      current.current = null;
+      return;
+    }
+    // Hydration may have removed ?ws through the observed raw replacement,
+    // which intentionally does not publish a new Router query/key.
+    const home: ResearchHome = Object.freeze({
+      scope, navigationEpoch: actualEpoch, contextEpoch: readContextEpoch(),
+      hydrationGeneration: getHydrationGeneration(), stamp: locationStamp(),
+    });
+    current.current = home;
+    notify((value) => value + 1);
+  });
+  return { readHome, isHomeCurrent };
+}
+
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
   const navigate = useModeNavigate();
-  const start = useStartInvestigation();
-  const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
-  const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
-  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
-  // Recorded on the investigation server-side so it's queryable after.
+  const { modelExecution } = useAuth();
+  const controller = useOwnerModelController({
+    operationPrefix: "research", policy: "strict-owner", allowHouse: false,
+  });
+  const homeBinding = useResearchHomeBinding();
+  const renderedHome = homeBinding.readHome();
+  const [modeBinding, setModeBinding] = useState<{ mode: "quick" | "deep" }>(() => ({ mode: "quick" }));
+  const askMode = modeBinding.mode;
+  const [quickAskSending, setQuickAskSending] = useState(false);
+  const quickAskSendingRef = useRef(false);
+  const askModeRef = useRef(modeBinding);
+  const renderedScope = modelExecution.current;
+  const draftScopeRef = useRef(renderedScope);
+  const draftHomeRef = useRef(renderedHome);
+  const onQuickPaidChange = useCallback((pending: boolean) => {
+    quickAskSendingRef.current = pending;
+    setQuickAskSending(pending);
+  }, []);
+  const changeMode = (mode: "quick" | "deep") => {
+    if (mode === askModeRef.current.mode) return;
+    if (!renderedHome || !homeBinding.isHomeCurrent(renderedHome) ||
+        renderedScope.kind !== "ready" || modelExecution.readCurrent() !== renderedScope ||
+        askModeRef.current !== modeBinding || quickAskSendingRef.current || start.isIssued()) return;
+    const next = { mode };
+    askModeRef.current = next;
+    setModeBinding(next);
+  };
   const [tier, setTier] = useState<ResearchTier>("deep");
+  const [questionState, setQuestion] = useState("");
+  const question = draftScopeRef.current === renderedScope && draftHomeRef.current === renderedHome ? questionState : "";
   const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
     DEFAULT_SOURCE_POLICY,
   );
-  const [models, setModels] = useState<UserModelRow[]>([]);
-  const [modelsState, setModelsState] = useState<"loading" | "ready" | "error">("loading");
-  const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(
-    restoredLaunch?.modelChoice ?? null,
-  );
-  const [operationId, setOperationId] = useState(
-    restoredLaunch?.operationId ?? `research-${crypto.randomUUID()}`,
-  );
+  const [draftRevision, setDraftRevision] = useState<object>(() => ({}));
+  const draftRevisionRef = useRef(draftRevision);
+  const readDraftRevision = useCallback(() => draftRevisionRef.current, []);
+  const readAdmission = useCallback((): object | null => {
+    if (!renderedHome || !homeBinding.isHomeCurrent(renderedHome) ||
+        renderedScope.kind !== "ready" || modelExecution.readCurrent() !== renderedScope ||
+        askModeRef.current !== modeBinding || modeBinding.mode !== "deep" || quickAskSendingRef.current) return null;
+    return modeBinding;
+  }, [renderedHome, homeBinding.isHomeCurrent, renderedScope, modelExecution, modeBinding]);
+  const isAdmitted = useCallback(() => readAdmission() !== null, [readAdmission]);
+  const start = useStartInvestigation({
+    controller, readHome: homeBinding.readHome, isHomeCurrent: homeBinding.isHomeCurrent,
+    readAdmission, isAdmitted, readDraftRevision,
+  });
+  const isDraftCurrent = useCallback(() =>
+    draftRevisionRef.current === draftRevision &&
+    draftScopeRef.current === renderedScope && draftHomeRef.current === renderedHome &&
+    readAdmission() === modeBinding && !start.isIssued(),
+  [draftRevision, renderedScope, renderedHome, modeBinding, readAdmission, start.isIssued]);
+  const advanceDraft = useCallback(() => {
+    const next = {};
+    draftRevisionRef.current = next;
+    setDraftRevision(next);
+  }, []);
+  const isPickerCurrent = useCallback(() => isAdmitted() && !start.isIssued(), [isAdmitted, start.isIssued]);
+  const inventoryReady = controller.inventory.kind === "ready" && controller.isInventoryCurrent(controller.inventory);
+  const modelSelection = controller.selection;
+  const selectedModel = inventoryReady && controller.inventory.kind === "ready" && modelSelection.kind === "saved"
+    ? controller.inventory.rows.find((row) => row.id === modelSelection.recordId) : null;
+  const pickerController = useMemo<OwnerModelController>(() => ({
+    ...controller,
+    select(choice) {
+      if (!isDraftCurrent()) return;
+      advanceDraft();
+      controller.select(choice);
+    },
+  }), [controller, isDraftCurrent, advanceDraft]);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -189,7 +270,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // SPR-05 M1 — attach state (a file / URL / passage absorbed into the corpus
   // before the run). Whether the prompt was auto-derived from an attachment is
   // tracked so we can label it honestly in the UI.
-  const [attach, setAttach] = useState<AttachState>({ kind: "idle" });
+  const [attachState, setAttach] = useState<AttachState>({ kind: "idle" });
+  const attach: AttachState = draftScopeRef.current === renderedScope && draftHomeRef.current === renderedHome ? attachState : { kind: "idle" };
   const [promptDerived, setPromptDerived] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -209,66 +291,39 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     error,
     busy,
     submit,
-    reset,
   } = start;
 
-  const refreshModels = useCallback(async () => {
-    setModelsState("loading");
-    try {
-      const inventory = await fetchUserModels();
-      setModels(inventory.models.filter(isExecutable));
-      setModelsState("ready");
-    } catch {
-      setModels([]);
-      setModelsState("error");
-    }
-  }, []);
-
-  useEffect(() => { void refreshModels(); }, [refreshModels]);
-
-  const selectedModel = modelChoice
-    ? models.find((model) => model.id === modelChoice.provider_id && model.model_id === modelChoice.model_id)
-    : null;
-
-  useEffect(() => {
-    if (modelsState === "ready" && modelChoice && !selectedModel) setModelChoice(null);
-  }, [modelsState, modelChoice, selectedModel]);
-
   const onSubmit = useCallback(async () => {
-    const pending = modelChoice && selectedModel
-      ? { question, modelChoice, operationId } satisfies PendingOwnerLaunch
-      : null;
-    if (pending) window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
-    const id = await submit(modelChoice && selectedModel
-      ? { question, modelChoice, operationId, sourcePolicy }
-      : { question, researchTier: tier, sourcePolicy });
-    if (id) {
-      window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
+    if (!isDraftCurrent()) return;
+    const id = await submit({ question, sourcePolicy: [...sourcePolicy], researchTier: tier, revision: draftRevision });
+    if (id && start.isDeliveryCurrent(id) && draftRevisionRef.current === draftRevision) {
       setQuestion("");
     }
-  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy]);
+  }, [submit, question, sourcePolicy, tier, draftRevision, isDraftCurrent, start.isDeliveryCurrent]);
 
   const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
-    setSourcePolicy((current) => {
-      const next = current.includes(value)
-        ? current.filter((item) => item !== value)
-        : [...current, value];
-      return next.length > 0 ? next : current;
-    });
-  }, []);
+    if (!isDraftCurrent()) return;
+    const next = sourcePolicy.includes(value)
+      ? sourcePolicy.filter((item) => item !== value)
+      : [...sourcePolicy, value];
+    if (!next.length) return;
+    advanceDraft();
+    setSourcePolicy(next);
+  }, [sourcePolicy, isDraftCurrent, advanceDraft]);
 
-  const selectModel = useCallback((value: string) => {
-    const model = models.find((row) => modelKey(row.id, row.model_id) === value);
-    if (!model) return;
-    setModelChoice({ authority: "user_model", provider_id: model.id, model_id: model.model_id });
-    setOperationId(`research-${crypto.randomUUID()}`);
-  }, [models]);
+  const changeTier = (value: ResearchTier) => {
+    if (!isDraftCurrent()) return;
+    advanceDraft();
+    setTier(value);
+  };
 
   const fillExample = useCallback((prompt: string) => {
+    if (!isDraftCurrent()) return;
+    advanceDraft();
     setQuestion(prompt);
     setPromptDerived(false);
     taRef.current?.focus();
-  }, []);
+  }, [isDraftCurrent, advanceDraft]);
 
   // SPR-05 M1 — voice fills the prompt. VoiceChaseButton owns the record +
   // transcribe + honest-failure path; here a successful transcript just
@@ -278,11 +333,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // correct-before-commit guard VoiceChaseButton documents.
   const onVoiceTranscript = useCallback((transcript: string) => {
     const t = transcript.trim();
-    if (!t) return; // empty/silent transcript → leave the prompt untouched
+    if (!t || !isDraftCurrent()) return;
+    advanceDraft();
     setQuestion(t);
     setPromptDerived(false);
     taRef.current?.focus();
-  }, []);
+  }, [isDraftCurrent, advanceDraft]);
 
   // SPR-05 M1 — attach a URL / passage / text file. Reuses PasteIngest's
   // ingest calls (ingestSource for a URL, ingestVoiceNote for text) with NO
@@ -294,48 +350,54 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // decision) and mark it derived; the operator sees + can edit it before Ask.
   const onAbsorbed = useCallback(
     (title: string) => {
+      if (!isDraftCurrent()) return;
       setAttach({ kind: "absorbed", title });
-      setQuestion((q) => {
-        if (q.trim().length > 0) return q; // keep an explicit prompt
-        setPromptDerived(true);
-        return derivePromptFor(title);
-      });
+      if (question.trim()) return;
+      advanceDraft();
+      setPromptDerived(true);
+      setQuestion(derivePromptFor(title));
     },
-    [],
+    [question, isDraftCurrent, advanceDraft],
   );
 
   const absorbUrl = useCallback(
     async (url: string) => {
+      if (!isDraftCurrent()) return;
       setAttach({ kind: "absorbing" });
       try {
         const r = await ingestSource({ url }); // no investigation_id on the home
+        if (!isDraftCurrent()) return;
         if (r.status === "error") {
           setAttach({ kind: "failed", reason: r.error_message });
           return;
         }
         onAbsorbed(r.title ?? url);
       } catch (e) {
+        if (!isDraftCurrent()) return;
         setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
       }
     },
-    [onAbsorbed],
+    [onAbsorbed, isDraftCurrent],
   );
 
   const absorbText = useCallback(
     async (text: string, title: string) => {
+      if (!isDraftCurrent()) return;
       setAttach({ kind: "absorbing" });
       try {
         const r = await ingestVoiceNote({ transcript: text, title });
         onAbsorbed(r.title ?? title);
       } catch (e) {
+        if (!isDraftCurrent()) return;
         setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
       }
     },
-    [onAbsorbed],
+    [onAbsorbed, isDraftCurrent],
   );
 
   const handleFile = useCallback(
     async (file: File) => {
+      if (!isDraftCurrent()) return;
       // A binary blob the browser can't read as text has no shipped multipart
       // endpoint here — reject it plainly (rigor #1), don't pretend to absorb.
       if (!TEXT_EXTENSIONS.test(file.name) && !file.type.startsWith("text/")) {
@@ -348,47 +410,60 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
         return;
       }
       const text = await file.text();
+      if (!isDraftCurrent()) return;
       await absorbText(text, file.name);
     },
-    [absorbText],
+    [absorbText, isDraftCurrent],
   );
 
   // Enter cascade mode with the typed problem space. Same >= 3-char floor as
   // Ask so an empty composer can't propose an empty plan.
   const onBreakDown = useCallback(() => {
+    if (!isDraftCurrent()) return;
     const q = question.trim();
     if (q.length < 3) return;
     setCascadeProblem(q);
-  }, [question]);
+  }, [question, isDraftCurrent]);
 
   // Back out of cascade (the proposal couldn't split it, or the user chose
   // one question instead): keep the typed problem so Ask is one click away.
   const onCascadeFallBack = useCallback(() => {
+    if (!isDraftCurrent()) return;
     setCascadeProblem(null);
     taRef.current?.focus();
-  }, []);
+  }, [isDraftCurrent]);
 
-  // Try again after a failed run: tear the started id / stream down (which
-  // clears the failure) and put the operator back on the composer. The
-  // question was deliberately not cleared on failure, so it's still there to
-  // re-submit; we just refocus it.
-  const onTryAgain = useCallback(() => {
-    reset();
+  const onStartSeparate = useCallback(() => {
+    if (!isDraftCurrent() || !start.startSeparate()) return;
+    advanceDraft();
     taRef.current?.focus();
-  }, [reset]);
+  }, [isDraftCurrent, start.startSeparate, advanceDraft]);
 
   // On failure, restore the question the operator typed so the run is
   // recoverable. (onSubmit clears it only on a successful POST; but the run
   // can fail *after* the POST returned an id, so we re-seed it here.)
   const lastQuestionRef = useRef("");
+  useLayoutEffect(() => {
+    if (draftScopeRef.current === renderedScope && draftHomeRef.current === renderedHome) return;
+    draftScopeRef.current = renderedScope;
+    draftHomeRef.current = renderedHome;
+    advanceDraft();
+    setQuestion("");
+    lastQuestionRef.current = "";
+    setAttach({ kind: "idle" });
+    setPromptDerived(false);
+    setSourcePolicy(DEFAULT_SOURCE_POLICY);
+    setTier("deep");
+    setCascadeProblem(null);
+  }, [renderedScope, renderedHome, advanceDraft]);
   useEffect(() => {
     if (question) lastQuestionRef.current = question;
   }, [question]);
   useEffect(() => {
-    if (failed && !question && lastQuestionRef.current) {
+    if (failed && start.isDeliveryCurrent(startedId ?? undefined) && !question && lastQuestionRef.current) {
       setQuestion(lastQuestionRef.current);
     }
-  }, [failed, question]);
+  }, [failed, question, startedId, start.isDeliveryCurrent]);
 
   // Fire the research-starts beat exactly once, at the transition into the
   // started-and-not-failed state (an id is back, the run is live). It's
@@ -398,12 +473,24 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const startedAndLive = Boolean(startedId) && !failed;
   const celebratedRef = useRef(false);
   useEffect(() => {
-    if (startedAndLive && !celebratedRef.current) {
+    if (startedAndLive && startedId && start.isDeliveryCurrent(startedId) && !celebratedRef.current) {
       celebratedRef.current = true;
-      celebrate();
+      try { celebrate(); }
+      catch { start.reportDeliveryFailure(startedId, "Research started, but its start animation could not be displayed."); }
     }
     if (!startedId) celebratedRef.current = false; // re-arm after reset
-  }, [startedAndLive, startedId, celebrate]);
+  }, [startedAndLive, startedId, celebrate, start.isDeliveryCurrent, start.reportDeliveryFailure]);
+
+  const navigationProgress = useRef({ startedId, failed, error });
+  useLayoutEffect(() => {
+    navigationProgress.current = { startedId, failed, error };
+  }, [startedId, failed, error]);
+  const openReceived = useCallback((id: string) => {
+    const current = navigationProgress.current;
+    if (current.startedId !== id || current.failed || !start.isDeliveryCurrent(id)) return;
+    try { navigate(`/inv/${id}`); }
+    catch { start.reportDeliveryFailure(id, "Research started, but this view could not open it. You can open the received investigation again."); }
+  }, [navigate, start.isDeliveryCurrent, start.reportDeliveryFailure]);
 
   // Once we have an id, route to the full investigation surface as soon as
   // real activity begins — or after a grace window if the socket is slow.
@@ -415,27 +502,28 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // the event-driven navigate and the grace-timer navigate so the operator
   // stays on the start surface and sees the honest error below.
   useEffect(() => {
-    if (!startedId) return;
-    if (failed) return;
+    if (!startedId || !start.isDeliveryCurrent(startedId)) return;
+    if (failed || error) return;
     if (events.length > 0) {
-      navigate(`/inv/${startedId}`);
+      openReceived(startedId);
       return;
     }
     const t = window.setTimeout(() => {
-      // Re-check at fire time: a failure event may have arrived during the
-      // grace window. The effect re-runs on `failed` so this guard is belt-
-      // and-suspenders, but it keeps the timer path honest regardless.
-      if (!failed) navigate(`/inv/${startedId}`);
+      // This is the latest committed stream observation, not an unexposed
+      // synchronous socket state. Action/home/mode admission is read live.
+      const current = navigationProgress.current;
+      if (current.startedId === startedId && !current.failed && !current.error && start.isDeliveryCurrent(startedId)) {
+        openReceived(startedId);
+      }
     }, NAVIGATE_GRACE_MS);
     return () => window.clearTimeout(t);
-  }, [startedId, failed, events.length, navigate]);
+  }, [startedId, failed, error, events.length, openReceived, start.isDeliveryCurrent]);
 
   // ── Starting state: id returned, stream attached, run still progressing.
   //    A terminal failure falls through to the composer surface below, where
   //    we show an honest error and a Try-again action (never the dead
   //    /inv/:id route). ──
-  if (startedId && !failed) {
-    return (
+  const startingPanel = startedId && !failed ? (
       <div className="h-full flex items-center justify-center px-6">
         <div
           className="max-w-md w-full text-center"
@@ -479,16 +567,16 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               : `${events.length} event${events.length === 1 ? "" : "s"} so far`}
             {" · "}${liveCost.toFixed(4)}
           </p>
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {error && <LemonButton onClick={() => openReceived(startedId)}>Open received investigation</LemonButton>}
         </div>
       </div>
-    );
-  }
+    ) : null;
 
   // ── Cascade mode: the AI proposes sub-questions, the user trims, then
   //    launches N parallel researches. Stays on this surface (no navigation
   //    away) until launch hands a session to the monitor. ──
-  if (cascadeProblem) {
-    return (
+  const cascadePanel = cascadeProblem ? (
       <div className="h-full flex items-center justify-center px-6">
         <div className="w-full max-w-xl">
           <h1 className="text-2xl font-serif text-ink dark:text-bright mb-1 text-center">
@@ -504,8 +592,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           />
         </div>
       </div>
-    );
-  }
+    ) : null;
+  const idle = !startingPanel && !cascadePanel;
 
   // ── Idle state: the start-a-research composer + (M3) the research LOG. ──
   //
@@ -516,7 +604,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // mounted standalone (embedded=false, e.g. a unit test or a route that wants
   // only the composer) it keeps the centred layout and shows no log.
   return (
+    <>
+    {startingPanel}
+    {cascadePanel}
     <div
+      hidden={!idle}
       className={
         embedded
           ? "h-full overflow-y-auto px-6 py-8"
@@ -542,14 +634,33 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           " rounded-hog-lg px-6 py-7"
         }
       >
+        {idle && <>
         <h1 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
           What do you want to research?
         </h1>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-5" role="group" aria-label="Research mode">
+          <button type="button" aria-pressed={askMode === "quick"} disabled={quickAskSending || start.isIssued()}
+            onClick={() => changeMode("quick")}
+            className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "quick" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+            Quick Ask · one model request
+          </button>
+          <button type="button" aria-pressed={askMode === "deep"} disabled={quickAskSending || start.isIssued()}
+            onClick={() => changeMode("deep")}
+            className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "deep" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+            Deep research · multiple model calls
+          </button>
+        </div>
+        </>}
+        <div hidden={!idle || askMode !== "quick"}>
+          <QuickAsk onPaidRequestInFlight={onQuickPaidChange} />
+        </div>
+        {idle && askMode === "deep" && <>
         <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif text-center mb-6">
           Ask a question. The substrate runs a recursive note-taking chain
           across your corpus, distills insights and open questions, and
           renders a cited thesis. Highlight anything in the result to chase
           it further.
+          It can make multiple model requests before the result is ready.
         </p>
 
         <div className="flex flex-col gap-3">
@@ -557,6 +668,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             ref={taRef}
             value={question}
             onChange={(e) => {
+              if (!isDraftCurrent()) return;
+              advanceDraft();
               setQuestion(e.target.value);
               // The operator edited the prompt by hand → it is no longer the
               // auto-derived one, so drop the "derived" label (honesty).
@@ -648,7 +761,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <AIActionFailure
               title="Couldn’t absorb that"
               reason={attach.reason}
-              onRetry={() => setAttach({ kind: "idle" })}
+              onRetry={() => { if (isDraftCurrent()) setAttach({ kind: "idle" }); }}
               retryLabel="Dismiss"
             />
           )}
@@ -656,13 +769,14 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           {failed && (
             // The presentational failure shell is now the shared
             // <AIActionFailure> (U-04) — same sentence across all four doors.
-            // Start-flow specifics (re-seeding the question, refocusing, never
-            // routing to the dead /inv/:id) stay in onTryAgain / the navigate
-            // guard above; this component only renders + offers the retry.
+            // A failed run remains a received paid operation; this diagnostic
+            // does not grant another POST.
             <AIActionFailure
               title="The research didn’t complete"
               reason={failureReason}
-              onRetry={onTryAgain}
+              code="unknown"
+              retryable={false}
+              onRetry={start.reset}
             />
           )}
 
@@ -675,41 +789,38 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               <ErrorState
                 variant="inline"
                 title="Couldn’t start the research"
-                body="Your question is still here, so you can send it again."
+                body="The request may have been accepted or charged. No automatic retry was made."
                 detail={error}
-                onRetry={() => void onSubmit()}
               />
             ) : (
-              <p className="text-sm text-danger">{error}</p>
+              <p role="alert" className="text-sm text-danger">{error}</p>
             ))}
+
+          {(start.requiresNewIntent || start.showUncertainty || failed) && (
+            <div role="status" className="text-sm font-serif text-ink dark:text-bright">
+              <p>{start.showUncertainty
+                ? "A previous research request may have been accepted or charged. Starting separately does not cancel or replay it."
+                : "Start a separate paid research before sending another question."}</p>
+              <LemonButton onClick={onStartSeparate} disabled={busy || start.continuityUnavailable}>
+                Start a separate paid research
+              </LemonButton>
+            </div>
+          )}
+          {start.continuityUnavailable && <p role="alert" className="text-sm text-danger">Research request continuity could not be checked. No new request was sent.</p>}
 
           <div className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1/80 dark:bg-charcoal-1/40 p-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <label className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
                 Model for Ask
               </label>
-              <LemonSelect
-                value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : "established"}
-                onChange={(value) => value === "established" ? setModelChoice(null) : selectModel(value)}
-                options={[{
-                  value: "established",
-                  label: `Established ${tier} route`,
-                }, ...models.map((model) => ({
-                  value: modelKey(model.id, model.model_id),
-                  label: `${model.display_name} · ${model.model_id}`,
-                }))]}
-                placeholder={
-                  modelsState === "loading"
-                    ? "Checking executable models…"
-                    : models.length === 0
-                      ? "No executable model available"
-                      : "Choose an executable model"
-                }
-                aria-label="Model for Ask investigation"
-                fullWidth
+              <OwnerModelUsagePicker
+                controller={pickerController}
+                allowHouse={false}
+                triggerAriaLabel="Model for Ask investigation"
+                isResourceCurrent={isPickerCurrent}
               />
             </div>
-            {modelsState === "error" ? (
+            {controller.inventory.kind === "failed" ? (
               <p className="text-sm text-danger" role="alert">
                 Can’t load executable models. Check Settings, then retry inventory.
               </p>
@@ -724,22 +835,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               </div>
             ) : (
               <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
-                Only routes the server reports as eligible and executable appear here.
+                Choose an executable saved model before starting deep research.
+                If none appears, <Link to="/settings" className="underline text-ink dark:text-bright">connect one in Settings</Link> and retry inventory.
               </p>
             )}
-            {!modelChoice && (
-              <div className="flex items-center gap-2" role="radiogroup" aria-label="Established research depth">
-                {RESEARCH_TIER_OPTIONS.map((option) => (
-                  <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
-                    title={option.hint} onClick={() => setTier(option.value)}
-                    className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {modelsState !== "loading" && (
-              <button type="button" onClick={() => void refreshModels()} className="text-xs font-mono underline text-ink dark:text-bright">
+            <div className="flex items-center gap-2" role="radiogroup" aria-label="Research depth">
+              {RESEARCH_TIER_OPTIONS.map((option) => (
+                <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
+                  onClick={() => changeTier(option.value)} disabled={busy}
+                  className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {controller.inventory.kind !== "loading" && (
+              <button type="button" onClick={() => { if (isDraftCurrent()) void controller.refresh(); }} className="text-xs font-mono underline text-ink dark:text-bright">
                 Retry inventory
               </button>
             )}
@@ -801,7 +911,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="secondary"
                 size="lg"
                 onClick={onBreakDown}
-                disabled={busy || question.trim().length < 3}
+                disabled
+                aria-describedby="sub-question-unavailable"
               >
                 Break into sub-questions
               </LemonButton>
@@ -809,12 +920,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3 || Boolean(modelChoice && !selectedModel)}
+                disabled={busy || !isDraftCurrent() || !inventoryReady || start.submitDisabled || question.trim().length < 3 || controller.selection.kind !== "saved"}
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>
             </div>
           </div>
+          <p id="sub-question-unavailable" className="text-xs font-serif text-ink-mute dark:text-moonlight">
+            Sub-question planning is unavailable until its proposal and launch can use your saved model.
+          </p>
         </div>
 
         <div className="mt-7">
@@ -841,6 +955,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             ))}
           </div>
         </div>
+        </>}
 
         {/* SPR-05 M3 — the research LOG, folded into the home. Only in the
             consolidated home (`embedded`), so a fresh `/` is the composer AND
@@ -850,12 +965,13 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             is presentational, the row-nav contract is unchanged. We pass
             `embedded` so MyResearch drops its now-redundant launch bar (the
             composer above IS the entry) and reads as a log section. */}
-        {embedded && (
+        {idle && embedded && (
           <div className="mt-12 border-t border-rule dark:border-charcoal-1 pt-2">
             <MyResearch embedded />
           </div>
         )}
       </GlassSurface>
     </div>
+    </>
   );
 }
