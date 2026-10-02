@@ -38,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import secrets
@@ -70,6 +71,8 @@ from substrate.auth import (
 )
 
 from .operator_allowlist import operator_allowlist_from_env
+
+logger = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -730,9 +733,21 @@ def register_auth_routes(
                 credential=payload.credential,
             )
         except PasskeyError as exc:
+            # ONE message for every PasskeyError. `substrate/auth/passkeys.py:298-313`
+            # raises "This passkey is not registered with Antiek." for a missing
+            # candidate and "Antiek could not verify that passkey." for a stored one with
+            # invalid proof, and this route published both verbatim -- so it answered
+            # "is this credential id registered?" for anyone who supplied one. Measured:
+            # a synthetic stored credential and an unregistered id returned different text,
+            # both 400. That is a membership oracle, not a bypass, and it costs nothing to
+            # close: the cause is logged where it is useful and not published where it is not.
+            logger.warning("passkey verification failed: %s", exc)
             raise HTTPException(
                 status_code=400,
-                detail={"code": "passkey_verification_failed", "message": str(exc)},
+                detail={
+                    "code": "passkey_verification_failed",
+                    "message": "Antiek could not verify that passkey. Try again.",
+                },
             ) from exc
         allow = sorted(_resolve_allowlist())
         if not allow:
