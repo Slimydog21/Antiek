@@ -60,7 +60,7 @@ describe("section prose ownership and retention", () => {
     expect(a.getSnapshot().save.status).toBe("paused");
     setSectionProseOwner("owner-a");
     await vi.advanceTimersByTimeAsync(0);
-    expect(save).toHaveBeenCalledWith("section", { prose_text: "Retain this", original_text: "Server prose", promote_to_graph: false });
+    expect(save).toHaveBeenCalledWith("section", { prose_text: "Retain this", original_text: "Server prose", promote_to_graph: false, based_on_prose_text: "Server prose" });
   });
 
   it("suspension stops an in-flight save's follow-up until identity is confirmed", async () => {
@@ -78,7 +78,7 @@ describe("section prose ownership and retention", () => {
     expect(a.getSnapshot().draft).toBe("Last");
     setSectionProseOwner("owner-a");
     await vi.advanceTimersByTimeAsync(0);
-    expect(save).toHaveBeenLastCalledWith("section", { prose_text: "Last", original_text: "First", promote_to_graph: false });
+    expect(save).toHaveBeenLastCalledWith("section", { prose_text: "Last", original_text: "First", promote_to_graph: false, based_on_prose_text: "First" });
   });
 
   it("does not launch generation under another owner after waiting for a save", async () => {
@@ -130,5 +130,42 @@ describe("section prose ownership and retention", () => {
     expect(a.getSnapshot().draft).toBe("");
     expect(a.getSnapshot().save.status).toBe("error");
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("CR-F1's surviving half: the client half of the revision guard", () => {
+  // The server refuses a stale write with 409 prose_revision_conflict
+  // (interfaces/research/api/app.py). This is the client that must ask for it
+  // and must not throw the user's work away when it happens.
+  it("sends the confirmed baseline so the server can refuse a stale tab", async () => {
+    const a = open("section", "Server prose");
+    a.edit("Edited elsewhere", null);
+    await a.flush();
+    expect(save).toHaveBeenCalledWith(
+      "section",
+      expect.objectContaining({ based_on_prose_text: "Server prose" }),
+    );
+  });
+
+  it("a 409 keeps the user's draft and says the section changed elsewhere", async () => {
+    const { ApiError } = await import("../../lib/api");
+    save.mockRejectedValueOnce(new ApiError("conflict", 409, "prose_revision_conflict"));
+    const a = open("section", "Server prose");
+    a.edit("My kept draft", null);
+    await a.flush();
+
+    const snap = a.getSnapshot();
+    // The draft is NOT the stale thing: throwing it away would be the loss the
+    // guard exists to prevent.
+    expect(snap.draft).toBe("My kept draft");
+    expect(snap.save.status).toBe("error");
+    // `SaveState` is a discriminated union, so narrow before reading `message`.
+    // The build's `tsc -b` covers test files; `tsc --noEmit -p tsconfig.json`
+    // does NOT, which is how this got past an earlier "tsc clean" claim.
+    if (snap.save.status !== "error") throw new Error("expected an error save state");
+    // failure.ts:57 - the sentence already written for this case, and until now
+    // unreachable because nothing could produce a 409.
+    expect(snap.save.message).toContain("changed somewhere else");
   });
 });

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading
+
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  15:13:43
+   Duration  1.26s (transform 179ms, setup 0ms, import 303ms, tests 190ms, environment 660ms)
+

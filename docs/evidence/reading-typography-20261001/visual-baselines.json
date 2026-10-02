@@ -1,0 +1,157 @@
+{
+  "source_head": "d908ef7ac95f33af48a4670416b0997a44bd080b",
+  "workflow_run": 36840176217,
+  "artifact_id": 11151645800,
+  "artifact_sha256": "7a103f4ee7c561cd50a6b0164e95fecf9b3544153cf42e3839eb6c4bd238e909",
+  "decoded_current": 828,
+  "changed_baselines": 12,
+  "new_baselines": 12,
+  "threshold_unchanged": 0.004,
+  "author_visual_review": "All12old/new pairs and all12newshots inspected at1280/1024/768. Master manuscript Aa/header/body/width reflow and book font/body changes are intentional. PDF perf target already names Source Serif4 in the existing font-serif stack (tailwind.config.js:207); self-hosting now resolves that face in Ubuntu, changing synthetic text metrics without changing PDF code or preferences. No unintended layout clipping observed.",
+  "files": [
+    {
+      "name": "loop-1-master-md-viewer--empty__[w1024px].png",
+      "old_sha256": "2b7b2c25644d3c90c21c759853eeaf6a637ae621933f83d1b8bc3bde5154af5f",
+      "accepted_sha256": "66e366dcba280ce0084f72fe2ca2eb97a85fc9514cfe8e0f9e424cb547400d49",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-1-master-md-viewer--empty__[w1280px].png",
+      "old_sha256": "6853c5adf492480744cf66693fbf618ac3e518b7474cfe460b1c9f19d63f13d9",
+      "accepted_sha256": "7bdd9166e5fc295e0ad30818772c9444a669c8407ca1ab011b28dbc25373dd47",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-1-master-md-viewer--empty__[w768px].png",
+      "old_sha256": "83561456a819522f81bacfc4dc72567b91081e80dd093743fcb6e7f060c511d4",
+      "accepted_sha256": "75635795e22ce21f6eac7df7442d9489d9c4990cab13aeef5157055592a0ff3e",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-1-master-md-viewer--sample-synthesis__[w1024px].png",
+      "old_sha256": "43a95ae1756d3084c08ef9647a21feb2a2f23951d21da6add4fd813e08f57476",
+      "accepted_sha256": "f066d51dc554c7255abae892e326495fecc08eb0de6199b8d8718ec00d8280dd",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-1-master-md-viewer--sample-synthesis__[w1280px].png",
+      "old_sha256": "ba43fa73cec9e3178de9f13cb3e086f407a6b52accdae5c48310f38a9dee6285",
+      "accepted_sha256": "d44296235f4b3d9ebf5055baba515ffd698fa1c139a9847a06e9b41aa59b5465",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-1-master-md-viewer--sample-synthesis__[w768px].png",
+      "old_sha256": "fd00e3d0525871c8dd3ad6f4e66f99471de7d0006f3504745f32560811d680ca",
+      "accepted_sha256": "4c541e788c657fa5f68cb506e404e4a19b57208e34bff7af22c7ad0b941d055f",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-2-pdf-viewer--pdf-perf-target__[w1024px].png",
+      "old_sha256": "263e34725b0925f86d83d5cf5bcd915de8dc02667572ae255fff4d4218bb90b6",
+      "accepted_sha256": "665fb1683de62c229588e50138fd022c3bc2d313fa733fcf69d9d3960847a907",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-2-pdf-viewer--pdf-perf-target__[w1280px].png",
+      "old_sha256": "074d94eb0c7077a0e9dbefb8c9475045feeb6bc17683512853e7006a4e9aba2e",
+      "accepted_sha256": "a0857968e59cb77c11eda0fde6e52598a554f98ad5a9eda4a67bf4a25539d3af",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "loop-2-pdf-viewer--pdf-perf-target__[w768px].png",
+      "old_sha256": "5e2e8c1182d738520bca758daa6d5bea6f8f452df78f78ebcad0af9131942859",
+      "accepted_sha256": "76f235d08d11a62140911c858a2a0f210bcf9870b344d1a9b5add6e42f8528be",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "read-reader-reading-column--servable__[w1024px].png",
+      "old_sha256": "da01eeaabba11f9814424d1eaba1601f6e7efecde29c7d3fa8197b088fc2804e",
+      "accepted_sha256": "d39ae78636b4f47b4f1db256677b7030ba4d5d8af3dbdd66111b1276a9177ef5",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "read-reader-reading-column--servable__[w1280px].png",
+      "old_sha256": "ef61535a98279b492d4ffb728149e627511aad3db4117ad55425229c51ec3bbd",
+      "accepted_sha256": "0b2b2be2b16dd60222acd8c6f572aba77d7334ede6b4678f2aebe6b98b293d0c",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "read-reader-reading-column--servable__[w768px].png",
+      "old_sha256": "64116a6f227f06576cc65ac7d6cdf6de56bc7377078a94ccd52830b3cfe19267",
+      "accepted_sha256": "58dae96660b2b97342dec42c736f447a161b6e7d97beb18eee907b33a2caa733",
+      "kind": "intentional existing font/layout change"
+    },
+    {
+      "name": "reading-typography--manuscript__[w1024px].png",
+      "old_sha256": null,
+      "accepted_sha256": "4033c2d135d3b4a5dd65a2cb43e9b18a68dbb58fc25953b32090f45dea7215ef",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--manuscript__[w1280px].png",
+      "old_sha256": null,
+      "accepted_sha256": "74d140609afb0a03360559fc07abae55c53615391743dddd53f93508d21e4481",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--manuscript__[w768px].png",
+      "old_sha256": null,
+      "accepted_sha256": "c2095c2efe84f2955da8d6d8fb0cd292548ad2fa53184ea4b2b365ee5a5bcbba",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--portfolio__[w1024px].png",
+      "old_sha256": null,
+      "accepted_sha256": "1768c05cdcbf7792f506627e503175956400ca87754efef0e47c72b243f71d28",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--portfolio__[w1280px].png",
+      "old_sha256": null,
+      "accepted_sha256": "1d0bfd27cf28604a95a0af61657642440d0fe30d2a715511070117f0281c382f",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--portfolio__[w768px].png",
+      "old_sha256": null,
+      "accepted_sha256": "66f921cfc7f429eeca516805511097cc124831d9d7a21b7b92ccd71e2ddeeed1",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--reader__[w1024px].png",
+      "old_sha256": null,
+      "accepted_sha256": "a3a6b12f06bc3694e0c82534258e0ddf3cb9fc900e36426965504f075a9997a9",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--reader__[w1280px].png",
+      "old_sha256": null,
+      "accepted_sha256": "195ca3a0605f1e6e09a4a045ad6654652e7364fe82f9e5996e3f7dc45d056815",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--reader__[w768px].png",
+      "old_sha256": null,
+      "accepted_sha256": "bbafba00e5870bb88a983a606886aafb6e31d4c67f9d9149fb3c274308db7c7a",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--settings__[w1024px].png",
+      "old_sha256": null,
+      "accepted_sha256": "6eea500bbae3f9fae6d1c0b6c1465aef5009c37ca5c42234d2fc1e4b0153aedd",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--settings__[w1280px].png",
+      "old_sha256": null,
+      "accepted_sha256": "2d3312139cad2de30b2064b9e9da90d5302c3ee35226a24e23b9c5f5a76122ce",
+      "kind": "new typography story baseline"
+    },
+    {
+      "name": "reading-typography--settings__[w768px].png",
+      "old_sha256": null,
+      "accepted_sha256": "73c94ecd5e406bb00fa817141a9aa7adececc9bbc95246cd2addc3636721f2c3",
+      "kind": "new typography story baseline"
+    }
+  ]
+}

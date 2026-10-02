@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import errno
+import fcntl
+import os
 import time
 from pathlib import Path
 from typing import Never
@@ -373,3 +376,88 @@ def test_connect_write_waits_for_brief_ro_to_clear(tmp_path: Path) -> None:
     assert errors == []
     with db_lock.connect_read(path) as reader:
         assert 42 in [r[0] for r in reader.execute("SELECT value FROM facts").fetchall()]
+
+
+@pytest.mark.parametrize("timeout_s", [0.0, 0.12])
+def test_connect_write_config_timeout_preserves_budget_cause_and_releases_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, timeout_s: float
+) -> None:
+    path = _database(tmp_path)
+    real_connect = duckdb.connect
+    real_open = os.open
+    clock = 0.0
+    conflicts: list[duckdb.ConnectionException] = []
+    sidecar_fds: list[int] = []
+
+    def monotonic() -> float:
+        return clock
+
+    def sleep(delay: float) -> None:
+        nonlocal clock
+        clock += delay
+
+    def connect(_path: str) -> duckdb.DuckDBPyConnection:
+        try:
+            return real_connect(_path)
+        except duckdb.ConnectionException as exc:
+            conflicts.append(exc)
+            raise
+
+    def track_open(
+        _path: str, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
+        fd = real_open(_path, flags, mode, dir_fd=dir_fd)
+        if _path == db_lock._lock_path_for(path):
+            sidecar_fds.append(fd)
+        return fd
+
+    with real_connect(path, read_only=True) as holder:
+        with monkeypatch.context() as patch:
+            patch.setattr(time, "monotonic", monotonic)
+            patch.setattr(time, "sleep", sleep)
+            patch.setattr(duckdb, "connect", connect)
+            patch.setattr(os, "open", track_open)
+            with pytest.raises(db_lock.WriteConfigurationTimeout) as raised:
+                db_lock.connect_write(
+                    path, timeout_s=timeout_s, poll_interval_s=0.05, keepalive_s=0
+                )
+
+        assert clock == pytest.approx(timeout_s)
+        assert conflicts
+        if timeout_s == 0:
+            assert len(conflicts) == 1
+        else:
+            assert len(conflicts) > 1
+        assert raised.value.__cause__ is conflicts[-1]
+        assert db_lock._SAME_FILE_DIFFERENT_CONFIG in str(conflicts[-1])
+        assert len(sidecar_fds) == 1
+        with pytest.raises(OSError) as closed:
+            os.fstat(sidecar_fds[0])
+        assert closed.value.errno == errno.EBADF
+        with open(db_lock._lock_path_for(path), "rb") as sidecar:
+            fcntl.flock(sidecar, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert db_lock._PROCESS_WRITE_GATE.acquire(blocking=False)
+        db_lock._PROCESS_WRITE_GATE.release()
+        assert not db_lock._has_local_writer(path)
+        assert holder.execute("SELECT value FROM facts").fetchall() == [(7,)]
+
+    with db_lock.connect_write(path, timeout_s=0.5, keepalive_s=0) as writer:
+        writer.execute("INSERT INTO facts VALUES (42)")
+
+
+def test_connect_write_does_not_wrap_unrelated_open_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    error = duckdb.ConnectionException("unrelated failure")
+    calls = 0
+
+    def fail(_path: str) -> Never:
+        nonlocal calls
+        calls += 1
+        raise error
+
+    monkeypatch.setattr(duckdb, "connect", fail)
+    with pytest.raises(duckdb.ConnectionException) as raised:
+        db_lock.connect_write(str(tmp_path / "unrelated.duckdb"), timeout_s=0.5)
+    assert raised.value is error
+    assert calls == 1
