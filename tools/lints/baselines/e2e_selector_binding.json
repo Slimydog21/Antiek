@@ -1,0 +1,13 @@
+{
+  "note": "SHRINK-ONLY. Pre-existing e2e selectors that bind to nothing in apps/reading/src. Do NOT add entries to make a red build green — a new unbound selector means a spec stopped testing what it claims to test. Removing an entry (because the selector was fixed or the spec retired) is expected and the lint requires it: a stale baseline entry reds with 'shrink the baseline'.",
+  "reconsider_if": "This lint is static: it proves a selector NAMES something that renders, not that it is reachable at runtime. If the Playwright spec suite is ever wired into CI, this becomes a fast pre-filter rather than the only check, and the baseline should be re-derived against a real run.",
+  "known_unbound": [
+    "apps/reading/e2e/_werner/rod-in-hand.spec.ts: selector '[data-testid=\"penguin-mascot\"] .werner-rig-flipper-r' matches nothing in apps/reading/src",
+    "apps/reading/e2e/_werner/rod-in-hand.spec.ts: selector '[data-testid=\"penguin-mascot\"] [data-werner-rod]' matches nothing in apps/reading/src"
+  ],
+  "provenance": {
+    "captured": "2026-09-20",
+    "base": "origin/main b00ad8913",
+    "why": "WernerRig was deleted from main; this spec still binds two of its selectors. No CI job runs the Playwright specs, so nothing went red. The second entry was INVISIBLE to the first version of this lint, which counted .css as evidence an element exists — .werner-rig-flipper-r survived only as a dead rule in src/werner/waddle.css. Both are being fixed in PR #3284 (mascot/dom-contract-rename), which also deletes that stylesheet section; when it lands both entries must be removed."
+  }
+}
