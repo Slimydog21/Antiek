@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { balanceLabel, usageBadge } from "../../components/ai/usageLabels";
+import {
+  fetchSettingsUsage, fetchSettingsBalance,
+  type SettingsUsageKeyEntry, type SettingsBalanceResponse,
+} from "../../api/settingsUsage";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonSelect from "../../components/lemon/LemonSelect";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
@@ -16,6 +21,35 @@ interface ModelOption {
   key: string;
   label: string;
   choice: UserModelChoice;
+}
+
+type UsageState =
+  | { state: "loading" | "error" }
+  | { state: "ready"; entries: Record<string, SettingsUsageKeyEntry> };
+type BalanceState =
+  | { state: "loading" | "error" }
+  | { state: "ready"; value: SettingsBalanceResponse };
+
+function QuickModelSnapshot({ option, usage, balance }: {
+  option: ModelOption;
+  usage: UsageState;
+  balance: BalanceState | undefined;
+}) {
+  const label = balance?.state === "ready" ? balanceLabel(balance.value) : null;
+  const local = usage.state === "ready" ? usage.entries[option.choice.provider_id] : null;
+  return (
+    <div className="min-w-0 space-y-1 whitespace-normal break-words py-1">
+      <p className="font-serif text-sm">{option.label}</p>
+      <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
+        {label?.text ?? (balance?.state === "loading" ? "Checking provider balance…" : "Provider balance unavailable")}
+      </p>
+      <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
+        {local ? `Antiek local USD: ${usageBadge(local)}` : usage.state === "loading"
+          ? "Checking Antiek usage…" : usage.state === "error"
+            ? "Antiek usage unavailable" : "No Antiek usage recorded"}
+      </p>
+    </div>
+  );
 }
 
 type Phase =
@@ -190,6 +224,50 @@ function QuickAskRecent({ refreshSignal }: { refreshSignal: number }) {
   );
 }
 
+function useQuickModelSnapshots() {
+  const [usage, setUsage] = useState<UsageState>({ state: "loading" });
+  const [balances, setBalances] = useState<Record<string, BalanceState>>({});
+  const usageGeneration = useRef(0);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; usageGeneration.current += 1; };
+  }, []);
+
+  const refreshUsage = useCallback((inventory: QuickAskModel[]) => {
+    if (!mounted.current) return;
+    const generation = ++usageGeneration.current;
+    const current = () => mounted.current && generation === usageGeneration.current;
+    const ids = new Set(inventory.map((row) => row.provider_id));
+    setUsage({ state: "loading" });
+    setBalances(Object.fromEntries(Array.from(ids, (id) => [id, { state: "loading" }])));
+    void fetchSettingsUsage().then(
+      (snapshot) => {
+        if (!current()) return;
+        setUsage({ state: "ready", entries: Object.fromEntries(snapshot.keys
+          .filter((entry) => ids.has(entry.api_key_id)).map((entry) => [entry.api_key_id, entry])) });
+      },
+      () => { if (current()) setUsage({ state: "error" }); },
+    );
+    for (const id of ids) {
+      if (!current()) return;
+      void fetchSettingsBalance(id).then(
+        (value) => {
+          if (!current()) return;
+          setBalances((previous) => ({ ...previous, [id]: value.api_key_id === id
+            ? { state: "ready", value } : { state: "error" } }));
+        },
+        () => {
+          if (current()) setBalances((previous) => ({ ...previous, [id]: { state: "error" } }));
+        },
+      );
+    }
+  }, []);
+
+  return { usage, balances, refresh: refreshUsage };
+}
+
 function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
   ownerId: string;
   onPaidRequestInFlight?: (pending: boolean) => void;
@@ -207,6 +285,8 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
   const revision = useRef(0);
   const mounted = useRef(false);
 
+  const { usage, balances, refresh: refreshUsage } = useQuickModelSnapshots();
+
   const options = useMemo(() => modelOptions(models), [models]);
   const selected = options.find((option) => option.key === selectedKey) ?? null;
 
@@ -217,6 +297,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
         if (!live) return;
         setModels(inventory);
         setModelsState("ready");
+        refreshUsage(inventory);
       },
       () => {
         if (!live) return;
@@ -224,7 +305,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
       },
     );
     return () => { live = false; };
-  }, []);
+  }, [refreshUsage]);
 
   useEffect(() => {
     mounted.current = true;
@@ -278,7 +359,10 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
       // persisted operation must stay terminal until the owner releases it.
       setPhase({ kind: "unknown", operationId });
     } finally {
-      if (mounted.current) setRecentRefresh((value) => value + 1);
+      if (mounted.current) {
+        setRecentRefresh((value) => value + 1);
+        refreshUsage(models);
+      }
       if (mounted.current) onPaidRequestInFlight?.(false);
     }
   };
@@ -294,6 +378,14 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
         </h2>
         <p className="font-serif text-sm text-shadow-1 dark:text-moonlight leading-relaxed">
           One Antiek model request for an exploratory answer. This question-only mode does not search your corpus or run the multi-step research chain.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <LemonButton variant="secondary" disabled={modelsState !== "ready"}
+          onClick={() => refreshUsage(models)}>Refresh usage and balance</LemonButton>
+        <p className="font-serif text-xs text-shadow-1 dark:text-moonlight">
+          Read-only snapshots. Antiek local usage and holds are separate from provider credit; final provider charges are not reconciled.
         </p>
       </div>
 
@@ -357,7 +449,13 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
             <LemonSelect
               value={selectedKey}
               onChange={(value) => { if (active) return; setSelectedKey(value); resetQuote(); }}
-              options={options.map((option) => ({ value: option.key, label: option.label }))}
+              options={options.map((option) => ({
+                value: option.key,
+                label: <QuickModelSnapshot option={option} usage={usage}
+                  balance={balances[option.choice.provider_id]} />,
+              }))}
+              renderTriggerLabel={(option) => options.find((row) => row.key === option?.value)?.label
+                ?? (modelsState === "loading" ? "Checking saved models…" : "Choose a saved current model")}
               placeholder={modelsState === "loading" ? "Checking saved models…" : "Choose a saved current model"}
               aria-label="Quick Ask model"
               fullWidth

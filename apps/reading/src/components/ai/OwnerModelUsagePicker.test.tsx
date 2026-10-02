@@ -24,7 +24,7 @@ import {
   type OwnerModelController,
 } from "../../hooks/useOwnerModelController";
 import type { UserModelRow } from "../../api/settingsModels";
-import type { SettingsUsageKeyEntry } from "../../api/settingsUsage";
+import type { SettingsBalanceResponse, SettingsUsageKeyEntry } from "../../api/settingsUsage";
 import Picker from "./OwnerModelUsagePicker";
 import type ModelUsagePickerView from "./ModelUsagePickerView";
 const capturedView = vi.hoisted<{
@@ -69,13 +69,15 @@ const base: UserModelRow = {
   rate_snapshot: null,
 };
 const json = (value: unknown) => new Response(JSON.stringify(value));
-function body(id: string) {
+function body(id: string): SettingsBalanceResponse {
   return {
     api_key_id: id,
     catalog_id: "deepseek",
     kind: "balance_native",
-    balance_usd: 0.0031,
+    balance_usd: null,
     granted_usd: null,
+    native_balances: [{ currency: "CNY", total: "0.0031", granted: "0", topped_up: "0.0031" }],
+    native_available: true,
     spend_usd: null,
     budget_usd: null,
     utilization: null,
@@ -176,7 +178,7 @@ describe("mandatory scoped model usage picker", () => {
     await screen.findByText(/cap \$0.00/);
     expect(document.body.textContent).toContain("held $0.02");
     expect(document.body.textContent).toContain("available $-0.03");
-    await screen.findByText("Provider-reported credit $0.0031");
+    await screen.findByText("Provider-reported balance: CNY 0.0031");
     expect(screen.getByText("Default (house route)").className).not.toContain(
       "font-semibold",
     );
@@ -310,7 +312,7 @@ describe("mandatory scoped model usage picker", () => {
     await mount();
     expect(pending).toHaveLength(2);
     await act(async () => {
-      pending[0].resolve(json({ ...body(pending[0].id), balance_usd: 999 }));
+      pending[0].resolve(json({ ...body(pending[0].id), native_balances: [{ currency: "CNY", total: "999", granted: "0", topped_up: "999" }] }));
     });
     await waitFor(() => expect(pending).toHaveLength(3));
     expect(peak).toBe(2);
@@ -326,6 +328,7 @@ describe("mandatory scoped model usage picker", () => {
     await act(async () => pending[4].resolve(json(body(pending[4].id))));
     await open();
     expect(document.body.textContent).not.toContain("$999.00");
+    expect(document.body.textContent).not.toContain("CNY 999");
     expect(peak).toBe(2);
   });
   it("retains unavailable secondary intent without displaying/highlighting primary after refresh", async () => {
@@ -367,11 +370,18 @@ describe("mandatory scoped model usage picker", () => {
     [-0.0001, "$-0.0001"],
     [42.50001, "$42.50001"],
     [1.037e-9, "$1.037e-9"],
-  ])("preserves numeric provider credit %s", async (value, label) => {
-    balanceBody = (id) => ({ ...body(id), balance_usd: value });
+  ] as const)("preserves numeric provider balance %s", async (value, label) => {
+    rows = rows.map((row) => ({ ...row, provider_catalog_id: "kimi" }));
+    balanceBody = (id): SettingsBalanceResponse => ({
+      ...body(id),
+      catalog_id: "kimi",
+      balance_usd: value,
+      native_balances: null,
+      native_available: value > 0,
+    });
     await mount();
     await open();
-    await screen.findByText(`Provider-reported credit ${label}`);
+    await screen.findByText(`Provider-reported balance ${label}${value <= 0 ? " · insufficient for API calls" : ""}`);
   });
   it("reads remaining rows again when an already open menu receives a new inventory epoch", async () => {
     rows = Array.from({ length: 8 }, (_, i) => ({
@@ -429,7 +439,7 @@ describe("mandatory scoped model usage picker", () => {
     resourceCurrent = () => admitted;
     await mount();
     await open();
-    await screen.findByText("Provider-reported credit $0.0031");
+    await screen.findByText("Provider-reported balance: CNY 0.0031");
     const retained = capturedView.props;
     expect(retained).not.toBeNull();
     const before = paths.length;
@@ -464,10 +474,11 @@ describe("mandatory scoped model usage picker", () => {
         <Probe />
       </AuthProvider>,
     );
-    await act(async () => release(json({ ...body("key-0"), balance_usd: 999 })));
+    await act(async () => release(json({ ...body("key-0"), native_balances: [{ currency: "CNY", total: "999", granted: "0", topped_up: "999" }] })));
     expect(document.body.textContent).not.toContain("Fixture key");
     expect(document.body.textContent).not.toContain("secondary");
     expect(document.body.textContent).not.toContain("$999.00");
+    expect(document.body.textContent).not.toContain("CNY 999");
     expect(document.body.textContent).not.toContain("No API keys yet");
     expect(document.body.textContent).toMatch(/resource.*unavailable|unavailable.*resource/i);
     const usageBefore = paths.filter(
@@ -496,7 +507,7 @@ describe("mandatory scoped model usage picker", () => {
       modelId: "secondary",
     });
     expect(paths).toHaveLength(before);
-    await screen.findByText("Provider-reported credit $0.0031");
+    await screen.findByText("Provider-reported balance: CNY 0.0031");
   });
 
   it("keeps retired physical balance reads in the two-slot cap across fresh resource admission", async () => {
@@ -530,7 +541,7 @@ describe("mandatory scoped model usage picker", () => {
       </AuthProvider>,
     );
     expect(pending).toHaveLength(2);
-    await act(async () => pending[0].resolve(json({ ...body(pending[0].id), balance_usd: 999 })));
+    await act(async () => pending[0].resolve(json({ ...body(pending[0].id), native_balances: [{ currency: "CNY", total: "999", granted: "0", topped_up: "999" }] })));
     await waitFor(() => expect(pending).toHaveLength(3));
     expect(peak).toBe(2);
     await act(async () => pending[1].resolve(json(body(pending[1].id))));
@@ -543,6 +554,7 @@ describe("mandatory scoped model usage picker", () => {
     await act(async () => pending[4].resolve(json(body(pending[4].id))));
     await open();
     expect(document.body.textContent).not.toContain("$999.00");
+    expect(document.body.textContent).not.toContain("CNY 999");
     expect(peak).toBe(2);
     expect(paths.filter((path) => path === "/settings/models/user")).toHaveLength(1);
     expect(paths.filter((path) => path === "/settings/usage")).toHaveLength(2);

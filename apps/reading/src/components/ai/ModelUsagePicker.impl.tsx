@@ -13,6 +13,7 @@ import {
   type SettingsUsageKeyEntry,
   type SettingsBalanceResponse,
 } from "../../api/settingsUsage";
+import { balanceLabel } from "./usageLabels";
 
 /**
  * ModelUsagePicker — reusable BYOT model selector with usage + balance.
@@ -113,7 +114,7 @@ function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
 /**
  * The balance chip switches on `kind`, because the two numbers the backend
  * can return are not the same number:
- *   - `balance_native` is credit the PROVIDER reports as remaining;
+ *   - `balance_native` is a provider-reported amount, with availability separate;
  *   - `spend_history` is Antiek's OWN meter of what this app has settled
  *     against the key (plus the user's cap) — the provider was never asked.
  * A meter styled as credit is a wrong number, not a missing one, so the two
@@ -129,19 +130,28 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
       </span>
     );
   }
-  if (b.kind === "balance_native" && b.balance_usd != null) {
-    const negative = b.balance_usd < 0;
+  if (b.kind === "balance_native") {
+    const hasAmount = b.catalog_id === "deepseek"
+      ? (b.native_balances?.length ?? 0) > 0
+      : typeof b.balance_usd === "number" && Number.isFinite(b.balance_usd);
+    if (!hasAmount) {
+      return <span className="text-xxs text-ink-mute dark:text-moonlight">—</span>;
+    }
+    const label = balanceLabel(b);
+    const negative = typeof b.balance_usd === "number" && b.balance_usd < 0;
+    const available = b.native_available === true;
     return (
       <span
         data-balance-kind="balance_native"
         className={
           "text-xxs tabular-nums px-1 py-px rounded " +
-          (negative ? "text-danger bg-danger/10" : "text-success bg-success/10")
+          (!available
+            ? "text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1"
+            : negative ? "text-danger bg-danger/10" : "text-success bg-success/10")
         }
-        title={`Provider credit reported by ${b.catalog_id}${b.note ? ` · ${b.note}` : ""}`}
+        title={`Provider-reported balance from ${b.catalog_id}${b.note ? ` · ${b.note}` : ""}`}
       >
-        {negative ? "" : "+"}${b.balance_usd.toFixed(2)}{" "}
-        <span className="opacity-70">credit</span>
+        {label.text}
       </span>
     );
   }

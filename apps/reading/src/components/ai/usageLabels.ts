@@ -9,8 +9,6 @@ function formatCents(value: number | null): string {
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
-// Exact numeric presentation from the held native-precision successor. Current
-// API exposes numeric USD only; native currency strings require later composition.
 function formatNativeUsd(value: number): string {
   const amount = String(value);
   if (amount.includes("e")) return `$${amount}`;
@@ -24,39 +22,68 @@ export function balanceLabel(balance: SettingsBalanceResponse): {
   text: string;
   tone: "ok" | "unknown";
 } {
+  if (balance.kind === "unavailable") {
+    return { text: "Provider balance unavailable", tone: "unknown" };
+  }
   if (balance.kind === "spend_history") {
-    if (balance.note === "no usage recorded for this key")
+    if (balance.note === "no usage recorded for this key") {
       return {
         text: "Antiek meter: no usage recorded (not provider credit)",
         tone: "unknown",
       };
-    if (balance.spend_usd === null)
+    }
+    const spend =
+      typeof balance.spend_usd === "number" && Number.isFinite(balance.spend_usd)
+        ? balance.spend_usd
+        : null;
+    const budget =
+      typeof balance.budget_usd === "number" && Number.isFinite(balance.budget_usd)
+        ? balance.budget_usd
+        : null;
+    if (spend === null) {
+      return { text: "Antiek meter unavailable (not provider credit)", tone: "unknown" };
+    }
+    if (budget === null) {
       return {
-        text: "Antiek meter unavailable (not provider credit)",
-        tone: "unknown",
+        text: `Antiek meter: spent ${formatUsd(spend)}, uncapped (not provider credit)`,
+        tone: "ok",
       };
+    }
     return {
-      text:
-        balance.budget_usd === null
-          ? `Antiek meter: spent ${formatUsd(balance.spend_usd)}, uncapped (not provider credit)`
-          : `Antiek meter: ${formatUsd(balance.spend_usd)} settled of ${formatUsd(balance.budget_usd)} cap; holds excluded (not provider credit)`,
+      text: `Antiek meter: ${formatUsd(spend)} settled of ${formatUsd(budget)} cap; holds excluded (not provider credit)`,
       tone: "ok",
     };
   }
-  if (balance.kind === "balance_native" && balance.balance_usd !== null)
+  if (balance.catalog_id === "deepseek" && balance.kind === "balance_native") {
+    const entries = balance.native_balances;
+    return entries && entries.length > 0
+      ? {
+          text: `Provider-reported balance: ${entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}${balance.native_available === false ? " · insufficient for API calls" : ""}`,
+          tone: balance.native_available === false ? "unknown" : "ok",
+        }
+      : { text: "Provider balance unavailable", tone: "unknown" };
+  }
+  if (
+    balance.kind === "balance_native" &&
+    typeof balance.balance_usd === "number" &&
+    Number.isFinite(balance.balance_usd)
+  ) {
     return {
-      text: `Provider-reported credit ${formatNativeUsd(balance.balance_usd)}`,
-      tone: "ok",
+      text: `Provider-reported balance ${formatNativeUsd(balance.balance_usd)}${balance.native_available === false ? " · insufficient for API calls" : ""}`,
+      tone: balance.native_available === false ? "unknown" : "ok",
     };
+  }
   if (
     balance.kind === "quota_pct" &&
-    balance.utilization !== null &&
+    typeof balance.utilization === "number" &&
+    Number.isFinite(balance.utilization) &&
     balance.utilization >= 0 &&
     balance.utilization <= 1
-  )
+  ) {
     return {
       text: `Quota remaining ${Math.max(0, (1 - balance.utilization) * 100).toFixed(1)}%`,
       tone: "ok",
     };
+  }
   return { text: "Provider balance unavailable", tone: "unknown" };
 }
