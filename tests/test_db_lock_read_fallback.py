@@ -124,8 +124,18 @@ def test_connect_read_external_writer_retry_is_opt_in(
     # open attempt — but it now fails as the TYPED conflict error so the
     # app-level handler can map it to 503 instead of an uncaught 500
     # (read-open audit, 2026-10-01).
+    #
+    # The mode is now named at the call. It used to be reached implicitly
+    # through connect_read's default, so "immediate mode never waits" and
+    # "the default is 0.0" were the same assertion, and changing the default
+    # would have silently stopped testing the mode this test is named for.
+    # The default now resolves from context (on the event loop: fail fast;
+    # off it: wait a bounded time — see tests/test_read_lock_wait_default.py),
+    # so the mode under test has to be stated. The sibling test
+    # test_connect_read_external_writer_retry_expires_with_typed_timeout
+    # covers the waiting path; this one stays the immediate path.
     with pytest.raises(db_lock.ReadLockTimeout, match="External lock conflict"):
-        db_lock.connect_read("held.duckdb")
+        db_lock.connect_read("held.duckdb", external_lock_timeout_s=0)
     assert calls == [True]
 
 

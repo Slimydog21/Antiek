@@ -27,8 +27,6 @@ from substrate.contracts.anti_ek_honesty import (  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     SourceMergeRestoreReceipt,
-    build_body,
-    build_html_only,
     compose_artifacts,
     export_research_artifact,
     import_agent_notes,
@@ -37,11 +35,14 @@ from substrate.research_artifact import (  # noqa: E402
     research_projection_doc_model,
     restore_source_merge_review,
 )
+from substrate.research_artifact.build_body import build_body_for_reader  # noqa: E402
 from substrate.research_artifact.paths import (  # noqa: E402
     artifact_path_for,
     read_importable_artifact,
 )
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
+
+from .books import _reader_owner_id  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -214,9 +215,11 @@ async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> Impor
 
 
 @artifact_router.get("/{investigation_id}/artifact/twin-notes.html", response_class=HTMLResponse)
-async def get_artifact_twin_notes_html(investigation_id: str) -> HTMLResponse:
+async def get_artifact_twin_notes_html(investigation_id: str, request: Request) -> HTMLResponse:
     try:
-        body, _html = build_html_only(investigation_id, db_path=_db())
+        body = build_body_for_reader(
+            investigation_id, db_path=_db(), owner_user_id=_reader_owner_id(request)
+        )
         notes_html = render_twin_notes_html(body, artifact_path=artifact_path_for(investigation_id))
     except Exception as exc:  # pragma: no cover — surface as 500 with message
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -404,7 +407,9 @@ async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResp
     the editable agent-channel HTML (may include note-taking script) to disk.
     """
     try:
-        body = build_body(investigation_id, db_path=_db())
+        body = build_body_for_reader(
+            investigation_id, db_path=_db(), owner_user_id=_reader_owner_id(request)
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     doc_model = research_projection_doc_model(body)
