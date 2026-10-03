@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
 from substrate.research_artifact.fork_merge import (
+    ForkMergeBodyUnavailableError,
     ForkMergeCommitReceipt,
     ForkMergeItemError,
     ForkMergePreviewReceipt,
@@ -177,6 +178,8 @@ def register_fork_merge_routes(app: FastAPI) -> None:
             )
         except KeyError:
             raise HTTPException(status_code=404, detail="fork_not_found") from None
+        except ForkMergeBodyUnavailableError as refused:
+            raise HTTPException(status_code=409, detail=str(refused)) from refused
         except ForkMergeItemError as unknown:
             raise HTTPException(status_code=422, detail=str(unknown)) from unknown
         finally:
@@ -243,6 +246,10 @@ def register_fork_merge_routes(app: FastAPI) -> None:
                 raise HTTPException(
                     status_code=404, detail="fork_not_found"
                 ) from None
+            except ForkMergeBodyUnavailableError as refused:
+                raise HTTPException(
+                    status_code=409, detail=str(refused)
+                ) from refused
             except ForkMergeUnresolvedConflictsError as unresolved:
                 raise HTTPException(
                     status_code=409, detail=str(unresolved)

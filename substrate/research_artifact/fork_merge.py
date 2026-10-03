@@ -54,8 +54,11 @@ from typing import Any
 from runtime.db_lock import LockedConnection
 from substrate.books.highlights.resolve import reanchor_document
 from substrate.books.highlights.schema import highlights_table_exists
+from substrate.books.serve_guard import LinkBackMissingError, serve_full_text_guarded
 from substrate.documents.forks import DocumentForkRow, DocumentForkStore
 from substrate.event_log import log_event
+from substrate.rights import T3BodyServeError
+from substrate.rights.ad_eligibility import licence_tier_of
 
 FORK_MERGE_COMMITTED = "fork_merge.committed"
 
@@ -104,6 +107,19 @@ CREATE TABLE IF NOT EXISTS fork_merge_resolutions (
   UNIQUE (commit_id, investigation_id, node_id)
 );
 """
+
+
+class ForkMergeBodyUnavailableError(ValueError):
+    """The target body cannot pass the owner-read gate; refuse the whole merge."""
+
+    def __init__(self, document_id: str, *, tier: str | None, reason: str) -> None:
+        self.document_id = document_id
+        self.tier = tier
+        self.reason = reason
+        super().__init__(
+            f"fork_merge_body_unavailable: document={document_id}; "
+            f"tier={tier or 'none'}; reason={reason}"
+        )
 
 
 class ForkMergeItemError(ValueError):
@@ -469,6 +485,52 @@ def _fork_row(con: Any, owner_user_id: str, fork_id: str) -> DocumentForkRow | N
     return DocumentForkStore().get(con, owner_user_id=owner_user_id, fork_id=fork_id)
 
 
+def _fork_body(
+    con: Any, *, fork_id: str, fork_document_id: str, owner_user_id: str
+) -> str:
+    """Require an owned, readable target even for storage-to-storage merges.
+
+    Neither receipt returns the fork body. Gating still matters: a merge must
+    not process content the owner-read gate withholds. Metadata here supplies
+    refusal diagnostics only; the guard makes the entire body decision.
+    """
+    row = con.execute(
+        "SELECT metadata FROM documents WHERE document_id = ? AND "
+        "owner_user_id = ? LIMIT 1",
+        [fork_document_id, owner_user_id],
+    ).fetchone()
+    if row is None:
+        raise KeyError(fork_id)
+    metadata = row[0]
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except ValueError:
+            metadata = None
+    tier = licence_tier_of(metadata) if isinstance(metadata, dict) else None
+    tier_name = tier.value if tier is not None else None
+    try:
+        result = serve_full_text_guarded(con, fork_document_id, owner=True)
+    except T3BodyServeError as refused:
+        raise ForkMergeBodyUnavailableError(
+            fork_document_id, tier=tier_name, reason="license_tier_blocked"
+        ) from refused
+    except LinkBackMissingError as refused:
+        raise ForkMergeBodyUnavailableError(
+            fork_document_id, tier=tier_name, reason="link_back_missing"
+        ) from refused
+    if result.full_text is None:
+        reason = (
+            "body_missing"
+            if result.reason in {"servable", "owner_personal_reading"}
+            else result.reason
+        )
+        raise ForkMergeBodyUnavailableError(
+            fork_document_id, tier=result.tier, reason=reason
+        )
+    return result.full_text
+
+
 def _preview(
     con: Any,
     *,
@@ -481,14 +543,12 @@ def _preview(
     fork = _fork_row(con, owner_user_id, fork_id)
     if fork is None:
         raise KeyError(fork_id)
-    row = con.execute(
-        "SELECT raw_text FROM documents WHERE document_id = ? AND "
-        "owner_user_id = ? LIMIT 1",
-        [fork.fork_document_id, owner_user_id],
-    ).fetchone()
-    if row is None or row[0] is None:
-        raise KeyError(fork_id)
-    before = str(row[0])
+    before = _fork_body(
+        con,
+        fork_id=fork_id,
+        fork_document_id=fork.fork_document_id,
+        owner_user_id=owner_user_id,
+    )
     items = _resolve_items(con, item_refs, events_dir=events_dir)
     conflicts = _detect_conflicts(
         con,
@@ -551,7 +611,8 @@ def commit_fork_merge(
 ) -> ForkMergeCommitReceipt:
     """Commit a bound, reviewed preview into the FORK — atomically.
 
-    Refusals, all BEFORE any write: the fork/selection must recompute to the
+    Refusals, all BEFORE any write: the target body must pass the owner-read
+    serve gate (ForkMergeBodyUnavailableError), the fork/selection must recompute to the
     bound preview (``fork_merge_preview_binding_mismatch``), the fork body
     must not have moved since preview (``fork_merge_stale``), and EVERY
     conflicted item must carry a resolution
@@ -679,11 +740,12 @@ def commit_fork_merge(
         if (item.investigation_id, item.node_id) not in conflicted
         or by_ref[(item.investigation_id, item.node_id)].choice == "accept"
     ]
-    before = con.execute(
-        "SELECT raw_text FROM documents WHERE document_id = ? LIMIT 1",
-        [preview.fork_document_id],
-    ).fetchone()[0]
-    before = str(before)
+    before = _fork_body(
+        con,
+        fork_id=fork_id,
+        fork_document_id=preview.fork_document_id,
+        owner_user_id=owner_user_id,
+    )
     after = _after_body(before, accepted)
     after_hash = _hash_text(after)
 

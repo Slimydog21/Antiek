@@ -741,3 +741,186 @@ def test_shipped_contracts_untouched(api_env) -> None:
         }
     )
     assert all("fork" not in path for path, _ in compose_paths)
+
+
+# The fork may become unservable after creation or after a successful preview.
+# These fixtures model stored rights drift without weakening the write-time guard.
+_BODY_REFUSALS = [
+    pytest.param("user_owned", "http://creativecommons.org/licenses/by-nc/4.0/", "2601.00001", False, False, "T2", "license_tier_blocked", id="t2-class-drift"),
+    pytest.param("user_owned", "http://arxiv.org/licenses/nonexclusive-distrib/1.0/", "2601.00001", False, False, "T3", "license_tier_blocked", id="t3-class-drift"),
+    pytest.param("personal_reading", "http://creativecommons.org/licenses/by-nc/4.0/", "2601.00001", False, False, "T2", "license_tier_blocked", id="t2-owner-path"),
+    pytest.param("personal_reading", "http://arxiv.org/licenses/nonexclusive-distrib/1.0/", "2601.00001", False, False, "T3", "license_tier_blocked", id="t3-owner-path"),
+    pytest.param("restricted_pending_opt_in", "http://arxiv.org/licenses/nonexclusive-distrib/1.0/", "2601.00001", False, False, "T3", "gated_metadata_only", id="content-class-withheld"),
+    pytest.param(None, None, None, False, False, "none", "gated_metadata_only", id="unknown-content-class"),
+    pytest.param("user_owned", "http://creativecommons.org/licenses/by/4.0/", None, False, False, "T1", "link_back_missing", id="missing-link-back"),
+    pytest.param("user_owned", None, None, True, False, "none", "taken_down", id="taken-down"),
+    pytest.param("user_owned", None, None, False, True, "none", "body_missing", id="null-body"),
+]
+
+
+def _merge_storage_state(db: str, events: str) -> tuple:
+    from pathlib import Path
+
+    with connect_read(db) as con:
+        documents = con.execute(
+            "SELECT document_id, raw_text, metadata, content_class FROM documents "
+            "ORDER BY document_id"
+        ).fetchall()
+        tables = {row[0] for row in con.execute("SHOW TABLES").fetchall()}
+        ledger = {
+            table: con.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
+            if table in tables else []
+            for table in ("fork_merge_commits", "fork_merge_resolutions")
+        }
+    logs = {
+        str(path.relative_to(events)): path.read_bytes()
+        for path in Path(events).rglob("*") if path.is_file()
+    }
+    return documents, ledger, logs
+
+
+@pytest.mark.parametrize("endpoint", [PREVIEW, COMMIT], ids=["preview", "commit"])
+@pytest.mark.parametrize(
+    "content_class,license_uri,arxiv_id,taken_down,null_body,tier,reason",
+    _BODY_REFUSALS,
+)
+def test_merge_body_gate_refuses_without_writes(
+    api_env, endpoint, content_class, license_uri, arxiv_id,
+    taken_down, null_body, tier, reason,
+) -> None:
+    db, events = api_env["db"], api_env["events"]
+    original = "PRIVATE FORK BODY SENTINEL. " * 40
+    _seed_book(db, raw_text=original)
+    [node] = _seed_thread(db, events, "inv-gate", ["A selected, lawful outcome."])
+    client = _client()
+    fork = _fork(client, "op-body-gate")
+    pairs = [("inv-gate", node)]
+    preview_request = {"fork_id": fork["fork_id"], "items": _items(pairs)}
+    allowed = client.post(PREVIEW, json=preview_request)
+    assert allowed.status_code == 200, allowed.text
+    assert "PRIVATE FORK BODY SENTINEL" not in allowed.text
+    metadata = {"private_holder_note": "DO NOT ECHO HOLDER DETAIL"}
+    if license_uri is not None:
+        metadata["license_uri"] = license_uri
+    if arxiv_id is not None:
+        metadata["arxiv_id"] = arxiv_id
+    with connect_write(db, purpose="test/fork-rights-drift") as con:
+        con.execute(
+            "UPDATE documents SET content_class = ?, metadata = ?, raw_text = ? "
+            "WHERE document_id = ?",
+            [content_class, json.dumps(metadata), None if null_body else original,
+             fork["fork_document_id"]],
+        )
+        if taken_down:
+            con.execute(
+                "UPDATE book_assets SET taken_down = TRUE WHERE document_id = ?",
+                [fork["fork_document_id"]],
+            )
+    before = _merge_storage_state(db, events)
+    request = preview_request if endpoint == PREVIEW else _commit_body(
+        fork["fork_id"], pairs, allowed.json()
+    )
+    refused = client.post(endpoint, json=request)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"] == (
+        f"fork_merge_body_unavailable: document={fork['fork_document_id']}; "
+        f"tier={tier}; reason={reason}"
+    )
+    assert "PRIVATE FORK BODY SENTINEL" not in refused.text
+    assert "DO NOT ECHO HOLDER DETAIL" not in refused.text
+    assert db not in refused.text
+    assert _merge_storage_state(db, events) == before
+
+
+@pytest.mark.parametrize(
+    "content_class,license_uri,body",
+    [
+        pytest.param("source_declared_open", "http://creativecommons.org/licenses/by/4.0/", "Allowed T1 body.", id="t1"),
+        pytest.param("personal_reading", None, "Owner's personal body.", id="non-arxiv-owner"),
+        pytest.param("user_owned", None, "", id="empty-not-withheld"),
+    ],
+)
+def test_merge_body_gate_preserves_allowed_bodies(api_env, content_class, license_uri, body):
+    db, events = api_env["db"], api_env["events"]
+    _seed_book(db)
+    [node] = _seed_thread(db, events, "inv-allowed", ["Permitted appended outcome."])
+    client = _client()
+    fork = _fork(client, "op-allowed-body")
+    metadata = {"license_uri": license_uri, "arxiv_id": "2601.00001"} if license_uri else {}
+    with connect_write(db, purpose="test/allowed-fork-body") as con:
+        con.execute(
+            "UPDATE documents SET content_class = ?, metadata = ?, raw_text = ? "
+            "WHERE document_id = ?",
+            [content_class, json.dumps(metadata), body, fork["fork_document_id"]],
+        )
+    pairs = [("inv-allowed", node)]
+    preview = client.post(PREVIEW, json={"fork_id": fork["fork_id"], "items": _items(pairs)})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["before_fork_hash"] == _sha(body)
+    commit = client.post(COMMIT, json=_commit_body(fork["fork_id"], pairs, preview.json()))
+    assert commit.status_code == 200, commit.text
+    stored = _body(db, fork["fork_document_id"])
+    assert stored.startswith(body)
+    assert "Permitted appended outcome." in stored
+    assert _sha(stored) == commit.json()["after_fork_hash"]
+
+
+@pytest.mark.parametrize("operation", ["preview", "commit"])
+def test_merge_body_gate_has_a_typed_substrate_refusal(api_env, operation):
+    from substrate.research_artifact.fork_merge import commit_fork_merge, preview_fork_merge
+
+    db, events = api_env["db"], api_env["events"]
+    _seed_book(db)
+    [node] = _seed_thread(db, events, "inv-typed", ["A lawful outcome."])
+    client = _client()
+    fork = _fork(client, "op-typed-refusal")
+    pairs = [("inv-typed", node)]
+    preview = client.post(PREVIEW, json={"fork_id": fork["fork_id"], "items": _items(pairs)})
+    assert preview.status_code == 200, preview.text
+    with connect_write(db, purpose="test/typed-refusal") as con:
+        con.execute(
+            "UPDATE documents SET metadata = ? WHERE document_id = ?",
+            [json.dumps({"license_uri": "http://arxiv.org/licenses/nonexclusive-distrib/1.0/",
+                         "arxiv_id": "2601.00001"}), fork["fork_document_id"]],
+        )
+        kwargs = dict(owner_user_id="__operator__", fork_id=fork["fork_id"],
+                      item_refs=pairs, events_dir=events)
+        before = con.execute("SELECT raw_text FROM documents WHERE document_id = ?", [fork["fork_document_id"]]).fetchone()
+        with pytest.raises(ValueError, match="fork_merge_body_unavailable") as refused:
+            if operation == "preview":
+                preview_fork_merge(con, **kwargs)
+            else:
+                commit_fork_merge(
+                    con, **kwargs, resolutions=[],
+                    expected_merge_id=preview.json()["merge_id"],
+                    expected_before_fork_hash=preview.json()["before_fork_hash"],
+                )
+        assert type(refused.value).__name__ == "ForkMergeBodyUnavailableError"
+        assert refused.value.document_id == fork["fork_document_id"]
+        assert refused.value.tier == "T3"
+        assert refused.value.reason == "license_tier_blocked"
+        assert con.execute("SELECT raw_text FROM documents WHERE document_id = ?", [fork["fork_document_id"]]).fetchone() == before
+
+
+@pytest.mark.parametrize("endpoint", [PREVIEW, COMMIT])
+def test_merge_body_gate_preserves_document_owner_boundary(api_env, endpoint):
+    db, events = api_env["db"], api_env["events"]
+    _seed_book(db)
+    [node] = _seed_thread(db, events, "inv-owner", ["A lawful outcome."])
+    client = _client()
+    fork = _fork(client, "op-document-owner")
+    pairs = [("inv-owner", node)]
+    payload = {"fork_id": fork["fork_id"], "items": _items(pairs)}
+    preview = client.post(PREVIEW, json=payload)
+    assert preview.status_code == 200, preview.text
+    with connect_write(db, purpose="test/document-owner-drift") as con:
+        con.execute(
+            "UPDATE documents SET owner_user_id = 'another-owner' WHERE document_id = ?",
+            [fork["fork_document_id"]],
+        )
+    before = _merge_storage_state(db, events)
+    response = client.post(endpoint, json=payload if endpoint == PREVIEW else
+                           _commit_body(fork["fork_id"], pairs, preview.json()))
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == "fork_not_found"
+    assert _merge_storage_state(db, events) == before
