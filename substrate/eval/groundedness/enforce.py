@@ -15,9 +15,9 @@ Three postures (``ANTIEK_GROUNDEDNESS_ENFORCE``):
   but still deposits (observability + alert, not a destructive block).
   ``should_enforce()`` is True; ``should_block()`` is False.
 - ``block``: the stricter post-criterion-4 opt-in. PREVENTS a below-
-  threshold synthesis from being deposited (typed rejection, logged,
-  never a silent drop). ``should_enforce()`` is True; ``should_block()``
-  is True.
+  threshold synthesis from being deposited. The orchestrator logs the
+  refusal, emits ``groundedness.failed``, and clears the synthesis.
+  ``should_enforce()`` is True; ``should_block()`` is True.
 
 The threshold the enforcement reads is the SAME
 ``DEFAULT_SUPPORTED_THRESHOLD`` the scorer + harness use (rigor #4: no
@@ -98,14 +98,6 @@ def is_below_threshold(score: float, threshold: float = DEFAULT_SUPPORTED_THRESH
     drift. Kept as a function (not a bare ``<``) so a future calibration
     has one place to reason about."""
     return score < threshold
-
-
-class GroundednessEnforceError(RuntimeError):
-    """Typed rejection raised when ``block`` posture prevents a below-
-    threshold synthesis from depositing. Distinct from a scorer crash
-    (``groundedness.failed``) — this is a deliberate gate refusal, not a
-    bug. The loop logs it + emits a ``groundedness.failed`` and continues
-    (never a silent drop, never an unhandled crash)."""
 
 
 # Sanity invariants (documented for a maintainer who edits this):

@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import sys
 
-import duckdb
-
 # ``...runtime.db_lock`` resolves to ``substrate.runtime.db_lock``, which does
 # NOT exist, so the try branch is permanently dead and the branch marked
 # "# pragma: no cover" is the only live path. The ignore code here MATCHES
@@ -193,14 +191,3 @@ def init_research_bridge_at_path(db_path: str) -> None:
         init_research_bridge(con)
     finally:
         con.close()
-
-
-def list_research_bridge_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
-    rows = con.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema='main' "
-        "  AND (table_name LIKE 'research_paste%' "
-        "       OR table_name LIKE 'research_gap%') "
-        "ORDER BY table_name"
-    ).fetchall()
-    return [r[0] for r in rows]
