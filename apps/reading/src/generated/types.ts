@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 40;
+export const EVENT_SCHEMA_VERSION = 41;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -104,6 +104,7 @@ export const ActionType = {
   FEEDBACK_THREAD_RESOLVED: "feedback.thread.resolved",
   AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
   ARTIFACT_FEEDBACK_REPLIED: "artifact.feedback.replied",
+  PROJECT_TABS_VERSION_BUMPED: "project.tabs.version_bumped",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
@@ -1044,6 +1045,22 @@ export interface ArtifactFeedbackRepliedPayload {
   attempt_no: number;
   reply_sha256: string;
   result_kind?: "reply" | "decline" | "approval_request";
+}
+
+/**
+ * A project's tab tree for one mothership accepted a snapshot.
+ *
+ * Broadcast on ``/ws/events`` after the PUT commits, so another device with
+ * no pending operations refetches and one with pending operations rebases
+ * (THREAD-CONTRACT §1.6, §1.7). It is never appended to a trajectory: tabs
+ * are navigation state, kept as a row. It names the tree and its version,
+ * never its contents.
+ */
+export interface ProjectTabsVersionBumpedPayload {
+  action_type: "project.tabs.version_bumped";
+  project_id: string;
+  mothership: string;
+  version: number;
 }
 
 /**
@@ -2895,6 +2912,7 @@ export type TypedPayload =
   | FeedbackThreadResolvedPayload
   | AgentWorkTransitionedPayload
   | ArtifactFeedbackRepliedPayload
+  | ProjectTabsVersionBumpedPayload
   | TierAssignedPayload
   | TierOverriddenPayload
   | TierRewriteBulkPayload
@@ -3098,6 +3116,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "phase.exit",
   "phase.verify",
   "preference.observation.recorded",
+  "project.tabs.version_bumped",
   "quality_gate.evaluated",
   "question.escalated_to_research",
   "question.identified",
