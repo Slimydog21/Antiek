@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-03 · Motherships + workstations chassis — The Antiek motherships</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 80px 28px;
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px 28px 24px 28px;
+  margin-bottom: 28px;
+}
+
+header.hero .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+header.hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 24px 20px 24px;
+  margin: 0 0 22px 0;
+}
+
+section.block > h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 18px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+section.block h3 {
+  margin: 22px 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 12px 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 12px 0;
+  padding-left: 22px;
+}
+
+section.block li { margin-bottom: 4px; }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+}
+
+table.spec th, table.spec td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 14px 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin: 10px 0 14px 0;
+  font-size: 14px;
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.rigor-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: 14px;
+}
+
+.milestone .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: 4px;
+}
+
+.milestone .desc {
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: 4px 0 0 0; padding-left: 18px; }
+.milestone .criteria li { margin-bottom: 3px; }
+
+.milestone .files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: var(--border-thin);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: 14px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: 24px 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: 20px 0 6px 0;
+  padding: 6px 10px;
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-03</p>
+    <h1>Motherships + workstations chassis</h1>
+    <p class="tagline">Three shells (Research, Writing, Reading) over the same projects, with switching that never loses your place, a switcher that finds anything, a sidebar of live threads, and an attention inbox.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 1</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 9 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The app has no project or workstation concept today (SW-01 ABSENT). <code>git grep</code> finds no activeProject, workstationStore or useWorkstation anywhere. Its four "doors" (Research ⌘J, Read ⌘E, Write ⌘Y, Speak ⌘U) each reset you to that workflow's default route. The operator's rulings:</p><ul><li><strong>D1/D5:</strong> three motherships (Research, Writing, Reading) over <em>shared</em> workstations, where a workstation is a project.</li><li>Switching mothership keeps the workstation.</li><li><strong>D4:</strong> an attention inbox.</li></ul><p>herdr's model is the reference (<code>research/</code>, <code>DESIGN-MODEL.md</code> §1). His live session has 20 workspaces and 252 tabs. Lane B owns the workstation registry, as edges and never copies, following <code>write_folders</code>. Until it lands, this sprint builds <strong>local-first</strong> against the contract shapes (<code>THREAD-CONTRACT.md</code> §2.1) and swaps the data source afterwards.</p><p><strong>What to reuse, not rebuild:</strong></p><ul><li>the herdr attention P0 already on main (#3078: state registry, rollup, unseen axis, clickable toasts, <code>state:</code> chips)</li><li>the open P1 and P2 PRs, #3088 (completion sound, window-title status) and #3092 (favicon dot, layout presets)</li><li><code>/my-research</code> (MyResearch.tsx: families, attention, unseen)</li><li><code>workspace/persistence.ts</code> scopes</li></ul><p><strong>Base:</strong> MS-01's branch. <strong>Branch:</strong> <code>design/mothership-03-chassis</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>The data noun is <strong>project</strong>; "workstation" is the UI noun. The registry is <code>/projects</code> (GET list, POST, PATCH /{id}, members, GET /{id}), backed by the extended <code>write_folders</code> store with <code>kind: project|reading</code> (§1.5). Your adapter targets these routes.</li><li>Aggregates are <code>thread_counts {running, needs_you, done_unseen}</code> and <code>spend_today {cents, currency} | null</code> (§1.5). A null renders "—" with its reason, never <code>$0.00</code> (Part 2 nullable rule).</li><li>Live state is a nudge on <code>WS /ws/events</code> (§1.7); catch-up after a reconnect is the durable <code>GET /inbox?after=&lt;cursor&gt;</code>, never the socket alone (§1.13). The inbox kinds are <code>thread_done, thread_needs_you, flag_consent, refused_capped, merge_suggestion</code>.</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 1. It needs MS-01 (the keymap and a stable shell). MS-04 (tabs) and MS-05 (document door) sit inside the chassis it creates.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>The operator can open several workstations, hop between them and between the three motherships by prefix or chord without losing his place, find anything from one switcher, see live thread state in a sidebar, and read an attention inbox.</strong></p>
+    <p>Routes become <code>/w/:workstationId/:mothership/…</code>, where mothership is research, writing or reading, and the old routes stay as deep links that resolve into a workstation. Each open workstation keeps, per mothership, its last route and layout. The switcher (⌘K / <code>prefix+g</code>) searches workstations, their open tabs, documents and threads. The sidebar (<code>prefix+b</code>) lists workstations with rolled-up thread state. The inbox (<code>prefix+i</code>) lists what needs you.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Workstation store (local-first, contract-shaped)</div>
+        <p class="desc">Add <code>src/workspace/workstations.ts</code>, a Zustand store of <code>{workstations: Workstation[], open: id[], activeId, activeMothership, perMothership: {research?, writing?, reading?: {route, layoutKey}}}</code> using the exact field names of THREAD-CONTRACT §2.1. It persists through <code>workspace/persistence.ts</code> under a new scope. A data-source adapter interface (<code>local</code> | <code>server</code>) lets lane B's registry swap in without a UI change.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Unit tests for open, close, focus, reorder and archive.</li><li>It persists across reload, and switching the adapter needs no component change (a test with a fake server adapter).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/workstations.ts (new)</span><span class="file">apps/reading/src/workspace/persistence.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Seed workstations from what exists</div>
+        <p class="desc">Propose starter workstations from existing research families (<code>parent_investigation_id</code> roots) and from deliverables with <code>investigation_root_id</code>. Nothing is auto-created without the operator: a "Create workstations from my research" sheet lists them, and the operator accepts them.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The sheet has designed states: loading, empty ("No research yet"), error with Retry, and ready.</li><li>Nothing is written without an explicit accept.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/WorkstationSeedSheet.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Routing: /w/:id/:mothership/* with deep-link resolution</div>
+        <p class="desc">Nest the existing route trees under the mothership. Every legacy route (for example <code>/inv/:id</code>, <code>/write/:id</code>, <code>/read/:id</code>) resolves into the active workstation, or asks which one to open in, and never 404s.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A routing test covers every route in App.tsx: each resolves, and none renders twice.</li><li>Browser back and forward move between workstations sensibly (tested).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/App.tsx</span><span class="file">apps/reading/src/shell/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Mothership switch keeps the workstation (prefix+m / ctrl+alt+m)</div>
+        <p class="desc">Research → Writing → Reading cycles inside the same workstation and restores that mothership's last route. <code>prefix+shift+m</code> opens a 3-way picker. The NavRail doors become mothership doors scoped to the active workstation. Speak remains its own door, outside the three motherships.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Switch-and-return lands on the exact prior route in each mothership (test).</li><li>Every door has a visible, labelled current state (<code>aria-current</code>).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/NavRail.tsx</span><span class="file">apps/reading/src/shell/SceneChrome.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Switcher: workstations, tabs, documents, threads</div>
+        <p class="desc">Extend the fixed ⌘K palette with workstation, open-tab, document and thread kinds, each with a match reason (frontend-craft §4). It also accepts a hierarchical tab number, <code>3.2.1</code>, whose resolution MS-04 supplies. Scoring by result tier: exact id or title, then prefix, then fuzzy.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test fixture of 20 workstations and 252 tabs: an exact title is first, and fuzzy matches are labelled as suggestions.</li><li>p95 query time is under 100 ms on that fixture (measured in the test).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/CommandPalette.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Shell sidebar with live thread state (prefix+b)</div>
+        <p class="desc">Build an always-available sidebar: workstations first, with rolled-up counts (running, needs-you, unseen), then the active workstation's live threads with state and spend. Reuse MyResearch's grouping and the #3078 registry. Collapsed by default below 1024 px.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>No count or state is invented: an unknown shows "—", and a failed fetch shows an honest error (the W7 rule).</li><li>Stories: light and dark, 1280 and 390, with loading, error and ready states.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/Sidebar.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Attention inbox surface (prefix+i)</div>
+        <p class="desc">An inbox listing pending attention (thread done, needs you, and later D4 kinds), ordered like the operator's herdr ask-inbox: pending questions first. Land P1 #3088 (sound, title count) and P2 #3092 (favicon dot) work here, re-based rather than rewritten.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Items open their target, and focus returns to the inbox on close.</li><li>The document title shows a count; the favicon dot reflects the unseen state (tests).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/Inbox.tsx (new, lazy)</span><span class="file">apps/reading/src/shell/attention/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">8</div>
+      <div>
+        <div class="title">Session restore</div>
+        <p class="desc">Open workstations, the active one, and each mothership's last route survive a reload through the local adapter, and follow the operator across devices once lane B's session store exists. A pending server session is never shown as restored.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A reload restores exactly (test).</li><li>The server adapter is covered by the fake-adapter test; the real one is NOT RUN until lane B lands, and the handoff says so.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/workstations.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">9</div>
+      <div>
+        <div class="title">Bundle + critic</div>
+        <p class="desc">Sidebar, inbox and seed sheet are lazy. Keep the entry under budget.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>The server side of workstations and sessions belongs to lane B and may not exist when you finish. Everything you prove against the fake adapter is "contract-shaped, local", not "synced". The handoff must separate the two, and the UI must never say "saved to your account" while only localStorage is in play.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman one workstation holding Research and Writing tabs side by side, the option recommended in the interview. It needs fewer concepts and one tab strip. The operator ruled for three motherships (D1/D5), and his standing "net-new, not merged" Write-canvas choice points the same way. Record who pays for the three-shell choice: the person who wants to glance at research while writing. They are served by MS-05's docked reader pane, not by merging the shells.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Routing is the dangerous part, and it needs two assertions. (a) Every route in <code>App.tsx</code> (about 60 today) except <code>/login</code> and <code>/_panel/:panelId</code> resolves under <code>/w/:id/:mothership</code>, renders once and keeps its params. (b) Those two resolve <em>outside</em> the tree. Add the switch round trip: after research → writing → research, <code>perMothership.research.route</code> and its layout key equal their values before the switch.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Read <code>MyResearch.tsx</code> (grouping, attention, unseen), the #3078 attention registry, the #3088 and #3092 diffs (<code>gh pr diff</code>), <code>workspace/persistence.ts</code>, <code>NavRail</code>, <code>SceneChrome</code> and <code>workflowTaxonomy.ts</code> before writing a line. The sidebar and inbox must extend those, never re-implement them.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>The data-source adapter interface is the seam lane B plugs into. Document it at the top of <code>workstations.ts</code> with the contract section it mirrors (§2.1), so when lane B's registry lands, the swap is one file and nobody redesigns the UI. Contract §2.1 is unsigned as of 2026-09-24. A field rename by lane B voids the one-file-swap claim until both lanes sign, so record the adapter-seam decision in DECISIONS.md as well.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-01 — <span class="muted">one keymap owner (prefix+m/b/g/i) and a stable AppShell</span></li><li>MS-02 (W7, W1 on main) — <span class="muted">tokens and headroom</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: workstation registry, session store, and a thread-by-owner/state list endpoint. Built against the contract shape until they exist.</li><li>THREAD-CONTRACT.md signed by both lanes.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Tabs and the branch tree (MS-04). The chassis holds a single route per mothership until MS-04 lands.</li><li>Reading any document in place (MS-05).</li><li>Server persistence of workstations. That is lane B's; this sprint only calls it through the adapter.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Typecheck + suite</strong></td><td><code>npm run typecheck &amp;&amp; npm run test -- --no-color</code></td><td>0 errors; all pass</td></tr><tr><td><strong>Route coverage</strong></td><td><code>the vitest route-table test</code></td><td>every App.tsx route resolves once under /w/:id/:mothership</td></tr><tr><td><strong>Switcher scale</strong></td><td><code>the vitest 20×252 fixture test</code></td><td>p95 < 100 ms; the exact title ranks first</td></tr><tr><td><strong>States</strong></td><td><code>Storybook stories for sidebar, inbox and seed sheet in light and dark at 1280 and 390</code></td><td>every state rendered; no invented zero</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-03 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Workstation store (local-first, contract-shaped) — &lt;result&gt;
+- [ ] M2: Seed workstations from what exists — &lt;result&gt;
+- [ ] M3: Routing: /w/:id/:mothership/* with deep-link resolution — &lt;result&gt;
+- [ ] M4: Mothership switch keeps the workstation (prefix+m / ctrl+alt+m) — &lt;result&gt;
+- [ ] M5: Switcher: workstations, tabs, documents, threads — &lt;result&gt;
+- [ ] M6: Shell sidebar with live thread state (prefix+b) — &lt;result&gt;
+- [ ] M7: Attention inbox surface (prefix+i) — &lt;result&gt;
+- [ ] M8: Session restore — &lt;result&gt;
+- [ ] M9: Bundle + critic — &lt;result&gt;
+### Verification gate results
+- Typecheck + suite: pass | fail | skipped (why)
+- Route coverage: pass | fail | skipped (why)
+- Switcher scale: pass | fail | skipped (why)
+- States: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- The chassis branch is pushed and accepted. MS-04 and MS-05 base on it.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="inline"
+           data-harness-fanout-unit="None: routing, store and switcher interlock through App.tsx and the store."
+           data-harness-verifier-lenses="legacy deep links resolve once | no false &#x27;synced&#x27; claim"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>inline</code></p><p class="muted">Milestones share App.tsx and workstations.ts.</p></div>
+      <div><h3>Fan-out unit</h3><p>None: routing, store and switcher interlock through App.tsx and the store.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Does any legacy deep link break or render twice under /w/:id/:mothership?</li><li>Does the UI ever claim server persistence while only the local adapter ran?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-03 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

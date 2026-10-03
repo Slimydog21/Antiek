@@ -65,7 +65,13 @@ def test_health_backup_fresh_true_on_fresh_marker(tmp_path, monkeypatch):
     assert body["backup_completed_at"] is not None
     assert body["backup_age_hours"] is not None
     assert body["backup_age_hours"] < 1.0
-    assert body["backup_marker_path"] == str(marker)
+    # NOT the path. /health needs no credentials and used to publish this host path --
+    # measured live as `/home/antiek/.antiek/backup_freshness.json`. The field is kept
+    # for response-shape compatibility and is deliberately blank. This assertion used to
+    # read `== str(marker)`, which pinned the disclosure rather than catching it: the
+    # suite passed while the leak was live, and it was the suite that failed once the
+    # leak was closed.
+    assert body["backup_marker_path"] == ""
 
 
 def test_health_backup_fresh_false_on_stale_marker(tmp_path, monkeypatch):

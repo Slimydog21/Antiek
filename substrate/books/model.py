@@ -32,6 +32,7 @@ from typing import Any
 from runtime.db_lock import LockedConnection
 
 from .servability import ServabilityStatus, is_servable_full_text, servability_of
+from .serve import servable_body_exists
 
 
 @dataclass(frozen=True)
@@ -209,6 +210,95 @@ def get_book_asset(con: Any, document_id: str) -> BookAsset | None:
         _BOOK_SELECT + " WHERE b.document_id = ?", [document_id]
     ).fetchone()
     return _row_to_asset(row) if row is not None else None
+
+
+# The locator vocabulary stamped on a BookAsset projected from a document's
+# own rows (no ``book_assets`` row): the only honest locators such a
+# document has are its chunk indices. Free-text column ("pdf_page",
+# "chapter", "html_section" are the registered-book values); nothing
+# branches on it.
+OPENABLE_FALLBACK_PAGINATION_SCHEME = "chunk_index"
+
+
+def get_openable_book_asset(con: Any, document_id: str) -> BookAsset | None:
+    """Resolve the asset the reader's open path needs. None = not openable.
+
+    Contract: *servable text implies openable.* A document whose full text
+    the serve gate emits must not be answered ``book_not_found`` by the
+    reader metadata endpoint. A reformatted (derived) document or a lawful
+    web/URL ingest writes a ``documents`` row, chunks and provenance —
+    never a ``book_assets`` row — so a bare :func:`get_book_asset` lookup
+    404s a document the very next ``/full-text`` call serves. This read
+    repairs that without inventing a ``book_assets`` row where none is
+    warranted:
+
+    1. A registered book (``book_assets`` row) resolves exactly as before.
+    2. Otherwise the ``documents`` row must exist AND carry a body the
+       public serve gate would emit. That is the serve gate's own question,
+       so it is asked OF the gate: :func:`serve.servable_body_exists`
+       (the serve module's predicate over :func:`servability_of` +
+       :func:`is_servable_full_text` + a non-empty body) answers it.
+       This function never reads ``documents.raw_text`` itself — the
+       raw-body-read scanner (``tools/lint/serve_invariants_check.py``)
+       forbids a body read outside the serve gate, and routing the check
+       through the gate's own predicate keeps the metadata gate and the
+       body gate from ever disagreeing. Reading structure is projected
+       from the document's own chunks — one TOC entry per chunk, located
+       by chunk index, which is how the derived/web document genuinely
+       paginates.
+    3. Anything else is None: an id that exists nowhere, a gated or
+       personal document, an empty body. The gate is not weakened — no
+       body bytes leave this function, only metadata, and only for a
+       document whose body the serve path already serves; a document with
+       genuinely nothing to serve keeps answering ``book_not_found``.
+    """
+    asset = get_book_asset(con, document_id)
+    if asset is not None:
+        return asset
+    row = con.execute(
+        "SELECT title, author, content_class, ip_holder_id "
+        "FROM documents WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return None
+    title, author, content_class, ip_holder_id = row
+    # The body question is the serve gate's own, answered through the seam:
+    # the gate's predicate applies the same servability projection the
+    # serve path uses, so a document admitted here is one the very next
+    # /full-text call serves — and a gated/personal/empty one is not.
+    if not servable_body_exists(con, document_id):
+        return None
+    chunk_rows = con.execute(
+        "SELECT chunk_index, section_path FROM chunks "
+        "WHERE document_id = ? ORDER BY chunk_index",
+        [document_id],
+    ).fetchall()
+    toc = [
+        TocItem(
+            title=str(section_path) if section_path else f"Section {int(index) + 1}",
+            page_index=int(index),
+            level=0,
+        )
+        for index, section_path in chunk_rows
+    ]
+    return BookAsset(
+        document_id=document_id,
+        title=None if title is None else str(title),
+        author=None if author is None else str(author),
+        content_class=None if content_class is None else str(content_class),
+        ip_holder_id=None if ip_holder_id is None else str(ip_holder_id),
+        page_count=len(chunk_rows),
+        pagination_scheme=OPENABLE_FALLBACK_PAGINATION_SCHEME,
+        cover_uri=None,
+        toc=toc,
+        provenance=None,
+        license_basis=None,
+        taken_down=False,
+        taken_down_at=None,
+        takedown_reason=None,
+        pre_takedown_content_class=None,
+    )
 
 
 def list_book_assets(

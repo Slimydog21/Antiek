@@ -314,17 +314,35 @@ def get_trace_target(outline_block_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _folder_owner(request: Request) -> str:
+    """A folder is a project (THREAD-CONTRACT §1.5): its owner comes from
+    middleware state, exactly as on /projects."""
+    from interfaces.research.api.books import _reader_owner_id
+
+    return _reader_owner_id(request)
+
+
+def _require_owned_folder(con: Any, folder_id: str, owner: str) -> None:
+    owned = con.execute(
+        "SELECT 1 FROM write_folders WHERE folder_id = ? AND owner_user_id = ?", [folder_id, owner]
+    ).fetchone()
+    if owned is None:
+        raise HTTPException(status_code=404, detail="folder_not_found")
+
+
 @write_router.post("/folders", status_code=201)
-def create_folder(req: CreateFolderRequest) -> dict[str, Any]:
+def create_folder(req: CreateFolderRequest, request: Request) -> dict[str, Any]:
+    owner = _folder_owner(request)
     with _write("write/create_folder") as con:
-        fid = folders_mod.create_folder(con, name=req.name)
+        fid = folders_mod.create_folder(con, name=req.name, owner_user_id=owner)
     return {"folder_id": fid}
 
 
 @write_router.get("/folders")
-def list_folders() -> dict[str, Any]:
+def list_folders(request: Request) -> dict[str, Any]:
+    owner = _folder_owner(request)
     with _read() as con:
-        items = folders_mod.list_folders(con)
+        items = folders_mod.list_folders(con, owner_user_id=owner)
     return {
         "count": len(items),
         "folders": [
@@ -335,27 +353,38 @@ def list_folders() -> dict[str, Any]:
 
 
 @write_router.post("/folders/{folder_id}/blocks", status_code=202)
-def add_folder_block(folder_id: str, req: FolderMemberRequest) -> dict[str, Any]:
+def add_folder_block(folder_id: str, req: FolderMemberRequest, request: Request) -> dict[str, Any]:
+    owner = _folder_owner(request)
     with _write("write/add_folder_block") as con:
+        _require_owned_folder(con, folder_id, owner)
         created = folders_mod.add_block_to_folder(con, folder_id=folder_id, node_id=req.node_id)
     return {"status": "added" if created else "already_member"}
 
 
 @write_router.delete("/folders/{folder_id}/blocks/{node_id}", status_code=200)
-def remove_folder_block(folder_id: str, node_id: str) -> dict[str, Any]:
+def remove_folder_block(folder_id: str, node_id: str, request: Request) -> dict[str, Any]:
+    owner = _folder_owner(request)
     with _write("write/remove_folder_block") as con:
+        _require_owned_folder(con, folder_id, owner)
         removed = folders_mod.remove_block_from_folder(con, folder_id=folder_id, node_id=node_id)
     return {"status": "removed" if removed else "not_member"}
 
 
 @write_router.get("/blocks/search")
 def search_repository(
+    request: Request,
     q: str = Query(default="", max_length=300),
     folder_id: str | None = Query(default=None),
     source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict[str, Any]:
     with _read() as con:
+        if folder_id is not None:
+            # A folder filter reads that folder's members, so it is scoped
+            # like every other folder route: another owner's folder is missing.
+            if not folders_mod._folders_schema_exists(con):
+                raise HTTPException(status_code=404, detail="folder_not_found")
+            _require_owned_folder(con, folder_id, _folder_owner(request))
         hits = block_search.search_blocks(
             con, query=q, folder_id=folder_id,
             source_document_id=source_document_id, limit=limit,

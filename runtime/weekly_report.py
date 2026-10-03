@@ -35,8 +35,7 @@ together, answer "is the system compounding?":
      across documents.
 
 Output: Markdown by default; HTML wrapper via ``--html`` flag.
-``ANTIEK_REPORTS_DIR`` env var picks the output directory (default
-``~/.antiek/reports``).
+Writes to stdout unless ``--output`` names a file.
 
 CLI:
 
@@ -106,18 +105,6 @@ CONSTRAINT_NON_CONVERGING: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 # Window + path helpers
 # ---------------------------------------------------------------------------
-
-
-def default_reports_dir() -> str:
-    """Where reports land by default. ``ANTIEK_REPORTS_DIR`` env var
-    overrides; default ``~/.antiek/reports``."""
-    return os.environ.get(
-        "ANTIEK_REPORTS_DIR",
-        os.path.join(
-            os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
-            "reports",
-        ),
-    )
 
 
 def _parse_date(s: str | None, *, end_of_day: bool = False) -> datetime | None:

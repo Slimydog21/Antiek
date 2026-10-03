@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-07 · Islands + ask — The Antiek motherships</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-07</p>
+    <h1>Islands + ask</h1>
+    <p class="tagline">Highlight a passage and a subagent island hinges out beside it, bound to that passage. It keeps its conversation, shows its process and cost, and can be kept, promoted to a tab, or merged.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 2</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 9 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The operator: "highlight a section that leads to an island emerging where I engage with an LLM deep research subagent, or just generally inquire a research agent and I can give it the context it needs without any highlight".</p><p>Grounding (<code>ground/lane-a-island-ask.json</code>, 15/15 checks held) found the pieces scattered:</p><ul><li>the shared <code>FloatMenu</code> (Note, Dialogue, Search, Deep-research) with an in-place multi-turn Dialogue (MISS4)</li><li>a floating <code>ChaseThread</code> island in Research (MISS5)</li><li>the reading-physics anchored-widgets kit, RegionStore and marginalia, BUILT_UNREACHABLE (IA-04)</li><li>the <code>ContextPicker</code> in the AI sidecar</li><li>TalkToBook</li></ul><p>What is missing:</p><ul><li>The island's lifetime is tied to the DOM selection (IA-01).</li><li>Deep-research from a selection navigates away and, in the Reader, fails silently (F6).</li><li>There is no model choice on the island (IA-09).</li><li>There is no persistence or reopen (IA-05).</li></ul><p><strong>Contract (both lanes):</strong> an island IS a thread, created on its first question. Kept and promoted are presentation states. The anchor is a text-quote locator: passage_id stays the coarse key, extended with exact, prefix and suffix plus a position hint. <strong>Base:</strong> MS-06. <strong>Branch:</strong> <code>design/mothership-07-islands</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>The anchor is §1.4's <code>BranchAnchor</code> (<code>source_locator</code> TextLocator, <code>quote</code>, <code>prefix</code>, <code>suffix</code>, <code>region_id?</code>, <code>page_index?</code>). When the text hash no longer matches, <code>POST /documents/{id}/anchors/remap</code> returns <code>resolved | ambiguous | unresolved</code> with scored candidates; the operator's pick writes <code>anchor.resolved</code> so it is asked once (§1.4, Part 2 §2.3). <code>passage_research</code> is page-granular today (§1.1.1).</li><li>An island's thread branches from <code>read-&lt;documentId&gt;</code> with origin <code>selection</code> (§1.3). Do <strong>not</strong> ship the attach-context UI until §1.9's <code>context_items</code> lands: unknown fields are silently dropped today.</li><li>The estimate is <code>POST /investigations/estimate</code> → <code>{cents, basis, status: ok|unavailable, reason?}</code> (§1.9). <code>unavailable</code> shows its reason and never a figure; launch needs an explicit "Cost unknown" confirmation. An ACU refusal is <code>refused_capped</code> before start; a mid-run halt is <code>stopped</code>.</li><li>"Island" is a lane A presentation word only. Component names may use it; routes, events and payloads never do (§1.0).</li><li>Follow-up: tier 0 is <code>POST /investigations/{id}/ask</code> (a conversation turn). Tier 1 is <code>continue_from_parent</code> (a new research run, with its own estimate). They are two distinct actions (§1.8).</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 2, after MS-06. The contract (THREAD-CONTRACT.md §2.3) must be signed by both lanes first. MS-08, MS-09 and MS-10 build on islands.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>One Island primitive, used identically in the Reader, Research and Writing. It is anchored, persistent and reopenable from a margin mark, shows cost before spend and process while it works, and never navigates away.</strong></p>
+    <p>From any selection, <code>prefix+a</code> (or the quiet Ask affordance) opens an island anchored to the span. The island hinges out of the anchor edge, the Popover hinge the PostHog grammar allows as its one perspective effect. It never covers the passage. It carries the model picker and an estimate, streams process steps and outcome, and can be kept (collapsing to a margin mark), promoted to a thread tab (a child in the MS-04 tree), or merged (MS-08). With nothing selected, the same island opens as an AskComposer, and you attach documents, notes or threads by hand.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">IslandStore: lifetime independent of the DOM selection</div>
+        <p class="desc">A Zustand <code>IslandStore</code> that snapshots <code>{anchor(text-quote locator), docId, workstationId, threadId?, state, presentation}</code> when the island opens. Closing the selection never closes the island.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Tests: clearing the selection, scrolling and re-paginating keep the island and its anchor.</li><li>The anchor survives re-projection of the HTML (the text-quote locator is re-resolved; test with a changed page window).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/IslandStore.ts (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Island component: hinge physics, never covers text, 390 sheet</div>
+        <p class="desc">Rendered through the reading-physics anchored-widgets facet (inline-end or right gutter). The Popover hinge (<code>perspective: 80rem</code>, <code>rotateX(±6deg)</code>, origin at the anchor edge) on the W5 motion tokens, with a plain appear under reduced motion. At sm the island is a full-height bottom sheet with a drag handle, Esc or swipe to close, a focus trap, and focus returned to the highlight (CR-05).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A geometry test: the island's rect never intersects the anchored span's client rects at 1280, 1024 and 390.</li><li>Reduced motion: no transform animation (test via matchMedia mock).</li><li>Keyboard: the first control is focused on open, and Esc returns focus to the anchor (CR-03).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/Island.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">One primitive everywhere: Reader, Research, Writing</div>
+        <p class="desc">Converge the FloatMenu Dialogue, the Research <code>ChaseThread</code> floating panel and the Write surface's span actions onto the Island. FloatMenu keeps its menu, and its "Dialogue" and "Deep research" items open the Island.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test per surface: selection → Ask → an island anchored to that span.</li><li>The Reader's Deep-research no longer navigates to <code>/inv/:id</code>, and its failure is visible and retryable (F6 fixed).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/shared/FloatMenu/*</span><span class="file">apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx</span><span class="file">apps/reading/src/modes/Write/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Model picker + estimate before spend</div>
+        <p class="desc">The existing <code>ModelUsagePicker</code> (#3400) in the island header, defaulting to the house route. Before the first question, the island shows the estimated cost (lane B's single-thread estimate; until then, the cascade spend-preview shape) and today's remaining cap (D4).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>No question can be sent without the estimate state having been shown (test).</li><li>A <code>refused_capped</code> state renders the gate's reason and a one-step link to its setting, and an <code>estimate_unavailable</code> state shows a reason and never a figure (stories).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/IslandHeader.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Streaming process + outcome, honest failure</div>
+        <p class="desc">Island states: composing, estimating, running (process steps streaming, partial outcome), answered, failed (honest reason + Retry), refused_capped (before start) and stopped (mid-run). Process steps show the sources consulted, with their servability.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A story for every state, light/dark, 1280/390.</li><li>A test: a network failure mid-stream shows failed with Retry, and never a spinner forever or a silent close.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/IslandStatus.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Kept → margin mark; reopen from the passage</div>
+        <p class="desc">Keeping collapses the island to a margin mark on the passage, through the marginalia augmentation. Reopening it rehydrates the thread's turns, process and outcome. The document's rail (MS-09) lists kept islands.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: keep, reload and reopen from the mark show the same thread, with its turns and outcome.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/*</span><span class="file">apps/reading/src/reading-physics/augmentations/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Promoted → a thread tab (a child in the branch tree)</div>
+        <p class="desc">Promote opens the thread as a child tab of the current tab (<code>branch_origin.kind = island</code>). The island becomes its margin mark.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: promote → a child tab with the right origin; <code>prefix+u</code> returns to the passage.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/*</span><span class="file">apps/reading/src/workspace/tabTree.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">8</div>
+      <div>
+        <div class="title">Ask without a highlight (AskComposer)</div>
+        <p class="desc"><code>prefix+a</code> with nothing selected opens the same island, unanchored, as an AskComposer. Its context picker extends the existing <code>ContextPicker</code> (@doc, @insight) with threads (lane B adds a thread kind to <code>/compose-context</code>) and notes.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: attach two documents and one thread → the request carries all three.</li><li>Withheld or missing items show honestly (the ContextPicker's existing behaviour, preserved).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/islands/AskComposer.tsx (new)</span><span class="file">apps/reading/src/components/ai/ContextPicker.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">9</div>
+      <div>
+        <div class="title">Bundle, stories, critic</div>
+        <p class="desc">All island code is lazy.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>Name three honesty risks. (1) Without lane B's thread continuation, a follow-up is a one-shot <code>/thought-partner</code> call with no history (<code>floatMenuActions.ts:209</code>). Say "follow-up is stateless", not "Dialogue semantics". (2) Until #3278 merges, Dialogue ignores <code>model_choice</code>, so the island's model picker must say so on Dialogue rather than pretend. (3) A local-only keep must not be labelled "saved".</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman keeping three separate surfaces (FloatMenu Dialogue, ChaseThread, Write span actions), each tuned to its mothership, with no convergence risk. It loses: three primitives means three lineages, three state models and three places for the next bug, which is the P0 clause's parallel-substitute failure. It has real affordances an anchored hinge could lose: ChaseThread's live ThinkingStream in a panel the user can drag anywhere, and Write's rewrite-in-place. Who pays: the Research operator's dragging habit, and this sprint's four-host FloatMenu refactor. Record which surface-specific behaviours were kept.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Test the geometry rule mechanically: the island never covers its anchor. Compute the anchor's <code>getClientRects()</code> and the island's rect at three widths and after scroll. "Looks right" is not a test. Split anchor handling in two. Re-pagination and re-projection must re-resolve the locator to the <em>same</em> exact/prefix/suffix text, tested with a changed page window. An edit or a re-ingest may lose it, and the island must then show an honest "passage changed" state rather than point at the wrong text. The geometry rule is no intersection at 1280 and 1024, and a bottom sheet at 390, where intersection is replaced by focus trap and return.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Before building, read <code>FloatMenu.tsx:418-513</code> (followUp state), <code>floatMenuActions.ts:209-230</code>, <code>ChaseThread.tsx:99-117</code>, the reading-physics anchored-widgets facet and RegionStore, <code>ContextPicker.tsx:28-88</code>, and the <code>ModelUsagePicker</code>. Also read <code>useFloatMenuSelection</code> (the IA-01 root), Write's <code>Outline.tsx:~605</code> span-action path, the Reading <code>spin-research</code> call site that navigates to <code>/inv/:id</code> (F6), the marginalia and chase-launcher augmentations (M6), and <code>workspace/tabTree.ts</code> (M7). The island must be assembled from these.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>Put the one-primitive decision, and the list of surfaces converged onto it, in a comment at the top of <code>Island.tsx</code>, with the ground ids (IA-01..IA-15, MISS4/5). The next person who wants a "special island for X" then sees why there is one. Also record the converged surfaces and the behaviours kept under "Decisions made mid-flight" in the handoff, and link the master spec's rejected-alternative row ("a new island store separate from threads").</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-06 — <span class="muted">the reader it mounts on</span></li><li>MS-05 — <span class="muted">openDocument</span></li><li>MS-04 — <span class="muted">promotion to a child tab</span></li><li>THREAD-CONTRACT.md signed — <span class="muted">island = thread, anchor locator</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: thread continuation, the text-quote locator, stream endpoints, a single-thread estimate, a thread kind in <code>/compose-context</code>, and <code>model_choice</code> on spin-research (#3278 for Dialogue).</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Thread lists and the merge flow (MS-08).</li><li>Companion rendering (MS-09).</li><li>Flags and autonomous diligence from the island (MS-10).</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Geometry</strong></td><td><code>vitest: the island never intersects its anchor at 1280/1024/390</code></td><td>pass</td></tr><tr><td><strong>States</strong></td><td><code>Storybook: every island state, light/dark, 1280/390</code></td><td>all rendered</td></tr><tr><td><strong>No navigate-away</strong></td><td><code>vitest: Deep-research from a selection in all three motherships</code></td><td>stays in place; failure visible</td></tr><tr><td><strong>Keyboard + ARIA</strong></td><td><code>vitest focus-in and Esc-return tests</code></td><td>pass</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-07 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: IslandStore: lifetime independent of the DOM selection — &lt;result&gt;
+- [ ] M2: Island component: hinge physics, never covers text, 390 sheet — &lt;result&gt;
+- [ ] M3: One primitive everywhere: Reader, Research, Writing — &lt;result&gt;
+- [ ] M4: Model picker + estimate before spend — &lt;result&gt;
+- [ ] M5: Streaming process + outcome, honest failure — &lt;result&gt;
+- [ ] M6: Kept → margin mark; reopen from the passage — &lt;result&gt;
+- [ ] M7: Promoted → a thread tab (a child in the branch tree) — &lt;result&gt;
+- [ ] M8: Ask without a highlight (AskComposer) — &lt;result&gt;
+- [ ] M9: Bundle, stories, critic — &lt;result&gt;
+### Verification gate results
+- Geometry: pass | fail | skipped (why)
+- States: pass | fail | skipped (why)
+- No navigate-away: pass | fail | skipped (why)
+- Keyboard + ARIA: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- Islands exist everywhere and create threads, so MS-08 lists them and MS-09 renders what they found.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="perspective-diverse-verify"
+           data-harness-fanout-unit="Build inline. Verify with distinct lenses."
+           data-harness-verifier-lenses="anchor fidelity after re-projection | no spend without estimate/cap"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>perspective-diverse-verify</code></p><p class="muted">The build converges three surfaces into one primitive, so it is inline. The risks are geometry, lifetime and spend, which need diverse verification.</p></div>
+      <div><h3>Fan-out unit</h3><p>Build inline. Verify with distinct lenses.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Anchor fidelity: after re-pagination, re-projection or an edit, does the island still point at the right text, or say honestly that it can't?</li><li>Spend honesty: can any question be sent without the model and estimate having been shown, or past today's cap?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-07 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

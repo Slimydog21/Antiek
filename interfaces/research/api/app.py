@@ -93,6 +93,7 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
 # Retry-After hint (seconds) served with every 503 mapped from
 # runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
@@ -215,10 +216,8 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
-    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
-    # be starved of the DuckDB write lock for hours while /health says "ok";
-    # this is the field that makes that state visible without opening a log.
-    # Empty dict when the worker is disabled or has not run a pass yet.
+    # Last admitted replay worker phase only; even "current" is not a reader
+    # availability or recovery guarantee. An empty dict means no admitted phase.
     note_taker_replay: dict[str, Any] = {}
 
 
@@ -236,6 +235,12 @@ class HealthResponse(BaseModel):
     prime_agent_invocations_attempted: int = 0
 
 
+# A registered provider id can be `user-<operator-user-id>-<their-configured-name>`.
+# /health needs no credentials, so those entries are never published: see the comment at
+# the `registered_providers=` call site.
+_PRIVATE_PROVIDER_PREFIX = "user-"
+
+
 def _probe_backup_freshness() -> dict[str, Any]:
     """Read-only backup freshness for /health. Never raises."""
     try:
@@ -246,7 +251,10 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_fresh": verdict.fresh,
             "backup_completed_at": verdict.completed_at,
             "backup_age_hours": verdict.age_hours,
-            "backup_marker_path": verdict.marker_path,
+            # The marker path is a filesystem location on the host: measured live,
+            # /health published `/home/antiek/.antiek/backup_freshness.json` to an
+            # unauthenticated caller.
+            "backup_marker_path": "",
             "backup_reason": verdict.reason,
         }
     except Exception as exc:
@@ -255,7 +263,11 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_completed_at": None,
             "backup_age_hours": None,
             "backup_marker_path": "",
-            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+            # type(exc).__name__ only. The previous form interpolated str(exc), and the
+            # freshness evaluator raises with the marker path in the message, so an
+            # anonymous caller could read a host path out of a failure of the very probe
+            # that exists to report absence.
+            "backup_reason": f"probe_exception: {type(exc).__name__}",
         }
 def _probe_prime_lane() -> dict[str, bool | int]:
     """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
@@ -2035,6 +2047,11 @@ def create_app(
     # provenance read the review surface renders.
     from .reformat_routes import register_reformat_routes
     register_reformat_routes(app)
+    # Mothership W1 (THREAD-CONTRACT §1.5/§1.6) — the project registry over
+    # write_folders and the per-account tab trees: owner-scoped, a version
+    # compare-and-set, append-only number registers and a retirement history.
+    from .project_routes import register_project_routes
+    register_project_routes(app)
     # Thread-merge + document fork SPR-01 — the fork primitive: copy/adopt
     # creation idempotent on a client operation id, forks-of-this +
     # forked-from in one read, fork detail, and depth-1 lineage.
@@ -2403,7 +2420,18 @@ def create_app(
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
-            registered_providers=sorted(registered_providers),
+            # User-derived entries are NOT published. A registered provider id can be
+            # `user-<operator-user-id>-<their-configured-provider-name>`, and this route
+            # needs no credentials: measured live, /health returned
+            # `user-80946f0b-my-deepseek` among the registry, publishing a user id and
+            # that user's own provider configuration to anyone. The built-in ids carry
+            # the operational signal -- whether the registry is non-empty and which
+            # built-ins registered -- and nothing else is required by a health probe.
+            registered_providers=sorted(
+                name
+                for name in registered_providers
+                if not name.startswith(_PRIVATE_PROVIDER_PREFIX)
+            ),
             providers_ready=bool(route_ready_providers),
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
@@ -2431,11 +2459,10 @@ def create_app(
                     "indexed_row_count"
                 )
             ),
-            turbopuffer_content_hash=(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "content_hash"
-                )
-            ),
+            # The content hash of the indexed corpus is derived from private
+            # documents and is not needed by any health consumer. `_probe_backup_freshness`
+            # below is the same reasoning for filesystem paths.
+            turbopuffer_content_hash=None,
             # No bool() and no True default: both would launder "unknown"
             # into a definite answer. A missing key means the probe never ran,
             # which is exactly as unknown as a probe that raised.
@@ -2466,8 +2493,8 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
-            note_taker_replay=dict(
-                getattr(app.state, "note_taker_recovery", {}) or {}
+            note_taker_replay=_public_note_taker_replay(
+                getattr(app.state, "note_taker_recovery", {})
             ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
