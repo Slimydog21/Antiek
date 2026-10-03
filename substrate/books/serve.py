@@ -189,6 +189,45 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     )
 
 
+def servable_body_exists(con: Any, document_id: str) -> bool:
+    """The serve gate's own answer to "would the public path serve a body?":
+    True iff ``document_id`` exists AND the public serve gate would emit its
+    full text AND the stored body is non-empty.
+
+    This is the existence question routed THROUGH the seam. A caller that
+    needs to know whether a servable body exists (e.g. the reader metadata
+    open path, which must not 404 a document the very next ``/full-text``
+    call serves) asks the gate instead of issuing its own
+    ``SELECT ... raw_text ... FROM documents`` — the raw-body-read scanner
+    (``tools/lint/serve_invariants_check.py``) forbids that read outside
+    this module, because the serve gate is the one place the servability
+    policy is applied. The predicate uses the gate's own vocabulary
+    (:func:`servability_of` over ``content_class`` + the ``taken_down``
+    override, then :func:`is_servable_full_text`), so an existence check
+    here can never clear a document the serve path would withhold — the
+    metadata gate and the body gate cannot disagree. Only the boolean
+    leaves this function; no body bytes do.
+    """
+    row = con.execute(
+        """
+        SELECT d.content_class, d.raw_text,
+               COALESCE(b.taken_down, FALSE) AS taken_down
+        FROM documents d
+        LEFT JOIN book_assets b ON d.document_id = b.document_id
+        WHERE d.document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return False
+    content_class, raw_text, taken_down = row
+    if not is_servable_full_text(
+        servability_of(content_class, taken_down=bool(taken_down))
+    ):
+        return False
+    return raw_text is not None and bool(str(raw_text).strip())
+
+
 def _snippet(raw_text: str | None) -> str | None:
     """Bounded body excerpt for gated books. None when there's no body."""
     if not raw_text:

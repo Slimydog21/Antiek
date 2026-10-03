@@ -39,7 +39,12 @@ from typing import Any, Literal, cast
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from substrate.books.model import BookAsset, get_book_asset, list_book_assets
+from substrate.books.model import (
+    BookAsset,
+    get_book_asset,
+    get_openable_book_asset,
+    list_book_assets,
+)
 from substrate.books.serve import ServeResult
 from substrate.research_bridge.ingest import (
     CHUNK_TARGET_CHARS,
@@ -2152,7 +2157,7 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            asset = get_book_asset(con, document_id)
+            asset = get_openable_book_asset(con, document_id)
         finally:
             con.close()
         if asset is None:
