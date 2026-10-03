@@ -60,6 +60,7 @@ class DistilledNode:
 class Distillation:
     insights: list[DistilledNode] = field(default_factory=list)
     questions: list[DistilledNode] = field(default_factory=list)
+    unavailable_count: int = 0
 
     @property
     def empty(self) -> bool:
@@ -118,7 +119,8 @@ def distillation_for(
     """Read the insight + question nodes an investigation distilled, with
     their *current* text + grounding. Read-only. Nodes whose event was
     recorded but whose row no longer exists (deleted) are skipped — the
-    log is history, the row is truth."""
+    log is history, the row is truth. This is an unscoped internal read;
+    caller-facing reads must use ``readable_distillation_for``."""
     node_ids, escalations = _node_ids_from_trajectory(
         investigation_id, events_dir=events_dir
     )
@@ -127,6 +129,7 @@ def distillation_for(
 
     insights: list[DistilledNode] = []
     questions: list[DistilledNode] = []
+    unavailable_count = 0
     con = connect_read(db_path or graph_db_path())
     try:
         for nid in node_ids:
@@ -135,6 +138,7 @@ def distillation_for(
                 [nid],
             ).fetchone()
             if row is None:
+                unavailable_count += 1
                 continue  # tombstoned row — skip, don't fabricate
             ntype, label, meta_raw = row
             meta = _load_meta(meta_raw)
@@ -159,9 +163,73 @@ def distillation_for(
                         esc.get("reserved_child_investigation_id") if esc else None
                     ),
                 ))
+            else:
+                unavailable_count += 1
     finally:
         con.close()
-    return Distillation(insights=insights, questions=questions)
+    return Distillation(
+        insights=insights, questions=questions, unavailable_count=unavailable_count
+    )
+
+
+def readable_distillation_for(
+    investigation_id: str,
+    *,
+    owner_user_id: str,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+) -> Distillation:
+    """Return only products whose node and source the caller may inspect.
+
+    Policy: an exact node owner may read; NULL-owned shared/legacy nodes
+    may also be read, but neither grants source access. The source must pass
+    the real body read gate, with owner privileges only on an exact match.
+    Public bodies are inspectable through /books/{id}/full-text; the passage
+    route remains exact-owner-only. /books/{id} metadata can be 404 simply
+    because there is no openable book asset, not because of ownership.
+    Foreign-owned nodes, unknown sources and
+    withheld bodies fail closed, regardless of operator authentication.
+
+    ``unavailable_count`` lets provenance reject an incomplete investigation
+    rather than authorize a mixed-owner product from its visible subset.
+    The unscoped ``distillation_for`` remains an internal graph read, not an
+    authorization decision. Neither function validates source spans.
+    """
+    from substrate.books.serve_guard import LinkBackMissingError, serve_full_text_guarded
+    from substrate.rights import T3BodyServeError
+
+    view = distillation_for(investigation_id, db_path=db_path, events_dir=events_dir)
+    readable: set[str] = set()
+    with connect_read(db_path or graph_db_path()) as con:
+        for node in [*view.insights, *view.questions]:
+            if not node.source_document_id:
+                continue
+            row = con.execute(
+                "SELECT n.owner_user_id, d.owner_user_id FROM nodes n "
+                "JOIN documents d ON d.document_id = ? WHERE n.node_id = ?",
+                [node.source_document_id, node.node_id],
+            ).fetchone()
+            if (
+                not owner_user_id.strip()
+                or row is None
+                or row[0] not in (None, owner_user_id)
+            ):
+                continue
+            try:
+                served = serve_full_text_guarded(
+                    con, node.source_document_id, owner=row[1] == owner_user_id
+                )
+            except (T3BodyServeError, LinkBackMissingError):
+                continue
+            if served.full_text and served.full_text.strip():
+                readable.add(node.node_id)
+    return Distillation(
+        insights=[n for n in view.insights if n.node_id in readable],
+        questions=[n for n in view.questions if n.node_id in readable],
+        unavailable_count=(
+            view.unavailable_count + len(view.insights) + len(view.questions) - len(readable)
+        ),
+    )
 
 
 def _load_meta(raw: Any) -> dict[str, Any]:
