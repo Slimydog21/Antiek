@@ -441,11 +441,10 @@ def register_ad_routes(app: FastAPI) -> None:
         # (asyncio.to_thread) with a short flock wait — #3121 coexist /
         # #3153 class. Default 300s write wait wedged uvicorn under
         # agent_work. No fake pricing: missing/unpriced fill still mints $0.
-        from runtime.db_lock import WriteConfigurationTimeout, WriteLockTimeout
-
         from interfaces.research.api.frame_write_health import (
             frame_write_health_for,
         )
+        from runtime.db_lock import WriteConfigurationTimeout, WriteLockTimeout
 
         def _accrue_sync() -> FrameTelemetryResponse:
             with connect_write(

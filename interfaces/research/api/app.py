@@ -92,8 +92,8 @@ from substrate.schemas import (  # noqa: E402
 
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
-from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .frame_write_health import frame_write_health_for  # noqa: E402
+from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
 # Retry-After hint (seconds) served with every 503 mapped from

@@ -326,7 +326,7 @@ def _stub_bin(tmp_path: Path, health_body: str, ratio_body: str) -> Path:
     webhook POST to ``$STUB_POST_LOG``. Real jq does the parsing."""
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    post_log = tmp_path / "posted.json"
+    tmp_path / "posted.json"
     curl = bindir / "curl"
     curl.write_text(
         "#!/usr/bin/env bash\n"

@@ -48,8 +48,8 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 # 15 minutes — matches the probe's provider-ratio window so one probe read
 # sees a settled window, and long enough that the sync's legitimate short
