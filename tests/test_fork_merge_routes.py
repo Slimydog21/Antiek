@@ -14,7 +14,7 @@ api_env shape from tests/test_fork_routes.py). The spec's round trip:
   3. anchor-based detection: with an anchor fixture on the passage, the
      differing-hash item is auto-LISTED; without anchors only (a)/(c) fire
      — the degradation asserted, not assumed;
-  4. a withheld-source item merges only its own text, never source body —
+  4. an owner-readable private-source item merges only its own text, never source body —
      asserted on the committed fork body;
   5. audit completeness: every resolution row recomputes against the
      commit ledger (count + refs match).
@@ -105,7 +105,7 @@ def _seed_thread(
     investigation_id: str,
     texts: list[str],
     *,
-    source_document_id: str | None = None,
+    source_document_id: str | None = "doc-parent",
 ) -> list[str]:
     """Distilled insight nodes for a thread, event-logged so the distill
     read (the trajectory walk) sees them — exactly as a real research
@@ -494,13 +494,13 @@ def test_cross_member_pair_detection(api_env) -> None:
     assert conflicts[0]["item_refs"] == [["inv-a", s1], ["inv-b", s1]]
 
 
-# ── Proof 4: a withheld-source item merges only its own text ────────────────
+# ── Proof 4: an owner-readable private source contributes no body bytes ─────
 
 
-def test_withheld_source_item_merges_only_its_own_text(api_env) -> None:
+def test_owner_readable_private_source_merges_only_item_text(api_env) -> None:
     db, events = api_env["db"], api_env["events"]
     _seed_book(db)
-    # A non-servable document whose body must NEVER leak into the fork.
+    # Owner-readable, but not public: its body must not be copied into the fork.
     _seed_book(
         db,
         "doc-withheld",
@@ -508,6 +508,11 @@ def test_withheld_source_item_merges_only_its_own_text(api_env) -> None:
         raw_text="SECRET WITHHELD BODY — never merged",
         content_class="personal_reading",
     )
+    with connect_write(db, purpose="test/own-private-source") as con:
+        con.execute(
+            "UPDATE documents SET owner_user_id = '__operator__' "
+            "WHERE document_id = 'doc-withheld'"
+        )
     [w1] = _seed_thread(
         db,
         events,
@@ -924,3 +929,88 @@ def test_merge_body_gate_preserves_document_owner_boundary(api_env, endpoint):
     assert response.status_code == 404, response.text
     assert response.json()["detail"] == "fork_not_found"
     assert _merge_storage_state(db, events) == before
+
+
+@pytest.mark.parametrize(
+    "node_owner,source_owner,source_class,source_ref,readable",
+    [
+        pytest.param("__operator__", "__operator__", "personal_reading", "private-source", True, id="same-owner"),
+        pytest.param("bob", "bob", "personal_reading", "private-source", False, id="foreign-owner"),
+        pytest.param("__operator__", "bob", "personal_reading", "private-source", False, id="foreign-source-only"),
+        pytest.param("bob", "__operator__", "public_domain", "private-source", False, id="foreign-node-public-source"),
+        pytest.param(None, "bob", "public_domain", "private-source", True, id="shared-legacy-public"),
+        pytest.param(None, "bob", "personal_reading", "private-source", False, id="shared-legacy-private"),
+        pytest.param("__operator__", "", "personal_reading", "private-source", False, id="unknown-source-owner"),
+        pytest.param("__operator__", "__operator__", "restricted_pending_opt_in", "private-source", False, id="owner-withheld-source"),
+        pytest.param("__operator__", "__operator__", "personal_reading", None, False, id="missing-source-ref"),
+        pytest.param("__operator__", "__operator__", "personal_reading", "nonexistent", False, id="missing-source-row"),
+    ],
+)
+@pytest.mark.parametrize("caller", ["alice", "bob"])
+def test_merge_selected_outcome_owner_boundary(
+    api_env, monkeypatch, caller, node_owner, source_owner, source_class, source_ref, readable,
+):
+    from substrate.auth import mint_session_cookie
+
+    db, events = api_env["db"], api_env["events"]
+    foreign = "bob" if caller == "alice" else "alice"
+    node_owner = caller if node_owner == "__operator__" else foreign if node_owner == "bob" else node_owner
+    source_owner = caller if source_owner == "__operator__" else foreign if source_owner == "bob" else source_owner
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "fork-merge-hermetic-test-secret")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "alice@example.test,bob@example.test")
+    _seed_book(db)
+    secret = "PRIVATE INSIGHT: caller-readable only while the source is owned."
+    _seed_book(db, "private-source", raw_text="Private source body.",
+               content_class="personal_reading")
+    [node] = _seed_thread(db, events, "private-research", [secret],
+                          source_document_id="private-source")
+    with connect_write(db, purpose="test/own-source") as con:
+        con.execute("UPDATE documents SET owner_user_id = ? WHERE document_id IN ('doc-parent', 'private-source')", [caller])
+        con.execute("UPDATE nodes SET owner_user_id = ? WHERE node_id = ?", [caller, node])
+    client = _client()
+    client.cookies.set("ANTIEK_SESSION", mint_session_cookie(
+        user_id=caller, email=caller + "@example.test",
+    ))
+    identity = client.get("/auth/me")
+    assert identity.status_code == 200, identity.text
+    assert identity.json()["user_id"] == caller
+    fork = _fork(client, "op-outcome-owner")
+    pairs = [("private-research", node)]
+    payload = {"fork_id": fork["fork_id"], "items": _items(pairs)}
+    authorized = client.post(PREVIEW, json=payload)
+    assert authorized.status_code == 200, authorized.text
+    # A previously valid preview is not authority after source ownership changes.
+    with connect_write(db, purpose="test/source-owner-drift") as con:
+        con.execute(
+            "UPDATE documents SET owner_user_id = ?, content_class = ? "
+            "WHERE document_id = 'private-source'", [source_owner, source_class],
+        )
+        con.execute(
+            "UPDATE nodes SET owner_user_id = ?, metadata = ? WHERE node_id = ?",
+            [node_owner, json.dumps({"source_document_id": source_ref}), node],
+        )
+    before = _merge_storage_state(db, events)
+    distill = client.get("/research/private-research/distill")
+    preview = client.post(PREVIEW, json=payload)
+    commit = client.post(COMMIT, json=_commit_body(fork["fork_id"], pairs, authorized.json()))
+    full_text = client.get(f"/books/{fork['fork_document_id']}/full-text")
+    for name, response in [("distill", distill), ("preview", preview),
+                           ("commit", commit), ("fork-full-text", full_text)]:
+        print(json.dumps({"caller": caller, "node_owner": node_owner,
+                          "source_owner": source_owner, "operation": name,
+                          "status": response.status_code, "body": response.json()}))
+    assert distill.status_code == 200, distill.text
+    assert full_text.status_code == 200, full_text.text
+    if readable:
+        assert distill.json()["insights"][0]["text"] == secret
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["items"][0]["text"] == secret
+        assert commit.status_code == 200, commit.text
+        assert commit.json()["writes_performed"] is True
+        assert secret in full_text.json()["full_text"]
+    else:
+        assert distill.json()["insights"] == []
+        assert preview.status_code == 422, preview.text
+        assert commit.status_code == 422, commit.text
+        assert secret not in preview.text + commit.text + full_text.text
+        assert _merge_storage_state(db, events) == before
