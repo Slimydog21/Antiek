@@ -1,0 +1,656 @@
+{
+  "area": "threads-merge-fork-companion",
+  "summary": "Ground truth is origin/main 15e78e276 (read-only worktree ground-main-20260924; vitest NOT RUN because apps/reading/node_modules is absent there). Antiek has a subagent \"thread\" only in the loose sense of an investigation id with a per-investigation JSONL event log. You can see what a research did (process) at /replay/:id and what it concluded (outcome) at /inv/:id, which shows the MasterMdViewer answer, the DistillView insights and questions, and AutoNotebook. Both are persisted and reachable. The mothership mechanics the operator described are missing or disconnected:\n(1) No document or project has a thread list. The Reader's \"Saved chases\" rail is keyed to localStorage handoffs whose parent is read-<doc>, and no shipped Reader action ever writes one. Highlight to Deep-research in the Reader calls spin-research, which parents the research to a global \"read-spin\" pseudo-thread and navigates away. The backend researches_for_passage() has no route.\n(2) You cannot ask a prior research thread a follow-up that carries its context. \"Chat \u00b7 this investigation\" and Follow-this launch a new child whose only context is the question or highlight text. Loop One never reads the parent's synthesis or notes. The project-note injection module (note_injection) has no production caller. The prior-knowledge reuse step emits a knowledge.reused event, but the assembled pack is thrown away, both in Loop One and in HostLocalRunner.\n(3) The only context carry that works is client-side: TalkToBook sends the active branch's history, but it lives in sessionStorage, and Wrestle keeps working memory inside one session-scoped investigation.\n(4) Merge exists only as a view-layer concatenation. \"Draft merge\" in ArtifactOutlineShelf writes a static HTML file with file:// links; there is no queryable merged context. Automatic merge is absent.\n(5) Companion documents exist per investigation (AutoNotebook, MasterMdViewer, twin-notes.html, artifact.html). Nothing accumulates across a project's threads. The per-document companion rail shows only marginalia and voice-note notes, not findings from researches spun off that document. The per-asset twin store (/twins) is mounted but has no producer and no UI.\n(6) Merge-into-document is partial: blocks can be dragged into a Write outline with graph provenance, and a deliverable can be seeded from an investigation. The only \"merge into a document\" backend (source-merge commit) appends the draft-merge HTML into documents.raw_text in place. That contradicts the accepted Safe Derived Asset Merge (SDAM) decision (\"never mutates a book\") and is effectively unreachable today.\n(7) Forks with lineage exist only as a schema. SDAM's derived_assets and derived_asset_revisions tables (with parent_revision_id) have zero writers. Doc version history is spec-only: notebook edits are destructive UPDATE and DELETE. The Write Cmd+K edit applies with no diff or accept step. The cross-workflow ThreadBreadcrumb and ThreadJump plus GET /thread/{node_id} are built but never mounted.",
+  "capabilities": [
+    {
+      "id": "C01",
+      "name": "Thread list per evidence document (researches/conversations spawned from this document, revisitable)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:88,334-341",
+          "note": "'Saved chases' section renders only when useChaseDraftHandoffs(readingThreadId='read-<doc>') is non-empty"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/chaseHandoffs.ts:4,40-54,80-101",
+          "note": "handoffs live in localStorage key antiek.chase.draftHandoffs.v1 (per-browser, capped 100)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx:110-117",
+          "note": "the ONLY recordChaseDraftHandoff writer; ChaseThread is opened only from ResearchWorkstation/index.tsx:154,168 with parent=/inv/:id, never read-<doc>"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:246-259; apps/reading/src/modes/Reading/ResearchThis.tsx:42,67",
+          "note": "Reader highlight Deep-research + 'Research this page' call spinResearch then navigate(`/inv/...`) \u2014 never record a handoff"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2186-2197,2223-2227",
+          "note": "spin-research emits start_requested with NO parent_investigation_id; lineage recorded under global 'read-spin' via link_passage_to_research"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/books/passage_research.py:135-199",
+          "note": "researches_for_passage / passage_for_research exist; grep shows only tests call them \u2014 no route"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:543-560,3001-3010",
+          "note": "InvestigationSummary has no document_id; GET /investigations has no document filter"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2450-2472,2606-2640",
+          "note": "talk-to-book answers are durable read.book_answered events on read-<doc> but carry no thread/branch id; GET /books/{id}/answer-evaluations lists only judged answers and has no frontend caller"
+        }
+      ],
+      "gap": "Need: GET /documents/{document_id}/threads (union of researches_for_passage over all pages, chases parented to read-<doc>, and grouped read.book_answered turns) backed by an indexed thread table (thread_id, kind, document_id, project_id, parent_thread_id, status, created_at) rather than a trajectory scan; Reader rail component <DocumentThreads> listing them with status + 'open' + 'ask again'; spin-research must parent to read-<doc> (or write the thread row) so book-spawned researches are listable; retire the localStorage handoff list as source of truth.",
+      "backend_dependency": "New thread index table + route; reuse substrate/books/passage_research.py readers; add thread_id/branch_id to ReadBookAnsweredPayload.",
+      "ux_notes": "Today the rail's empty-state copy ('No notes yet\u2026') never mentions researches; the saved-chases list, if reachable, shows 'saved locally' status and 'open research' navigates away from the book."
+    },
+    {
+      "id": "C02",
+      "name": "Thread list per project/workstation",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MyResearch.tsx:78-100,176,476-479",
+          "note": "global log grouped by parent_investigation_id; each row links /replay/:id"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useInvestigationTree.ts:1-60; apps/reading/src/modes/ResearchWorkstation/InvestigationSidebar.tsx:28",
+          "note": "docked-left tree on /inv merges substrate parent ids with a localStorage map"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:97-115",
+          "note": "'project' = one root investigation; no container entity"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:3001-3060",
+          "note": "GET /investigations walks the whole events dir per call, limit<=500, no project filter"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/NotesFeed.tsx (imported only by NotesFeed.stories.tsx)",
+          "note": "legacy note feed unreachable"
+        }
+      ],
+      "gap": "No workstation/project entity that owns multiple root researches, documents, notebooks and drafts. Need a projects table + GET /projects/{id}/threads, a per-project thread rail (tabs inside workstation), and a thread picker bound to a hotkey. The CommandPalette lists investigations globally (CommandPalette.tsx:716-740), not per project.",
+      "backend_dependency": "projects + thread index tables; GET /projects/{id}/threads; parent/child already in start_requested payload (app.py:2742-2800).",
+      "ux_notes": "design baseline: MyResearch empty state rendered as a red alert (full-audit-type-copy.md:174, MyResearch.tsx:272-279)."
+    },
+    {
+      "id": "C03",
+      "name": "Ask an existing RESEARCH thread a follow-up that carries its held context",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:104-113",
+          "note": "docked panel titled 'Chat \u00b7 this investigation'"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChatInputArea.tsx:62-77",
+          "note": "it POSTs /investigations (a NEW child) with question + parent id, then navigates to the child"
+        },
+        {
+          "cls": "READ",
+          "ref": "orchestration/loop_one/orchestrator.py:2086-2097,660-668",
+          "note": "child ctx gets only question + req.context; decomposer receives question/context only"
+        },
+        {
+          "cls": "READ",
+          "ref": "orchestration/loop_one/orchestrator.py:445-461",
+          "note": "prior-graph section is similarity search on the question, not the parent thread"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/context_pack/note_injection.py:1-20",
+          "note": "project-notes injection layer exists; grep: no production caller (tests + benchmarks/context_pack_timing.py only)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/cascade_routes.py:518-520,1874-1888",
+          "note": "steer deepen/redirect exists only for LIVE in-memory cascade sessions (_SESSIONS); not for completed threads"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:599-608",
+          "note": "Write 'Spin a sub-agent' accept just closes the proposal; child outcome never returns"
+        }
+      ],
+      "gap": "Need a thread-continuation primitive: POST /threads/{thread_id}/turns (or /investigations/{id}/followups) that assembles a context pack from the thread's synthesis, distilled insights/questions (note_injection.build_project_notes_layer), sources and a trajectory summary, runs a scoped answer or child research, and appends the turn to the same thread. UI: a composer bound to the selected thread ('Ask this thread') in the /inv view, Reader rail and DRW canvas, distinct from 'start a new research'.",
+      "backend_dependency": "Wire substrate/context_pack/note_injection.py into Loop One / a new follow-up role; thread-turn event type; the relabelled 'Chat' panel must stop implying chat."
+    },
+    {
+      "id": "C04",
+      "name": "Follow-up with held context in a READING conversation (talk-to-book / thought partner / wrestle)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TalkToBook.tsx:195-220",
+          "note": "active branch's completed turns sent as history to POST /books/{id}/ask"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/useTalkThread.ts:14-22,71,78-96,306-325",
+          "note": "branches (fork a tangent) + trunk kept in sessionStorage only \u2014 lost on tab close"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useThoughtPartnerThread.ts:1-52",
+          "note": "thought-partner thread also sessionStorage, keyed by reading focus doc or __workspace__"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/WrestleApp/index.tsx:47-53; interfaces/research/api/wrestling.py:330-373",
+          "note": "Wrestle injects same-investigation working memory, but the investigation id is per browser session (sessionStorage antiek.investigation_id)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:195,409-500",
+          "note": "highlight Dialogue is one-shot"
+        }
+      ],
+      "gap": "Conversations can't be reopened across sessions or picked from a list. Need server-side thread identity (thread_id + branch_id on read.book_answered and thought-partner turns), GET /threads/{id} to rehydrate, and a thread picker in TalkToBook. Reader SPR-06's anchored durable Dialogue was planned and not shipped: substrate/contracts/reading_surface.py:1,35,54 is still PROVISIONAL, typed Any.",
+      "backend_dependency": "Add thread/branch fields to ReadBookAnsweredPayload; persist branches; anchor to Region.",
+      "ux_notes": "TalkToBook leaks the internal name 'Surface E' (visual-critiques.md TalkToBook section; TalkToBook.tsx:330). The branch picker only appears when there are 2+ branches."
+    },
+    {
+      "id": "C05",
+      "name": "Manual context merge of two or more threads",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ArtifactOutlineShelf.tsx:67-75,128-150,243,355-360",
+          "note": "on completed /inv (DistillView.tsx:153): tick server-known children + local handoffs or paste raw 'other research ids' \u2192 Draft merge"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/artifact_routes.py:325-380",
+          "note": "POST /research/artifacts/compose + GET compose/draft-merge.html"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/research_artifact/compose.py:28-104,107-190",
+          "note": "view-layer merge: static HTML concatenating each member's findings/questions/agent notes with file:// links; writes files under ~/.antiek/research-artifacts; no graph mutation, no merged context object"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/twin_notes_routes.py:100-120; substrate/twin_notes/store.py:1-18",
+          "note": "POST /twins/merge unions same-parent twins; mounted (app.py:2072-2073), but no producer writes twins and no frontend caller"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:282-311,351-356",
+          "note": "reader 'draft ready' merge requires 2+ completed handoffs; unreachable (see C01)"
+        }
+      ],
+      "gap": "The merge output can't be asked, continued or cited. Need a merged-context entity: POST /threads/merge {thread_ids, strategy} \u2192 a new thread whose context pack is the union with conflicts surfaced, plus a merge sheet UI (select threads, see overlap and contradictions, confirm). Replace file:// paths with API routes and never send server filesystem paths to the browser.",
+      "backend_dependency": "thread index; context assembler over multiple threads; conflict detection over insight/question nodes.",
+      "ux_notes": "The raw-id text input and mono server paths (ArtifactOutlineShelf.tsx:230-260,355-375) are developer-facing."
+    },
+    {
+      "id": "C06",
+      "name": "Automatic context merge over a document/project",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "orchestration/loop_one/orchestrator.py:1851-1865",
+          "note": "maybe_reuse_prior_knowledge_at_start() result discarded"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/flywheel/investigation_start_reuse.py:92-101",
+          "note": "assembles a reuse pack with layers=[] and returns only the knowledge.reused event id; the pack text never reaches a prompt"
+        },
+        {
+          "cls": "READ",
+          "ref": "runtime/research_runner/host_local.py:283-302",
+          "note": "cascade path also calls assemble_context_pack_with_reuse and drops the return value"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:334-370",
+          "note": "/health flywheel_ready keys off >=1 knowledge.reused event"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/deriveAutoNotebook.ts (no parent/child references)",
+          "note": "AutoNotebook doesn't fold child chases into the parent view"
+        }
+      ],
+      "gap": "Nothing merges thread contexts automatically. The reuse flywheel records reuse without injecting it; this is PLAUSIBLE from READ and was not RUN. Need a policy-driven background merger, e.g. on investigation.completed where parent or document matches: fold the child's insights and questions into the parent/project companion and the agent evidence base, with a visible 'merged from' lineage and an undo. Fix the discarded reuse pack first.",
+      "backend_dependency": "Consume the reuse/notes pack in the decomposer/synthesizer prompt; a merge worker keyed on completion events; project/document companion store."
+    },
+    {
+      "id": "C07",
+      "name": "Process (trajectory, steps, sources consulted) persisted and viewable",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:2608,2655",
+          "note": "GET /trajectory/{investigation_id}, GET /trajectory"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:256; apps/reading/src/modes/Replay/index.tsx:1-40",
+          "note": "/replay/:investigationId with live WS"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MyResearch.tsx:476-479",
+          "note": "only UI entry: 'replay \u2192' on MyResearch rows"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ThinkingStream.tsx:320-325; index.tsx:292-305",
+          "note": "running view: narrated stream + raw TrajectoryView toggle"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:245-283",
+          "note": "the completed /inv view shows neither process nor a replay link"
+        },
+        {
+          "cls": "RUN",
+          "ref": "Read /Users/slimydog/Antiek/.design-shots-2026-09-23/research/route-authmock-replay-demo-investigation__light__1280.png",
+          "note": "replay renders 'Per master-spec \u00a714.1\u2026' copy and a 'Failed to fetch' block with no retry (mocked data)"
+        }
+      ],
+      "gap": "Process is split from outcome. Talk-to-book and Dialogue processes aren't viewable. 'Sources consulted' is only raw events. Need a process tab on the thread view (steps, sources with servability, cost) linked both ways with the outcome, and a sources-consulted summary endpoint (GET /threads/{id}/sources)."
+    },
+    {
+      "id": "C08",
+      "name": "Outcome (answer, claims, insights, questions) persisted and viewable",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:245-265",
+          "note": "completed: MasterMdViewer(synthesis) + DistillView"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/distill_routes.py:103,121",
+          "note": "GET /research/{id}/distill; POST /research/notes/{node_id}/challenge"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/artifact_routes.py:565-607",
+          "note": "script-free /research/{id}/artifact.html projection"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2450-2472",
+          "note": "talk-to-book answers durably captured but not re-listable in UI"
+        }
+      ],
+      "gap": "The outcome is per thread only. There is no cross-thread outcome, and reading-conversation outcomes can't be reopened after the session ends."
+    },
+    {
+      "id": "C09",
+      "name": "Human-facing companion document per PROJECT accumulating subagent findings",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/AutoNotebook.tsx:1-40; App.tsx:171-172",
+          "note": "derived narrative view of ONE investigation's graph at /notebook/auto/:id"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/DistillView.tsx:310; components/CommandPalette.tsx:728-734",
+          "note": "entry points to AutoNotebook"
+        },
+        {
+          "cls": "READ",
+          "ref": "orchestration/loop_one/orchestrator.py:1298-1330",
+          "note": "MASTER.md per investigation (phase 7)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/artifact_routes.py:309-322; substrate/research_artifact/twin_notes.py:28-60",
+          "note": "twin-notes.html per investigation (URL only; no in-app link found)"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/visual-critiques.md:60",
+          "note": "AutoNotebook tells the reader to type a URL; 'Failed to fetch' has no retry (not re-verified visually)"
+        }
+      ],
+      "gap": "Need a persistent project companion (e.g. /projects/:id/companion) that accumulates findings across all the project's threads (root plus chases plus reading conversations), with 'from thread X' provenance, a 'new since you last looked' marker, and fork/merge into Write. AutoNotebook needs to include child threads."
+    },
+    {
+      "id": "C10",
+      "name": "Human-facing companion per EVIDENCE DOCUMENT",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:561-566; ReadingCompanion.tsx:86-87,601-650",
+          "note": "rail derives notes/open questions from read-<doc> events (marginalia + voice notes)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2186-2227",
+          "note": "researches spun from the doc are not parented to read-<doc>, so their findings never reach the rail"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/twin_notes_routes.py:24-120; substrate/twin_notes/store.py:1-18",
+          "note": "per-asset twin store: 'every information asset can hold a twin'; mounted (app.py:2072), no producer, no UI, filesystem JSON ~/.antiek/twins outside DuckDB"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/explain_routes.py:14-15,448; apps/reading/src/App.tsx:251",
+          "note": "/explain/document/:id reverse provenance exists; grep finds no inbound link"
+        }
+      ],
+      "gap": "Need a per-document companion that aggregates: user notes, findings from threads spawned from the document (per passage), talk-to-book Q&A, and claims elsewhere that cite the document (from /docs/{id}/explain). It needs a route (e.g. GET /documents/{id}/companion) and a Reader rail tab. Decide whether the twin store is that substrate; if so it must move under the DuckDB single-writer with owner scoping."
+    },
+    {
+      "id": "C11",
+      "name": "Agent-facing richer evidence base, distinct from the human companion",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/research_artifact/export.py:41-48",
+          "note": "exported artifact = human/editable HTML + embedded inert doc-model island"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/artifact_routes.py:294-306",
+          "note": "POST /research/{id}/artifact/import-notes re-imports agent notes"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/research_artifact/paths.py:15-19",
+          "note": "artifacts on filesystem ~/.antiek/research-artifacts"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/explain_routes.py:1-25",
+          "note": "graph provenance chain (claims\u2192chunks\u2192documents) readable"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/export_routes.py:113",
+          "note": "GET /export/my-graph"
+        }
+      ],
+      "gap": "The graph plus event log is the de-facto agent evidence base, but there's no per-project or per-document agent evidence bundle that subagents actually read at run time, because note_injection and reuse are unwired (see C03 and C06). Need a named evidence-base object (project_id/document_id \u2192 nodes, chunks, trajectories, unresolved questions) with a context-pack builder, kept distinct from the prose companion."
+    },
+    {
+      "id": "C12",
+      "name": "Merge a thread's insight INTO a document (Write / Notebook / HTML projection / source)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ArtifactOutlineShelf.tsx:30-33,285",
+          "note": "'Write Lego \u00b7 drag into outline' carries graph_node provenance"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/write_routes.py:408-428,590-640",
+          "note": "POST /write/context/promote and /write/deliverables/from-investigation (seeds a NEW deliverable)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/WriteHome.tsx:369",
+          "note": "Write embeds the backing research Canvas"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/SlashMenu.tsx:118-160; blocks/MasterSectionBlock.tsx:1-10",
+          "note": "Notebook 'Synthesis section'/'Chat exchange' insert with null ids; placeholder render, no picker"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/research_artifact/source_merge.py:214-226,400-414; ReadingCompanion.tsx:215-240,486",
+          "note": "Reader 'rewrite source' appends the whole draft-merge HTML into documents.raw_text in place (snapshot-restorable); UI unreachable per C01"
+        }
+      ],
+      "gap": "No 'merge this insight into <document>' action from a thread. Need POST /documents/{id}/merge-proposals {thread_id, insight_node_ids, target_section} producing a proposed revision (never an in-place source rewrite), plus insert-into-Notebook/Write with a thread picker.",
+      "backend_dependency": "SDAM derived-asset repository (C13); Write section attach (POST /sections/attach-block app.py:3695) for block-level inserts."
+    },
+    {
+      "id": "C13",
+      "name": "Forked version with lineage (merge creates a fork, parent pointer kept)",
+      "status": "SPEC_ONLY",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/graph/schema.py:1222-1300",
+          "note": "SDAM derived_assets/derived_asset_revisions (parent_revision_id, restored_from, member manifest) installed as schema"
+        },
+        {
+          "cls": "READ",
+          "ref": "docs/decisions/safe-derived-asset-merge-boundary.md:9-18,56-75",
+          "note": "merge must create/advance an operator-owned derived asset; SPR-02 repository not built"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep derived_asset \u2192 substrate/graph/schema.py, substrate/write/derived_asset_boundary.py, 2 tests only",
+          "note": "zero writers/routes/UI"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/notebooks/__init__.py:177-250",
+          "note": "notebook edits are destructive UPDATE/DELETE (doc-version-history not built)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/style_routes.py:367-380,414-423",
+          "note": "style versions are linear integers, no parent/diff; style 'fork' = style registry parent slug (services/html_projection/styles.py:45-61)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/useTalkThread.ts:306-325",
+          "note": "only real fork: client-side conversation branch"
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/caffen/html-workflow-lineage @52ef22ebc (2 commits ahead of main, unmerged)",
+          "note": "persisted HTML workflow lineage, not on main"
+        }
+      ],
+      "gap": "Build the SDAM SPR-01/02 repository (create/revise/restore in one write-lock transaction + CAS pointer), routes POST /derived-assets, POST /derived-assets/{id}/revisions, GET /derived-assets/{id}/revisions, and a lineage view (revision graph with 'forked from thread X / document Y')."
+    },
+    {
+      "id": "C14",
+      "name": "Diff / accept / reject UI for merged or AI-edited versions",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:446-470",
+          "note": "source-merge 'preview' shows byte counts + sha256 before/after, no textual diff"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:646-662",
+          "note": "Write Cmd+K edit applies onApplyEdit immediately; no diff, no undo history"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:599-608",
+          "note": "sub-agent accept discards"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-doc-version-history (SPR-02 timeline, SPR-04 diff, SPR-05 AI-change revert)",
+          "note": "planned, not on main (no version store found)"
+        }
+      ],
+      "gap": "Need a DiffReview component (paragraph/block diff over two revisions, per-hunk accept/reject, AI vs operator change source) wired to the derived-asset revisions and notebook/deliverable versions; GET /derived-assets/{id}/revisions/{a}/diff/{b}."
+    },
+    {
+      "id": "C15",
+      "name": "Cross-workflow thread breadcrumb/jump (GET /thread/{node_id})",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/thread.py:163-188; app.py:7689",
+          "note": "router mounted"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/SceneChrome.tsx:136-147,249-255",
+          "note": "renders ThreadBreadcrumb only if a thread prop is passed"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/AppShell.tsx:151",
+          "note": "SceneChrome is mounted with children only; no thread prop anywhere"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep '/thread/' in apps/reading/src \u2192 comments only; ThreadJump has no importer",
+          "note": "no fetch caller"
+        }
+      ],
+      "gap": "This 'thread' is one entity's hop across Research/Read/Write/Speak, not a subagent conversation. Either wire it (fetch in SceneChrome for the focused entity) or rename it to avoid colliding with the subagent-thread concept the mothership needs."
+    },
+    {
+      "id": "C16",
+      "name": "Highlight-spawned thread stays attached to its source (island) instead of navigating away",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:151-178",
+          "note": "in /inv, highlight \u2192 floating ChaseThread panel with live ThinkingStream"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:246-259",
+          "note": "in the Reader, Deep-research navigates to /inv/:id (book context lost)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.tsx:54-66",
+          "note": "DRW block detail Deep-research also navigates away"
+        },
+        {
+          "cls": "PR",
+          "ref": "#2838 @e6cb18dfc goal/research-evidence-reader-window",
+          "note": "opens grounded evidence in reader windows beside the Canvas (open, unmerged)"
+        }
+      ],
+      "gap": "One island primitive (windowsStore window anchored to the highlight) across Reader, DRW and Write that holds the thread and can be minimized into the document's thread list."
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader (README + sprint-06-highlight-dialogue)",
+      "planned": "SPR-06: real, streamed, multi-turn Dialogue anchored to Region (document_id+chunk_id+char range), persisted to the graph via reading_surface.anchor_note, re-opening a highlight reattaches the same thread; converge HighlightToolbar into FloatMenu.",
+      "shipped_status": "Not shipped. Re-verified: reading_surface.py still PROVISIONAL with Any-typed anchor_note (substrate/contracts/reading_surface.py:1,35,54); FloatMenu Dialogue is one-shot; TalkToBook persists to sessionStorage (useTalkThread.ts:78-96). HighlightToolbar still separate (ResearchWorkstation/index.tsx:226)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reading-convergence (README, SPR-01..04)",
+      "planned": "One window model (windowsStore float/full), one twin (static notes.html indexed into live engagement twin store), reader collective (CollectiveResearchPanel, continue-as-unit), one reviewed source-merge vertical.",
+      "shipped_status": "Partly shipped. The source-merge preview/apply/commit/restore chain is on main (artifact_routes.py:383-563; ReadingCompanion.tsx), but it's unreachable from the Reader and mutates documents.raw_text. The Track A engagement spine (/engagement/twins, /engagement/merge, CollectiveResearchPanel) isn't on main: backup/20260919/caffen_twins-to-write-handoff @d1b04cd22 is 6 commits ahead and unmerged. The /twins store has no producer."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-bridge (README)",
+      "planned": "Paste deep-research outputs as blocks, extract insights/questions, outline builder (mode A), gap-finder/cascaded prompts (mode B).",
+      "shipped_status": "Re-verified partially: PasteIngest is mounted on completed /inv (index.tsx:277-281), blocks drag into the Write outline (ArtifactOutlineShelf.tsx:285; Write/Repository/dragToOutline.ts). The gap-finder was not re-verified in this area."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine (README, index)",
+      "planned": "Budget tuples, brief gate, spans/floor, citation binding, persona seeding, corpus contract, acquisition repair, web layer, run durability.",
+      "shipped_status": "Read for context only; not re-verified (outside the thread/merge UX surface)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-hardening (README, sprint-08)",
+      "planned": "Provider contract, trajectory measurement schema, Exa/Parallel adapters, resilience, cost guardrails, learned router, workstation integration smoke.",
+      "shipped_status": "Not re-verified; trajectory endpoint /trajectory/{id} exists (app.py:2608)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-drw-master-ledger (README, index)",
+      "planned": "DRW program ledger: truth reconcile, hygiene, prod Exa, smoke, honest failure, turbopuffer, closure.",
+      "shipped_status": "Read for context only; not re-verified here. The DRW canvas + BlockDetail are mounted (DeepResearchWorkspace/index.tsx:471-503) and steering exists only for live sessions."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments (README, SPR-01..06)",
+      "planned": "D2: anchored comments on artifact versions on the substrate/feedback store, comment dispatch to agents, immutable editable HTML deliverable (substrate/research_artifact/editing.py, substrate/feedback/anchor_resolution.py).",
+      "shipped_status": "Spec-only per its README (status=spec-only). Main has human feedback threads on artifact versions (feedback_routes.py:123-218; ArtifactFeedbackReview in StyleWheel.tsx:566) but no editing.py or anchor_resolution.py (ls confirmed absent) and no agent dispatch on a comment."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent (README, SPR-04, SPR-05)",
+      "planned": "D3: standing topics, re-ingestion, living-folder refresh creating forward-only artifact versions, owner-scoped learning digest (GET /research/updates, LearningDigest.tsx).",
+      "shipped_status": "Spec-only. orchestration/continuous has daemon/suggestions/scoring only; refresh.py, updates_routes.py and LearningDigest.tsx are absent (ls confirmed)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection (README)",
+      "planned": "Script-free doc-model\u2192HTML projection for synthesis/notebook/Write, .antiek container, widget library, ingestion boundary.",
+      "shipped_status": "Research projection shipped (artifact_routes.py:565-607; export.py:44-48 island). Fork/workflow lineage is on unmerged origin/caffen/html-workflow-lineage @52ef22ebc."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-doc-version-history (README)",
+      "planned": "Capture-before-destroy version store, timeline, forward-only restore, diff, AI-change revert for notebooks/documents.",
+      "shipped_status": "Not shipped: notebook update/delete are destructive (substrate/notebooks/__init__.py:177-250), and a grep finds no version store."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-thought-partner-memory (README)",
+      "planned": "Cross-session partner memory store, extraction, recall, cited warm-start injection.",
+      "shipped_status": "Partially: account memory exists (/memory route App.tsx:219-231; /thought-partner uses account_memory_context app.py:~6691). The TP thread itself is sessionStorage (useThoughtPartnerThread.ts:1-52). The root CLAUDE.md says R15 containment of raw-prompt write-back is still open."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924/docs/decisions/safe-derived-asset-merge-boundary.md",
+      "planned": "Merge into an asset never mutates a source; creates/advances a derived asset with immutable revisions and parent lineage; legacy source-merge contract rejected.",
+      "shipped_status": "The SPR-00 schema and a pure refusal validator are on main (schema.py:1222-1300; substrate/write/derived_asset_boundary.py). The SPR-01/02 repository and routes are absent. The legacy source-merge routes are still mounted and wired in ReadingCompanion."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership",
+      "planned": "(this run's scaffold)",
+      "shipped_status": "briefs/, ground/ and verify/ are empty at read time."
+    }
+  ],
+  "craft_gaps": [
+    "ReadingCompanion merge section (ReadingCompanion.tsx:334-560) exposes receipt vocabulary and hashes to the reader: checkboxes 'Reviewed draft \u00b7 create receipt only', 'Ledger only \u00b7 body not rewritten', 'writes performed true', sha256 before/after strings, 'apply receipt' vs 'rewrite source' vs 'preview' as three peer underlined links. The shape is operator/audit tooling, not PostHog-grade restraint. No shots exist for this state, so visual quality is NOT MEASURED.",
+    "ArtifactOutlineShelf (ArtifactOutlineShelf.tsx:230-260,355-375) asks the user to paste raw 'other research ids' and renders absolute server filesystem paths in mono. The draft-merge and compose HTML it opens links members via file:// URLs (compose.py:75-79,138-140) that are dead in a browser, and its inline CSS ignores the design tokens (compose.py:171-176; twin_notes.py:12-25).",
+    "'Chat \u00b7 this investigation' (ResearchWorkstation/index.tsx:110) promises a conversation but launches a costed new child research and navigates away (ChatInputArea.tsx:62-77,139). The label is dishonest about what happens.",
+    "The Reader's highlight Deep-research and 'Research this page' yank the user out of the book to /inv/:id (Reading/index.tsx:246-259; ResearchThis.tsx:67), while Research's highlight opens a floating ChaseThread island (index.tsx:151-160). Two physics for one gesture.",
+    "The completed research view hides the process: no replay link or steps on /inv/:id (index.tsx:245-283). Replay is reachable only from MyResearch rows, and its header copy cites 'master-spec \u00a714.1' with a no-retry 'Failed to fetch' (shot research/route-authmock-replay-demo-investigation__light__1280.png, RUN via Read).",
+    "The talk-to-book branch picker only appears with 2+ branches and branches vanish on tab close with no warning (useTalkThread.ts:78-96). TalkToBook leaks 'Surface E' (visual-critiques.md TalkToBook section).",
+    "AutoNotebook's empty route tells users to type /notebook/auto/<research-id> (AutoNotebook.tsx:66-73; visual-critiques.md:60).",
+    "Notebook 'Synthesis section' and 'Chat exchange' slash inserts create null-id placeholder cards with no picker (SlashMenu.tsx:118-160; MasterSectionBlock.tsx:1-10).",
+    "ThreadBreadcrumb has 5 Storybook shots in the design manifest (shell-threadbreadcrumb-spr-06--*) but is never rendered in the app (AppShell.tsx:151). Design effort was spent on an unmounted surface.",
+    "Design-state coverage: the shot manifest has no captures for ReadingCompanion saved chases, ArtifactOutlineShelf draft merge, ChaseThread launched, or DistillView with the shelf. Every state of the merge/fork UX is NOT MEASURED visually."
+  ],
+  "risks": [
+    "The source-merge commit rewrites a SOURCE book in place: it appends the entire draft-merge HTML document into documents.raw_text between comment markers (source_merge.py:214-226,400-414). The accepted SDAM decision says merge must never mutate a book (safe-derived-asset-merge-boundary.md:11-16), and derived_asset_boundary.py treats these fields as a rejected legacy contract, yet /research/artifacts/source-merge/commit stays mounted (artifact_routes.py:474) and the ReadingCompanion 'rewrite source' button calls it. It is unreachable today only because no Reader action records a handoff. A fix to C01 that populates handoffs would arm it. The request is also authorized by a client-supplied operator_reviewer string ('reader-companion', ReadingCompanion.tsx:190,255), and I saw no document-owner check in the route.",
+    "Vacuous flywheel: knowledge.reused is emitted, but the reuse pack is dropped in both Loop One (orchestrator.py:1851-1865 with investigation_start_reuse.py:92-101) and HostLocalRunner (host_local.py:291-302). /health flywheel_ready (app.py:334-370) can report compounding that never reached a prompt. Evidence is READ only; no prompt capture was RUN.",
+    "Thread state is fragmented across six stores: sessionStorage (talk branches, thought partner, the Wrestle investigation id), localStorage (chase handoffs, the investigation-tree map), per-investigation JSONL, DuckDB, and the filesystem (~/.antiek/research-artifacts; ~/.antiek/twins JSON outside the single writer and possibly outside backups). Any thread index must reconcile them or it will contradict itself.",
+    "The twin routes (/twins, /twins/merge) and the compose routes take no Request/owner and do no ownership checks (twin_notes_routes.py:60-120; artifact_routes.py:325-380). That is fine single-operator, but it becomes a cross-owner read/merge hole when multi-user arrives.",
+    "Book-spawned research lineage lives in one ever-growing global 'read-spin' trajectory (passage_research.py:135-199), and GET /investigations scans the whole events directory per call (app.py:3001-3060). Per-document or per-project thread lists built on scans will degrade. They need an indexed table written through the single writer.",
+    "The name 'thread' is overloaded: SPR-06 cross-workflow entity thread (shell/threadModel.ts), readingThreadId read-<doc>, TalkThread branches, the ThoughtPartner thread, and feedback threads. A mothership spec must pick one canonical noun and rename the rest, or the UI and API will collide."
+  ],
+  "open_questions": [
+    "Is a 'workstation/project' a new entity that owns several root researches, documents and drafts, or is it a root investigation, as it is today (ResearchWorkstation/index.tsx:61-86)? Per-project thread lists and companions depend on this.",
+    "useTalkThread.ts:14-22 cites an 'operator decision' to keep talk-to-book in session state, while antiek-reader SPR-06 plans durable anchored threads. Which decision stands?",
+    "What exactly is a completed research thread's 'held context' for a follow-up: synthesis only, synthesis plus distilled nodes, the trajectory summary, or the raw sources? What token budget, and which role answers (a cheap Q&A turn over the pack, or a new child research)?",
+    "Automatic merge policy: which threads auto-merge (same document? same project? parent/child?), is it view-level (the companion doc) or context-level (the agent pack), and is it reversible?",
+    "Should the Reader source-merge chain be retired now in favour of SDAM derived assets, as the decision record implies, or kept behind a flag until SDAM SPR-01/02 lands?",
+    "Is the /twins filesystem store the intended per-document companion substrate, or legacy to delete? It has no producer on main.",
+    "vitest was NOT RUN (apps/reading/node_modules absent in the ground worktree). Should a follow-up RUN ReadingCompanion, ArtifactOutlineShelf, ChaseThread and useTalkThread tests to back these READ claims behaviourally?"
+  ]
+}

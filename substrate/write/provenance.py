@@ -171,12 +171,3 @@ def resolve_provenance(
         chunk_ids=chunk_ids,
         detail=detail,
     )
-
-
-def resolve_section_provenance(
-    con: Any, section_id: str,
-) -> list[ProvenanceChain]:
-    """Resolve provenance for every block in a section (ordered). Handy
-    for surfacing a section's dangling/user-originated blocks at a glance."""
-    from .outline_block import list_section_blocks
-    return [resolve_provenance(con, b) for b in list_section_blocks(con, section_id)]
