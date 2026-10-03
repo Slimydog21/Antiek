@@ -1,11 +1,11 @@
 # Completion map
 
-**Generated 2026-10-03 06:25 UTC from live state.** Regenerate with `python scripts/completion_map.py` - do not hand-edit.
+**Generated 2026-10-03 11:08 UTC from live state.** Regenerate with `python scripts/completion_map.py` - do not hand-edit.
 
-- `origin/main` = `1508fbe7e666ae152221520ab7ae88aca0daee23` - *fix(reader): servable text implies openable — open derived/web docs in the reader (#3646)*
-- production API `build_sha` = `b956a22e48f3` - **1 commit behind main** - the backend deploys automatically once a gating workflow finishes, so this gap is merge latency, not a missing deploy step
-- open pull requests: **65**
-- measured grade against the frozen rubric: **64.4 / 100**
+- `origin/main` = `1ea2db034a01d23e4eeebb51239d3ff6cccc1ea8` - *Merge pull request #3662 from Slimydog21/fix/read-lock-wait-default*
+- production API `build_sha` = `debbb2df0d3a` - **13 commits behind main** - the backend deploys automatically once a gating workflow finishes, so this gap is merge latency, not a missing deploy step
+- open pull requests: **64**
+- measured grade against the frozen rubric: **60.4 / 100**
 
 This file answers one question: **what is actually done, as of the sha above?** It exists because nothing in this repository previously said so, and a returning agent could not tell measured work from intended work.
 
@@ -28,10 +28,10 @@ Weights sum to 100: R1 and R2 carry 12 each; R6 carries 14 (the heaviest, becaus
 | 5 | R5 | Writing shape | 10 | 60 | 6.0 | VERIFIED LIVE | 2026-10-03 |
 | 6 | R6 | Execution | 14 | 60 | 8.4 | VERIFIED LIVE | 2026-10-03 |
 | 7 | D7 | Craft standard | 10 | 80 | 8.0 | VERIFIED LIVE | 2026-10-03 |
-| 8 | D8 | Delivery | 10 | 80 | 8.0 | DEPLOYED | 2026-10-02 |
+| 8 | D8 | Delivery | 10 | 40 | 4.0 | DEPLOYED | 2026-10-03 |
 | 9 | D9 | Evidence | 6 | 40 | 2.4 | REPORTED | 2026-10-02 |
 | 10 | D10 | Spec quality and re-entry value | 6 | 60 | 3.6 | VERIFIED LIVE | 2026-10-03 |
-| | | **Total** | **100** | | **64.4** | | |
+| | | **Total** | **100** | | **60.4** | | |
 
 ## What moves each dimension
 
@@ -49,7 +49,7 @@ Weights sum to 100: R1 and R2 carry 12 each; R6 carries 14 (the heaviest, becaus
 
 **D7 - Craft standard (80/100, weight 10)** - Upheld on re-measurement, with the known gate holes tested against current main rather than restated. *(locators: `~/research/antiek-v1-forensics-20260930/review/D7-D10-INDEPENDENT-VERIFICATION-20261003.md`, outside this repository)*
 
-**D8 - Delivery (80/100, weight 10)** - Production parity for the frontend bundle verified by fetching and hashing the served asset set twice. *(locators: `~/research/antiek-v1-forensics-20260930/review/DEPLOYED-BUNDLE-IDENTITY-20261002.md`, outside this repository)*
+**D8 - Delivery (40/100, weight 10)** - Fell from 80 on independent re-measurement. Two of five checkpoints reproduce: the reading code is on main, and the served API identity resolves to a commit that is an ancestor of main. Three do not, and the reason is EVIDENCE ACCESS rather than a regression: the production pane journey needs an authenticated browser, the served sha is 10 commits behind the measured main, and the production R6 journey answers 401. The scoring rule is explicit that an unverified live journey earns no credit, so this is unverified rather than proven absent. *(locators: `~/research/antiek-v1-forensics-20260930/review/ROUND-16-REGRADE-20261003.md`, outside this repository)*
 
 **D9 - Evidence (40/100, weight 6)** - Partial. The lesson-noted record is strong; the underlying scorecard's own rubric substitution was the defect. *(locators: `~/research/antiek-v1-forensics-20260930/review/ANATOMY-REGRADE-20261002.md`, outside this repository)*
 

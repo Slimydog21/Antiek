@@ -80,9 +80,14 @@ DIMENSIONS = [
     (7, "D7", "Craft standard", 10, 80, "VERIFIED LIVE", "2026-10-03",
      "review/D7-D10-INDEPENDENT-VERIFICATION-20261003.md",
      "Upheld on re-measurement, with the known gate holes tested against current main rather than restated."),
-    (8, "D8", "Delivery", 10, 80, "DEPLOYED", "2026-10-02",
-     "review/DEPLOYED-BUNDLE-IDENTITY-20261002.md",
-     "Production parity for the frontend bundle verified by fetching and hashing the served asset set twice."),
+    (8, "D8", "Delivery", 10, 40, "DEPLOYED", "2026-10-03",
+     "review/ROUND-16-REGRADE-20261003.md",
+     "Fell from 80 on independent re-measurement. Two of five checkpoints reproduce: the reading code is on "
+     "main, and the served API identity resolves to a commit that is an ancestor of main. Three do not, and "
+     "the reason is EVIDENCE ACCESS rather than a regression: the production pane journey needs an "
+     "authenticated browser, the served sha is 10 commits behind the measured main, and the production R6 "
+     "journey answers 401. The scoring rule is explicit that an unverified live journey earns no credit, so "
+     "this is unverified rather than proven absent."),
     (9, "D9", "Evidence", 6, 40, "REPORTED", "2026-10-02",
      "review/ANATOMY-REGRADE-20261002.md",
      "Partial. The lesson-noted record is strong; the underlying scorecard's own rubric substitution was the defect."),
