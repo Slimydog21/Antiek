@@ -246,6 +246,15 @@ role_tiers:
   # knowledge_extractor / thought_partner / creative_writer / autocomplete.
   # Tier=pro (conversational question generation, precedent-matched).
   interviewer: pro
+  # R6 BOUNDARY REPAIR (2026-10-02): the reformat pipeline's real generator
+  # (_dispatch_generate) dispatches role="reformat" but had NO role_tiers
+  # entry — POST /books/{id}/reformats 500'd with KeyError on the default
+  # path, so the generation record only ever carried the requested model
+  # string, never a route receipt. Same one-line-routing precedent as
+  # knowledge_extractor / thought_partner / creative_writer / autocomplete /
+  # interviewer. Tier=flash (bounded reformat generation over a gated
+  # source's blocks — volume work, not synthesis).
+  reformat: flash
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are
