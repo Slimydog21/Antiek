@@ -26,6 +26,15 @@
 #   ANTIEK_BRIDGE_URL=https://hermes-bridge.antiek.ai
 #   ANTIEK_ALERT_WEBHOOK=<unset>
 #   PROVIDER_RATIO_WINDOW_MIN=15
+#
+# Delivery honesty (2026-10-03, audit .audit/2026-10-01-anatomy/
+# LITERAL-STATUS-AUDIT.md section 1.9): the alert POST below is checked,
+# not ``|| true``. Exit code 1 means the alert was DELIVERED to the
+# configured webhook (or the webhook is unset and the alert went to
+# stderr, the documented fallback). When a configured webhook POST fails
+# after one bounded retry, the probe exits 2 and emits a greppable
+# ``ALERT DELIVERY FAILED`` journal line — so a failed alert can never
+# look like a delivered one. systemd records it as ExecMainStatus=2.
 
 set -euo pipefail
 
@@ -91,11 +100,48 @@ ts=$(date -u +%FT%TZ)
 message="[antiek-probe@${host} ${ts}]
 $joined"
 
+# ── Deliver ──
+# A webhook POST is not delivery. Port of the backup-freshness probe's
+# honesty contract (infrastructure/ansible/templates/
+# antiek-backup-freshness-probe.sh.j2): ``curl -f`` so an HTTP error from
+# the sink counts as failure, ``--max-time`` so a sink that accepts and
+# never answers cannot hang the unit past its TimeoutStartSec, one bounded
+# retry for transient sink hiccups, and on failure a distinct greppable
+# journal line plus a distinct exit code — so a failed alert can never
+# look like a delivered one. Only the URL origin is printed: Slack-style
+# webhook paths carry a secret. No email fallback here on purpose: this
+# probe is state-free and refires every 5 minutes (BRIDGE UNAUTH fired 5x
+# in one audit hour), so a naive fallback would storm the fallback channel;
+# that needs a rate-limited design of its own.
+delivered=0
+post_rc=0
 if [ -n "$WEBHOOK" ]; then
-  curl -sS -X POST "$WEBHOOK" \
-    -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg t "$message" '{text: $t}')" >/dev/null || true
+  case "$WEBHOOK" in
+    *://*/*) webhook_origin=$(printf '%s' "$WEBHOOK" | sed -E 's#^([a-zA-Z][a-zA-Z0-9+.-]*://[^/]+)/.*#\1#') ;;
+    *://*)   webhook_origin="$WEBHOOK" ;;
+    *)       webhook_origin="(unparseable webhook URL)" ;;
+  esac
+  payload=$(jq -nc --arg t "$message" '{text: $t}')
+  for attempt in 1 2; do
+    if [ "$attempt" -gt 1 ]; then
+      sleep "${ANTIEK_ALERT_RETRY_DELAY:-10}"
+    fi
+    if curl -fsS --max-time 15 -X POST "$WEBHOOK" \
+        -H 'Content-Type: application/json' \
+        -d "$payload" >/dev/null; then
+      delivered=1
+      break
+    else
+      post_rc=$?
+    fi
+  done
+  if [ "$delivered" -eq 0 ]; then
+    echo "ALERT DELIVERY FAILED: webhook POST to ${webhook_origin} failed (last curl exit ${post_rc}, 2 attempts); the alert below was NOT delivered to the configured sink and exists only in this journal" >&2
+  fi
 fi
 
 echo "$message" >&2
+if [ -n "$WEBHOOK" ] && [ "$delivered" -eq 0 ]; then
+  exit 2
+fi
 exit 1
