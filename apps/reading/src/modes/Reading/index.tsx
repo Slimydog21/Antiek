@@ -27,12 +27,14 @@ import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
 import Attribution from "./Attribution";
 import ReadingCompanion from "./ReadingCompanion";
+import ForkProvenance from "./ForkProvenance";
 import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
 import { useReadingState } from "../../hooks/useReadingState";
+import { fetchDocumentForks } from "../../workspace/forkLineage";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
   createAnchor,
@@ -152,6 +154,14 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       cancelled = true;
     };
   }, [loadBook]);
+
+  // The fork lineage this session knows for the open document (both
+  // directions, one GET): the strip's badge/chip and the fork tab's
+  // provenance header render from it. Never blocking; a failure is an
+  // absent badge, never a wrong one.
+  useEffect(() => {
+    if (documentId) void fetchDocumentForks(documentId);
+  }, [documentId]);
 
   const reload = useCallback(() => {
     void loadBook(() => false);
@@ -1038,6 +1048,10 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
                 />
               </div>
             </header>
+            {/* SPR-01 (thread-merge + document fork): the fork tab's
+                provenance header — verdict C carrying spike B's salvaged
+                note. Renders only when this document IS a fork. */}
+            <ForkProvenance documentId={documentId} />
           </div>
         </div>
         <div data-testid="reader-scroll" className="flex-1 min-h-0 overflow-y-auto">
@@ -1236,6 +1250,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
           documentId={documentId}
           title={book.title}
           readingThreadId={readingThreadId}
+          pageIndex={pageIndex}
         />
       </div>
 

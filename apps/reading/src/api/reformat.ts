@@ -106,8 +106,10 @@ export async function getProvenance(
 }
 
 /** "Officially fork" — the unit-5 contract path (POST /books/{id}/forks),
- *  carrying the generation record's refs. On a stack without the fork API
- *  this 404s — the caller names the pending state, never fakes it. */
+ *  carrying the generation record's refs. The operation id is DERIVED from
+ *  the generation id, so a retry (or a double click across mounts) replays
+ *  to the same fork row, never a second adopt. On a stack without the fork
+ *  API this 404s — the caller names the pending state, never fakes it. */
 export async function postFork(
   sourceDocumentId: string,
   body: { derived_document_id: string; generation_id: string; note?: string },
@@ -117,7 +119,10 @@ export async function postFork(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        operation_id: `reformat-fork:${body.generation_id}`,
+        ...body,
+      }),
     },
   );
   if (!resp.ok) {
