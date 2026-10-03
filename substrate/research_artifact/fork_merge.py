@@ -614,8 +614,8 @@ def commit_fork_merge(
         "resolutions_json, "
         "before_fork_hash, after_fork_hash, fork_bytes_before, "
         "fork_bytes_after, event_id FROM fork_merge_commits "
-        "WHERE commit_id = ? LIMIT 1",
-        [cid],
+        "WHERE commit_id = ? AND owner_user_id = ? AND fork_id = ? LIMIT 1",
+        [cid, owner_user_id, fork_id],
     ).fetchone()
     if existing is not None:
         # Idempotent replay — checked BEFORE the binding/staleness gates:

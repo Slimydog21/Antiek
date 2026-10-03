@@ -1014,3 +1014,58 @@ def test_merge_selected_outcome_owner_boundary(
         assert commit.status_code == 422, commit.text
         assert secret not in preview.text + commit.text + full_text.text
         assert _merge_storage_state(db, events) == before
+
+
+@pytest.mark.parametrize("attempt", ["foreign-owner", "wrong-fork", "own-replay"])
+def test_merge_replay_receipt_is_scoped_to_owner_and_fork(api_env, monkeypatch, attempt):
+    from substrate.auth import mint_session_cookie
+
+    db, events = api_env["db"], api_env["events"]
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "fork-replay-hermetic-test-secret")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "alice@example.test,bob@example.test")
+    records = {}
+    for owner in ("alice", "bob"):
+        parent = "parent-" + owner
+        investigation = "research-" + owner
+        text = owner + " PRIVATE STORED RECEIPT TEXT"
+        _seed_book(db, parent)
+        [node] = _seed_thread(db, events, investigation, [text], source_document_id=parent)
+        with connect_write(db, purpose="test/replay-source-owner") as con:
+            con.execute("UPDATE documents SET owner_user_id = ? WHERE document_id = ?", [owner, parent])
+            con.execute("UPDATE nodes SET owner_user_id = ? WHERE node_id = ?", [owner, node])
+        client = _client()
+        client.cookies.set("ANTIEK_SESSION", mint_session_cookie(
+            user_id=owner, email=owner + "@example.test",
+        ))
+        assert client.get("/auth/me").json()["user_id"] == owner
+        fork = _fork(client, "op-replay-" + owner, parent)
+        pairs = [(investigation, node)]
+        preview = client.post(PREVIEW, json={"fork_id": fork["fork_id"], "items": _items(pairs)})
+        assert preview.status_code == 200, preview.text
+        committed = client.post(COMMIT, json=_commit_body(fork["fork_id"], pairs, preview.json()))
+        assert committed.status_code == 200, committed.text
+        assert committed.json()["writes_performed"] is True
+        records[owner] = (client, fork, pairs, preview.json(), committed.json())
+    alice_client, alice_fork, alice_pairs, alice_preview, alice_receipt = records["alice"]
+    if attempt == "foreign-owner":
+        client, fork, pairs, _, _ = records["bob"]
+    elif attempt == "wrong-fork":
+        client, pairs = alice_client, alice_pairs
+        fork = _fork(client, "op-other-alice-fork", "parent-alice")
+    else:
+        client, fork, pairs = alice_client, alice_fork, alice_pairs
+    before = _merge_storage_state(db, events)
+    response = client.post(COMMIT, json=_commit_body(fork["fork_id"], pairs, alice_preview))
+    print(json.dumps({"attempt": attempt, "requested_fork": fork["fork_id"],
+                      "receipt_fork": alice_fork["fork_id"],
+                      "status": response.status_code, "body": response.json()}))
+    assert _merge_storage_state(db, events) == before
+    if attempt == "own-replay":
+        assert response.status_code == 200, response.text
+        assert response.json()["commit_id"] == alice_receipt["commit_id"]
+        assert response.json()["writes_performed"] is False
+        assert response.json()["items"][0]["text"] == "alice PRIVATE STORED RECEIPT TEXT"
+    else:
+        assert response.status_code == 409, response.text
+        assert "alice PRIVATE STORED RECEIPT TEXT" not in response.text
+        assert response.json()["detail"].startswith("fork_merge_preview_binding_mismatch")
