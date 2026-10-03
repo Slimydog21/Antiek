@@ -37,7 +37,7 @@ import os
 import sys
 import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -92,6 +92,7 @@ from substrate.schemas import (  # noqa: E402
 
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
+from .frame_write_health import frame_write_health_for  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
@@ -219,6 +220,16 @@ class HealthResponse(BaseModel):
     # Last admitted replay worker phase only; even "current" is not a reader
     # availability or recovery guarantee. An empty dict means no admitted phase.
     note_taker_replay: dict[str, Any] = {}
+    # Write-path health for POST /api/ad/frame-telemetry (prod incident
+    # 2026-10-02/03: 84.6% of flushes refused for 28h while this endpoint
+    # reported "ok" — every field above measured liveness, none measured
+    # whether a write can land). Rolling 15-minute window of attempts and
+    # retryable-503 refusals, recorded in-memory by the route (never a DuckDB
+    # handle). ``alert_recommended`` is computed here against the threshold
+    # derived in frame_write_health.py so the 5-minute ops probe only has to
+    # forward it — the same shape as /ops/provider-ratio. Empty window:
+    # attempts 0 and refusal_rate null, never a fabricated 0%.
+    frame_write: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -2246,6 +2257,15 @@ def create_app(
     app.state.duckdb_health = _probe_graph_duckdb()
     app.state.turbopuffer_health = _probe_turbopuffer()
 
+    # Write-path health recorder for the frame-telemetry route. In-memory
+    # rolling window — constructing it touches nothing on disk. Read by
+    # /health; written only by the route itself. See
+    # interfaces/research/api/frame_write_health.py for the threshold
+    # derivation (measured healthy 3.1% vs incident 84.6%).
+    from interfaces.research.api.frame_write_health import FrameWriteHealth
+
+    app.state.frame_write_health = FrameWriteHealth()
+
     # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
     # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
     # the first /health request (memoized via app.state._flywheel_probed) rather
@@ -2495,6 +2515,12 @@ def create_app(
             **_probe_backup_freshness(),
             note_taker_replay=_public_note_taker_replay(
                 getattr(app.state, "note_taker_recovery", {})
+            ),
+            # O(window) read of an in-memory deque — never opens a handle,
+            # so /health stays responsive exactly when the write lock is
+            # contended (which is when this field matters).
+            frame_write=asdict(
+                frame_write_health_for(app).snapshot()
             ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
