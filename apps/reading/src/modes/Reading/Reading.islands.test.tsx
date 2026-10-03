@@ -388,7 +388,13 @@ describe("the status glyphs", () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();
     await screen.findByText("The ope");
-    const glyph = document.querySelector("[data-island-glyph]")!;
+    // The glyph mounts in the island measure/resolve effect, after the
+    // passage text does — reading it synchronously races that effect (CI flake).
+    const glyph = await waitFor(() => {
+      const g = document.querySelector("[data-island-glyph]");
+      expect(g).toBeTruthy();
+      return g!;
+    });
     expect(glyph.className).toContain("animate-pulse");
     expect(glyph.className).toContain("motion-reduce:animate-none");
     expect(glyph.className).toContain("bg-sun");
