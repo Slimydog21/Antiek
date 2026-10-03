@@ -51,6 +51,15 @@ def env(monkeypatch):
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     ensure_initialized(db)
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_document
+
+    with connect_write(db, purpose="test/distill-readable-source") as con:
+        insert_document(
+            con, document_id="doc-1", source_tier=2, document_type="web",
+            title="Distill source", raw_text="The source evidence.",
+            content_class="public_domain", owner_user_id="__operator__",
+        )
     # register_providers=False = the honest no-key state. The dispatch
     # provider registry is process-global and can be polluted by
     # import-order side effects (provider modules registering at import

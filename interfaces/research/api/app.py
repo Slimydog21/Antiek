@@ -2052,6 +2052,16 @@ def create_app(
     # compare-and-set, append-only number registers and a retirement history.
     from .project_routes import register_project_routes
     register_project_routes(app)
+    # Thread-merge + document fork SPR-01 — the fork primitive: copy/adopt
+    # creation idempotent on a client operation id, forks-of-this +
+    # forked-from in one read, fork detail, and depth-1 lineage.
+    from .fork_routes import register_fork_routes
+    register_fork_routes(app)
+    # Thread-merge + document fork SPR-02 — the selective thread-outcome
+    # merge INTO a fork: preview receipt + bound multi-ack commit,
+    # conflicts never auto-resolved, every resolution audited.
+    from .fork_merge_routes import register_fork_merge_routes
+    register_fork_merge_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in

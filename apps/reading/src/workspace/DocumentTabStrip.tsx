@@ -45,6 +45,7 @@ import { SiblingStrip } from "./SiblingStrip";
 import { TabPathHeader } from "./TabPathHeader";
 import { TabTreePanel } from "./TabTreePanel";
 import { labelForTab, type TabLabel } from "./tabLabels";
+import { useForkLineage } from "./forkLineage";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
 import { pathTo, type TabNode, type TabTree } from "./tabTree";
@@ -163,6 +164,36 @@ function DocumentTabStripInner() {
 
   const status: StripStatus = tree ? "ready" : loadError ? "error" : "loading";
 
+  // SPR-01 (thread-merge + document fork), verdict C: the fork badge and
+  // the forks chip, for the ACTIVE tab when it is a reader tab. The lineage
+  // is the session's learned view (forkLineage.ts) — the reader mount feeds
+  // it; an unknown neighbourhood renders nothing, never a wrong badge.
+  const activeTab = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
+  const activeRef = activeTab?.kind === "reader" ? activeTab.ref : null;
+  const forkedFrom = useForkLineage((s) =>
+    activeRef !== null ? (s.byFork[activeRef] ?? null) : null,
+  );
+  const forksOfActive = useForkLineage((s) =>
+    activeRef !== null ? (s.byParent[activeRef] ?? null) : null,
+  );
+  // The hop: an already-open tab for the document is ACTIVATED (the badge
+  // hops between the two tabs); otherwise the document opens on its route
+  // and the route sync files the tab.
+  const openDocument = useCallback(
+    (documentId: string) => {
+      const t = useTabTrees.getState().trees[mothership];
+      const open = t
+        ? Object.values(t.nodes).find((n) => n.kind === "reader" && n.ref === documentId)
+        : null;
+      if (t && open) {
+        useTabTrees.getState().activateTab(mothership, open.tab_id);
+        return;
+      }
+      navigate(`/read/${encodeURIComponent(documentId)}`);
+    },
+    [mothership, navigate],
+  );
+
   return (
     <DocumentTabStripView
       status={status}
@@ -177,6 +208,16 @@ function DocumentTabStripInner() {
       labelOf={labelOf}
       treePanelOpen={treePanelOpen}
       subtreeFocusId={subtreeFocusId}
+      forkBadge={
+        forkedFrom
+          ? {
+              parentDocumentId: forkedFrom.parent_document_id,
+              parentTitle: forkedFrom.parent_title,
+            }
+          : null
+      }
+      forkDocumentIds={forksOfActive?.map((row) => row.fork_document_id) ?? null}
+      onOpenDocument={openDocument}
       onActivate={activate}
       onToggleTree={() => useTabTrees.getState().toggleTreePanel()}
       onFocusSubtree={(id) => useTabTrees.getState().setSubtreeFocus(id)}
@@ -214,6 +255,13 @@ export interface DocumentTabStripViewProps {
   labelOf: (tabId: string) => TabLabel;
   treePanelOpen: boolean;
   subtreeFocusId: string | null;
+  /** SPR-01 verdict C: the active tab IS a fork — the badge hops to the
+   *  original. */
+  forkBadge?: { parentDocumentId: string; parentTitle: string | null } | null;
+  /** SPR-01 verdict C: the active tab HAS forks — the chip hops to the
+   *  latest one (creation order from the lineage store). */
+  forkDocumentIds?: string[] | null;
+  onOpenDocument?: (documentId: string) => void;
   onActivate: (tabId: string) => void;
   onToggleTree: () => void;
   onFocusSubtree: (tabId: string | null) => void;
@@ -232,6 +280,9 @@ export function DocumentTabStripView({
   labelOf,
   treePanelOpen,
   subtreeFocusId,
+  forkBadge = null,
+  forkDocumentIds = null,
+  onOpenDocument,
   onActivate,
   onToggleTree,
   onFocusSubtree,
@@ -350,6 +401,35 @@ export function DocumentTabStripView({
           >
             <CornerDownRight size={11} aria-hidden="true" />
             {children.length}
+          </button>
+        ) : null}
+
+        {/* SPR-01 verdict C: lineage from the chrome itself. The fork badge
+            answers "what is this, what did it come from" without opening
+            anything; the forks chip answers the reverse from the source
+            tab. Both HOP (open-or-activate), never mutate. */}
+        {active && forkBadge && onOpenDocument ? (
+          <button
+            type="button"
+            data-fork-badge
+            onClick={() => onOpenDocument(forkBadge.parentDocumentId)}
+            aria-label={`This tab is a fork of ${forkBadge.parentTitle?.trim() || "the original"}: open the original`}
+            title="This tab is a fork — the original is untouched. Open it."
+            className="shrink-0 ml-1 my-1 flex items-center gap-0.5 rounded px-1.5 font-mono text-xxs text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            fork of {forkBadge.parentTitle?.trim() || "the original"}
+          </button>
+        ) : null}
+        {active && forkDocumentIds && forkDocumentIds.length > 0 && onOpenDocument ? (
+          <button
+            type="button"
+            data-forks-chip
+            onClick={() => onOpenDocument(forkDocumentIds[forkDocumentIds.length - 1])}
+            aria-label={`${forkDocumentIds.length} fork${forkDocumentIds.length === 1 ? "" : "s"} of this document: open the latest`}
+            title={`${forkDocumentIds.length} fork${forkDocumentIds.length === 1 ? "" : "s"} of this document — open the latest`}
+            className="shrink-0 ml-1 my-1 flex items-center gap-0.5 rounded px-1.5 font-mono text-xxs text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            {forkDocumentIds.length} fork{forkDocumentIds.length === 1 ? "" : "s"} ▸
           </button>
         ) : null}
 
