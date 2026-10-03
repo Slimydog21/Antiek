@@ -32,6 +32,7 @@ from typing import Any
 from runtime.db_lock import LockedConnection
 
 from .servability import ServabilityStatus, is_servable_full_text, servability_of
+from .serve import servable_body_exists
 
 
 @dataclass(frozen=True)
@@ -233,12 +234,18 @@ def get_openable_book_asset(con: Any, document_id: str) -> BookAsset | None:
 
     1. A registered book (``book_assets`` row) resolves exactly as before.
     2. Otherwise the ``documents`` row must exist AND carry a body the
-       public serve gate would emit: derived servable-full-text over
-       ``content_class`` (the same :func:`servability_of` projection the
-       gate uses) plus a non-empty ``raw_text``. Reading structure is
-       projected from the document's own chunks — one TOC entry per chunk,
-       located by chunk index, which is how the derived/web document
-       genuinely paginates.
+       public serve gate would emit. That is the serve gate's own question,
+       so it is asked OF the gate: :func:`serve.servable_body_exists`
+       (the serve module's predicate over :func:`servability_of` +
+       :func:`is_servable_full_text` + a non-empty body) answers it.
+       This function never reads ``documents.raw_text`` itself — the
+       raw-body-read scanner (``tools/lint/serve_invariants_check.py``)
+       forbids a body read outside the serve gate, and routing the check
+       through the gate's own predicate keeps the metadata gate and the
+       body gate from ever disagreeing. Reading structure is projected
+       from the document's own chunks — one TOC entry per chunk, located
+       by chunk index, which is how the derived/web document genuinely
+       paginates.
     3. Anything else is None: an id that exists nowhere, a gated or
        personal document, an empty body. The gate is not weakened — no
        body bytes leave this function, only metadata, and only for a
@@ -249,19 +256,18 @@ def get_openable_book_asset(con: Any, document_id: str) -> BookAsset | None:
     if asset is not None:
         return asset
     row = con.execute(
-        "SELECT title, author, content_class, ip_holder_id, raw_text "
+        "SELECT title, author, content_class, ip_holder_id "
         "FROM documents WHERE document_id = ?",
         [document_id],
     ).fetchone()
     if row is None:
         return None
-    title, author, content_class, ip_holder_id, raw_text = row
-    # ``servability_of`` keys off exactly SERVABLE_CONTENT_CLASSES (the
-    # module-level drift assertion keeps the two in lock-step), so this
-    # predicate cannot clear a document the serve gate would withhold.
-    if not is_servable_full_text(servability_of(content_class, taken_down=False)):
-        return None
-    if raw_text is None or not str(raw_text).strip():
+    title, author, content_class, ip_holder_id = row
+    # The body question is the serve gate's own, answered through the seam:
+    # the gate's predicate applies the same servability projection the
+    # serve path uses, so a document admitted here is one the very next
+    # /full-text call serves — and a gated/personal/empty one is not.
+    if not servable_body_exists(con, document_id):
         return None
     chunk_rows = con.execute(
         "SELECT chunk_index, section_path FROM chunks "
