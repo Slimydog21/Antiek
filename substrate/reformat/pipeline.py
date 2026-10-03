@@ -16,8 +16,8 @@ EQUAL its source span's — a mismatch is REJECTED and reclassed
 llm_compressed with an audit event (never silently mislabeled; the DB CHECK
 is the backstop). THE RESEARCH-VERIFICATION (same pattern, one class over):
 a research_supplemented bite's investigation must have a NON-EMPTY distilled
-product in this substrate (>= 1 live insight/question node, read through the
-distill API's own seam) — an unverifiable claim is reclassed llm_expanded
+product in this substrate whose nodes and sources the caller can inspect
+(read through the distill API's own seam) — an unverifiable claim is reclassed llm_expanded
 with the id nulled and an audit event, never trusted by declaration.
 THE ROUTE RECEIPT: the generation record's model/provider name the responder
 (dispatch's DispatchResult) — the requested label rides in
@@ -146,7 +146,7 @@ class ReformatResult:
     mostly_generated: bool
     reclassed_verbatim: int
     #: Research-supplement claims reclassed to llm_expanded because the named
-    #: investigation has no distilled product in this substrate (the same
+    #: investigation has no fully readable distilled product (the same
     #: reclassify-with-evidence pattern as author_verbatim, one class over).
     reclassed_research: int
     null_source_share: float
@@ -191,26 +191,24 @@ def _source_blocks(con: Any, document_id: str, served_text: str) -> list[SourceB
 
 
 def _investigation_has_distilled_product(
-    db_path: str, investigation_id: str, events_dir: str | None
+    db_path: str, investigation_id: str, events_dir: str | None, *, owner_user_id: str
 ) -> bool:
-    """Whether the named investigation has a NON-EMPTY distilled product in
-    THIS substrate — at least one live insight/question node — read through
-    the shipped seam the distill API itself serves
-    (roles.note_taker.distillation_for: the per-investigation trajectory walk
-    + the live node rows). The substrate has no investigations table by
-    design (graph/schema.py's V1 note), so a research's EXISTENCE is not
-    queryable; its PRODUCT is. An empty distillation means the claim is
-    unverifiable here — reclass, never trust the declaration.
+    """Require a nonempty product the caller can inspect in full.
 
-    The residual this does NOT prove: that the distilled product is RELATED
-    to the bite's claim. Relatedness is a semantic judgment (a review-time
-    question over inspectable artifacts), not a write-time gate — the writer
-    never dispatches another model call to grade its own generator."""
-    from roles.note_taker.distill_query import distillation_for
+    Every node must be caller-owned or shared/legacy NULL-owned, with a
+    source readable through the real body gate. Owner privileges require an
+    exact source-owner match; public bodies use the public gate. Foreign or
+    unknown evidence, including a mixed-owner investigation, uses the
+    existing llm_expanded downgrade.
+    This checks access, not source spans or semantic support for the bite.
+    """
+    from roles.note_taker.distill_query import readable_distillation_for
 
-    return not distillation_for(
-        investigation_id, db_path=db_path, events_dir=events_dir
-    ).empty
+    product = readable_distillation_for(
+        investigation_id, db_path=db_path, events_dir=events_dir,
+        owner_user_id=owner_user_id,
+    )
+    return not product.empty and product.unavailable_count == 0
 
 
 def _dispatch_generate(
@@ -393,16 +391,17 @@ def reformat_document(
                 )
             # PRODUCT-VERIFIED or reclassed — the same pattern as
             # author_verbatim one class over. A declaration is never trusted:
-            # the named investigation must have a NON-EMPTY distilled product
-            # (>= 1 live insight/question node) in THIS substrate, read
-            # through the same seam the distill API serves. An unverifiable
+            # the whole named product must be nonempty and caller-readable,
+            # including every supporting source. Shared/legacy nodes do not
+            # grant source ownership; mixed-owner products fail closed.
+            # Source-span validation above is independent. An unverifiable
             # claim reclasses to llm_expanded with the id nulled (the schema
             # CHECK ties the id to the class); the bite STAYS, honestly
             # classed — a bare rejection would hide the generation's shape.
             has_product = research_product_cache.get(bite.investigation_id)
             if has_product is None:
                 has_product = _investigation_has_distilled_product(
-                    db_path, bite.investigation_id, events_dir
+                    db_path, bite.investigation_id, events_dir, owner_user_id=owner_user_id
                 )
                 research_product_cache[bite.investigation_id] = has_product
             if not has_product:
