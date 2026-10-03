@@ -274,11 +274,16 @@ def run_ruff(
             f"ruff binary not found at {ruff_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
-    # ruff: 0 = clean, 1 = violations found, >=2 = ruff itself failed
-    # (bad pyproject config, unknown rule, internal error). Parsing stdout
-    # alone turns that failure into "zero findings", which subtracts to zero
-    # NEW and exits 0 — a REQUIRED check green over a tool that never ran.
-    if proc.returncode >= 2:
+    # ruff: 0 = clean, 1 = violations found; anything else means ruff did not
+    # produce a finding list. That is >=2 for a normal failure (bad pyproject
+    # config, unknown rule, internal error) AND NEGATIVE when the child was
+    # killed by a signal — subprocess reports -15 for SIGTERM and -9 for
+    # SIGKILL. The earlier `>= 2` test missed the signal case entirely, so on a
+    # runner that OOM-kills or times out the linter this gate returned 0: a
+    # REQUIRED check green over a tool that never ran, which is the same class
+    # of false green the comment below was written to prevent. Test the two
+    # good codes, not a threshold.
+    if proc.returncode not in (0, 1):
         raise RuntimeError(
             f"ruff exited {proc.returncode} (tool failure, not a finding). "
             f"stderr: {(proc.stderr or '').strip()[:400]!r}"
@@ -316,9 +321,10 @@ def run_mypy(
             f"mypy binary not found at {mypy_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
-    # mypy: 0 = clean, 1 = type errors found, >=2 = mypy itself failed
-    # (usage error, INTERNAL ERROR, missing plugin). Same hazard as ruff.
-    if proc.returncode >= 2:
+    # mypy: 0 = clean, 1 = type errors found; anything else means mypy itself
+    # failed (usage error, INTERNAL ERROR, missing plugin) or was killed. Same
+    # hazard as ruff, including the negative-by-signal case `>= 2` missed.
+    if proc.returncode not in (0, 1):
         raise RuntimeError(
             f"mypy exited {proc.returncode} (tool failure, not a finding). "
             f"stderr: {(proc.stderr or '').strip()[:400]!r}"
