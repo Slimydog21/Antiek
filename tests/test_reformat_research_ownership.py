@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -131,6 +132,67 @@ def test_provenance_requires_the_complete_readable_product(
         assert audits[0]["investigation_ids"] == [case]
     # Access does not change the independently validated core source span.
     assert bite.source_refs == ("corespan:base-alice:base-alice-chunk:0:34",)
+
+
+@pytest.mark.parametrize("source_block_indices", [None, (), (0,)], ids=["null", "empty", "real"])
+def test_research_claim_requires_a_stored_core_span(boundary_env, source_block_indices):
+    db, events = boundary_env
+    seed_document(db, "base-alice", "alice")
+    seed_document(db, "support", "alice", "personal_reading")
+    seed_product("own-research", "alice", "support")
+
+    def generate(prompt, blocks, params):
+        return [GeneratedBite(
+            text="The research confirms a 100-part daily rate.",
+            contribution_class="research_supplemented",
+            source_block_indices=source_block_indices,
+            investigation_id="own-research",
+        )]
+
+    result = reformat_document(
+        db, owner_user_id="alice", source_document_id="base-alice",
+        prompt="Summarize the production research.", generate_fn=generate,
+        events_dir=events,
+    )
+    with connect_read(db) as con:
+        bites = ProvenanceStore().bites_for_generation(con, result.generation_id)
+        record = ProvenanceStore().get_generation(con, result.generation_id)
+        derived_text = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            [result.derived_document_id],
+        ).fetchone()[0]
+    assert len(bites) == 1
+    bite = bites[0]
+    audits = [
+        row["payload"] for row in trajectory("read-base-alice", events_dir=events)
+        if row["action_type"] == "reformat.research_reclassified"
+    ]
+    assert derived_text == "The research confirms a 100-part daily rate."
+    assert record is not None
+    if source_block_indices:
+        assert result.contribution_classes == ["research_supplemented"]
+        assert bite.contribution_class == "research_supplemented"
+        assert bite.investigation_id == "own-research"
+        assert bite.source_refs == ("corespan:base-alice:base-alice-chunk:0:34",)
+        assert bite.source_span_sha256 == hashlib.sha256(BODY.encode()).hexdigest()
+        assert result.reclassed_research == 0
+        assert result.null_source_share == 0
+        assert record.mostly_generated is False
+        assert audits == []
+    else:
+        assert result.contribution_classes == ["llm_expanded"]
+        assert bite.contribution_class == "llm_expanded"
+        assert bite.investigation_id is None
+        assert bite.source_refs is None
+        assert bite.source_span_sha256 is None
+        assert result.reclassed_research == 1
+        assert result.null_source_share == 1
+        assert record.mostly_generated is True
+        assert len(audits) == 1
+        assert audits[0]["generation_id"] == result.generation_id
+        assert audits[0]["reclassed"] == 1
+        assert audits[0]["investigation_ids"] == ["own-research"]
+        assert derived_text not in json.dumps(audits[0])
 
 
 def test_the_other_owner_can_keep_the_same_private_product(boundary_env):
