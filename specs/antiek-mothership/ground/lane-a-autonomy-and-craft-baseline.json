@@ -1,0 +1,688 @@
+{
+  "area": "autonomy-and-craft-baseline",
+  "summary": "No autonomous diligence ships on main 15e78e276. The pieces exist but are not connected, and a user cannot flag a concept, open question or key insight and have it researched autonomously.\n\nThe continuous-research daemon behind antiek-continuous-research.service is deployed and enabled (deploy.yml:279-290), but it can never spawn. Its production entry point calls run_forever(config=config) with the default spawn_fn=no_op_spawn (daemon.py:52-55, 283, 325-334). I ran one iteration on two synthetic investigations that shared a gap. It observed the gap, attempted one spawn and recorded skipped_reasons={'spawn_declined': 1}. Several places still describe the daemon as spawning: operator_gate_actions.md:454-456, the SuggestedResearch header (SuggestedResearch.tsx:14-15) and html-projection SPR-07.\n\nThe daemon's inputs are evidentiary_gaps that the model emits. It never reads user flags. FloatMenu has Note, Dialogue, Search and Deep-research, and no Flag or Watch action (FloatMenu.tsx:194-203). The Note action writes marginalia.noted, which the daemon ignores. Parked questions (/watch-for-later, BrainstormStation, \u2318K) come only from automatic question.identified emitters: the note-taker and a heuristic over reader voice notes. They launch only when the user clicks.\n\nWhat is wired:\n- A read-only \"Suggested next\" lane (GET /research/suggestions), with one explicit \"Chase this\" through the capped launch path.\n- Manual parked-question launch.\n- A per-browser unread badge in NavRail.\n\nWhat is built but unreachable:\n- Per-investigation autonomous chase (chase_mode). POST /investigations does not expose it.\n- The Deep Research Bridge insight/open-question extractor and gap-finder. They have zero callers and zero tests.\n- Monitoring mode. It is CLI-only.\n- The artifact-comment to agent_work to reply-in-thread path. It is compiled off in the shipped bundle (RUN).\n\nWhat exists only in specs: the whole never-sleeping agent (D3: live spawn, standing topics, re-ingestion scheduler, living-folder refresh, learning digest), the attention inbox and the Midnight Oil runner. Midnight Oil ships a preflight only.\n\nBudget controls are env-only. The systemd unit sets ANTIEK_DAEMON_BUDGET_USD_PER_DAY, which no Python reads; the code reads ANTIEK_DAEMON_HOURLY_BUDGET_USD. Settings shows the daemon cap read-only. There is no opt-in, pause or per-flag approval.\n\nCRAFT: I re-checked the 2026-09-23 baseline (24/48 = 50%, two vetoes) on main 15e78e276, and every cited blocker is still present:\n- the PanelLayout hooks crash across 768px;\n- BrainPresence overflow;\n- MascotStation fixed z-[60] over content;\n- the stone-50 body with darkMode \"media\";\n- no focus-visible ring on LemonButton, and disabled buttons drop pointer events;\n- outline-none on the FloatMenu textareas.\n\nMothership-specific gaps:\n- FloatMenu (the island) appears with no motion. It has no roving focus and does not return focus on Esc. Its position is clamped with a hardcoded 44px height, so an expanded panel can leave the viewport.\n- The floating ChaseThread panel's exit animation never runs, because nothing wraps it in AnimatePresence.\n- Floating panels are not rendered below 768px, so highlight-to-chase has no phone path. This is still true on w3.\n- ReadingCompanion is hidden below 1024px, with no way to open it.\n- The empty state of the Suggested lane falsely says the model provider isn't configured, which is a veto-class honesty defect.\n- FloatMenu, SuggestedResearch, ReadingCompanion, ChaseThread and MyResearch have no stories or visual baselines.\n\nNone of the four design branches (w1, w3, w5, w7) has been merged, and none has a PR. Each merges cleanly onto main alone (git merge-tree), but w3 conflicts with both w5 and w7 in PanelLayout.tsx. w3 already contains all of w1.",
+  "capabilities": [
+    {
+      "id": "AD-01",
+      "name": "Flag a concept from a document, highlight or thread",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:194-238",
+          "note": "The menu actions are Note, Dialogue, Search and Deep-research, plus Rewrite, Make stronger, Spin a sub-agent and Edit on Write only. There is no Flag, Watch or Pin action."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -n 'QUESTION_|NOTE_|MARGINALIA|FLAG' substrate/schemas/events.py",
+          "note": "The only related ActionTypes are note.emerged/refined, question.identified/escalated/resolved and marginalia.noted. Nothing like concept.flagged exists. The two *.flagged types (decomposer.paraphrase.flagged, graph.staleness.flagged) are system signals."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'flagConcept|flag_concept|attention_inbox' interfaces substrate runtime roles orchestration apps/reading/src",
+          "note": "0 files"
+        }
+      ],
+      "gap": "Needs a user-authored ConceptFlaggedPayload (flag_id, concept_text, chunk_id, document_id, investigation_id|project_id, source_kind:'user', intent: watch|diligence) emitted through postTypedEvent. It also needs a FloatMenu 'Flag' action (keyboard: F while the menu is focused), a flags projection with GET /flags?scope=project|document, and a flag chip rendered inline on the anchored span in ReadingColumn, the DRW BlockDetail and the Write editor.",
+      "ux_notes": "The closest affordance is Note (marginalia.noted), and it feeds nothing autonomous. The daemon's interaction signal reads question.identified only (daemon.py:148-160)."
+    },
+    {
+      "id": "AD-02",
+      "name": "Flag or park an open question for later diligence",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:5011-5061",
+          "note": "GET /watch-for-later lists unsharpened question.identified events across all inv-*.jsonl files."
+        },
+        {
+          "cls": "READ",
+          "ref": "roles/note_taker/document_pass.py:119; substrate/books/voice_note.py:196-220",
+          "note": "The only emitters are the automatic note-taker and a looks_like_question heuristic over a reader voice-note transcript. A user cannot explicitly park a highlighted question."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/BrainstormStation/index.tsx:36-150; App.tsx:160",
+          "note": "The /brainstorm folder, reachable from the taxonomy and \u2318K."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:492-501",
+          "note": "Parked questions are indexed in \u2318K."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:623",
+          "note": "The companion renders 'Open question:' rows read-only, with no park, chase or flag action."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/research/route-authmock-brainstorm__dark__390.png",
+          "note": "Viewed. At 390 the \u22651024 banner appears twice. The empty-state copy says 'the substrate identifies open questions' (engine vocabulary), and the ghost brain sits behind the copy."
+        }
+      ],
+      "gap": "Needs a user path to park a question: a FloatMenu 'Park question' action, plus a '+' on each ReadingCompanion open-question row. Both should emit QuestionIdentifiedPayload with anchor_region_id and source_kind 'user' (the payload has no source_kind field today, events.py:1260-1264). Parked questions also need a document/project scope filter (the GET /watch-for-later query is global) and an 'auto-diligence' toggle per parked question.",
+      "ux_notes": "Parked questions are only ever launched by an explicit click (see AD-06). Nothing autonomous consumes them."
+    },
+    {
+      "id": "AD-03",
+      "name": "Flag a key insight",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'find_gaps|list_open_questions|extract_paste|list_insights' --include='*.py' . (excluding substrate/research_bridge)",
+          "note": "0 callers outside the package and 0 tests. The Deep Research Bridge insight/open-question extractor and gap-finder (substrate/research_bridge/extractor.py:412,614,647; gap.py:401) are unreachable."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/BrainstormStation/InsightLegoShelf.tsx:1-8",
+          "note": "The insight shelf slots blocks into thought-partner context. It does not mark an insight as key."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rni 'pin|flag|watch|star|bookmark' apps/reading/src/modes/DeepResearchWorkspace",
+          "note": "No mark-as-key affordance on DRW insight nodes."
+        }
+      ],
+      "gap": "Needs an InsightFlaggedPayload (or a 'key' boolean on graph insight nodes via knowledge_event_projector), a FloatMenu/BlockCard 'Mark key insight' action, and a 'Key insights' section in the per-document ReadingCompanion and the project companion. Key insights also need to feed diligence as 'find disconfirming evidence' seeds.",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-04",
+      "name": "Autonomous run on flags/gaps: the continuous-research daemon (\u00a77.3/\u00a77.4)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "orchestration/continuous/daemon.py:52-55,186,283,325-334",
+          "note": "no_op_spawn returns None. main() calls run_forever(config=config), so spawn_fn defaults to no_op_spawn. The docstring at :12-15 says production wiring is a 'follow-up Sprint 14 PR'."
+        },
+        {
+          "cls": "RUN",
+          "ref": "PYTHONPATH=ground-main python probe_daemon.py (2 synthetic inv jsonl sharing one gap)",
+          "note": "IterationResult(gaps_observed=1, gaps_eligible=1, spawns_attempted=1, spawns_succeeded=0, spawned_investigation_ids=[], skipped_reasons={'spawn_declined': 1}). run_forever kwdefaults spawn_fn=<function no_op_spawn>"
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'spawn_fn\\s*=' --include='*.py' . (non-test)",
+          "note": "The only hit is daemon.py:297, which passes its own default through. No production callable exists."
+        },
+        {
+          "cls": "READ",
+          "ref": "infrastructure/ansible/playbooks/deploy.yml:185-193,279-290; infrastructure/ansible/templates/antiek-continuous-research.service.j2:63",
+          "note": "The unit is rendered and enabled, and runs python -m orchestration.continuous."
+        },
+        {
+          "cls": "READ",
+          "ref": "docs/operator_gate_actions.md:454-456",
+          "note": "Claims 'spawn-budgeted at $5/day ... Live since 2026-05-23'. The code shows it never spawns."
+        },
+        {
+          "cls": "READ",
+          "ref": "orchestration/continuous/daemon.py:117-161",
+          "note": "Inputs are evidence.retrieve.delivered evidentiary_gaps (model-emitted), with a boost when question.identified matches. It never reads user flags or marginalia."
+        },
+        {
+          "cls": "NOT MEASURED",
+          "ref": "prod journalctl -u antiek-continuous-research",
+          "note": "I did not verify whether the process is running on prod. It is moot for spend, because it cannot spawn."
+        }
+      ],
+      "gap": "Wire a real SpawnFn in orchestration/continuous/live_spawn.py (the D3 SPR-01 plan). It should post through an owner-scoped internal route POST /internal/agent-work/daemon/spawn, behind a default-off flag. Before that it needs owner lineage (the scan is global today, daemon.py:90-102), persisted chase counts and topics (in memory only, daemon.py:70-85; research_topic.py:16-19), and a ledger authority on the primary DB instead of the JSON sidecar. It must also add user flags (AD-01..03) as first-class inputs to scan_gaps.",
+      "backend_dependency": "D3 SPR-01 live spawn; owner lineage (substrate/research_owner/lineage.py absent); BudgetLedger (substrate/midnight_oil/budget_ledger.py exists)",
+      "ux_notes": "The MyResearch badge 'found by the loop' (MyResearch.tsx:454-460) can never render from a real daemon run."
+    },
+    {
+      "id": "AD-05",
+      "name": "Autonomous follow-up inside one investigation (chase_mode depth/duration)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "orchestration/loop_one/orchestrator.py:2274-2345",
+          "note": "_maybe_spawn_chase_child re-enters with the strongest evidentiary gap until depth, duration or budget runs out, or no open questions remain."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/schemas/events.py:2386-2393",
+          "note": "chase_mode/chase_value/chase_budget_usd live on the start payload with default 'off'."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:441-470",
+          "note": "InvestigationStartRequest (POST /investigations) has no chase_mode, chase_value or chase_budget_usd, so every API launch is chase_mode='off'."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'chase_mode|chaseMode|chase_budget' apps/reading/src (non-test)",
+          "note": "0 hits"
+        }
+      ],
+      "gap": "Expose chase_mode, chase_value and chase_budget_usd on InvestigationStartRequest, and add a 'Keep digging' control (depth N or hours H, with a $ ceiling) to StartResearch, ChaseThread and the island. Surface investigation.chase_halted reasons in the thread.",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-06",
+      "name": "Human-gated chase of suggested gaps and parked questions",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/cascade_routes.py:569-601",
+          "note": "GET /research/suggestions is read-only: build_suggestions with no spawn and no budget."
+        },
+        {
+          "cls": "RUN",
+          "ref": "python -c build_suggestions(events_dir=synthetic)",
+          "note": "Returned Suggestion(question='Does X replicate outside the lab?', seen_in_research_count=2, score=0.458)."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MyResearch.tsx:261; ResearchWorkstation/index.tsx:272",
+          "note": "SuggestedResearch is mounted in /my-research and beside the answer."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/SuggestedResearch.tsx:231-263",
+          "note": "An explicit 'Chase this' calls startInvestigation with parent_investigation_id, then navigates to /inv/:id."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:5064-5170",
+          "note": "POST /watch-for-later/{id}/launch emits start_requested plus question.escalated_to_research."
+        }
+      ],
+      "gap": "This is the manual half of diligence and it works. What is missing is a 'let the loop chase this' option per suggestion (autonomous opt-in), and batch chase with one approved ceiling.",
+      "ux_notes": "The honesty defect is covered under CR-06."
+    },
+    {
+      "id": "AD-07",
+      "name": "Diligence result lands in a thread or companion document",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/SuggestedResearch.tsx:175-178,249-255",
+          "note": "The result is a new child investigation at /inv/:id, linked by parent_investigation_id/recordSpawnRelationship. Nothing writes back to the originating document or project."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:39-45",
+          "note": "The companion reads only the book's reading-thread notes. Chase outcomes are shown only as 'Saved chases' merge drafts (:341-364)."
+        },
+        {
+          "cls": "READ",
+          "ref": "orchestration/continuous/research_topic.py:1-19",
+          "note": "The spec's research_topic 'running master doc' is explicitly not persisted."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/feedback/service.py:58-80; interfaces/research/api/agent_work_routes.py:224-404; apps/reading/src/modes/ResearchWorkstation/ArtifactFeedbackReview.tsx:242-275",
+          "note": "An artifact comment queues agent_work, a bridge leases it, and the reply lands in the feedback thread ('Research agent')."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx:86-87,565",
+          "note": "Gated by VITE_ANTIEK_FEEDBACK_ENABLED, which no build config sets."
+        },
+        {
+          "cls": "RUN",
+          "ref": "curl https://antiek.ai/assets/index-CXPKtaR2.js | grep -o '[\"1\",\"true\",\"yes\"].includes(...)'",
+          "note": "The shipped bundle compiles to [\"1\",\"true\",\"yes\"].includes(\"\".toLowerCase()), so the comment-to-agent thread is off in prod."
+        }
+      ],
+      "gap": "Needs a persisted research_topic, or a companion object per project and per evidence document (CompanionDoc: id, scope, sections[open_questions, key_insights, diligence_outcomes], version). A diligence run must append a DiligenceOutcomeRecorded event keyed to the flag_id, and the outcome must render in the ReadingCompanion and the project companion with a link to the child thread. Enable the feedback thread in prod once agent_work consumers are verified.",
+      "backend_dependency": "agent_work consumer (herdr bridge); D3 SPR-04 living-folder refresh",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-08",
+      "name": "Attention UI: diligence queue, status and inbox",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/seen.ts:1-60; apps/reading/src/shell/NavRail.tsx:280-293",
+          "note": "The unread axis for completed research lives in localStorage ('antiek:last_seen:v1'), per browser, not synced across devices. The NavRail badge counts it."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MyResearch.tsx:433-460",
+          "note": "The monitor lists running and completed research, with a 'found by the loop' badge."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'new Notification|Notification.requestPermission' apps/reading/src",
+          "note": "0: no push or desktop notifications."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/Slimydog/Antiek/specs/antiek-personal-attention-inbox-decision-queue-authority-2026-08-11/README.md",
+          "note": "SPEC_ONLY ('authorizes no ... notification send')."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent/sprint-05-learning-digest.html",
+          "note": "The 'what did the loop do while I was away' digest is spec-only (orchestration/continuous/digest.py absent, RUN test -e)."
+        }
+      ],
+      "gap": "Needs a Diligence queue surface (route /diligence, or a tab in each workstation) listing flags with states queued, running, needs-approval, done, stale and declined. It also needs a server-side seen-state (GET/PUT /attention/seen) so unread survives devices, an 'away digest' card on the workstation home, and a hotkey to jump to the next unread item.",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-09",
+      "name": "Budget and consent controls for autonomous spend",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "orchestration/continuous/budget.py:31-36,67-78,130-137",
+          "note": "$5/day, $2 per investigation and depth 5. The cap comes from the env var ANTIEK_DAEMON_HOURLY_BUDGET_USD. The spend ledger is a JSON sidecar at ~/.antiek/budgets/daemon_<date>.json."
+        },
+        {
+          "cls": "READ",
+          "ref": "infrastructure/ansible/templates/antiek-continuous-research.service.j2:54-56",
+          "note": "The unit sets ANTIEK_DAEMON_BUDGET_USD_PER_DAY=5.0, which the code never reads (dead config)."
+        },
+        {
+          "cls": "RUN",
+          "ref": "python -c 'import orchestration.continuous.budget as b; print(b._ENV_DAILY_CAP)'",
+          "note": "ANTIEK_DAEMON_HOURLY_BUDGET_USD. grep finds ANTIEK_DAEMON_BUDGET_USD_PER_DAY only in the .j2 and in a __main__.py docstring."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/settings_budget.py:891-920,1294-1296; apps/reading/src/modes/Settings/index.tsx:440-480",
+          "note": "GET /settings/budget shows the display cap and the 'Daemon enforcement cap' read-only. There is no setter."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/midnight_oil_routes.py:1-6,21-23; apps/reading/src/modes/MidnightOil/index.tsx:26-60",
+          "note": "The price ceiling plus operator_acknowledged_spend checkbox belongs to a preflight only. It launches nothing and reserves nothing."
+        }
+      ],
+      "gap": "Needs an autonomy consent object: PUT /settings/autonomy {enabled, daily_cap_usd, per_run_cap_usd, max_depth, allowed_sources, require_approval_over_usd}, with an Autonomy panel in Settings (toggle, cap, pause-all) and a per-flag 'approve spend' step when a run exceeds its threshold. Fix the env var mismatch. Make the primary-DB BudgetLedger the single authority (D3 invariant), not the sidecar.",
+      "backend_dependency": "substrate/midnight_oil/budget_ledger.py",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-10",
+      "name": "Standing topics, schedules and re-ingestion (never-sleeping agent)",
+      "status": "SPEC_ONLY",
+      "evidence": [
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent/README.md",
+          "note": "'status=spec-only; implementation=blocked-until-acceptance'. SPR-01..06 are all 'blocked'."
+        },
+        {
+          "cls": "RUN",
+          "ref": "test -e for orchestration/continuous/{live_spawn,topic_registry,paid_call,refresh,digest}.py, interfaces/research/api/daemon_routes.py, substrate/continuous_topics/registry.py, substrate/research_owner/lineage.py",
+          "note": "All ABSENT on main."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rni 'schedul|cron|nightly' apps/reading/src (non-test)",
+          "note": "No scheduling UI for research."
+        }
+      ],
+      "gap": "Needs the whole D3 package: an owner-scoped standing-topic registry with UI to register or archive a topic and its sources, a cadence scheduler, bounded re-ingestion windows and living-folder refresh.",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-11",
+      "name": "Monitoring mode (saved feed over the personal lane, refresh, putter)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "orchestration/monitoring/__init__.py:1-27",
+          "note": "Explicitly 'never a daemon, scheduler' and operator-invoked through python -m orchestration.monitoring."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'create_monitor|refresh_monitor|putter_feed|/monitors' interfaces runtime apps/reading/src",
+          "note": "0 routes and 0 UI."
+        }
+      ],
+      "gap": "Needs /monitors CRUD plus a refresh route, and a 'Watch this topic' affordance that binds a monitor to an investigation or project. Show fresh items in the attention queue.",
+      "ux_notes": ""
+    },
+    {
+      "id": "AD-12",
+      "name": "Autoresearch (Wedge 1 prompt mutation, Wedge 3 config sweeps)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "tools/prompt_autoresearch/__init__.py:1-22",
+          "note": "LOCAL-ONLY; raises on production markers."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/autoresearch/__init__.py:1-21",
+          "note": "Deferred until 500 or more graded outcomes; operator approval only."
+        }
+      ],
+      "gap": "Not user diligence. These tools tune the system itself, so this row is out of scope for flag-driven diligence and recorded only so it is not mistaken for it.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-01",
+      "name": "Dark mode and theme on shell, reader, float menu, thread and companion",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep index.html:14; tailwind.config.js:12 on main 15e78e276",
+          "note": "<body class=\"bg-stone-50 text-stone-900\"> and darkMode:\"media\" are still present, so the baseline night defects stand."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md:188-192",
+          "note": "33 inputs at 1.13:1 at night, 972 moonlight sites at 3.50:1, RUNNING at 1.36:1. Line numbers re-verified on main for the body and darkMode."
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/design/w1-tokens-foundation-20260923@7144b8e6b",
+          "note": "Adds the semantic layer, darkMode ['selector','[data-theme=\"dark\"]'], body bg-page text-1, a global :focus-visible, an Appearance panel and self-hosted Inter/JetBrains Mono. Pushed only; no PR (gh pr list head:design/ found none)."
+        }
+      ],
+      "gap": "Merge w1 (it merges cleanly onto main alone per git merge-tree). Then check each mothership surface for night pairs: FloatMenu is bg-ink in both themes, and ReadingCompanion uses 33 dark: patches and 13 text-xxs/moonlight uses.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-02",
+      "name": "Shell at 390px and across the 768px tier boundary",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelLayout.tsx:91-123 (main)",
+          "note": "The early return at the tier===\"sm\" branch runs before useRef/useCallback, a rules-of-hooks violation. The shell critique RUN showed React #310/#300 blanking the app when resizing across 768."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/visual-critiques.md:1982",
+          "note": "Blocker 1: resizing across 768px blanks the app."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/SCORE-BASELINE-full.md:65",
+          "note": "Veto: MascotStation at fixed z-60 covers inputs at 390 and captures taps. MascotStation.tsx:566 still has fixed z-[60] on main."
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/design/w3-shell-states-prose-20260923@0d68b6213; origin/design/w7-crashes-20260924@86a03898b",
+          "note": "Both fix the 768 crash (2902971a9 and 7db620860). w3 docks the mascot, removes the ghost brain and replaces the banner with a one-column sm layout. Neither is merged. w3+w7 and w3+w5 conflict in PanelLayout.tsx (git merge-tree rc=1)."
+        }
+      ],
+      "gap": "Land one 768 fix (w7's or w3's, not both) and w3's docked mascot. Define a phone layout for workstation tabs: tabs collapse to a select, a 5-key dock, 44px targets.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-03",
+      "name": "Island (FloatMenu) keyboard, focus and ARIA",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:145-155",
+          "note": "Esc clears the selection and resets the view but returns focus to nothing."
+        },
+        {
+          "cls": "READ",
+          "ref": "FloatMenu.tsx:172-176,286-296",
+          "note": "role=menu with menuitems, but no initial focus, no arrow/Home/End roving, and no aria-activedescendant. A keyboard selection (selectionchange, useFloatMenuSelection.ts:149) opens the menu, but keyboard focus cannot reach it except by tabbing through the whole DOM."
+        },
+        {
+          "cls": "READ",
+          "ref": "FloatMenu.tsx:365,499",
+          "note": "The textareas use outline-none with no focus-visible replacement (baseline dim 7, SCORE-BASELINE-full.md:149). Unchanged on w1/w3 apart from a global :focus-visible that a utility outline-none still defeats."
+        }
+      ],
+      "gap": "Needs: focus moves to the first menuitem when a selection is made by keyboard (Shift+arrows); arrow keys rove; Esc returns focus to the selection's anchor node; a focus-visible ring on the inner textareas; aria-haspopup/aria-expanded on the view switches.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-04",
+      "name": "Island physics and motion (float menu, chase panel), including reduced motion",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -n 'motion|transition|animate|spring' FloatMenu.tsx",
+          "note": "The only hit is transition-colors on buttons (:291). The island appears and disappears instantly."
+        },
+        {
+          "cls": "READ",
+          "ref": "FloatMenu.tsx:109-110,162-168",
+          "note": "The position is clamped with MENU_H=44 whatever the view, so an expanded Note/Dialogue/Search panel placed below the selection can overflow the viewport bottom."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelLayoutPanel.tsx:146-148",
+          "note": "The floating ChaseThread panel declares exit, but nothing in workspace/ wraps it in AnimatePresence (only components/windows/WindowsLayer.tsx:35 does), so the exit never runs."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/audit-motion-interaction.md:33,37",
+          "note": "M4: no arrival contract; menus have no motion; spring scale drifts between 0.96 and 0.97. M8: four reduced-motion sources."
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/design/w5-motion-20260923@29fe3bde6",
+          "note": "Changes the dock fade, a single scene heartbeat and the mascot transform. It does not touch FloatMenu or the floating-panel exit."
+        }
+      ],
+      "gap": "Island arrival: popover class, 80ms, opacity plus 4px from the anchor edge, on the motion tokens. Expanded views need re-measuring (ResizeObserver) and a flip or clamp with real height. Wrap floating panels in AnimatePresence. The morph from island to ChaseThread panel should be one surface, not a jump. All of it must be zeroed under useMotionPreference (w1 useTheme).",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-05",
+      "name": "Island and thread at phone width (highlight-to-chase on 390)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelLayout.tsx:91-104 (main)",
+          "note": "sm renders mainSlot only, and floating panels (ChaseThread) are not rendered."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/visual-critiques.md:1677",
+          "note": "'Floating panels are not rendered at the sm tier ... highlight-to-chase flow therefore has no phone path' (CRAFT-RUBRIC critical failure)."
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/design/w3-shell-states-prose-20260923:apps/reading/src/workspace/PanelLayout.tsx:110-116",
+          "note": "Still 'The docks and floating panels stay out of it'. w3 does not fix this."
+        }
+      ],
+      "gap": "At sm, render floating panels as full-height bottom sheets (drag handle, Esc or swipe to close, focus trap, focus return to the highlight), and pin FloatMenu above the on-screen keyboard.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-06",
+      "name": "Designed states on autonomy surfaces (loading, empty, error, launching)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/SuggestedResearch.tsx:107-110,151-163; apps/reading/src/shared/AIActionFailure.tsx:95-100",
+          "note": "With no reason (a network TypeError, or simply zero gaps), it renders 'the engine returned no result ... the model provider isn't configured', which states a definite cause that is unknown or false."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/research/route-authmock-my-research__light__1280.png",
+          "note": "Viewed. 'Suggested next' shows the provider-not-configured sentence on a refused GET, next to '0 running $0.0000 spent so far' and 'Engine: Failed to fetch'."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/visual-critiques.md:1627-1632",
+          "note": "A12: the ParkedQuestion 'Launching\u2026' state looks disabled and shrinks the button from ~200 to 118px."
+        },
+        {
+          "cls": "PR",
+          "ref": "origin/design/w3-shell-states-prose-20260923:apps/reading/src/components/states/adoption.test.ts:16-27",
+          "note": "Shared LoadingState/EmptyState/ErrorState are adopted on 10 surfaces. SuggestedResearch, BrainstormStation, ReadingCompanion, FloatMenu panels and ChaseThread are not among them."
+        }
+      ],
+      "gap": "Split the SuggestedResearch states: 'no open threads yet' (a true empty state that invites 'Flag something to watch'), 'can't reach Antiek' (unreachable, with Retry), and 'provider not configured' (only when the server says so). Do not show '$0.0000' or '0 running' while loading or in error. The launching state should keep the button's width.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-07",
+      "name": "Reader companion and thread surfaces at narrow widths",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:314-315",
+          "note": "The aside is w-80 ... hidden lg:flex, so there is no companion below 1024px and no toggle."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/visual-critiques.md:2013",
+          "note": "ThreadBreadcrumb hides the current crumb at 390 (ThreadBreadcrumb.tsx:69)."
+        }
+      ],
+      "gap": "Needs a companion toggle (hotkey and a button in the reader header) that opens the companion as a sheet at sm/md. The thread breadcrumb should collapse to 'current + back' at 390.",
+      "ux_notes": ""
+    },
+    {
+      "id": "CR-08",
+      "name": "Visual-regression coverage of mothership surfaces",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "find apps/reading/src -name '{FloatMenu,SuggestedResearch,ReadingCompanion,ChaseThread,MyResearch,BrainstormStation}*.stories.tsx'",
+          "note": "None. Only ChaseSlideOver and ArtifactFeedbackReview have stories."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "design-audit/SCORE-BASELINE-full.md:211-213",
+          "note": "lostpixel has 0 dark baselines and no width under 768. The highlight-toolbar story never shows the toolbar (visual-critiques.md:1311)."
+        },
+        {
+          "cls": "NOT MEASURED",
+          "ref": "npm --prefix apps/reading vitest",
+          "note": "NOT RUN: apps/reading/node_modules is absent in the ground worktree."
+        }
+      ],
+      "gap": "Add state-matrix stories for FloatMenu (menu, note, dialogue, search, withheld, hybrid; light/dark; 1280/390, with a programmatic selection), SuggestedResearch (loading, empty, error, ready, chasing), ReadingCompanion and ChaseThread. Add dark and 390 axes to lostpixel (w1 adds the Storybook theme decorator).",
+      "ux_notes": ""
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent",
+      "planned": "D3: SPR-01 live daemon spawn with owner lineage behind /internal/agent-work/daemon/spawn (default off); SPR-02 owner-scoped standing-topic registry; SPR-03 re-ingestion scheduler with ContinuousPaidCallContext and BudgetLedger as the single authority; SPR-04 living-folder refresh; SPR-05 zero-spend learning digest; SPR-06 adversarial conformance.",
+      "shipped_status": "SPEC_ONLY. The README says status=spec-only, blocked-until-acceptance. Every named NEW file is absent on main (RUN test -e). The daemon still uses no_op_spawn."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments",
+      "planned": "D2: an annotation schema and store, annotation API, reader comments UI, comment to agent dispatch with paid authority, editable HTML deliverable, conformance.",
+      "shipped_status": "PARTIAL. substrate/feedback plus feedback_routes.py plus agent_work_routes.py ship artifact-version feedback threads that queue agent work (service.py:58-80). The UI (ArtifactFeedbackReview) is compiled off in the prod bundle (RUN). There are no reader-document anchored comments."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-midnight-oil-runner",
+      "planned": "Collapse 178 no-op MO PRs into one runner: a consolidated contract, reference runner, seams, worker claim loop, run-time budget decrement and \u00a79.0-gated live wiring.",
+      "shipped_status": "PARTIAL/preflight only. substrate/midnight_oil has contracts, cost_estimate and budget_ledger. The API is POST /research/midnight-oil/preflight only ('does not launch agents or reserve budget', midnight_oil_routes.py:1-6). /midnight-oil UI is preflight."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-personal-attention-inbox-decision-queue-authority-2026-08-11",
+      "planned": "Attention item contract, source projection, owner privacy delivery, lifecycle ack/snooze/dedup, action authority, priority escalation, synthetic conformance.",
+      "shipped_status": "SPEC_ONLY. The only attention mechanism is the localStorage unread badge (workspace/seen.ts)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-bridge",
+      "planned": "Paste-ingest blocks; SPR-02 insight and open-question extractor; block UI; outline builder; SPR-05 gap-finder plus cascaded prompts; operator dogfood.",
+      "shipped_status": "BUILT_UNREACHABLE for the extractor and gap-finder. substrate/research_bridge/{extractor,gap}.py exist but have 0 callers outside the package and 0 tests (RUN grep). Paste/ingest helpers are used by books.py and upload_routes.py."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine",
+      "planned": "Budget tuples, brief gate, spans and floor, citation binding, persona seeding, corpus contract, acquisition repair, web layer, run durability. It explicitly excludes any scheduler or daemon ('operator-gated posture').",
+      "shipped_status": "Not re-verified line by line. It is relevant here only for its explicit rule that scheduling and daemons stay out of scope (sprint-07/09)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-hardening",
+      "planned": "Provider contract, trajectory measurement, Exa Deep and Parallel adapters, resilience, cost blast-radius guardrails, learned router, workstation smoke. The live lane is opt-in with a ceiling.",
+      "shipped_status": "Not re-verified. It is relevant only for its cost-guardrail doctrine (SPR-06), which autonomous spend would have to reuse."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-drw-master-ledger",
+      "planned": "Truth reconcile, hygiene, ship, Exa fuel, smoke, honest failure delegation, turbopuffer program, closure.",
+      "shipped_status": "Not re-verified. It has no autonomy or diligence scope."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection",
+      "planned": "Script-free HTML projections, justified by the claim that 'the \u00a77 continuous-research daemon ingests documents autonomously', plus an SPR-07 ingestion boundary.",
+      "shipped_status": "services/html_projection exists (PRIOR baseline). The premise that the daemon is live and opening documents is FALSE on main, because it never spawns (RUN probe)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader",
+      "planned": "One reader; SPR-06 highlight dialogue (the FloatMenu trio); SPR-08 agentic search as one continuous surface.",
+      "shipped_status": "The FloatMenu with Note, Dialogue, Search and Deep-research is BUILT_AND_WIRED in the reader, Research, DRW BlockDetail and Write Outline (4 mounts). It has no flag or park action and no motion."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924/docs/master-product-spec.md:1022-1066",
+      "planned": "\u00a77.3: a daemon scans gaps every minute, scores recency \u00d7 co-occurrence \u00d7 operator interaction, spawns under a daily cap, uses a distinctive policy_id, keeps a research_topic 'running master doc' and shows a chase-tree robot icon. \u00a77.4 sets the $2, $5/day and depth-5 caps plus decay.",
+      "shipped_status": "Scoring, the caps and the policy_id constant are built. Spawn is a no-op, research_topic is unpersisted, and the operator interaction signal counts question.identified only, not highlights."
+    },
+    {
+      "path": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit (DESIGN-SPEC.md, SCORE-BASELINE-full.md, visual-critiques.md, audit-motion-interaction.md)",
+      "planned": "Craft floor 42/48. Semantic tokens and selector theming, shipped fonts, one sun, shared states, disabledReason plus a focus ring, a designed 390 path, a mascot off content, a motion arrival contract, dark and 390 lostpixel axes.",
+      "shipped_status": "The baseline is 24/48 with two vetoes at 0ac647020. I re-verified on main 15e78e276 that the key blockers are unchanged (index.html:14, tailwind.config.js:12, LemonButton.tsx:36, MascotStation.tsx:566, BrainPresence.tsx:43-44, AppShell.tsx:119, PanelLayout.tsx:91, FloatMenu.tsx:365/499, Topbar.tsx:125). Fixes sit on 4 unmerged design branches."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership",
+      "planned": "Orchestrator scratch dirs (briefs, ground, verify).",
+      "shipped_status": "The directories exist but are empty. There is nothing to reconcile."
+    }
+  ],
+  "craft_gaps": [
+    "The shell crashes across 768px on main: PanelLayout.tsx:91 returns before the hooks at :107-123 (visual-critiques.md:1982; READ on main). The fix exists twice, on w3 (2902971a9) and w7 (7db620860), and neither is merged.",
+    "Veto: MascotStation is fixed z-[60] (MascotStation.tsx:566 on main) and covers inputs and CTAs at 390 (SCORE-BASELINE-full.md:65; route-authmock-midnight-oil__*__390 covers PRICE CEILING, visual-critiques.md:1672-1676). w3 ec4f1f473 docks it and is not merged.",
+    "Veto: unknown values are shown as definite. SuggestedResearch's empty state and network-error state both claim 'the model provider isn't configured' (SuggestedResearch.tsx:151-163 via AIActionFailure.tsx:95-100), and My research shows '0 running $0.0000' on a refused fetch (screenshot route-authmock-my-research__light__1280.png).",
+    "Island (FloatMenu) motion: it has none. It appears instantly with no arrival or departure grammar (FloatMenu.tsx; audit-motion-interaction.md:33 M4 'menus ... have no motion'). No island physics exists to hand off into the ChaseThread panel.",
+    "The island geometry is clamped with a constant 44px height (FloatMenu.tsx:109-110,162-168), so the Note, Dialogue and Search panels can overflow the viewport when placed below a selection near the bottom.",
+    "Island keyboard: there is no roving focus, no initial focus on a keyboard selection, and Esc does not return focus (FloatMenu.tsx:145-155,172-176). The inner textareas use outline-none with no focus-visible style (FloatMenu.tsx:365,499; SCORE-BASELINE-full.md:149).",
+    "The floating ChaseThread panel exit never animates: PanelLayoutPanel.tsx:146-148 declares exit, but nothing wraps it in AnimatePresence. The spring's initial scale is 0.96 here and 0.97 for WorkspaceWindow (audit-motion-interaction.md:33). w5 does not address it.",
+    "There is no phone path for highlight-to-chase: floating panels are not rendered at sm (PanelLayout.tsx:91-104; visual-critiques.md:1677). They stay excluded even on w3 (w3 PanelLayout.tsx:110-116).",
+    "ReadingCompanion has no path below 1024px (ReadingCompanion.tsx:315 'hidden lg:flex') and no toggle or hotkey.",
+    "The \u22651024 banner is rendered twice at 390 on 7 research routes, including /brainstorm (PanelHost.tsx:79 nested PanelLayout; screenshot route-authmock-brainstorm__dark__390.png; visual-critiques.md:1672). w3 removes the banner.",
+    "Night mode on main: the body is stone-50 (index.html:14), darkMode is 'media' (tailwind.config.js:12), and 33 unthemed inputs show text at 1.13:1 while moonlight text is 3.50:1 (SCORE-BASELINE-full.md:188-190). w1 fixes the mechanism and is not merged.",
+    "LemonButton, used for every island and thread CTA: disabled:pointer-events-none with no disabledReason (LemonButton.tsx:36 on main). None of w1, w3, w5 or w7 adds disabledReason (RUN grep=0 on every branch). w3 only switches the button font to sans.",
+    "Engine vocabulary in autonomy copy: the /brainstorm empty state says 'the substrate identifies open questions' (screenshot route-authmock-brainstorm__dark__390.png), and the taxonomy blurb for MidnightOil says 'Autonomous research-swarm preflight'. Breadcrumbs show raw slugs 'my-research' and 'midnight-oil' (visual-critiques.md:1652-1656).",
+    "The ParkedQuestion 'Launching\u2026' state reads as disabled and shrinks the button from ~200 to 118px (visual-critiques.md:1631; ParkedQuestion.tsx:66).",
+    "ThreadBreadcrumb hides the current crumb at 390 (ThreadBreadcrumb.tsx:69) and shows a raw forked id in its integrity error (ThreadBreadcrumb.tsx:55; visual-critiques.md:2013,2022).",
+    "The BrainPresence ghost overflows every authenticated route by 77px (at 1280) and 23px (at 390) horizontally (AppShell.tsx:119 has no position:relative; BrainPresence.tsx:43-44), and it sits behind the reader and companion prose. w3 removes it.",
+    "No visual baseline or story exists for FloatMenu, SuggestedResearch, ReadingCompanion, ChaseThread, MyResearch or BrainstormStation (RUN find), and lostpixel has no dark or 390 axis (SCORE-BASELINE-full.md:211-213). The mothership surfaces are unguarded.",
+    "DistillView's smooth scrollIntoView ignores reduced motion (audit-motion-interaction.md:247 m1), and reduced motion is read from 4 sources, 3 of them non-reactive (M8). w1 useTheme unifies them and is not merged.",
+    "Design waves: w1-tokens-foundation (7144b8e6b, 18 commits), w3-shell-states-prose (0d68b6213, 28 commits, includes all of w1), w5-motion (29fe3bde6, 5 commits) and w7-crashes (86a03898b, 6 commits) are all PUSHED-ONLY. None has a PR, and none is an ancestor of main 15e78e276. Each merges cleanly onto main alone (git merge-tree rc=0), but w3 conflicts with w5 and with w7 in apps/reading/src/workspace/PanelLayout.tsx (rc=1).",
+    "What each wave changes on the mothership surfaces. w1: semantic tokens and data-theme, fonts, a global :focus-visible, the Appearance panel with theme and motion, and a FloatMenu warning colour change (4 lines). w3: the shell (docked mascot, no ghost, one ad slot, quiet chrome, a named page title, an sm layout without a banner), shared States, a prose layer on ReadingColumn, and MyResearch/StartResearch/Reading state adoption. w5: a single scene heartbeat, dock fade, mascot moved by transform, and a layout-motion guard. w7: the 768 crash, honest counts on failure for Library, Speak, Operator, Payouts and SkillRules, story fixture repair (ClaimCard, MasterMdViewer), the /wrestle/:id deep link, and lazy operator pages."
+  ],
+  "risks": [
+    "Docs overstate the daemon. operator_gate_actions.md:454-456, the SuggestedResearch.tsx:14-15 header ('within its \u00a77.4 caps chases the best') and html-projection SPR-07 all describe a spawning daemon, but it has never spawned (no_op_spawn; RUN probe spawn_declined). A spec built on 'the daemon already runs diligence' would be wrong from the start.",
+    "Budget config drift. The unit sets ANTIEK_DAEMON_BUDGET_USD_PER_DAY, but the code reads ANTIEK_DAEMON_HOURLY_BUDGET_USD (budget.py:36; j2:54-56). The moment spawn is wired, an operator who edits the unit's cap changes nothing, and only the hardcoded $5 default applies.",
+    "There is no owner scope. scan_gaps enumerates every events file regardless of owner (daemon.py:90-102,127), and so do /watch-for-later (app.py:5035-5057) and /research/suggestions. main's tip just merged the owner-namespace work (#3382), so wiring spawn before D3 SPR-01 owner lineage risks cross-owner leaks and spend.",
+    "Decay and depth caps reset on restart. Chase counts and research topics live only in memory (daemon.py:70-85; research_topic.py:16-19), so after each Restart=on-failure the \u00a77.4 decay rule starts over, and a wired daemon could re-chase the same gaps daily up to the cap.",
+    "The spend authority is a JSON sidecar (~/.antiek/budgets/daemon_<date>.json), not the primary-DB BudgetLedger. D3 names that ledger as the sole scheduled-spend authority. Reserve and record run in a non-atomic read-modify-write outside db_lock.",
+    "Prompt-injection boundary: html-projection's SPR-07 rationale assumes the daemon opens documents autonomously. Once spawn is wired, autonomous runs will read untrusted corpus text, and that ingestion boundary becomes live.",
+    "The artifact-comment to agent_work path depends on an external bridge consumer (infrastructure/connectors/herdr_bridge). It is compiled off in prod (RUN bundle), and its runtime health is NOT MEASURED here.",
+    "Merge-order hazard. w3 already contains all of w1 and conflicts with both w5 and w7 in PanelLayout.tsx. Merging w7's crash fix first, then w3, requires a manual PanelLayout reconciliation, and the two 768 fixes differ.",
+    "The per-browser unread state (localStorage) means attention for autonomous results will not follow the user across devices, and a private window reads everything as unread."
+  ],
+  "open_questions": [
+    "Should a user flag be a new event family (concept.flagged, insight.flagged, question.flagged with source_kind:'user'), or should question.identified gain a source_kind field plus an explicit user emitter? The daemon's interaction boost keys on question.identified text today.",
+    "Where does diligence output live? There is no persisted CompanionDoc or research_topic object. Should the per-project and per-document companion be a new substrate table, or an html_projection artifact versioned through the D2 editing path?",
+    "Is antiek-continuous-research.service actually running on prod, and how many gaps does it see per tick? This is NOT MEASURED because I had no prod access. Its stderr JSON lines would show gaps_observed and skipped spawn_declined counts.",
+    "Is the D3 never-sleeping package still the intended path, given its 'blocked-until-acceptance' status? Who ratifies it before SPR-01 wiring begins?",
+    "Should autonomous diligence default to 'propose then approve' (the SuggestedResearch posture, \u00a72.6 curiosity-gated) or to 'auto-run under a cap'? The operator goal says AUTONOMOUS, but the repo's doctrine and SuggestedResearch.tsx:23-29 reject auto-spend.",
+    "Merge order for the design waves: should w7's crash fix merge first with w3 rebased, or should w3 absorb w7? Neither has a PR.",
+    "Coordination: the relayed user request asked to share this task with an Opus session named 'Antiek Sweep'. This read-only subagent did not message any session. The orchestrator should confirm whether it handled that handoff."
+  ]
+}

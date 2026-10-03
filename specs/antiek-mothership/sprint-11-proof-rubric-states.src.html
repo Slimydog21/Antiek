@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-11 · Proof: rubric re-score + state matrices — The Antiek motherships</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-11</p>
+    <h1>Proof: rubric re-score + state matrices</h1>
+    <p class="tagline">Prove it the way the audit measured it: an independent rubric re-score at or above 87.5% with no veto, every state in both themes at two widths, and a rendered walkthrough at the operator's real scale.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 6 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A) + an independent scorer</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The 2026-09-23 audit scored the UI 24/48 (50%) with two vetoes failed, against a floor of 42/48 (<code>/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md</code>; rubric: the operator's frontend-craft skill, <code>~/.claude/skills/frontend-craft/references/CRAFT-RUBRIC.md</code>). W7 closed one veto on five pages. This sprint re-scores the whole mothership independently, by a scorer who did not build it, and records what the operator's day looks like at his herdr scale (20 workstations, 252 tabs, one 174-tab tree).</p><p><strong>Base:</strong> main after MS-01..MS-10 land.</p>
+    
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> The last sprint of wave 3. It is the done-bar for lane A.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>An independent scorer re-scores the rubric at ≥ 42/48 with no critical-failure veto, and every new surface has its complete state matrix in stories on the dark lostpixel axis.</strong></p>
+    <p>The walkthrough renders:</p><ol><li>open three workstations</li><li>hop by prefix</li><li>read a book</li><li>open a footnote as a tab, then three levels of references</li><li>raise an island on a passage</li><li>keep it</li><li>ask an older thread</li><li>merge two threads</li><li>merge an insight into a draft and review the fork</li><li>flag an open question for diligence with consent</li><li>see it land in the inbox</li></ol><p>It runs in light and dark at 1280 and 390, with screenshots saved.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">State-matrix stories for every new surface</div>
+        <p class="desc">Every surface from MS-01..MS-10, in every state, light/dark, at 1280 and 390, on W6's dark lostpixel axis.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test lists every new component and fails if one has no story for any designed state.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/**/*.stories.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Herdr-scale fixture + rendered walkthrough</div>
+        <p class="desc">A seeded fixture (20 workstations, 252 tabs, a 174-tab tree, depth > 12) and the goal's walkthrough as a Playwright script against a local build, saving screenshots.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The screenshots are saved and listed. Any step that could not run is marked NOT RUN with the reason.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/e2e/mothership-walkthrough.spec.ts (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Independent rubric re-score</div>
+        <p class="desc">A scorer who did not build these sprints (codex gpt-6-sol, or a fresh Opus session given only the rubric and the rendered evidence) scores all 12 dimensions with evidence per score, and checks every veto.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>≥ 42/48 and no veto. Otherwise the gaps become a named follow-up list, and the result is reported as it is.</li></ul></div>
+        <div class="files"><span class="file">.lane/RESCORE.md</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Accessibility pass in both themes</div>
+        <p class="desc">axe over every story in both themes (W1's harness), and a keyboard-only walkthrough of the goal flow.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>0 serious or critical axe violations on new surfaces; the keyboard-only walkthrough completes.</li></ul></div>
+        <div class="files"><span class="file">.lane/a11y/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Bundle and performance record</div>
+        <p class="desc">Entry chunk headroom; switcher p95 on the fixture; tree panel fps at 174 nodes.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Numbers are recorded against the gates set in MS-03 and MS-04.</li></ul></div>
+        <div class="files"><span class="file">.lane/perf.md</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Operator-facing summary</div>
+        <p class="desc">One HTML page, per frontend-craft §6: what changed, the walkthrough screenshots, the score, and what is left.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The page is self-contained and cites the evidence files.</li></ul></div>
+        <div class="files"><span class="file">/Users/slimydog/Antiek/specs/antiek-mothership/RESULT.html (new)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>Lane A is built by Claude sessions, so a fresh Opus session is <em>same lineage</em>. It may produce a first score, but that score is provisional until codex gpt-6-sol (or another non-Claude scorer) confirms it. Milestone 3 means this. The score is judged against ≥ 42/48 with zero vetoes, beside the 24/48 two-veto baseline. Report the provisional and the confirmed score separately.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman scoring only the new surfaces, since that is where the work went. It loses: the operator uses the whole app, and the audit's baseline was whole-app, so a partial re-score is not comparable. Name who pays: the whole-app score can stay under 42/48 because of defects lane A did not introduce (for example the MascotStation-obscures-content veto in SCORE-BASELINE-full.md). The separate new-surface sub-score is how that cost is made visible rather than hidden.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Six mechanical checks. (a) <code>.lane/RESCORE.md</code> sums all 12 dimensions, and every veto row has an explicit PASS or FAIL with evidence. (b) Each score cites a screenshot from the <code>e2e/mothership-walkthrough.spec.ts</code> run or a story id; a score without an evidence path is capped at 1, per <code>CRAFT-RUBRIC.md:3</code>. (c) The story-coverage test fails when any MS-01..MS-10 component lacks a designed state in light or dark at 1280 or 390. (d) axe reports 0 serious or critical violations on new surfaces. (e) A walkthrough step that could not run is written NOT RUN with its reason, never omitted. (f) The fixture really has 20 workstations, 252 tabs, a 174-tab tree and depth > 12, asserted by the fixture's own test.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Before scoring, read <code>/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md</code>: the dimension table from :38 and the veto table from :56. Re-check each named finding, including <code>Library/index.tsx:566-571</code> (the invented zero W7 fixed) and <code>MascotStation.tsx:103-104</code> / <code>zIndex.ts:120</code> (obscures content). Also read <code>~/.claude/skills/frontend-craft/references/CRAFT-RUBRIC.md</code> (the evidence rule at :3, the vetoes in §3, and the "Not proved" requirement in §5), plus MS-03's switcher-p95 and MS-04's tree-fps gates, before writing <code>.lane/perf.md</code>.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p><code>.lane/RESCORE.md</code> is the record. Per dimension it holds the baseline and new score, the evidence, and the veto results. It also records the scorer's model and lineage, and ends with a "Not proved" section (CRAFT-RUBRIC §5). <code>RESULT.html</code> cites it, and the next audit starts from it rather than from SCORE-BASELINE-full.md.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-01..MS-10 — <span class="muted">everything under test</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Playwright with Chrome for the walkthrough (NOT RUN if it cannot launch).</li><li>An independent scorer.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Fixing what the re-score finds. Findings become follow-up sprints; this sprint reports.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Rubric</strong></td><td><code>the independent re-score</code></td><td>≥ 42/48, no veto (or reported as it is)</td></tr><tr><td><strong>Stories</strong></td><td><code>the state-matrix completeness test</code></td><td>pass</td></tr><tr><td><strong>A11y</strong></td><td><code>axe over stories in both themes</code></td><td>0 serious or critical on new surfaces</td></tr><tr><td><strong>Walkthrough</strong></td><td><code>Playwright mothership-walkthrough</code></td><td>every step RUN or marked NOT RUN with reason</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-11 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: State-matrix stories for every new surface — &lt;result&gt;
+- [ ] M2: Herdr-scale fixture + rendered walkthrough — &lt;result&gt;
+- [ ] M3: Independent rubric re-score — &lt;result&gt;
+- [ ] M4: Accessibility pass in both themes — &lt;result&gt;
+- [ ] M5: Bundle and performance record — &lt;result&gt;
+- [ ] M6: Operator-facing summary — &lt;result&gt;
+### Verification gate results
+- Rubric: pass | fail | skipped (why)
+- Stories: pass | fail | skipped (why)
+- A11y: pass | fail | skipped (why)
+- Walkthrough: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- Lane A is done when this sprint's gates pass or are honestly reported.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="perspective-diverse-verify"
+           data-harness-fanout-unit="Scoring dimensions can be scored independently."
+           data-harness-verifier-lenses="craft vs rubric | honesty vetoes"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>perspective-diverse-verify</code></p><p class="muted">Independence is the whole point of a re-score.</p></div>
+      <div><h3>Fan-out unit</h3><p>Scoring dimensions can be scored independently.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Craft (physics, restraint, states) against the frontend-craft rubric.</li><li>Honesty (no invented facts, no hidden spend) against the two vetoes.</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-11 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

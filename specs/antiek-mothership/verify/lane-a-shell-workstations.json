@@ -1,0 +1,157 @@
+{
+  "area": "shell-workstations",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "SW-01",
+      "claimed": "ABSENT: no workstation or project entity on the frontend or backend. The only project-like records are speak_projects, interview_projects, write_folders, deliverables.investigation_root_id and parent_investigation_id families.",
+      "holds": true,
+      "corrected_status": "ABSENT as a first-class entity. The backend scope is wrong, though: main already uses investigation_id as the cross-workflow 'research folder / project' identity, and the grounding missed that.",
+      "evidence": "RUN: git grep for activeProject|currentProject|useProject|projectStore|workstationStore|useWorkstation|activeWorkstation in apps/reading/src returns 0 hits. READ: MascotStation.tsx:52-54 says 'ONE Mascot, always representing the ACTIVE project', but openProject at :439-441 is navigate('/home'); ProjectTree.tsx:17-32 is scoped to the workflow. MISSED PRECEDENTS: (1) docs/decisions/spr-09-write-canvas-xray-rewrite.md:29-31 D-1 makes every Write piece 1:1 with an investigation ('every writing piece auto-spawns A research folder'; 'Reverses if ... MANY research projects (then investigation_root_id becomes a join table)'), implemented in modes/Write/ConnectResearch.tsx:13-26. (2) Documents file 1:N into an investigation: interfaces/research/api/app.py:2471-2503 runs UPDATE documents SET investigation_id through runtime/db_lock connect_write, with the typed event document.filed_into_investigation (substrate/schemas/events.py:465). The Read UI calls this 'file into a research project' (modes/Reading/PersonalSpace/index.tsx:21,34; lib/researchSuggestion.ts:119-145). (3) Biography composes Research + Write + Speak over one investigation_id with no new store (substrate/speak/biography_composition.py:71-99; POST /speak/biography at speak_routes.py:329-354). That is guarded by tests/test_speak_biography_composition.py::test_biography_creates_no_new_store (docs/decisions/spr-11-biography-template-not-graph.md:66-80). The proposed workstation_members edges table would therefore reverse the D-1 1:1 link and the documents 1:N home. It needs explicit re-ratification, or else a workstation should be DEFINED as an investigation root (research folder)."
+    },
+    {
+      "id": "SW-02",
+      "claimed": "ABSENT: no container holds several open workstations. The only multiplicity is up to 8 memory-only windows.",
+      "holds": true,
+      "evidence": "READ: App.tsx:112-296 has a single <Routes> inside AppShell. windowsStore.ts:150 has MAX_WINDOWS = 8, and :50-60 says there is deliberately no persist middleware. openWindow.ts:83-115 defines WINDOW_PAGES = stats/library/subaction/researchArtifactReceipt/reader, and :36-47 places ResearchWorkstation and WrestleApp out of contract. Callers are ProductsLauncher.tsx:156,170 (mounted at NavRail.tsx:482), DeepResearchWorkspace/index.tsx:432 and Reading/ResearchThis.tsx:49."
+    },
+    {
+      "id": "SW-03",
+      "claimed": "ABSENT: SceneChrome 'tabs' are static per-workflow route links. There is no tab strip of open objects. tabActive uses an exact '/' match, so on /inv/:id no tab is active.",
+      "holds": true,
+      "evidence": "READ: SceneChrome.tsx:53-60 types Tab as {id,label,to}; :67-130 is the static SCENES table; :180-181 has tabActive with t.to==='/' ? pathname==='/' . Additional craft defects the grounding missed: the Read tab labelled 'Library' goes to /wrestle (:93), but the Read door and \u2318E land on /library (workflowTaxonomy.ts:126; bindings.ts:331), so on the Read landing no view tab is active and the 'Library' tab leads to a different surface. The Speak 'Interviews' tab and action (:123,127) point to /interviews, which App.tsx:265 redirects to /speak, so that tab can never be active and is dead."
+    },
+    {
+      "id": "SW-04",
+      "claimed": "ABSENT: no workstation-hop hotkeys. The plain \u2318+letter space is exhausted, \u23181..9 are reserved, SPR-08 bans leader keys and chords, and comboSpecFor uses e.key.",
+      "holds": true,
+      "corrected_status": "ABSENT. The option analysis is incomplete: 22 \u2318\u21e7+letter combos are free, and SPR-08 also excludes \u2325-prefixed namespaces.",
+      "evidence": "RUN (python over bindings.ts): free mod+letter = []; free mod+shift+letter = 22 (only n,p,t,w are taken); free mod+punct = [',', '.', \"'\"]. READ: bindings.ts:280-289 (builtins), :324-331 (products), :342-347 (subactions), :437-473 (RESERVED_COMBOS incl. mod+1..9, mod+0). shortcuts.ts:157-168 builds comboSpecFor from e.key. Spec text (sprint-08-hotkeys-command-scheme.html, out-of-scope list, extracted with python): 'Inventing a brand-new modifier scheme (Leader keys, \u2325 -prefixed namespaces, a command-mode). The operator asked for \u2318 +key specifically.' So the grounding's option (b), \u2325/\u2303+digit, is excluded by the same ratification and is not a way around it. \u2318\u21e7+letter stays inside the ratified 'one modifier-cluster + one keypress' shape (bindings.ts:489-535 SAFE_ASSIGNABLE.isWithinRange accepts mod+shift). It supports letter-mnemonic hops but not 1..9 digits: with shift held, e.key for a digit is the shifted glyph, which was NOT MEASURED in a browser. RUN: herdr --default-config shows prefix ctrl+b, workspace_picker prefix+w, goto prefix+g, switch_tab prefix+1..9, next/previous_tab prefix+n/p, and switch_workspace '' (optional, e.g. prefix+shift+1..9)."
+    },
+    {
+      "id": "SW-05",
+      "claimed": "PARTIAL: \u2318[ / \u2318] cycle panels, \u2318W closes a focused float, and windows have no keyboard verbs.",
+      "holds": true,
+      "corrected_status": "PARTIAL (status holds). The sub-claim that windows have no keyboard verbs is false.",
+      "evidence": "READ: shortcuts.ts:218-233 cycleFocus covers dockLeft/floating/dockBottom/dockRight only, with no windows. shortcuts.ts:345-355 claims \u2318W only for a focused float. REFUTES the sub-claim: components/windows/WorkspaceWindow.tsx:172-200 (onKeyDown bound at :282) handles Escape = close, Enter/F = toggle full, arrows = move and \u2318+arrows = resize, whenever focus is on the window root or title bar. What is actually missing is window focus-next/prev and any window-to-window hop."
+    },
+    {
+      "id": "SW-06",
+      "claimed": "PARTIAL: only the Research-only InvestigationSidebar exists (30 s poll that pauses while hidden). There is no awaiting-input state, no session list endpoint and no shell-level event consumer, and the sidebar starter is wiped on fresh storage.",
+      "holds": true,
+      "evidence": "READ: InvestigationSidebar.tsx:27,86-90 (useInvestigationList + aggregateAttention + isUnseen). useInvestigationList.ts:22-23,51-66 polls only while visible, and refetches immediately on visibilitychange. researchState.ts:62-77 maps failed to blocked, with no awaiting-input state. cascade_routes.py:683-1891 has GET only /sessions/{id}; there is no list and no GET /plans list. RUN: git grep for useEventStream|/ws/events|WebSocket|EventSource finds only mode or hook files, none in shell/. RUN (my harness /tmp/mothership-ground/shell-workstations-refute/hyd3.tsx with the REAL PanelHost.tsx and the real useWorkspaceHydration): '1) fresh storage, after mount on \"/\": panels= [] left= []'. MISSED: /my-research (modes/ResearchWorkstation/MyResearch.tsx) is a BUILT_AND_WIRED page-level multi-research monitor, grouped by family with an attention aggregate (:43-48,78-115), and it is the closest herdr agent-list analogue. See missed_capabilities."
+    },
+    {
+      "id": "SW-07",
+      "claimed": "PARTIAL: localStorage scopes exist, but hydration wipes starters, the shell-level useParams never sees investigationId (so all investigations share 'antiek.workspace.route./inv/:id'), the palette's per-investigation reset clears a key that is never written, windows and pins are not persisted, and doors do not remember the last route.",
+      "holds": true,
+      "evidence": "RUN (independent re-proof, real PanelHost + useWorkspaceHydration, jsdom, react 18.3.1 / react-router 6.30.6 / zustand 5.0.15 from the design-audit worktree's node_modules, source from main 15e78e276): shell-level useParams() = {\"*\":\"inv/abc123\"}; after '/' -> '/inv/abc123' -> '/inv/zzz' the result is panels=[] every time with 'RW mounts= 1'. That is one ResearchWorkstation instance across all three routes, so PanelHost starters (deps [] at PanelHost.tsx:46-72) never reopen, and the per-investigation Chat starter (ResearchWorkstation/index.tsx:104-114) never appears. After opening a panel, the only localStorage key is ['antiek.workspace.route./inv/:id']. READ: useWorkspaceHydration.ts:51-52,82-85,126-130; CommandPalette.tsx:635-646; persistence.ts:48; windowsStore.ts:50-60; pinnedStore.ts:6-8 (the only consumer is ProjectTree.tsx:159-160); NavRail.tsx:304-311."
+    },
+    {
+      "id": "SW-08",
+      "claimed": "PARTIAL: one shell but two products. Write's ?investigation= seed is 'the only Research to Write link'.",
+      "holds": true,
+      "corrected_status": "PARTIAL (status holds). The 'only link' framing is wrong, and a standing operator decision against merging Write into Research was missed.",
+      "evidence": "READ: AppShell.tsx:143-166 and App.tsx:140-159 hold. Research to Write entry points beyond WriteHome.tsx:52: AutoNotebook's NotebookLoopNav writeHandoffHref (modes/Notebook/NotebookLoopNav.tsx:9-35; AutoNotebook.tsx:221-261); Write's own ConnectResearch step, where every new piece links to or auto-spawns an investigation (ConnectResearch.tsx:13-26; WriteHome.tsx:144-171); and the Biography composition (Biography/index.tsx:91-93). CONSTRAINT MISSED: docs/decisions/spr-09-write-canvas-xray-rewrite.md:82-87 'Net-new, not merged (the operator's standing choice) ... the auto-spawned research folder (D-1) is the BRIDGE, not a merge', and ConnectResearch.tsx:14-16 ('writing has sanctity'). A mothership that fuses Write into Research workstations must be framed as lenses over one investigation-backed workstation, or be re-ratified. workflowForPath('/home') -> research is confirmed (workflowTaxonomy.ts:741-761; there is no /home entry)."
+    },
+    {
+      "id": "SW-09",
+      "claimed": "PARTIAL: the palette indexes routes, investigations, documents, notebooks and parked questions; empty query keeps declaration order with a cap of 12; \u2318K on a non-text target double-toggles to a no-op.",
+      "holds": true,
+      "evidence": "RUN (rebuilt from main source with esbuild --packages=external, then run): 'A) palette alone, Cmd+K on body -> open = true'; 'B) shell+palette, Cmd+K in <input> -> open = true shell toggle events = 0'; 'C) shell+palette, Cmd+K on body: before = false after = false shell toggle events = 1'. READ: CommandPalette.tsx:512-538 has an unguarded window keydown toggle plus a toggle on the PALETTE_TOGGLE event; shortcuts.ts:315-320 dispatches PALETTE_TOGGLE. Both are mounted together (App.tsx:114-115, AppShell.tsx:74). Also paletteFacet.ts:98-99 ('if (!q) return entries'), CommandPalette.tsx:388-395, :744 slice(0,12), :839 'No matches.'. None of the design branches touches this handler (git diff 15e78e276...origin/design/w3|w5|w7 shows no palette or shortcuts change)."
+    },
+    {
+      "id": "SW-10",
+      "claimed": "PARTIAL: #3078 is merged (P0 attention). #3088/#3092 are open, with #3088 'mergeable UNKNOWN'. Toast targets are only used for capacity warnings; there is no document.title, favicon, sound or Notification API.",
+      "holds": true,
+      "corrected_status": "PARTIAL. Both #3088 and #3092 now report mergeable=CONFLICTING, not UNKNOWN.",
+      "evidence": "RUN (gh pr view): '3078 MERGED merged=2026-08-13T17:22:39Z head=1cbf8de18'; '3088 OPEN upd=2026-08-14T13:44:22Z head=c62acaebe mergeable=CONFLICTING'; '3092 OPEN upd=2026-08-14T14:09:11Z head=3bea86ce3 mergeable=CONFLICTING'. RUN: git grep 'target: {' finds only api/books.ts:243,266 and lib/api.ts:339,361. A git grep for Notification.|requestPermission|document.title =|new Audio( finds nothing in app code. git grep attention_item|/attention|/inbox in interfaces and substrate finds no inbox table or endpoint."
+    },
+    {
+      "id": "SW-11",
+      "claimed": "BUILT_AND_WIRED pane layer (27 PanelKinds, dock/float/pin/popout/cycle). Whether the nested PanelLayout renders docks twice was NOT MEASURED.",
+      "holds": true,
+      "corrected_status": "BUILT_AND_WIRED, with a now-MEASURED defect: every docked panel renders twice.",
+      "evidence": "RUN (awk over panel.types.ts): 27 PanelKind literals. RUN (/tmp/mothership-ground/shell-workstations-refute/nest.tsx: real AppShell-style <PanelLayout> wrapping a route that renders the real <PanelHost> (PanelHost.tsx:79)): 'left docks in DOM: 2  rendered \"Investigations\" panel regions: 2'. Both PanelLayouts render the same dockLeftIds (PanelLayout.tsx:39-42,129-137), so the InvestigationSidebar mounts twice and runs two independent 30 s polls. The same applies to floating panels and the bottom dock. PanelHandle.tsx:10,123,162-168 pin/popout confirmed."
+    },
+    {
+      "id": "SW-12",
+      "claimed": "BUILT_AND_WIRED workspace windows: cap 8, 5 kinds, and no persistence, list, taskbar or hotkeys.",
+      "holds": true,
+      "corrected_status": "BUILT_AND_WIRED. 'No hotkeys' is wrong: per-window keyboard control exists, but there is no global window hotkey or cycle.",
+      "evidence": "READ: windowsStore.ts:150,203-208 (cap and replaceOldestAtLimit); openWindow.ts:83-153. Reachable through the NavRail More launcher (NavRail.tsx:482 -> ProductsLauncher.tsx:156,170), DRW cite-source (DeepResearchWorkspace/index.tsx:432) and Reading ResearchThis (ResearchThis.tsx:49; mounted at modes/Reading/index.tsx:504). WorkspaceWindow.tsx:172-200 has Esc, Enter/F, arrows and \u2318+arrows while the window chrome is focused."
+    },
+    {
+      "id": "SW-13",
+      "claimed": "BUILT_UNREACHABLE: AssignHotkey and useCustomHotkeys are exported but never mounted. Even if mounted, only \u2318, \u2318. \u2318' are assignable.",
+      "holds": true,
+      "corrected_status": "BUILT_UNREACHABLE (holds). The 'only 3 keys assignable' sub-claim is false: 22 \u2318\u21e7+letter combos (plus \u2318, \u2318. \u2318') are within SAFE_ASSIGNABLE and unowned.",
+      "evidence": "RUN: git grep 'AssignHotkey|useCustomHotkeys' outside components/hotkeys/, excluding tests and stories, finds only comments (shortcuts.ts:65,105,106,244) and CSS/token comments, so there is no mount. READ: bindings.ts:521-535 isWithinRange accepts mods that are all mod or shift and include mod. AssignHotkey.tsx:154 gates Save on SAFE_ASSIGNABLE.isWithinRange; detectConflict (:589-630) blocks only reserved or owned combos. RUN (python): 22 free mod+shift letters. Caveat, NOT MEASURED: \u2318\u21e7+punctuation captures the shifted glyph via e.key (e.g. ':'), so \u2318\u21e7; would store as mod+shift+:."
+    },
+    {
+      "id": "SW-14",
+      "claimed": "BUILT_UNREACHABLE: ThreadBreadcrumb/ThreadJump render only when AppShell passes a thread prop, and it never does. GET /thread/{node_id} exists.",
+      "holds": true,
+      "evidence": "READ: AppShell.tsx:151 is <SceneChrome>{children}</SceneChrome> with no thread or onThreadJump. RUN: git grep ThreadBreadcrumb|ThreadJump|onThreadJump|thread={ outside SceneChrome.tsx finds only ThreadJump.tsx importing ThreadBreadcrumb and comments. There is no frontend fetch of /thread/: the only hits are comments in threadModel.ts:12,48. Backend: thread.py:171, mounted at app.py:7689."
+    },
+    {
+      "id": "SW-15",
+      "claimed": "BUILT_AND_WIRED HUD and global handler. At least 3 window-level handlers independently claim \u2318 combos: \u2318K doubled, and \u2318J conflicting while the AISidecar is mounted.",
+      "holds": true,
+      "evidence": "READ: AISidecar.tsx:186-200 handles \u2318J with preventDefault and dispatches 'antiek:aisidecar:toggle', which has no production listener (shortcuts.ts:188-205). shortcuts.ts:357-363 also resolves mod+j -> navigate('/') (bindings.ts:330) without checking defaultPrevented. RUN: git grep for addEventListener('keydown') lists window listeners at shortcuts.ts:373, CommandPalette.tsx:538, AISidecar.tsx:199, PanelLayoutPanel.tsx:96 (Escape only), Editor.tsx:129 (capture; it only observes \u2318Z), FloatMenu.tsx:154, SlashMenu.tsx:263 and LemonModal.tsx:78. The '3 claimants of \u2318 combos' count is exact."
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "Investigation root as the de facto cross-workflow 'project / research folder' identity (the candidate workstation primitive)",
+      "status": "PARTIAL",
+      "evidence": "READ: docs/decisions/spr-09-write-canvas-xray-rewrite.md:29-31 (D-1: Write piece to investigation is 1:1, and many-to-many would need a join table); modes/Write/ConnectResearch.tsx:13-26; interfaces/research/api/app.py:2471-2503 (document.filed_into_investigation -> documents.investigation_id, 1:N via db_lock); modes/Reading/PersonalSpace/index.tsx:21,34 ('file into a research project'); substrate/speak/biography_composition.py:71-99 plus speak.biography.composed event (docs/decisions/spr-11-biography-template-not-graph.md:18-27; guard test_biography_creates_no_new_store). Spec consequence: a workstation defined as an investigation root reuses three ratified links. A new workstations table plus a member-edges table reverses D-1 and needs explicit operator ratification."
+    },
+    {
+      "name": "/my-research multi-research monitor (page-level agent list with family grouping and attention aggregate)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: App.tsx:289 route; SceneChrome.tsx:82 'My research' tab; MyResearch.tsx:1-30,43-48,78-115 (groupByParent, aggregateAttention, hasUnseen); rows link to /inv/:id (:443) and /replay/:id (:476). It is the closest existing analogue to herdr's agent panel, but it is a route, not a persistent sidebar."
+    },
+    {
+      "name": "DRW session reachability after launch (MyResearch promises a link into /deep-research/:sessionId that does not exist)",
+      "status": "PARTIAL",
+      "evidence": "READ: MyResearch.tsx:15-17 says it 'links INTO /deep-research/:sessionId', but the only navigation to /deep-research/:id in the app is StartResearch.tsx:501, fired on launch (git grep for '`/deep-research/${'). There is no GET /research/sessions list (cascade_routes.py:1782 is by id only). Once the operator navigates away, a running DRW session can be reached only by its URL. Needs GET /research/sessions?state= plus a session row in MyResearch or the sidebar."
+    },
+    {
+      "name": "Nested PanelLayout double-renders every docked or floating panel",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "RUN /tmp/mothership-ground/shell-workstations-refute/nest.tsx: 'left docks in DOM: 2  rendered \"Investigations\" panel regions: 2' (AppShell.tsx:151 PanelLayout + PanelHost.tsx:79 PanelLayout, same store arrays at PanelLayout.tsx:39-42). This is a live defect: duplicate panel instances, duplicate polling and duplicate focus targets. The tab/workstation layer must own exactly one PanelLayout."
+    },
+    {
+      "name": "Same-instance route reuse: ResearchWorkstation never remounts across / and /inv/:id, so per-investigation starters never reopen",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "RUN hyd3.tsx: 'RW mounts= 1' after navigating '/' -> '/inv/abc123' -> '/inv/zzz', with panels=[] throughout. PanelHost.tsx:46-72 opens starters once (deps []). ResearchWorkstation/index.tsx:97-115 computes a new Chat starter per investigationId, but it never applies. A tab model keyed by entity must key its content (e.g. key={investigationId}) or make starters reactive."
+    },
+    {
+      "name": "Per-window keyboard control (Esc close, Enter/F expand, arrows move, \u2318+arrows resize)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: components/windows/WorkspaceWindow.tsx:172-200,282. It contradicts the grounding's 'windows have no keyboard verbs'. Still missing: a global hotkey for the window or tab ring."
+    },
+    {
+      "name": "\u2318\u21e7+letter namespace (22 free combos inside the ratified SPR-08 shape)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "RUN python over bindings.ts: free mod+shift letters = 22 (taken: n,p,t,w). READ: bindings.ts:521-535 SAFE_ASSIGNABLE.isWithinRange accepts mod+shift. shortcuts.ts:157-168 already emits 'mod+shift+<key>'. This is a no-re-ratification option for workstation or tab verbs (e.g. \u2318\u21e7W is reserved but \u2318\u21e7O/\u2318\u21e7G/\u2318\u21e7J are free). Digits under shift remain e.key-unsafe, which was NOT MEASURED in a browser."
+    },
+    {
+      "name": "Highlight -> 'Follow this' ChaseThread floating panel (subagent spawn from selection inside the Research workstation)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: modes/ResearchWorkstation/index.tsx:151-181 (onChaseThis and onChaseQuestion open a ChaseThread panel, mode floating) passed at :225-228,263,274; PanelRegistry ChaseThread at :63. This is shell-adjacent: the island a mothership needs already exists as a floating panel, but only on /inv/:id and outside any tab or thread list. Detailed ownership belongs to the island/subagent area."
+    },
+    {
+      "name": "Dead or mismatched view tabs (Read 'Library' -> /wrestle vs the door at /library; Speak 'Interviews' -> redirect to /speak)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: SceneChrome.tsx:93,123,127; workflowTaxonomy.ts:126 (read.defaultRoute='/library'); App.tsx:265 (/interviews -> Navigate /speak). This is a craft defect in the zone a tab strip would replace."
+    },
+    {
+      "name": "Standing operator constraints on a merged mothership",
+      "status": "PARTIAL",
+      "evidence": "READ: spr-09-write-canvas-xray-rewrite.md:82-87 ('Net-new, not merged (the operator's standing choice)'); spr-11-biography-template-not-graph.md:66-95 ('the guard is the contract'); sprint-08-hotkeys-command-scheme.html out-of-scope list (Leader keys AND \u2325-prefixed namespaces). All three must be cited or re-ratified in the mothership spec before any build."
+    }
+  ],
+  "summary": "I re-checked all 15 grounding claims against main 15e78e276 at /Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924. Every headline status holds. Most of them I re-derived myself, either by re-reading the cited code or by running main's real modules: esbuild with --packages=external, jsdom, and react 18.3.1, react-router 6.30.6 and zustand 5.0.15 borrowed through a symlink to the design-audit worktree's node_modules. My proof files are in /tmp/mothership-ground/shell-workstations-refute/ (build.cjs, p2.cjs, hyd2.tsx, hyd3.tsx, nest.tsx, herdr_ws.json). Nothing was edited, committed or pushed.\n\nThree defects reproduced. (1) \u2318K on a non-text target does nothing: the shell handler and the palette's own handler each toggle it, so they cancel out (the palette harness prints 'before = false after = false'). (2) The route's starter panels are wiped by hydration on fresh storage. I proved this with the REAL PanelHost; the grounding's harness used a copy. (3) The shell's useParams() returns {\"*\":\"inv/abc123\"}, so every investigation writes only 'antiek.workspace.route./inv/:id'.\n\nI also measured three things the grounding left unmeasured or missed. The nested PanelLayout renders every docked panel twice ('left docks in DOM: 2 ... regions: 2'), so the sidebar mounts and polls twice. ResearchWorkstation is a single instance across / -> /inv/a -> /inv/b ('RW mounts= 1'), so the per-investigation Chat never opens. The herdr counts check out: 20 workspaces, 252 tabs, largest 174.\n\nCorrections to sub-claims:\n- **SW-13:** saying only 3 keys can be assigned is false. SAFE_ASSIGNABLE allows \u2318\u21e7+key, and 22 \u2318\u21e7+letter combos are free.\n- **SW-05/SW-12:** saying windows have no keyboard verbs is false. WorkspaceWindow.tsx:172-200 handles Esc, Enter/F, arrows and \u2318+arrows.\n- **SW-10:** #3088 and #3092 are now CONFLICTING, not UNKNOWN.\n- **SW-04:** the \u2325+digit option is also excluded by SPR-08's out-of-scope list ('\u2325-prefixed namespaces'), and the grounding never offered \u2318\u21e7+letter as an option.\n- **SW-08:** '?investigation= is the only Research to Write link' is wrong. NotebookLoopNav, ConnectResearch and Biography are also links, and a standing operator decision says 'Net-new, not merged' (spr-09 decision:82-87).\n\nThe biggest mis-scope is SW-01. Main already treats the investigation root as the cross-workflow 'research folder / project' identity:\n- a Write piece is 1:1 with an investigation (D-1, which 'becomes a join table' if many-to-many);\n- documents file 1:N via document.filed_into_investigation;\n- Biography composes Research + Write + Speak over one investigation_id, and a test guards that it creates no new store.\n\nThe proposed workstation_members edge model would reverse ratified decisions. The spec must either define a workstation as an investigation root or get explicit re-ratification.\n\nIt also missed:\n- /my-research, a built multi-research monitor that is the closest thing to herdr's agent list;\n- DRW sessions become unreachable after launch: MyResearch's doc comment promises a link into /deep-research/:sessionId that does not exist, and there is no session list endpoint;\n- the built 'Follow this' ChaseThread island;\n- two dead or mismatched view tabs: Read's 'Library' goes to /wrestle while the door lands on /library, and Speak's 'Interviews' is a redirect.\n\nCoordination note: the relayed user request asked to share this task with an 'Antiek Sweep' session. As a read-only refuter subagent I did not message any other session; that handoff belongs to the orchestrator."
+}

@@ -1,0 +1,730 @@
+{
+  "area": "reading-embedded",
+  "summary": "Ground truth is origin/main 15e78e276, read at /Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924. node_modules is absent from that checkout, so every vitest claim below is NOT RUN. Everything else is READ or PR evidence, plus PRIOR screenshots that I opened but did not re-render.\n\n**Reading as its own product works.**\n- `/read/:documentId` (BookReader) is reachable from the Library, the personal space (`/readings`, `/meta-readings`), meta-reading citations, Sources upload, AutoNotebook, and Write's trace-to-source.\n- It has TOC pagination, the shared FloatMenu (Note, Dialogue, Search, Deep-research), a reading companion rail, multi-turn talk-to-book, voice notes, the arXiv T2/T3 link-back frame and a gate-aware body.\n- Sanitized reader HTML renders through ReadingColumn when a current-version sidecar exists.\n- Limit: BookReader only opens documents that have a `book_assets` row (`GET /books/{id}` returns 404 otherwise). Web/URL ingests and `/ingest/asset` conversions don't create one, so research-found web sources fail with \"That book isn't in the library.\"\n\n**Reading as an embedded feature is mostly missing, and in places it is broken.**\n- **One real embed.** A `reader` window kind (from the #3384 cherry-pick of #2838) opens BookReader in a floating, draggable window. The only caller is the Deep Research canvas's \"read source\" button. It is reachable only after \"view as canvas\", which opens the first completed research only.\n- **Unused payload.** The window's `evidenceSourceContext` payload is never read, so the reader doesn't scroll to or highlight the cited passage.\n- **Research workstation (`/inv/:id`).** No reader pane. Citations open ChunkModal, which shows the chunk text in a modal. Its \"Open in document viewer\" is a plain link that reloads the page into `/wrestle/:id`, and that route shows the \"Load a PDF\" upload screen for any document id, because no endpoint serves PDF bytes by id.\n- **Other broken doors.** \u2318-click on a named source, \u2318-click on a ProjectTree document, and the Notebook RegionEmbed \"Open at page\" all open a floating PdfViewer panel without `pdfBytes`. The panel can only fail. PdfViewer also renders page 1 only and ignores `initialPage`.\n- **Notebook claims.** ClaimCardBlock \"Inspect\" opens a ClaimInspector panel. That panel passes `claimId` where ClaimCard expects a full `claim` object, so it throws on `claim.text`.\n- **Write.** Citation chips navigate the whole page to `/read/:id`; nothing opens in place.\n- **ProjectTree, the \u2318K document results, the DocumentsIndex rows and the Read \"Library\" tab** all route to `/wrestle`.\n\n**The highlight-to-island gesture was removed from the reader.** On 2026-09-18, commit 2ff9518e6 replaced the reader's in-place floating ChaseThread with spin-research followed by a navigation to `/inv/:id`. A failed spin is only logged to the console.\n- As a result, the reading companion's whole \"Saved chases \u2192 draft merge \u2192 preview/commit/restore source merge\" chain is unreachable. It lists chase handoffs whose parent is `read-<documentId>`, and on main only ChaseThread writes those handoffs, to localStorage. Nothing in the reader opens ChaseThread any more.\n- The server-side passage\u2192research links (`researches_for_passage`) have no endpoint and no UI.\n\n**What state persists:**\n- **Position:** page index per document in sessionStorage (per tab, lost when the tab closes).\n- **Talk-to-book thread:** also sessionStorage.\n- **Windows:** in memory only.\n- **Notes:** marginalia notes are durable events, shown in the reader companion and promoted to per-book insight nodes.\n- **Highlights:** never saved with offsets, so none are ever painted back onto the text.\n\n**Where the fixes are:**\n- The planned one-Reader / `openDocument` convergence (antiek-reader SPR-01..09) exists only on unmerged branches `caffen/RDR-SPR-09@d1ab66f35` and `reader/integration@1d3f22c29`.\n- The `/wrestle` deep-link dead end is addressed only on the unmerged `design/w7-crashes-20260924` branch (commit 1b8d637ef).\n- The prose layer is only on `design/w3-shell-states-prose-20260923`.",
+  "capabilities": [
+    {
+      "id": "RE-01",
+      "name": "Reader as standalone product (/read/:documentId BookReader)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:209",
+          "note": "<Route path=\"/read/:documentId\" element={<BookReader />} />"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:48-51",
+          "note": "BookReader accepts a documentId prop (window host) or the route param"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:395-399,484-489,561-579",
+          "note": "FloatMenu host, ReadingColumn body, ReadingCompanion rail, TalkToBook"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Library/index.tsx:543-563",
+          "note": "Library open/openAtPage call navigate(`/read/...`)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2014-2027",
+          "note": "GET /books/{document_id} raises 404 book_not_found when get_book_asset is None"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/books/model.py:205-211",
+          "note": "get_book_asset joins book_assets; None if the document has no book_assets row"
+        },
+        {
+          "cls": "READ",
+          "ref": "acquisition/urls/adapter.py:58 (imports substrate.rights.register only; no upsert_book_asset/register_book)",
+          "note": "URL/web ingests never create book_assets, so BookReader 404s on them"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:322-327",
+          "note": "error state prints the raw error; the book_not_found copy says 'That book isn't in the library.'"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/reading/route-authmock-read-demo-document__light__1280.png",
+          "note": "Opened the image: a centred red 'Failed to fetch' with no retry; breadcrumb shows the raw id 'demo-document'. Not re-rendered."
+        }
+      ],
+      "gap": "The reader only opens documents that have a book_assets row: books, arXiv via register_book, YouTube, and /sources/upload. Web/URL ingests and /ingest/asset conversions return 404, which shows the book-specific copy.\n- Needed: a document-agnostic read endpoint (e.g. GET /documents/{id}/read returning the same FullTextResponse shape through serve_full_text_guarded plus _prefer_reader_html_body, with no book_assets requirement), or register a minimal book_assets row at URL ingest.\n- Needed: designed error, retry and not-found states (currently raw e.message).\n- Needed: page-turn keybindings (ArrowLeft/ArrowRight, j/k).\n- Needed: a breadcrumb that shows the document title.",
+      "ux_notes": "The TOC aside is w-64 behind `hidden md:block` (index.tsx:370); the companion is w-80 behind `hidden lg:flex` (ReadingCompanion.tsx:315). Both use viewport breakpoints, not container queries. TalkToBook is `fixed bottom-6 right-6` (TalkToBook.tsx:258,273). Measure is 85-96 characters per line against a 60-78 target (PRIOR full-audit-type-copy.md:68)."
+    },
+    {
+      "id": "RE-02",
+      "name": "Library, personal space, meta-reading (Read product shelf surfaces)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:185-208",
+          "note": "/library, /library/browse, /read/meta-reading, /read/meta-reading/:assetId, /readings, /meta-readings"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:331,349",
+          "note": "mod+e Read and mod+; open the library"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:50-56",
+          "note": "Read-scope 'All' links: /readings, /meta-readings, /documents, /notebooks, /sources"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/MetaReading/index.tsx:93-106",
+          "note": "a citation seeds the sessionStorage page locator, then navigates to /read/:id"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:88-91,124-127",
+          "note": "Library is window-eligible (kind 'library')"
+        }
+      ],
+      "gap": "Every open is a full-page navigate, including from the Library when it is hosted in a window. There is no 'open in window' or 'open beside' action.\n- MetaReading still carries the 'Proposed \u2014 sign-off pending' banner.\n- The Library shelf page carries the operator ingest panels (PRIOR full-audit-type-copy.md C6).",
+      "ux_notes": "PRIOR audit: the Library subtitle prints '0 books readable in full' when the fetch was refused (SCORE-BASELINE-full.md:58). A fix is on the unmerged design/w7-crashes branch, commit 7c4b0efef."
+    },
+    {
+      "id": "RE-03",
+      "name": "arXiv link-back frame (T2/T3) inside the reader",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:344-356,414-443",
+          "note": "tier from the gate response; ArxivFrame for T2/T3 with canonical_url; honest notice when the URL is missing"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ArxivFrame.tsx:1-159"
+        }
+      ],
+      "gap": "The frame has no highlight/FloatMenu scope, because the body is a cross-origin iframe. A research spawn from a T2/T3 paper can only use 'Research this page' with metadata.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-04",
+      "name": "WrestleApp + PdfViewer (PDF reading and region capture)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/WrestleApp/index.tsx:55,86,134-150",
+          "note": "pdfBytes is set only by onFileSelected (local file); /wrestle/:documentId with no bytes renders the upload EmptyState"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/PdfViewer.tsx:60-66,98-100",
+          "note": "the initialPage prop is never destructured; always renders pdf.getPage(1)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api (grep for PDF/bytes/original GET routes: none)",
+          "note": "no endpoint serves stored PDF bytes by document id"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/reading/route-authmock-wrestle-demo-document__light__1280.png",
+          "note": "Opened: /wrestle/demo-document shows 'Load a PDF to wrestle.' + 'Choose PDF\u2026'"
+        },
+        {
+          "cls": "PR",
+          "ref": "branch design/w7-crashes-20260924 @86a03898b (commit 1b8d637ef)",
+          "note": "a deep link names the document and points to the Reader; not on main; no PR found via gh"
+        }
+      ],
+      "gap": "Needed: GET /documents/{id}/pdf (rights-gated, servable only) so /wrestle/:id and the PdfViewer panel can load bytes by id; multi-page rendering that honours initialPage.\n- Or retire /wrestle as an open target and route every door to the reader (antiek-reader SPR-05's plan).",
+      "ux_notes": "The SceneChrome Read tab labelled 'Library' points at /wrestle (shell/SceneChrome.tsx:93), while the Read door (mod+e) opens /library."
+    },
+    {
+      "id": "RE-05",
+      "name": "DocumentsIndex (all substrate documents)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:174-186",
+          "note": "lazy /documents route"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/workflowTaxonomy.ts:258-268",
+          "note": "classified shared/More, not the Read door"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DocumentsIndex/index.tsx:165-169",
+          "note": "onRowClick navigates to /wrestle/:id (the upload dead end, RE-04)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DocumentsIndex/index.tsx:236-275",
+          "note": "'Preview styles' shows DocumentStylePreview (GET /documents/{id}/render) inline"
+        }
+      ],
+      "gap": "A row click should open the reader (a window by default, per the windows policy) rather than /wrestle.\n- Rows show raw document_id and investigation_id.",
+      "ux_notes": "PRIOR manifest: h_overflow_px 77 at 1280 and 23 at 390 on every reading route, from the ad-rail clipping."
+    },
+    {
+      "id": "RE-06",
+      "name": "Any-asset-to-HTML reading (projection / sanitized reader HTML)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/reader/ReadingColumn.tsx:112-115",
+          "note": "dangerouslySetInnerHTML only when contentFormat === 'html'"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:953-995",
+          "note": "_prefer_reader_html_body upgrades released full_text to the version-current document_reader_html sidecar"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Sources/index.tsx:332",
+          "note": "after /sources/upload, 'Open in reader' goes to /read/:id (upload_routes registers book_assets at :690)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/reader_html_routes.py:1-60",
+          "note": "GET /sources/{id}/reader-html exists; grep of apps/reading/src finds no consumer"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/doc_ingest_routes.py:144; acquisition/doc_to_html/converter.py:583",
+          "note": "POST /ingest/asset stores a reader-HTML sidecar but no book_assets row; no frontend caller"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DocumentsIndex/index.tsx:22-24,272",
+          "note": "/documents/{id}/render is reachable only through DocumentsIndex 'Preview styles' (and StyleWheel on artifacts)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/paginate.ts:34-56",
+          "note": "HTML bodies have no '## Page N' markers, so a whole HTML document becomes one page"
+        }
+      ],
+      "gap": "Pipeline: upload \u2192 sanitized HTML \u2192 reader works. Gaps:\n- /ingest/asset (anydoc\u2192docling) and URL snapshots (/sources/{id}/reader-html) have no reader door.\n- HTML documents don't paginate (one page), so position, TOC and page citations degrade.\n- No prose layer: headings and lists render as body text (PRIOR audit-type-copy T2/T4); the fix sits on design/w3-shell-states-prose-20260923 @0d68b6213 (ReadingColumn.tsx + index.css), not on main.\n- Needed: a UI 'Import any file' action that calls /ingest/asset, and a reader route that resolves any document to its HTML sidecar.",
+      "ux_notes": "The markdown path maps #/##/### all to one h2 at text-lg (ReadingColumn.tsx:71-80)."
+    },
+    {
+      "id": "RE-07",
+      "name": "Grounded reader windows (reader as a floating window) \u2014 #3384 cherry of #2838",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:103-110",
+          "note": "WINDOW_PAGES.reader renders lazy(modes/Reading)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/index.tsx:410-442",
+          "note": "openEvidenceSource \u2192 openWindow('reader', {documentId, evidenceSourceContext:true}, id win:reader:<docId>, replaceOldestAtLimit)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/Canvas/BlockCard.tsx:118-131",
+          "note": "'read source' button; this is the ONLY caller of openWindow('reader')"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/index.tsx:527-540",
+          "note": "the canvas is reachable only via 'view as canvas', which opens the FIRST completed research"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep evidenceSourceContext \u2192 only DeepResearchWorkspace/index.tsx:434 and a test",
+          "note": "the payload is never read by BookReader; no chunk scroll or highlight"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51-59,150,169-172",
+          "note": "no persist; MAX_WINDOWS=8; default 720px wide"
+        },
+        {
+          "cls": "PR",
+          "ref": "gh PR #2846 OPEN head 6221932ed4 'choreograph grounded evidence arrival'",
+          "note": "arrival choreography not merged"
+        }
+      ],
+      "gap": "Wire the reader window to every evidence door: ChunkModal, MasterMdViewer named sources, Write citations, AutoNotebook, ProjectTree, \u2318K, DocumentsIndex. Suggested helper: `openReaderWindow({documentId, chunkId?, pageIndex?, anchorRect?})`.\n- BookReader must consume a chunkId/pageIndex payload, scroll to it, and paint a highlight.\n- Container-query layout inside windows: collapse the TOC and companion below about 900px container width.\n- Keep TalkToBook inside the window frame.\n- Persist open windows per workstation.",
+      "ux_notes": "The TalkToBook launcher uses viewport `fixed` positioning. A focused window uses backdrop-blur, which creates a containing block; an unfocused one does not. The launcher therefore probably jumps between the window corner and the viewport corner, and two reader windows stack their launchers. PLAUSIBLE, NOT MEASURED."
+    },
+    {
+      "id": "RE-08",
+      "name": "Reader embeddable pane/island in Research (ResearchWorkstation /inv/:id, StartResearch /, DRW)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/panel.types.ts:31-58",
+          "note": "PanelKind has no Reader/Document kind (only PdfViewer, which needs bytes)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:37-50",
+          "note": "ResearchWorkstation is declared out-of-contract for windows; the policy navigates full-page"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx:420-423",
+          "note": "only ChunkModal (chunk text modal) is mounted for citations"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx:792-815",
+          "note": "\u2318-click on a source calls openPdfPanel({documentId, page}), which passes no pdfBytes"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/actions.ts:56-67",
+          "note": "openPdfPanel opens a PdfViewer panel with props {documentId, initialPage} only"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/PdfViewer.tsx:98,145-149",
+          "note": "pdfBytes.slice() on undefined throws, caught as 'PDF render failed: ...'"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/index.tsx:432-441",
+          "note": "DRW canvas is the one research surface that opens a reader window"
+        }
+      ],
+      "gap": "The /inv/:id workstation and StartResearch have no working in-place reader. Needed:\n- A `Reader` PanelKind registered in PanelRegistry, rendering BookReader with {documentId, chunkId, pageIndex} and adapting to its container.\n- Or allow the WindowsLayer reader window over /inv/:id (the layer already overlays every route: AppShell.tsx:158).\n- Replace openPdfPanel callers with it.\n- A workstation tab strip per project that holds reader tabs (the Herdr-style 'mothership' has no reader tabs today).",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-09",
+      "name": "Reader embeddable in Writing (Write /write/:id Outline/Editor, Notebook, CreationStudio)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/WriteHome.tsx:96-123",
+          "note": "citation trace intent navigates to /read/:id full-page; its comment says 'The shared reader (DRW SPR-10) is still unbuilt'"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/blocks/RegionEmbedBlock.tsx:30-37",
+          "note": "'Open at page' calls openPdfPanel, the same byte-less PdfViewer failure as RE-08"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/blocks/ClaimCardBlock.tsx:28-35; apps/reading/src/workspace/actions.ts:70-84; apps/reading/src/components/ClaimCard.tsx:56-100",
+          "note": "'Inspect' opens ClaimInspector with {claimId, investigationId}; ClaimCard reads claim.text and claim.attribution_region_ids, so claim is undefined and it throws"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/manifest.json (loop-2-claimcard--* render_error 'Cannot read properties of undefined (reading length)')",
+          "note": "ClaimCard stories crash; not re-run"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Notebook/AutoNotebook.tsx:353-362",
+          "note": "'open source in reader \u2192' is a Link to /read/:id (navigates away)"
+        }
+      ],
+      "gap": "No working path opens a source beside the draft. Needed:\n- The Write citation chip and Notebook blocks open the reader window/panel next to the draft, anchored at the cited chunk (the same `openReaderWindow` helper as RE-07).\n- Fix ClaimInspector: fetch the claim by id, or pass the Claim object.\n- Give RegionEmbed a bytes source.\n- A 'reference shelf' side pane in WriteHome that holds the project's evidence documents as reader tabs.",
+      "ux_notes": "Write's FloatMenu Deep-research IS in place: Outline.tsx:659-670 opens the SubAgentProposal island. It is the only product where the highlight-to-island gesture survives."
+    },
+    {
+      "id": "RE-10",
+      "name": "Open evidence from a claim/citation in place (ChunkModal and other citation doors)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChunkModal.tsx:17-26,86-99",
+          "note": "in-place LemonModal with chunk text, rights-gated; title renders the raw chunkId in <code>"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChunkModal.tsx:171-199",
+          "note": "OpenInDocumentButton is a plain <a href> to /wrestle/:id?page=N: a full reload into the upload dead end (RE-04)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:104-114,574-579",
+          "note": "TalkToBook citations jump pages in place (works)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:465-472",
+          "note": "\u2318K document results go to /wrestle/:id"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:66-86,184-190",
+          "note": "a document node click goes to /wrestle/:id; \u2318-click opens a PdfViewer panel with {id} only"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:251; apps/reading/src/modes/Explain/index.tsx:701",
+          "note": "the /explain provenance route is linked only from inside itself"
+        }
+      ],
+      "gap": "Only ChunkModal (chunk text) and TalkToBook (page jump) work in place. Needed:\n- One `openEvidence({chunkId|documentId, pageIndex})` action that opens the reader window scrolled to the chunk, used by ChunkModal (replacing the <a href>), MasterMdViewer, CommandPalette, ProjectTree, DocumentsIndex, Write, and Notebook.\n- The backend must expose chunk\u2192page/offset for book bodies. BookReader hard-codes representativeChunkId = null (index.tsx:150) because /books returns no chunk ids.",
+      "ux_notes": "ChunkModal shows the raw chunk id as its title, against the \u00a75 no-raw-ids voice rule."
+    },
+    {
+      "id": "RE-11",
+      "name": "Highlight \u2192 island (subagent) from inside the reader",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:243-259",
+          "note": "onDeepResearch calls spinResearch, then navigate(`/inv/...`); a failure only reaches console.error"
+        },
+        {
+          "cls": "READ",
+          "ref": "git show 2ff9518e6 (2026-09-18) -- apps/reading/src/modes/Reading/index.tsx",
+          "note": "replaced openPanel('ChaseThread', {parentInvestigationId: readingThreadId}, floating) with navigate-away"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ResearchThis.tsx:38-67",
+          "note": "'Research this page' also navigates to /inv/:id (plus an artifact receipt window)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:194-205",
+          "note": "Note, Dialogue and Search stay in place; Deep-research delegates to the host"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:659-670",
+          "note": "Write keeps an in-place SubAgentProposal island (contrast)"
+        }
+      ],
+      "gap": "Restore an in-place island: highlight \u2192 a ChaseThread-style floating window anchored to the selection, parented to `read-<documentId>`, carrying book provenance through spin-research (keep the \u00a79.0 null guard), with a live trajectory in the island and a 'pin to workstation' action instead of navigation.\n- Surface spin failures in UI (AIActionFailure), not the console.",
+      "ux_notes": "The current gesture teleports the reader out of the book, against the operator's 'island emerges' intent."
+    },
+    {
+      "id": "RE-12",
+      "name": "Ask a research agent with no highlight, with document context",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/lib/readingFocus.ts:1-30",
+          "note": "singleton focus bus; the servable page text goes to the Thought Partner"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useThoughtPartnerThread.ts:28",
+          "note": "the AISidecar (\u2318/) reads getReadingFocus()"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:211-230",
+          "note": "setReadingFocus on mount; clearReadingFocus on unmount"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/useTalkThread.ts:19,71-92",
+          "note": "the TalkToBook multi-turn thread persists in sessionStorage only"
+        }
+      ],
+      "gap": "Context is page-scoped and client-only: a single global focus, and the last mounted reader wins. Closing one reader window clears the focus even if another reader is still open.\n- Needed: a per-window, per-document context registry, and a 'deep research this document/project' action that launches a subagent (not only the Thought Partner) with the document plus notes as context.\n- Needed: persist talk threads as events on the `read-<docId>` thread.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-13",
+      "name": "Pick an existing subagent thread run in this document and ask it to dig deeper",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/books/passage_research.py:135-190",
+          "note": "link_passage_to_research, researches_for_passage and passage_for_research all sit under the global parent 'read-spin'"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2224-2228",
+          "note": "spin-research writes the link"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep researches_for_passage across interfaces/ and apps/ \u2192 no caller",
+          "note": "no endpoint, no UI"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/resolveCitationHistory.ts:55",
+          "note": "no non-test importer"
+        }
+      ],
+      "gap": "Needed: GET /books/{id}/researches (per page and per document), and a reader 'threads on this document' list in the ReadingCompanion. Selecting a thread should open it in an island and send a follow-up (a continue-investigation endpoint) with the thread's context.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-14",
+      "name": "Merge subagent outcomes into the document (companion chase merge / source merge)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:88,282-310",
+          "note": "lists chase handoffs for readingThreadId; draft, preview, commit and restore source-merge flows"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/chaseHandoffs.ts:40-54,79-100",
+          "note": "handoffs live in localStorage (antiek.chase.draftHandoffs.v1)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx:104-117; apps/reading/src/modes/ResearchWorkstation/index.tsx:150-160",
+          "note": "the only recordChaseDraftHandoff writer uses parent = the /inv id, never read-<doc>"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/artifact_routes.py:215-222",
+          "note": "source-merge review API exists"
+        },
+        {
+          "cls": "PR",
+          "ref": "branch caffen/reader-source-merge-refresh-proof @91423bf56 (6 commits not on main)"
+        }
+      ],
+      "gap": "The merge chain never gets input from the reader. Reconnect the reader highlight chase (RE-11) so handoffs are recorded against `read-<docId>`.\n- Move handoffs from localStorage to substrate events.\n- Source merge rewrites the source body with a revision and restore. It does not create a FORKED version, as the operator's goal asks. Needed: a fork model (document revision branch with a parent pointer) and a Write-editor diff view.",
+      "ux_notes": "The companion UI is dense mono checkbox receipts ('Reviewed draft \u00b7 create receipt only'), far from the PostHog restraint bar."
+    },
+    {
+      "id": "RE-15",
+      "name": "Shared highlights/notes across Read, Research and Write",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/floatMenuActions.ts:83-111",
+          "note": "marginalia.noted stores the excerpt text and chunk_id only; no page, char offsets or anchor"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:150",
+          "note": "representativeChunkId is hard-coded null"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:2446-2454; substrate/graph/insight_question.py:1276",
+          "note": "notes are promoted to user-sourced insight nodes grounded on the document"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/reader/ReadingColumn.tsx:96-121",
+          "note": "no highlight or mark rendering"
+        },
+        {
+          "cls": "NOT MEASURED",
+          "ref": "apps/reading/src/modes/Write/writeApi.ts:68 (/write/blocks/search)",
+          "note": "whether promoted reader notes appear in Write's block repository was not verified"
+        }
+      ],
+      "gap": "Highlights are never repainted in any product, because nothing saves an anchor. Needed:\n- Semantic anchors (chunk_id + quote/prefix/suffix, per the anchored-comments D2 plan and malleable-reading PR-4) on marginalia.noted.\n- A decorations facet in BookReader that paints them.\n- The same highlights visible when the document opens from Research or Write.\n- The D2 colored palette is spec-only.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-16",
+      "name": "Reading position persistence",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/usePosition.ts:14-24,47-58",
+          "note": "sessionStorage antiek.read.pos.<docId>; the page index only"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/sourceRead.ts:46-91",
+          "note": "a source.read event (dwell) goes server-side, but it is not a position"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51-59",
+          "note": "open reader windows are not persisted"
+        }
+      ],
+      "gap": "Position is per tab and dies with the tab: no cross-session, cross-device or per-project resume, and no scroll offset within a page. Needed: a durable reading.position event (or a user_reading_state row) keyed by document, owner and project; restore on open in any host; persist the workstation window/tab layout.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-17",
+      "name": "Multi-document side-by-side",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/index.tsx:436-441",
+          "note": "per-document window ids (win:reader:<docId>) allow several reader windows"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:150",
+          "note": "MAX_WINDOWS = 8"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:370; apps/reading/src/modes/Reading/ReadingCompanion.tsx:315",
+          "note": "viewport-breakpoint side rails: in a 720px window on a desktop viewport, the TOC and companion take 576px of 720px (computed from classes, NOT MEASURED visually)"
+        }
+      ],
+      "gap": "Only the DRW canvas can put two readers side by side, and only as floating windows. There is no split layout, synced scroll, compare mode, or 'open beside' action.\n- Needed: a split or tile mode in windowsStore (or PanelLayout docking of reader panels) plus container-query reader chrome.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-18",
+      "name": "Hotkeys for reader and reader windows (Herdr-style hopping)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:281-288,330-349",
+          "note": "global, panel, product and sub-action bindings; none are reader- or window-specific"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:334-342",
+          "note": "\u2318[ and \u2318] cycle WorkspaceStore panels only; windowsStore is not included"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep keydown/ArrowRight in apps/reading/src/modes/Reading/*.tsx \u2192 none (non-test)",
+          "note": "no page-turn keys"
+        }
+      ],
+      "gap": "Needed:\n- Page next/prev keys scoped to the focused reader.\n- Cycle windows (include windowsStore in cycleFocus).\n- 'Open current citation in reader window'.\n- 'Send selection to island'.\n- Workstation tab hop. Numeric chords conflict with the RESERVED_COMBOS browser keys (bindings.ts:464-473), so a leader-key scheme is needed.",
+      "ux_notes": ""
+    },
+    {
+      "id": "RE-19",
+      "name": "One Reader / openDocument convergence (antiek-reader plan)",
+      "status": "SPEC_ONLY",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/contracts/reading_surface.py:1-40",
+          "note": "still PROVISIONAL, pinned by DRW SPR-10 (unbuilt)"
+        },
+        {
+          "cls": "READ",
+          "ref": "test -e apps/reading/src/lib/openDocument.ts, components/reader/Reader.tsx, components/UnifiedSearch.tsx \u2192 ABSENT",
+          "note": "files claimed by /Users/slimydog/Antiek/specs/antiek-reader/handoff-to-activation.md are not on main"
+        },
+        {
+          "cls": "PR",
+          "ref": "branch caffen/RDR-SPR-09 @d1ab66f35 (26 commits not in main), reader/integration @1d3f22c29: git merge-base --is-ancestor \u2192 NOT_MERGED"
+        }
+      ],
+      "gap": "The one-door resolver (`openDocument(id, opts)`) that routes every door (Library, DocumentsIndex, palette, ChunkModal, MasterMdViewer, DRW cite-source, Write trace) to one Reader never landed. The branches date from June 2026 and are far behind main. The plan must be re-derived against main (window kind 'reader', source-merge companion) rather than merged as-is.",
+      "ux_notes": ""
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader/README.md + handoff-to-activation.md",
+      "planned": "9 sprints:\n- a structured document model and typed reading_surface seam\n- one <Reader> with rich typography\n- openDocument(id) resolver with every door routed through it, and /wrestle killed as an open target\n- real Dialogue\n- ingest of cited sources as readable documents with cites/supported_by edges\n- unified search\n- conformance proof",
+      "shipped_status": "NOT on main (re-verified).\n- Reader.tsx, openDocument.ts, UnifiedSearch.tsx and oneReader.conformance.test.ts are absent.\n- reading_surface.py is still PROVISIONAL.\n- Branches caffen/RDR-SPR-01..09 and reader/integration@1d3f22c29 are unmerged.\n- react-markdown and remark-gfm are in package.json but ReadingColumn does not use them."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reading-convergence/README.md",
+      "planned": "- One window model: reader highlight\u2192spawn onto windowsStore with floating/full.\n- One twin: .notes.html indexed into the live twin store.\n- CollectiveResearchPanel from the book highlight.\n- One reviewed source-merge vertical (preview\u2192commit\u2192restore).",
+      "shipped_status": "PARTIAL (re-verified).\n- The source-merge preview/commit/restore UI and API are on main (ReadingCompanion.tsx, artifact_routes.py:215+).\n- windowsStore has a 'reader' kind, but only DRW spawns it; the reader highlight navigates away (2ff9518e6).\n- CollectiveResearchPanel and /engagement routes are absent on main.\n- Twin notes are exported as paths (ResearchThis receipt) and not indexed."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924/docs/htmlspec/research-evidence-reader-window (commit f5db4aa8e)",
+      "planned": "Open grounded research evidence in canonical reader windows anchored to the citing block; a child spec choreographs evidence arrival.",
+      "shipped_status": "PARTIAL.\n- #3384 (a cherry-pick of #2838) merged the reader window kind and the DRW canvas 'read source' button.\n- The evidenceSourceContext payload is unused.\n- #2846 (arrival choreography) is still OPEN at 6221932ed4."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection/README.md + sprint-06-read-write-projections.html",
+      "planned": "HTML as a projection layer: .antiek container, pure renderer, widgets, shell, research projections, Read/Write projections with byte-compare route parity, ingestion boundary, demand gate.",
+      "shipped_status": "PARTIAL, not fully re-verified.\n- services/html_projection/renderer.py, services/antiek_format and substrate/contracts/html_projection.py exist.\n- The reader serves sanitized reader-HTML sidecars.\n- SPR-06 Read/Write projection parity was not verified."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments (README, sprint-01, sprint-03)",
+      "planned": "D2: colored anchored highlights with notes on the existing feedback aggregate (5-color palette; anchored/drifted/orphaned/integrity_conflict status); a reader docket UI; comment dispatch; editable HTML deliverables.",
+      "shipped_status": "SPEC_ONLY (status: blocked).\n- substrate/feedback has no integrity_conflict or palette.\n- ArtifactFeedbackReview on main has plain anchored feedback on research artifacts only, via StyleWheel; nothing on reader documents."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent/README.md",
+      "planned": "D3: standing topics, re-ingestion scheduler, living-folder refresh, learning digest.",
+      "shipped_status": "README declares status=spec-only and implementation=blocked-until-acceptance. Not re-verified in code beyond that; not in this area's scope."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-malleable-reading/README.md",
+      "planned": "Facet engine (decorations, anchored widgets, layout map, spatial transform, minimap); voice-anchored marginalia; agent-authored augmentations on the Read surface.",
+      "shipped_status": "PARTIAL.\n- apps/reading/src/reading-physics/ exists and is consumed by MasterMdViewer, FloatMenu and the DRW Canvas.\n- BookReader (modes/Reading/index.tsx) uses no facets, so the reader has no decorations or highlights."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-bridge/README.md",
+      "planned": "Paste deep-research outputs as blocks; extractor; block UI; outline builder; gap finder.",
+      "shipped_status": "Read the README only. No reader-embedding plan; not re-verified."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine/README.md",
+      "planned": "W1-W9 doctrine wedges (budget tuples, brief gate, spans, citation binding, corpus contract, web layer, run durability).",
+      "shipped_status": "Read the README only. Citation binding matters for evidence opening, but I did not re-verify it."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-hardening/README.md",
+      "planned": "Exa Deep / Parallel providers behind one ResearchProvider; workstation integration smoke.",
+      "shipped_status": "Read the README only. No reader surface planned."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-drw-master-ledger/README.md",
+      "planned": "Program ledger to take DRW to usable on prod (Exa gather, turbopuffer spike, closure \u2192 activation dogfood).",
+      "shipped_status": "Read the README only. The 'DRW SPR-10 shared reading surface' that reading_surface.py waits on is still unbuilt on main."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership/",
+      "planned": "Directory with empty briefs/, ground/ and verify/ folders (this exercise).",
+      "shipped_status": "n/a"
+    }
+  ],
+  "craft_gaps": [
+    "The reader error state is a raw red 'Failed to fetch' centred in an empty canvas, with no retry, no explanation and no title (PRIOR screenshot route-authmock-read-demo-document__light__1280.png; Reading/index.tsx:322-327).",
+    "Breadcrumbs show the raw document id ('read \u203a demo-document', 'Wrestle \u203a demo-document') instead of the title (PRIOR screenshots; SCORE-BASELINE-full.md:87-88).",
+    "The Read chrome tab labelled 'Library' opens the PDF wrestler (/wrestle), while the Read door (mod+e) opens /library: two 'Library' destinations (shell/SceneChrome.tsx:93 vs components/hotkeys/bindings.ts:331).",
+    "ChunkModal's title is the raw chunk id in <code> (ChunkModal.tsx:92). Its 'Open in document viewer' is a plain <a> that forces a full reload into the upload page (ChunkModal.tsx:171-199).",
+    "There is no prose layer: headings and lists in sanitized HTML render as body text, and markdown #/##/### collapse to one 18px h2 (ReadingColumn.tsx:71-80,114; PRIOR audit-type-copy T2/T4). The fix sits only on design/w3-shell-states-prose-20260923.",
+    "Reading measure is 85-96 characters per line (target 60-78). ReadingColumn claims to be width-capped but uses flex-1 (PRIOR full-audit-type-copy.md:68; SCORE-BASELINE-full.md:141).",
+    "Reader chrome inside a window uses viewport breakpoints (md: TOC w-64, lg: companion w-80), so a 720px window leaves about 144px of reading column on desktop (computed from classes; NOT MEASURED visually).",
+    "TalkToBook's launcher and panel are viewport-fixed (TalkToBook.tsx:258,273). In a window they escape the frame or jump between frame and viewport depending on focus (backdrop-blur containing block): PLAUSIBLE, NOT MEASURED.",
+    "AdBorder rails clip their own copy ('ore the antiek li') and overlap window headings (PRIOR SCORE-BASELINE-full.md:65,137; screenshots).",
+    "A failed highlight Deep-research only reaches console.error; the user sees nothing happen (Reading/index.tsx:251-253).",
+    "The ReadingCompanion source-merge UI is a stack of mono checkbox receipts ('Reviewed draft \u00b7 create receipt only', 'copy review'). It exposes pipeline vocabulary on a reading surface (ReadingCompanion.tsx:315-420).",
+    "No loading skeleton or motion for reader windows arriving from evidence; the arrival choreography PR #2846 is open.",
+    "There are no reader keyboard affordances (page turn, focus the reader, cycle windows), which falls short of the PostHog 'every state designed / physics' bar."
+  ],
+  "risks": [
+    "Four shipped doors lead into guaranteed failures: /wrestle/:id upload dead end, a byte-less PdfViewer panel (MasterMdViewer \u2318-click, ProjectTree \u2318-click, Notebook RegionEmbed), a ClaimInspector crash, and BookReader 404 on non-book documents. Any mothership work that adds entry points without fixing the resolver multiplies these.",
+    "Two panel/window systems exist: WorkspaceStore panels (PanelLayout) and windowsStore windows (WindowsLayer). They have different z-bases, cycling and persistence. Building the reader island on the wrong one repeats the Track A / Track B split recorded in antiek-reading-convergence.",
+    "The 2026-09-18 regression (2ff9518e6) silently orphaned the ReadingCompanion merge chain. Tests still pass because the companion is tested with seeded localStorage handoffs (ReadingCompanion.test.tsx, NOT RUN). This is a vacuous-gate pattern.",
+    "Spin-research lineage events all go to one global 'read-spin' investigation (passage_research.py:140). Per-document thread discovery will scan an ever-growing trajectory unless it is re-keyed per document.",
+    "readingFocus is a process-wide singleton (lib/readingFocus.ts). With several reader windows, the Thought Partner gets the last-mounted or wrongly cleared context, which can mislead answers. \u00a79.0 still holds because gated pages publish no body.",
+    "Chase handoffs and talk threads live in localStorage/sessionStorage. That breaks the operator's 'process and outcome stored, not lost' requirement and can't be seen by Claude or other devices.",
+    "The unmerged antiek-reader branches (June 2026, 26 commits off main) look finished in their handoff docs ('REAL'). A later agent could believe openDocument exists; the files are absent on main.",
+    "\u00a79.0: any new document-agnostic read endpoint or reader window must route through serve_full_text_guarded and _prefer_reader_html_body. The ReadingColumn dangerouslySetInnerHTML (ReadingColumn.tsx:114) has one server-side sanitizer layer and no client-side defence in depth."
+  ],
+  "open_questions": [
+    "Should the reader island be a windowsStore window (current 'reader' kind, floating/full) or a WorkspaceStore panel (dockable left/right/bottom)? The mothership tab model probably needs docking, which only PanelLayout has.",
+    "For research-found web sources with no book_assets row: extend GET /books/{id} to any document with a servable body, or add a /documents/{id}/read endpoint? Either way it needs rights sign-off for web-source bodies (antiek-reader SPR-07 flagged this for the legal gate).",
+    "Should the reader highlight Deep-research go back to an in-place ChaseThread island (reverting 2ff9518e6) while keeping spin-research's book provenance? That needs spin-research to accept a parent `read-<docId>` so handoffs and the companion merge light up.",
+    "Is 'merge into document \u2192 FORKED version' meant to replace the current source-merge body rewrite (revision + restore on the same document), or to sit beside it as a new document revision branch?",
+    "Should the per-evidence-document COMPANION document (the operator goal) be the ReadingCompanion rail made durable, the research_artifact twin_notes_path export, or a new projection? Today these are three separate, unconnected things.",
+    "Is PdfViewer/WrestleApp worth reviving with a stored-PDF endpoint, or should every PDF open through reader HTML (docling/DeepSeek-OCR sidecar) and /wrestle retire as an open target?",
+    "Was the 'Antiek Sweep' coordination (user request) handled by the orchestrator? This subagent did not message peer sessions, to avoid duplicate cross-session traffic."
+  ]
+}
