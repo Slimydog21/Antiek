@@ -15,8 +15,8 @@ THE BYTE-VERIFICATION: an author_verbatim bite's normalized text hash must
 EQUAL its source span's — a mismatch is REJECTED and reclassed
 llm_compressed with an audit event (never silently mislabeled; the DB CHECK
 is the backstop). THE RESEARCH-VERIFICATION (same pattern, one class over):
-a research_supplemented bite's investigation must have a NON-EMPTY distilled
-product in this substrate whose nodes and sources the caller can inspect
+a research_supplemented bite must cite a core span and an investigation with
+a NON-EMPTY distilled product whose nodes and sources the caller can inspect
 (read through the distill API's own seam) — an unverifiable claim is reclassed llm_expanded
 with the id nulled and an audit event, never trusted by declaration.
 THE ROUTE RECEIPT: the generation record's model/provider name the responder
@@ -145,8 +145,8 @@ class ReformatResult:
     contribution_classes: list[str]
     mostly_generated: bool
     reclassed_verbatim: int
-    #: Research-supplement claims reclassed to llm_expanded because the named
-    #: investigation has no fully readable distilled product (the same
+    #: Research-supplement claims reclassed to llm_expanded because a core
+    #: span or a fully readable distilled product is missing (the same
     #: reclassify-with-evidence pattern as author_verbatim, one class over).
     reclassed_research: int
     null_source_share: float
@@ -394,7 +394,7 @@ def reformat_document(
             # the whole named product must be nonempty and caller-readable,
             # including every supporting source. Shared/legacy nodes do not
             # grant source ownership; mixed-owner products fail closed.
-            # Source-span validation above is independent. An unverifiable
+            # A recorded core span is also required. An unverifiable
             # claim reclasses to llm_expanded with the id nulled (the schema
             # CHECK ties the id to the class); the bite STAYS, honestly
             # classed — a bare rejection would hide the generation's shape.
@@ -404,7 +404,7 @@ def reformat_document(
                     db_path, bite.investigation_id, events_dir, owner_user_id=owner_user_id
                 )
                 research_product_cache[bite.investigation_id] = has_product
-            if not has_product:
+            if not has_product or source_sha is None:
                 cls = "llm_expanded"
                 investigation_id = None
                 reclassed_research_ids.append(bite.investigation_id)
