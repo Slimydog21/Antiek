@@ -21,7 +21,11 @@ from runtime.db_lock import connect_read, connect_write
 from substrate.companions.evidence_index import read_scope
 from substrate.companions.projector import rebuild_document
 from substrate.reformat.pipeline import reformat_document
-from tests.test_reformat_routes import _fixture_generator, _seed
+from tests.test_reformat_routes import (
+    _fixture_generator,
+    _seed,
+    _seed_investigation,
+)
 
 
 @pytest.fixture
@@ -58,6 +62,7 @@ def _source_hash(db: str, document_id: str = "doc-1") -> str:
 
 def _reformatted(api_env) -> dict:
     """The full flow: reformat → the derived document's bites project."""
+    _seed_investigation()  # the fixture generator's research claim, made true
     result = reformat_document(
         api_env["db"],
         owner_user_id="__operator__",

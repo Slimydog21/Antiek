@@ -1,0 +1,183 @@
+{
+  "area": "autonomy-and-craft-baseline",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "AD-01",
+      "claimed": "ABSENT: no user way to flag a concept from a document, highlight or thread",
+      "holds": true,
+      "evidence": "READ FloatMenu.tsx:194-238 on 15e78e276: the menu row is Note/Dialogue/Search/Deep-research, and the Write-only row adds Rewrite/Make stronger/Spin a sub-agent/Edit. RUN: the ActionType enum (substrate/schemas/events.py, 140 values) has no concept/flag/watch type. The only *.flagged types are decomposer.paraphrase.flagged:108 and graph.staleness.flagged:137. The grounding missed two user signals that do trigger an agent, though neither is a watch or diligence flag. ClaimCard.tsx:119 'challenge this claim' emits claim.challenge_raised, which starts an automatic grounder run (grounding.py:408-419, registered at app.py:2168). NotesPanel.tsx:273 'challenge this' calls POST /research/notes/{id}/challenge (distill_routes.py:121), and that route can escalate the note to an open question. ABSENT stands for concept flags, but the spec should build on the challenge pattern rather than start from nothing."
+    },
+    {
+      "id": "AD-02",
+      "claimed": "PARTIAL: parked questions come only from automatic emitters (note-taker, voice-note heuristic); a user cannot explicitly park a question",
+      "holds": true,
+      "evidence": "RUN grep for QuestionIdentifiedPayload constructors outside tests: only roles/note_taker/document_pass.py:119-121 and substrate/books/voice_note.py:208. Nothing in apps/reading/src posts question.identified. GET /watch-for-later (app.py:5011-5061) reads question.identified across every inv-*.jsonl with no owner filter. The grounding MISSED an honesty defect here. The Notebook 'Add question card' dialog (NotebookCanvas.tsx:422-430) says 'Question text (will surface as a parked question)', but question_card blocks emit no question.identified (grep of interfaces and substrate: only the schema and tiptap_codec). The card therefore never appears in /watch-for-later. Also missed: POST /events/typed (app.py:2385) accepts a user-posted QuestionIdentifiedPayload (RUN: TypeAdapter(TypedPayload) validates it). A backend path for parking a question exists; no UI uses it."
+    },
+    {
+      "id": "AD-03",
+      "claimed": "ABSENT: no way to flag a key insight",
+      "holds": false,
+      "corrected_status": "PARTIAL (weak): a user-authored insight node exists, but there is no 'key' marking and no diligence consumer",
+      "evidence": "READ app.py:2439-2456. When POST /events/typed receives marginalia.noted (the FloatMenu Note action), it calls promote_from_marginalia_event(matching, enabled=True), which creates a USER-authored (source_kind='user') insight node in the graph. The grounding said Note 'feeds nothing autonomous'. That is true, but it missed that Note already persists a user insight to the graph. There is still no key or priority flag. The other half of the claim holds. RUN: extract_paste/find_gaps/list_insights/list_open_questions have 0 callers outside substrate/research_bridge/{extractor,gap}.py and the package __init__. The only tests that import research_bridge (test_ocr_deepseek, test_universal_ingest, test_sources_upload, test_research_bridge_hermes_ingest) exercise ingest and extractors, not extractor.py or gap.py."
+    },
+    {
+      "id": "AD-04",
+      "claimed": "BUILT_UNREACHABLE: the continuous-research daemon is deployed and enabled but can never spawn (no_op_spawn)",
+      "holds": true,
+      "evidence": "RUN (my own probe, ANTIEK_HOME=/tmp/mothership-ground/autonomy-and-craft-baseline-refute/home, 2 synthetic inv jsonl sharing one gap plus a marginalia.noted event with the same text): IterationResult(gaps_observed=1, gaps_eligible=1, spawns_attempted=1, spawns_succeeded=0, spawned_investigation_ids=[], halted_by_budget=False, skipped_reasons={'spawn_declined': 1}), run_forever.__kwdefaults__ spawn_fn=<function no_op_spawn>. READ: the real systemd entry is orchestration/continuous/__main__.py:44-62. It calls daemon.main() -> run_forever(config=config) (daemon.py:325-334), and with --once it calls run_one_iteration with no spawn_fn. Either way the default applies. RUN grep: the only non-test spawn_fn= hits are daemon.py:186, 283 and 297. READ: deploy.yml:185-193 renders the unit, :279-283 enables it, and j2:63 has ExecStart. operator_gate_actions.md:454-456 claims 'spawn-budgeted at $5/day ... Live since 2026-05-23'. scan_gaps (daemon.py:117-161) reads evidence.retrieve.delivered gaps plus question.identified only, never marginalia. All confirmed."
+    },
+    {
+      "id": "AD-05",
+      "claimed": "BUILT_UNREACHABLE: chase_mode depth/duration not exposed by POST /investigations, 0 UI hits",
+      "holds": true,
+      "evidence": "READ: InvestigationStartRequest (app.py:441-480) has no chase_* fields. The orchestrator handler reads req.chase_mode, chase_value and chase_budget_usd from the start_requested payload (orchestrator.py:2082-2097), and _maybe_spawn_chase_child is at :2283-2345. RUN grep apps/reading/src: 0 non-generated hits. The grounding MISSED that the API can reach it. POST /events/typed accepts any TypedPayload (TypedEventEnvelope app.py:104-116), and RUN TypeAdapter(TypedPayload).validate_python({'action_type':'investigation.start_requested','chase_mode':'depth','chase_value':3,'chase_budget_usd':1.0}) -> InvestigationStartRequestedPayload depth 3 1.0. The route then broadcasts it (app.py:2430-2434) to the orchestrator handler. That path skips run_capacity_precheck, which POST /investigations runs at app.py:2705. PLAUSIBLE, not executed end-to-end. The status is correct for the UI."
+    },
+    {
+      "id": "AD-06",
+      "claimed": "BUILT_AND_WIRED: human-gated chase of suggested gaps and parked questions",
+      "holds": true,
+      "evidence": "READ cascade_routes.py:569-601: GET /research/suggestions calls build_suggestions(max_suggestions=capped, min_score=0.0), which is read-only and has no owner scope. SuggestedResearch is mounted at MyResearch.tsx:261 and ResearchWorkstation/index.tsx:272. POST /watch-for-later/{id}/launch is at app.py:5066. Also wired and not listed: open-question chase from DistillView. DistillView.tsx:147 QuestionRow onChase -> onChaseQuestion (ResearchWorkstation/index.tsx:165-177) opens a floating ChaseThread and carries reserved_child_investigation_id from a note escalation."
+    },
+    {
+      "id": "AD-07",
+      "claimed": "PARTIAL: diligence results land only as child investigations; no companion document",
+      "holds": true,
+      "evidence": "READ SuggestedResearch.tsx:175-178; research_topic.py:16-18 ('intentionally NOT persisted'). RUN bundle check: I fetched https://antiek.ai/assets/index-CXPKtaR2.js and it contains const n=[\"1\",\"true\",\"yes\"].includes(\"\".toLowerCase()) inside the StyleWheel function (StyleWheel.tsx:86-87, gate at :565), so the feedback thread is off in prod. The prod API build_sha is 874345539, 31 commits behind 15e78e276. The grounding MISSED the closest existing companion: AutoNotebook, a ratified route at App.tsx:171-172 /notebook/auto/:investigationId. It is an auto-derived, always-current narrative view per investigation with sections synthesis, 'Insights' and 'Open questions' (deriveAutoNotebook.ts:42,125-140), linked from DistillView.tsx:119/126 and \u2318K (CommandPalette.tsx:732-733). It exists per project/investigation only: nothing per evidence document, nothing persisted, no diligence-outcomes section. A CompanionDoc spec should extend it rather than invent one."
+    },
+    {
+      "id": "AD-08",
+      "claimed": "PARTIAL: only a per-browser localStorage unread badge and a monitor; no inbox, no notifications",
+      "holds": true,
+      "evidence": "READ workspace/seen.ts:20,35,50 (KEY 'antiek:last_seen:v1', localStorage); NavRail.tsx:278-295 (countSummoningGroups with isUnseen); MyResearch.tsx:452-460 ('found by the loop' when spawned_by_daemon). RUN grep: 0 hits for new Notification/requestPermission/serviceWorker. RUN: components/hotkeys/bindings.ts:281-331 has no 'next unread' or attention binding, which confirms that gap."
+    },
+    {
+      "id": "AD-09",
+      "claimed": "PARTIAL: env-only budget, dead ANTIEK_DAEMON_BUDGET_USD_PER_DAY, read-only Settings cap, Midnight Oil preflight only",
+      "holds": true,
+      "evidence": "RUN: budget._ENV_DAILY_CAP == 'ANTIEK_DAEMON_HOURLY_BUDGET_USD' (budget.py:36). ANTIEK_DAEMON_BUDGET_USD_PER_DAY appears only in the j2 (:19,:51,:56) and in the __main__.py:13 docstring, which falsely documents it. RUN: my probe wrote the ledger sidecar at $ANTIEK_HOME/budgets/daemon_2026-09-24.json. settings_budget.py has only GET /budget (:1294) plus POST estimators, no setter. midnight_oil_routes.py:1-6,21-23 is preflight only. MISSED: a real per-run consent step already exists for cascades. POST /research/plans/{root_id}/spend-preview (cascade_routes.py:810) and /spend-approval (:1203, a durable owner-bound hard-ceiling approval) are called from CascadeProposal.tsx:186,282. This is the pattern a per-flag 'approve spend' should reuse."
+    },
+    {
+      "id": "AD-10",
+      "claimed": "SPEC_ONLY: standing topics, schedules, re-ingestion (D3)",
+      "holds": true,
+      "evidence": "RUN test -e: live_spawn.py, topic_registry.py, paid_call.py, refresh.py, digest.py, daemon_routes.py, continuous_topics/registry.py and research_owner/lineage.py are all ABSENT; substrate/midnight_oil/budget_ledger.py is PRESENT. The spec README:3 says 'status=spec-only; implementation=blocked-until-acceptance'. Nuance the grounding missed: a system-level scheduled re-ingestion does exist. antiek-arxiv-oai-sync.timer.j2 runs OnCalendar=*-*-* 04:20:00 UTC with Persistent=true (tools/arxiv_oai_sync.py, high-water mark plus resume cursor). It is not user- or topic-scoped."
+    },
+    {
+      "id": "AD-11",
+      "claimed": "BUILT_UNREACHABLE: monitoring mode is CLI-only",
+      "holds": true,
+      "evidence": "READ orchestration/monitoring/__init__.py:1-27. RUN grep putter|monitors in interfaces and apps/reading/src: 0 files. The only references are substrate/graph/schema.py:1145 and the package itself."
+    },
+    {
+      "id": "AD-12",
+      "claimed": "BUILT_UNREACHABLE and out of scope: autoresearch tunes the system",
+      "holds": true,
+      "evidence": "READ tools/prompt_autoresearch/__init__.py:10-13 (LOCAL-ONLY, raises on production); substrate/autoresearch/__init__.py:4,16-17 (500-outcome cohort, operator approval only)."
+    },
+    {
+      "id": "CR-01",
+      "claimed": "PARTIAL: stone-50 body plus darkMode media on main; w1 fixes the mechanism",
+      "holds": true,
+      "evidence": "READ apps/reading/index.html:14 '<body class=\"bg-stone-50 text-stone-900 antialiased\">'; tailwind.config.js:12 'darkMode: \"media\"'; FloatMenu.tsx:189 bg-ink in both themes. RUN: ReadingCompanion.tsx has 33 lines with dark: and 13 lines with text-xxs|moonlight (these are line counts; the raw token counts are 42 and 16). RUN: w1 7144b8e6b is 18 commits ahead, not an ancestor of main, merge-tree rc=0 onto main, and gh pr list --head gives []."
+    },
+    {
+      "id": "CR-02",
+      "claimed": "PARTIAL: PanelLayout rules-of-hooks crash across 768; MascotStation fixed z-[60]",
+      "holds": true,
+      "evidence": "READ PanelLayout.tsx:91-104: the early return for tier 'sm' comes before useRef at :107 and useCallback at :108-123. MascotStation.tsx:566 is 'fixed z-[60] ...'. RUN: 2902971a9 is only on origin/design/w3 and 7db620860 only on origin/design/w7, both titled 'resizing across 768 px no longer crashes'; ec4f1f473 is w3's mascot dock. RUN merge-tree: w3 x w5 rc=1 and w3 x w7 rc=1, both conflicting only in apps/reading/src/workspace/PanelLayout.tsx; w5 x w7 rc=0, w1 x w5 rc=0, w1 x w7 rc=0. Behavioural crash NOT re-run (no node_modules)."
+    },
+    {
+      "id": "CR-03",
+      "claimed": "PARTIAL: island keyboard, focus and ARIA gaps",
+      "holds": true,
+      "evidence": "READ FloatMenu.tsx:145-155: a window-level Esc calls removeAllRanges, the menu unmounts, and no focus is restored. MenuButton at :286-296 has role=menuitem and only hover:bg-shadow-2, with no focus-visible style. The grounding named only the textareas. Textareas at :365/:499 use outline-none, but both are autoFocus (:366,:500), so focus does enter the Note and Dialogue panels. Selection is detected through selectionchange (useFloatMenuSelection.ts:149). Additional risk (READ, not run): the Esc listener is global, so pressing Esc while typing in the Note textarea drops the selection, which unmounts NotePanel and discards the unsaved draft."
+    },
+    {
+      "id": "CR-04",
+      "claimed": "ABSENT: island physics and motion (float menu, chase panel)",
+      "holds": false,
+      "corrected_status": "PARTIAL",
+      "evidence": "READ FloatMenu.tsx: no motion; the menu mounts and unmounts instantly, and MENU_H=44 clamps the position (:109-110, :162-168). That part holds. But the floating chase panel does animate on entry: PanelLayoutPanel.tsx:141-148 uses motion.div with initial {scale:0.96, opacity:0}, animate to 1, transition surfaceSpring, and reduced-motion handling. Only the exit is dead, because the sole AnimatePresence in the app is components/windows/WindowsLayer.tsx:1,35 and PanelLayout.tsx:146-150 maps floatingIds without it. The capability is partial, not absent. RUN: w5 diff touches none of FloatMenu, PanelLayoutPanel, SuggestedResearch, ReadingCompanion, AIActionFailure or ChaseThread. w3 touches PanelLayoutPanel for the border only."
+    },
+    {
+      "id": "CR-05",
+      "claimed": "ABSENT: no highlight-to-chase at phone width",
+      "holds": false,
+      "corrected_status": "PARTIAL",
+      "evidence": "READ Reading/index.tsx:243-258: the reader's FloatMenu Deep-research calls spinResearch() and then navigate('/inv/:id'). It does not use a floating ChaseThread. Because FloatMenu is position:fixed inside mainSlot, and PanelLayout renders mainSlot at sm (:91-104), highlight-to-chase from the reader has a phone path (it leaves the page). The claim holds for the Research workstation and DRW. onChaseThis and onChaseQuestion open ChaseThread with mode 'floating' (ResearchWorkstation/index.tsx:151-177), and floating panels are not rendered at sm on main or on w3 (w3 PanelLayout.tsx:110-116), so the chase silently opens nothing on a phone. A defect the grounding missed: the reader path swallows failure with console.error only (Reading/index.tsx:251-253), so the user gets no error state."
+    },
+    {
+      "id": "CR-06",
+      "claimed": "PARTIAL: SuggestedResearch empty and error states falsely blame the provider",
+      "holds": true,
+      "evidence": "READ SuggestedResearch.tsx:106-110: a non-ApiError (network) sets reason=null. :151-163 shows the empty state through AIActionFailure with no reason. AIActionFailure.tsx:95-100 renders '...the engine returned no result. This usually means the model provider isn't configured.' The wording is hedged with 'usually', but it is still a misattribution. PRIOR screenshot route-authmock-my-research__light__1280.png (viewed) shows exactly this, plus '0 running $0.0000' and 'Engine: Failed to fetch'. MISSED: AIActionFailure is role=\"alert\" aria-live=\"assertive\" in red text-emperor (AIActionFailure.tsx:70-76), so the true empty state 'No threads to chase yet' is styled and announced as an error. ParkedQuestion.tsx:66 'Launching\u2026' is confirmed. The w3 diff to AIActionFailure only changes the class to text-danger and does not fix the copy."
+    },
+    {
+      "id": "CR-07",
+      "claimed": "PARTIAL: ReadingCompanion hidden below 1024 with no toggle; ThreadBreadcrumb loses the current crumb at 390",
+      "holds": true,
+      "evidence": "READ ReadingCompanion.tsx:314: 'w-80 ... hidden lg:flex lg:flex-col'. Reading/index.tsx:561-566 mounts it with no toggle (grep 'lg:hidden|companion' finds no alternative). ThreadBreadcrumb: the cited :69 is the <ol ... overflow-x-auto whitespace-nowrap>, not a 'hidden' class. The current crumb is scrolled out of view rather than hidden. The behaviour is plausible and the wording imprecise."
+    },
+    {
+      "id": "CR-08",
+      "claimed": "ABSENT: no stories or visual baselines for mothership surfaces",
+      "holds": false,
+      "corrected_status": "PARTIAL",
+      "evidence": "RUN find: stories exist for BrainstormStation's components ParkedQuestion.stories.tsx ('Surface E \u2014 Brainstorm / ParkedQuestion', including a launching state) and WatchForLaterFolder.stories.tsx, for HighlightToolbar.stories.tsx (the research FloatMenu host), CrossDocSidebar, NotesPanel and NotesFeed. .lostpixel/baseline has surface-e-brainstorm-parked-question--default/--launching, surface-e-brainstorm-watch-for-later-folder--empty, loop-1-highlight-toolbar--selectable-scope, loop-2-cross-doc-sidebar-* and loop-1-chase-* PNGs at 1280/1024/768. So the claim 'Only ChaseSlideOver and ArtifactFeedbackReview have stories' is false. What holds: FloatMenu itself, SuggestedResearch, ReadingCompanion, ChaseThread and MyResearch have no stories. lostpixel.config.ts sets breakpoints [1280,1024,768], so there is no 390. The only 3 'night' baselines are a moodboard palette story, so there is no dark axis. NOT RUN: vitest and storybook (apps/reading/node_modules absent)."
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "Reactive agents on user signals in /wrestle: claim challenge starts the grounder; the cross-doc watcher auto-answers open questions",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ app.py:2152-2182 registers wrestling, grounding, note_taking and cross_doc handlers when register_wrestling=True, the default (app.py:1603). grounding.py:1-18 and 408-419: claim.challenge_raised searches chunks, dispatches the grounder and emits claim.grounding_check_passed/failed. ClaimCard.tsx:67-119 is the 'challenge this claim' button, reached through NotesPanel and the ClaimInspector panel. cross_doc.py:1-40 watches question.identified and note.emerged and emits cross_doc.question_answered, which removes the question from /watch-for-later (app.py:5030-5031). It renders in the CrossDocs dock at /wrestle (WrestleApp/index.tsx:124-129; App.tsx:148-149). This is the only event-driven autonomous follow-up on open questions that ships today."
+    },
+    {
+      "name": "Note challenge that re-weighs a note and escalates it to an open question with a reserved chase child",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ NotesPanel.tsx:213-273: 'challenge this' calls challengeNote (lib/api.ts:1586-1592), which POSTs /research/notes/{node_id}/challenge (distill_routes.py:121). The escalated state reads 'saved as an open question to chase' (NotesPanel.tsx:310-313). roles/note_taker/distill_query.py:104-108,158 carries reserved_child_investigation_id. DistillView QuestionRow onChase (DistillView.tsx:147) launches into the reserved id (ResearchWorkstation/index.tsx:165-177). The launch is human-gated."
+    },
+    {
+      "name": "AutoNotebook: auto-derived per-investigation companion view (synthesis, insights, open questions)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ App.tsx:162-172 routes /notebook/auto/:investigationId (RATIFIED 2026-09-18). deriveAutoNotebook.ts:42 AutoNotebookSectionKind = 'synthesis'|'insights'|'questions'; :125-140 set the headings 'Insights' and 'Open questions'. It is linked from DistillView.tsx:119,126 and CommandPalette.tsx:732-733. It is not persisted, has no per-document scope and no diligence-outcome section. It is the natural base for the per-project companion document."
+    },
+    {
+      "name": "DRW structural gap detection over graph topology (unanswered questions, unsupported claims, contradictions)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ substrate/gap_detection/__init__.py:1-14,43 (detect_gaps), tested in tests/test_gap_detection.py. Its only production consumer is Speak's interviewer context (substrate/speak/drw_gap_source.py:86-90,139-150, via interviewer_context.py:159). RUN grep: roles/cascade_planner plan_from_gap and plan_from_note_challenge (planner.py:141; __init__.py:29,38) have 0 production callers. No research UI or daemon consumes it. It is the graph-grounded gap source that autonomous diligence could use in place of model-emitted evidentiary_gaps."
+    },
+    {
+      "name": "User-authored insight node from a FloatMenu Note (marginalia.noted promotion)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ app.py:2439-2456: POST /events/typed with marginalia.noted calls promote_from_marginalia_event(matching, enabled=True), which writes a source_kind='user' insight node through db_lock. The ReadingCompanion renders it as user-sourced (Reading/index.tsx:386). There is no 'key' flag and nothing autonomous consumes it."
+    },
+    {
+      "name": "Generic POST /events/typed can start a chase_mode investigation and park a question (API-only, bypasses the capacity precheck)",
+      "status": "PARTIAL",
+      "evidence": "RUN TypeAdapter(TypedPayload) validates investigation.start_requested with chase_mode='depth', chase_value=3, chase_budget_usd=1.0, and validates question.identified. READ app.py:2385-2434: the route emits and broadcasts to the orchestrator handler (orchestrator.py:2082-2097) without calling run_capacity_precheck, which POST /investigations calls at app.py:2705. It sits behind operator auth middleware (app.py:1738). PLAUSIBLE; not executed end-to-end. It matters both as a spend-control bypass and as an existing backend hook for user flags."
+    },
+    {
+      "name": "Per-run spend preview and durable owner-bound spend approval for cascade launches",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ cascade_routes.py:810 (POST /research/plans/{root_id}/spend-preview) and :1203-1235 (POST /spend-approval: hard-ceiling, owner-bound digest). UI: CascadeProposal.tsx:186 getSpendPreview and :282 approveSpend (api/research.ts:262-290). This is the existing consent pattern that AD-09's 'approve spend per flag' should reuse."
+    },
+    {
+      "name": "Scheduled system re-ingestion (arXiv OAI-PMH incremental sync timer)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ infrastructure/ansible/templates/antiek-arxiv-oai-sync.timer.j2: OnCalendar=*-*-* 04:20:00 UTC, Persistent=true; the service j2 says 'systemd owns the schedule, tools.arxiv_oai_sync owns the high-water mark'. It is system-level, not user standing topics. It is the only research-adjacent scheduler on main."
+    },
+    {
+      "name": "Honesty defect: Notebook question card promises to park a question and does not",
+      "status": "PARTIAL",
+      "evidence": "READ NotebookCanvas.tsx:422-430: 'Question text (will surface as a parked question)'. RUN grep question_card in interfaces and substrate: only graph/schema.py:531, notebooks/tiptap_codec.py:33,52,189 and notebooks/__init__.py:46. There is no question.identified emission, so it never reaches /watch-for-later (app.py:5027-5061 reads question.identified only)."
+    },
+    {
+      "name": "Reader highlight Deep-research navigates away and fails silently",
+      "status": "PARTIAL",
+      "evidence": "READ Reading/index.tsx:243-258: spinResearch then navigate('/inv/:id'). The catch only runs console.error('spin-research from highlight failed'). The reader has no island and no in-context ChaseThread, which contradicts the comment at Reading/index.tsx:558-560 ('highlight chases open in floating workspace chrome'). The mothership goal (an island that stays in the document) is not met in Read."
+    }
+  ],
+  "summary": "I re-verified the grounding against origin/main 15e78e276 in the read-only worktree. Most claims hold, so the verdict is MOSTLY_RELIABLE: 15 of 20 capability statuses hold and 4 are overstated. It also misses several shipped building blocks that a spec author needs.\n\n**Confirmed by my own runs**\n- **Daemon never spawns.** One iteration in /tmp with ANTIEK_HOME redirected returned skipped_reasons={'spawn_declined': 1}. run_forever defaults to no_op_spawn, and both systemd entry paths reach that default: __main__.py:44-62, calling daemon.main at daemon.py:325-334.\n- **Dead budget env var.** The unit sets ANTIEK_DAEMON_BUDGET_USD_PER_DAY, but the code reads budget._ENV_DAILY_CAP, which is ANTIEK_DAEMON_HOURLY_BUDGET_USD. __main__.py:13 also documents the wrong name.\n- **Feedback thread compiled off in prod.** The live bundle index-CXPKtaR2.js contains [\"1\",\"true\",\"yes\"].includes(\"\".toLowerCase()) inside StyleWheel. The prod API build is 874345539, 31 commits behind 15e78e276.\n- **Design branches.** SHAs, commit counts and \"no PR\" (gh pr list --head gives [] for all four) are correct. w1 is an ancestor of w3. Each branch merges cleanly onto main. w3 conflicts with w5 and with w7, only in PanelLayout.tsx; w5 with w7 is clean. None of the four branches has disabledReason.\n- **Craft blockers still on main:** index.html:14, tailwind.config.js:12, the PanelLayout.tsx:91 early return before its hooks, MascotStation.tsx:566, and the LemonButton base with no focus-visible.\n\n**Overstated statuses**\n- **AD-03:** PARTIAL, not ABSENT. A FloatMenu Note already becomes a user-authored insight node (app.py:2439-2456).\n- **CR-04:** PARTIAL. The floating chase panel has an entry spring; only its exit is dead, because it has no AnimatePresence.\n- **CR-05:** PARTIAL. The reader's Deep-research navigates to /inv, so it works at phone width but fails silently (console.error). The Research and DRW floating ChaseThread is what disappears at sm.\n- **CR-08:** PARTIAL. ParkedQuestion (including its launching state), WatchForLaterFolder, HighlightToolbar, CrossDocSidebar and NotesPanel have stories and lostpixel baselines. The claim that \"only ChaseSlideOver/ArtifactFeedbackReview\" have stories is false.\n\n**Minor issues**\n- ThreadBreadcrumb:69 is an overflow-x scroller, not a hidden class.\n- The ReadingCompanion \"33/13\" counts are line counts.\n- The \"provider isn't configured\" copy is hedged with \"usually\", but it is still a misattribution.\n\n**Missed capabilities**\n- The /wrestle reactive loop: claim challenge starts the grounder automatically, and the cross-doc watcher auto-answers and clears parked questions.\n- Note challenge, which escalates a note to an open question with a reserved chase child.\n- AutoNotebook (/notebook/auto/:id), a ratified per-investigation companion view with Insights and Open-questions sections. It is the natural base for the per-project companion document.\n- DRW structural gap detection. Only Speak's interviewer context consumes it; plan_from_gap has no callers.\n- The cascade spend-preview/spend-approval consent flow in CascadeProposal.\n- A daily arXiv OAI sync timer, which is system-level scheduled re-ingestion.\n- POST /events/typed accepts investigation.start_requested with chase_mode, and also question.identified. That makes chase_mode reachable through the API and skips the run_capacity_precheck that POST /investigations runs. I did not run this end to end.\n\n**Honesty and craft defects it missed**\n- The Notebook \"Add question card\" dialog says the question \"will surface as a parked question\". Nothing emits question.identified, so it never does.\n- SuggestedResearch's true empty state renders through AIActionFailure. That is role=alert and aria-live=assertive in red, so an empty state is styled and announced as an error.\n- MenuButton in FloatMenu has no focus-visible style.\n- A global Esc handler likely discards an unsaved Note draft. I read this in the code; I did not run it.\n\n**Not run**\nvitest and storybook, because apps/reading/node_modules is absent. The prod daemon process state was not measured.\n\n**Housekeeping**\nThe only thing I wrote was scratch data under /tmp/mothership-ground/autonomy-and-craft-baseline-refute/. The one side effect was a git fetch of the four design branches, which updated their remote-tracking refs. This subagent did not message the 'Antiek Sweep' session. The orchestrator owns that handoff."
+}
