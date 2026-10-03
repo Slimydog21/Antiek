@@ -134,7 +134,7 @@ def test_distill_as_both_authenticated_owners(
                 assert node_ids[node_index] not in json.dumps(record["distill"])
 
 
-@pytest.mark.parametrize("route", ["artifact/twin-notes.html"])
+@pytest.mark.parametrize("route", ["artifact/twin-notes.html", "artifact.html"])
 @pytest.mark.parametrize("receipt_owner,start_owner", [
     ("bob", "bob"), ("alice", "bob"), ("bob", None), (None, "bob"), ("bob", "conflicting"),
 ])

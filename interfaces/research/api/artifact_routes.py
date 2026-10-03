@@ -27,7 +27,6 @@ from substrate.contracts.anti_ek_honesty import (  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     SourceMergeRestoreReceipt,
-    build_body,
     compose_artifacts,
     export_research_artifact,
     import_agent_notes,
@@ -408,7 +407,9 @@ async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResp
     the editable agent-channel HTML (may include note-taking script) to disk.
     """
     try:
-        body = build_body(investigation_id, db_path=_db())
+        body = build_body_for_reader(
+            investigation_id, db_path=_db(), owner_user_id=_reader_owner_id(request)
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     doc_model = research_projection_doc_model(body)
