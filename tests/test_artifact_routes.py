@@ -35,7 +35,16 @@ def api_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events)
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     ensure_initialized(db)
+    with connect_write(db, purpose="test/artifact-readable-source") as con:
+        insert_document(
+            con, document_id="doc-1", source_tier=2, document_type="web",
+            raw_text="Artifact source evidence.", content_class="public_domain",
+            owner_user_id="__operator__",
+        )
     return {"db": db, "events": events, "arts": arts}
 
 

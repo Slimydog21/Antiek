@@ -132,3 +132,87 @@ def test_distill_as_both_authenticated_owners(
         for node_index, (node_owner, _, _) in enumerate(products):
             if node_owner not in (None, record["caller"]):
                 assert node_ids[node_index] not in json.dumps(record["distill"])
+
+
+@pytest.mark.parametrize("route", ["artifact/twin-notes.html"])
+@pytest.mark.parametrize("receipt_owner,start_owner", [
+    ("bob", "bob"), ("alice", "bob"), ("bob", None), (None, "bob"), ("bob", "conflicting"),
+])
+def test_html_artifact_graph_and_opaque_fields_are_owner_scoped(
+    boundary_env, monkeypatch, tmp_path, route, receipt_owner, start_owner,
+):
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+    from substrate.auth import mint_session_cookie
+    from substrate.event_log import log_event
+    from substrate.research_artifact.paths import artifact_path_for, artifact_source_path_for
+    from substrate.research_artifact.render import render_html
+    from substrate.research_artifact.schema import ResearchArtifactBody
+    from substrate.research_artifact.store import ResearchArtifactStore
+
+    db, events = boundary_env
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "d6-hermetic-signing-secret-not-a-credential")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "alice@example.test,bob@example.test")
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    seed_document(db, "secret-source", "bob", "personal_reading")
+    seed_product("private-artifact", "bob", "secret-source")
+    question = "QUESTION_SECRET_81327"
+    synthesis = "SYNTHESIS_SECRET_59261"
+    note = "AGENT_NOTE_SECRET_37489"
+    log_event("private-artifact", "investigation.start_requested",
+              payload={"question": question, "owner_user_id": "bob" if start_owner == "conflicting" else start_owner}, events_dir=events)
+    if start_owner == "conflicting":
+        log_event("private-artifact", "investigation.start_requested",
+                  payload={"question": "another launch", "owner_user_id": "alice"}, events_dir=events)
+    log_event("private-artifact", "investigation.completed",
+              payload={"thesis_summary": synthesis}, events_dir=events)
+    body = ResearchArtifactBody(
+        investigation_id="private-artifact", problem_question=question,
+        synthesis_excerpt=synthesis, agent_notes=[note],
+    )
+    raw = render_html(body).encode()
+    path = artifact_path_for("private-artifact")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(raw)
+    import hashlib
+
+    source_path = artifact_source_path_for("private-artifact", hashlib.sha256(raw).hexdigest())
+    if receipt_owner is not None:
+        ResearchArtifactStore(db).save_source(
+            "private-artifact", "private-artifact", receipt_owner, source_path, raw,
+        )
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    observed = []
+    for caller in ("alice", "bob"):
+        client = TestClient(app)
+        client.cookies.set("ANTIEK_SESSION", mint_session_cookie(
+            user_id=caller, email=caller + "@example.test",
+        ))
+        identity = client.get("/auth/me").json()
+        assert identity["user_id"] == caller
+        response = client.get(f"/research/private-artifact/{route}")
+        passage = client.get(
+            "/books/secret-source/passage?chunk_id=secret-source-chunk&start_scalar=0&end_scalar=34"
+        )
+        record = {
+            "route": route, "caller": caller, "receipt_owner": receipt_owner,
+            "start_owner": start_owner, "status": response.status_code,
+            "graph_visible": "The production evidence for private-artifactbobsecret-source" in response.text,
+            "question_visible": question in response.text,
+            "synthesis_visible": synthesis in response.text,
+            "note_visible": note in response.text,
+            "passage_status": passage.status_code, "passage_body": passage.json().get("text"),
+        }
+        print("HTML_BOUNDARY", json.dumps(record, sort_keys=True))
+        observed.append(record)
+    # Assert after both requests so failures preserve the authorized run too.
+    for record in observed:
+        assert record["status"] == 200
+        assert record["graph_visible"] is (record["caller"] == "bob")
+        opaque_allowed = record["caller"] == receipt_owner == start_owner == "bob"
+        for field in ("question_visible", "synthesis_visible", "note_visible"):
+            assert record[field] is opaque_allowed
+        assert record["passage_status"] == (200 if record["caller"] == "bob" else 404)
+        assert record["passage_body"] == (BODY if record["caller"] == "bob" else None)
