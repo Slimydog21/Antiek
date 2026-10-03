@@ -78,6 +78,12 @@ const REPO_DIR_PREFIXES = [
   "scripts/",
   "tests/",
   "specs/",
+  // `services/` is ABSENT from the repository. Listing it here does not make it
+  // real - it makes a `services/...` .file chip VERIFIABLE, so the fictional
+  // services/mcp_server/* tree is reported as fiction instead of being silently
+  // rejected as a non-path. Without this, tightening the chip guard (above) would
+  // have hidden the single worst piece of fiction in the corpus.
+  "services/",
 ];
 
 /** Strip a leading NEW:/NEW-to-build marker; report whether one was present. */
@@ -142,7 +148,12 @@ export function extractRefsFromHtml(html: string): ExtractedRef[] {
   const fileChip = /<span\s+class="file"\s*>([\s\S]*?)<\/span>/gi;
   for (let m: RegExpExecArray | null; (m = fileChip.exec(html)); ) {
     const inner = decodeEntities(m[1]).trim();
-    if (inner) raw.push({ raw: inner, origin: "file-chip" });
+    // A `.file` chip is meant to be a PATH. Prose inside a chip - "(per branch)",
+    // "call sites", "see each wave's brief in ..." - is not a dependency claim and
+    // must not be reported as missing. The <code> branch below already applies this
+    // guard; the chip branch did not, which is where 93 of 161 reported "fiction"
+    // entries came from.
+    if (inner && looksLikeRepoPath(inner)) raw.push({ raw: inner, origin: "file-chip" });
   }
 
   // 2. inline <code>…</code> repo paths — advisory.
