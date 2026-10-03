@@ -153,7 +153,13 @@ export function extractRefsFromHtml(html: string): ExtractedRef[] {
     // must not be reported as missing. The <code> branch below already applies this
     // guard; the chip branch did not, which is where 93 of 161 reported "fiction"
     // entries came from.
-    if (inner && looksLikeRepoPath(inner)) raw.push({ raw: inner, origin: "file-chip" });
+    if (inner) {
+      // Guard the PATH, not the raw chip text: a chip may carry the `NEW:`
+      // deliverable framing, whose space would otherwise reject a legitimate
+      // declaration. parseNewPrefix strips that framing first.
+      const { path } = parseNewPrefix(inner);
+      if (path && looksLikeRepoPath(path)) raw.push({ raw: inner, origin: "file-chip" });
+    }
   }
 
   // 2. inline <code>…</code> repo paths — advisory.
