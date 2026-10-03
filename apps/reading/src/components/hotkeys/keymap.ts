@@ -168,8 +168,10 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-pane-right", action: "pane.focusRight", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-pane-full", action: "pane.fullscreen", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-full", action: "pane.fullscreen", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
-  // The cockpit is the default, so the preset toggle is rarely needed: it
-  // sits behind prefix+shift+i with no chord, and i stays the inbox's.
+  // The stored preset defaults to DOCKED -- "a stored preset never surprises an
+  // operator who never chose one" (workspace/persistence.ts) -- so this is not a
+  // rarely-needed toggle but the key that brings the cockpit in. It sits behind
+  // prefix+shift+i with no chord, and i stays the inbox's.
   { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
 
   // ── D2 tab keys (lane-A cockpit decision, 2026-09-26) ─────────────────
