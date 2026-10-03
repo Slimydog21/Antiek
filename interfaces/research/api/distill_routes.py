@@ -33,7 +33,7 @@ from __future__ import annotations
 import os
 import sys
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -42,10 +42,12 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
-from roles.note_taker import distillation_for  # noqa: E402
+from roles.note_taker.distill_query import readable_distillation_for  # noqa: E402
 from roles.note_taker.living_note import challenge_note  # noqa: E402
 from runtime.db_lock import connect_read  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
+
+from .books import _reader_owner_id  # noqa: E402
 
 distill_router = APIRouter(prefix="/research", tags=["distill"])
 
@@ -101,11 +103,13 @@ class ChallengeOut(BaseModel):
 
 
 @distill_router.get("/{investigation_id}/distill", response_model=DistillationOut)
-async def get_distillation(investigation_id: str) -> DistillationOut:
+async def get_distillation(investigation_id: str, request: Request) -> DistillationOut:
     """The durable product of a research: its insights + open questions, from
     the graph. Empty lists are a valid result (no notes yet / no provider) —
     the surface renders the honest no-result state, not canned content."""
-    view = distillation_for(investigation_id, db_path=_db())
+    view = readable_distillation_for(
+        investigation_id, db_path=_db(), owner_user_id=_reader_owner_id(request)
+    )
     return DistillationOut(
         investigation_id=investigation_id,
         insights=[DistilledNodeOut(**vars(n)) for n in view.insights],
