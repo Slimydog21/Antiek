@@ -1242,9 +1242,29 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
     """Resolve an invite token to (interview_id, project_id) or 404. The
     token is the invitee's credential — a bad/expired token is the only
     thing standing between a stranger and this interview, so we fail
-    closed."""
+    closed.
+
+    AN ACTIVE TAKEDOWN IS ALSO A CLOSED DOOR, and this is where that belongs. Every
+    public token route -- the invitation landing, consent, answer, voice, followups and
+    decline -- resolves through this function, so a check here covers all of them at once.
+    An earlier fix in this area guarded `resolve_invite`, which is the operator-only
+    resolver, and left every public path open; a falsification pass measured it:
+
+        "Active takedown still leaves the public invite landing readable and consent
+         writable with an already-issued token. The fix guards the operator-only plural
+         resolver, not the public token paths."
+
+    Same status and same message as an unknown token, deliberately: announcing a takedown
+    to a token holder discloses that the project existed, which is the disclosure the
+    takedown was asked to withdraw."""
     iv = invitations.resolve_token(con, token)
     if iv is None:
+        raise HTTPException(status_code=404, detail="unknown or expired invite link")
+    under_takedown = con.execute(
+        "SELECT 1 FROM speak_takedowns WHERE project_id = ? AND status = 'active' LIMIT 1",
+        [iv.project_id],
+    ).fetchone()
+    if under_takedown is not None:
         raise HTTPException(status_code=404, detail="unknown or expired invite link")
     return iv.interview_id, iv.project_id
 
