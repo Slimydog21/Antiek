@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-01 · Shell stabilisation + one keymap — The Antiek motherships</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 80px 28px;
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px 28px 24px 28px;
+  margin-bottom: 28px;
+}
+
+header.hero .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+header.hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 24px 20px 24px;
+  margin: 0 0 22px 0;
+}
+
+section.block > h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 18px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+section.block h3 {
+  margin: 22px 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 12px 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 12px 0;
+  padding-left: 22px;
+}
+
+section.block li { margin-bottom: 4px; }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+}
+
+table.spec th, table.spec td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 14px 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin: 10px 0 14px 0;
+  font-size: 14px;
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.rigor-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: 14px;
+}
+
+.milestone .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: 4px;
+}
+
+.milestone .desc {
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: 4px 0 0 0; padding-left: 18px; }
+.milestone .criteria li { margin-bottom: 3px; }
+
+.milestone .files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: var(--border-thin);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: 14px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: 24px 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: 20px 0 6px 0;
+  padding: 6px 10px;
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-01</p>
+    <h1>Shell stabilisation + one keymap</h1>
+    <p class="tagline">Fix the five shell defects that would poison every mothership build. Give the app one keymap: herdr's prefix plus ctrl+alt chords, one table, one dispatcher and one key sheet.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 0</span>
+      <span class="tag tag--yellow"><span class="dot"></span>ready</span>
+      <span class="tag tag--grey">Budget: 7 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> Grounding on main <code>15e78e276</code> proved four shell defects by running the real modules in jsdom (<code>ground/lane-a-shell-workstations.json</code>). A refuter added a fifth.</p><ul><li><strong>F1:</strong> ⌘K cancels itself, because <code>CommandPalette</code>'s own keydown handler and AppShell's <code>PALETTE_TOGGLE</code> both toggle.</li><li><strong>F2:</strong> on fresh storage, AppShell's hydration effect runs after the route's <code>PanelHost</code> starters open (child effects run first) and wipes them.</li><li><strong>F3:</strong> AppShell calls <code>useParams</code> outside the inner <code>&lt;Routes&gt;</code>, so the per-investigation layout key is never used.</li><li><strong>F4:</strong> a nested <code>PanelLayout</code> (<code>AppShell.tsx:151</code> + <code>PanelHost.tsx:79</code>) renders every docked panel twice.</li><li><strong>F5:</strong> <code>ResearchWorkstation</code> never remounts across <code>/inv/:id</code>, so starters open only once.</li></ul><p><strong>F9:</strong> the app has no single keymap owner. At least three window-level handlers claim ⌘ combos, and every plain ⌘+letter is already bound. The operator ruled (D2) for a herdr-style prefix (<code>ctrl+b</code>) plus <code>ctrl+alt</code> direct chords. That supersedes the ratified SPR-08 no-leader rule. herdr's own keyboard doc is saved at <code>research/herdr-keyboard-v0.9.1.mdx</code>, and the key table is in <code>DESIGN-MODEL.md</code> §2 and §2a.</p><p><strong>Base.</strong> The unmerged design chain rewrites the same shell files: W1 tokens → W3 shell/states/prose, <code>origin/design/w3-shell-states-prose-20260923</code> (it contains W1 <code>7144b8e6b</code>), and W7 crashes, <code>origin/design/w7-crashes-20260924</code>, which already hoisted <code>PanelLayout</code>'s hooks. Base on the W3 head and merge W7 into it. If <code>origin/main</code> already contains all three, base on <code>origin/main</code> instead. Branch: <code>design/mothership-01-shell-keymap</code>.</p>
+    
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 0, the first lane-A sprint. MS-03, MS-04 and MS-05 build on its keymap and its stable shell. It needs nothing from lane B.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>Every shell defect found in grounding is re-proven, fixed and pinned by a test that fails on the base. Every key in the app is dispatched from ONE table that renders its own key sheet.</strong></p>
+    <p>After this sprint, the operator presses <code>ctrl+b</code> and sees a quiet <em>prefix armed</em> chip. The next key does what herdr's would, and <code>prefix+?</code> shows every binding with a <code>/</code> filter. ⌘K opens the palette from anywhere. A fresh investigation docks its sidebar and chat, once each. Nothing about the product's surfaces changes yet. This sprint gives MS-03 and MS-04 a shell and a keymap they can trust.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Worktree on the design chain; baseline recorded</div>
+        <p class="desc">Create the worktree from the W3 head with W7 merged, or from main if the chain has landed. Record the baseline before changing anything: tsc error count, the vitest files/tests line, <code>build:check</code> entry size and headroom, and the SHAs used.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The handoff quotes the baseline tsc, vitest and build:check lines, with the base SHAs.</li><li>Any merge conflict between W3 and W7 is resolved and listed file by file.</li></ul></div>
+        <div class="files"><span class="file">(worktree setup only)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Re-prove F1–F5 on the base, each as a failing test</div>
+        <p class="desc">For each defect, write a vitest + @testing-library test that fails on the base. F1: ⌘K with focus on <code>document.body</code> opens the palette. F2: fresh localStorage + <code>/inv/abc</code> gives the investigation sidebar and chat docked. F3: the per-investigation layout key <code>antiek.workspace.inv.&lt;id&gt;</code> is written and "Reset layout (this investigation)" clears it. F4: exactly one left dock in the DOM. F5: navigating <code>/inv/a</code> → <code>/inv/b</code> opens b's chat starter.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Each test fails on the base. Quote the failure. If W3 or W7 already fixed one, record it as "fixed upstream by &lt;sha&gt;" and keep the test as a guard.</li><li>The tests live next to the code they cover (AppShell, PanelHost, ResearchWorkstation).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/AppShell.*.test.tsx</span><span class="file">apps/reading/src/workspace/PanelHost.*.test.tsx</span><span class="file">apps/reading/src/modes/ResearchWorkstation/*.test.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Fix F1–F5 at their root</div>
+        <p class="desc">F1: one palette toggle owner, the shell's. Remove the in-component handler, or ignore events already handled (<code>e.defaultPrevented</code>). F2: hydrate before starters open, or merge starters into the hydrated layout. F3: derive the investigation id with <code>useMatch</code>/<code>matchPath</code> on the location, not <code>useParams</code> outside the routes. F4: a single <code>PanelLayout</code> owner. F5: key the workstation by investigation id, or reopen starters on id change.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>All tests from milestone 2 pass.</li><li>No other test regresses; the full suite count is at least baseline plus the new tests.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/AppShell.tsx</span><span class="file">apps/reading/src/components/CommandPalette.tsx</span><span class="file">apps/reading/src/workspace/PanelHost.tsx</span><span class="file">apps/reading/src/workspace/useWorkspaceHydration.ts</span><span class="file">apps/reading/src/modes/ResearchWorkstation/index.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">ONE keymap table + dispatcher (the prefix engine)</div>
+        <p class="desc">Create <code>src/components/hotkeys/keymap.ts</code>. It is a single typed table of <code>{action, prefixKey?, chord?, scope, origin}</code>, where origin is <code>herdr-default</code>, <code>D2</code> or <code>legacy-SPR-08</code>. One window-level dispatcher owns every global key.<ul><li><strong>Prefix:</strong> default <code>ctrl+b</code>, configurable. It stays armed until the next key or Esc, with no timeout, as in herdr/tmux. A visible "prefix armed" chip shows while it is armed.</li><li><strong>Chords:</strong> the <code>ctrl+alt</code> family, matched on <code>KeyboardEvent.code</code> so macOS option-composition (<code>alt+1</code> → <code>¡</code>) can never mis-fire.</li><li><strong>Migration:</strong> every existing binding moves in (⌘K, ⌘J/⌘E/⌘Y/⌘U/⌘O/⌘I doors, ⌘[ ⌘] panel cycle, ⌘W, ⌘⇧P, <code>?</code> HUD). No other <code>addEventListener('keydown')</code> may claim a global combo.</li></ul></p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A table-driven test fails on a duplicate combo, and fails on a table action with no handler.</li><li>Every legacy binding still works (one test per binding).</li><li>The focus-scope matrix passes: text input, <code>contenteditable</code> (the Write editor), FloatMenu, a focused WorkspaceWindow (which owns ←/→), an open modal, and the arXiv iframe. Each has its expected behaviour asserted.</li><li><code>git grep "addEventListener('keydown'"</code> outside the dispatcher shows only element-scoped handlers. List them in the handoff.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/hotkeys/keymap.ts (new)</span><span class="file">apps/reading/src/components/hotkeys/bindings.ts</span><span class="file">apps/reading/src/workspace/shortcuts.ts</span><span class="file">apps/reading/src/AppShell.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Key sheet (prefix+?) and aria-keyshortcuts from the same table</div>
+        <p class="desc">Upgrade the existing <code>?</code> HUD into a key sheet rendered from <code>keymap.ts</code>: grouped by task, a <code>/</code> filter, the prefix form and the chord form side by side, with a close that returns focus. Every actionable control that has a binding gets <code>aria-keyshortcuts</code> generated from the table, never hand-written. The sheet is lazy-loaded.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test proves that no binding in the table is missing from the rendered sheet.</li><li><code>build:check</code> headroom is no worse than the baseline minus 0.5 KB (the sheet is lazy).</li><li>The sheet has stories in light and dark, at 1280 and 390.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/hotkeys/KeySheet.tsx (new, lazy)</span><span class="file">apps/reading/src/components/hotkeys/HotkeysHud.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Rename ThreadBreadcrumb → Trail</div>
+        <p class="desc">"Thread" must mean only a subagent investigation (glossary). ThreadBreadcrumb/ThreadJump are cross-workflow entity hops over GET <code>/thread/{node_id}</code>. Rename the components and their imports to <code>Trail</code>/<code>TrailJump</code>, with no behaviour change. Leave the backend route as is, and note it for lane B.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>tsc is clean, the suite passes, and <code>git grep ThreadBreadcrumb</code> finds nothing in apps/reading/src.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/ThreadBreadcrumb*.tsx → Trail*.tsx</span><span class="file">call sites</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Decision record: D2 supersedes SPR-08's no-leader rule</div>
+        <p class="desc">Write <code>docs/decisions/mothership-keys-herdr-prefix.md</code>. It records what was decided (the prefix plus ctrl+alt chords), who decided it (the operator, 2026-09-24, DECISIONS.md D2), what was rejected (SPR-08's no-leader rule; plain alt chords because of macOS composition; ⌘⇧ letters only), and what would reverse it.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The file exists, and the keymap table cites it on every row whose origin is D2.</li></ul></div>
+        <div class="files"><span class="file">docs/decisions/mothership-keys-herdr-prefix.md (new)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>F1–F5 were proven by a grounding agent that bundled main's modules with esbuild under jsdom, using another worktree's node_modules. Your base is the design chain, and W3 rewrote AppShell. So re-prove each defect <em>on your base</em> before touching it. If one no longer reproduces, record "fixed upstream by W3 &lt;sha&gt;", never "fixed", and keep the test as a guard.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman the rejected option in the handoff. It keeps SPR-08's no-leader rule and puts the mothership on the 22 free ⌘⇧+letter combos that the refuter found (MISS7). That means no mode to learn and one keystroke fewer. D2 still wins: the operator ruled it, herdr muscle memory is the point, and 22 letters cannot address 174 tabs, while a prefix plus the switcher can. Note who pays: the one-handed ⌘ user, now faced with a two-step prefix. That is why every prefix action also has a ctrl+alt chord.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Enumerate the focus contexts <em>before</em> writing the dispatcher: text input, <code>contenteditable</code> (tiptap), FloatMenu, a focused WorkspaceWindow, an open LemonModal, and the arXiv iframe (which cannot receive keys). Give each an expected outcome for prefix, chord and plain keys, and assert all of them in one table-driven test. The prefix has no timeout. It is armed until the next key or Esc, as in herdr, so the plan carries no invented millisecond number.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Read in full before editing: <code>bindings.ts</code> (including the SAFE_ASSIGNABLE range at :521-535 and the browser-reserved list at :438-462), <code>shortcuts.ts</code>, <code>AppShell.tsx</code>, <code>CommandPalette.tsx</code>, <code>HotkeysHud</code>, <code>WorkspaceWindow.tsx:172-215</code> (its own ←/→ ownership), and <code>AssignHotkey.tsx</code> (per-entity keys, unreachable today). Then run <code>git grep -n "keydown" apps/reading/src</code> and list every handler you migrate or deliberately leave element-scoped.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p><code>keymap.ts</code> is the only place a binding may be defined. Every row carries its origin (<code>herdr-default</code>, <code>D2</code> or <code>legacy-SPR-08</code>) and, for D2 rows, a link to <code>docs/decisions/mothership-keys-herdr-prefix.md</code> (milestone 7) and DECISIONS.md D2. A future maintainer asking "why ctrl+alt and not alt?" finds the macOS composition reason in the file itself, not in chat.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>None in lane A — <span class="muted">wave 0</span></li><li>Design chain W1+W3 (+W7) — pushed branches — <span class="muted">they rewrite the same shell files; base on them</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Nothing from lane B.</li><li>Node + npm to run <code>npm ci</code> in the worktree.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Workstations, tabs, the branch tree or the switcher's new kinds. Those are MS-03 and MS-04; this sprint only makes the keymap ready for them.</li><li>Restyling the palette, the HUD or the dock. W2 and W3 own the look; this sprint touches behaviour and the key sheet only.</li><li>Per-entity custom hotkeys (AssignHotkey). They remain unreachable until MS-03 gives them a namespace.</li><li>Changing the backend <code>/thread/{node_id}</code> route. The rename is frontend only.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Typecheck</strong></td><td><code>npm --prefix &lt;wt&gt;/apps/reading run typecheck</code></td><td>0 errors</td></tr><tr><td><strong>Full suite</strong></td><td><code>npm --prefix &lt;wt&gt;/apps/reading run test -- --no-color</code></td><td>all pass; count at least baseline + new tests</td></tr><tr><td><strong>Defect proofs</strong></td><td><code>revert each F1–F5 fix by file copy and rerun its test</code></td><td>each test fails on revert, then passes on restore</td></tr><tr><td><strong>Keymap integrity</strong></td><td><code>the vitest keymap table test (duplicates, missing handlers, focus matrix)</code></td><td>pass</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm --prefix &lt;wt&gt;/apps/reading run build:check</code></td><td>within budget; headroom at least baseline − 0.5 KB</td></tr><tr><td><strong>Different-lineage critic</strong></td><td><code>codex exec … &lt; /dev/null on the branch diff</code></td><td>ACCEPT, or every finding fixed or answered</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-01 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Worktree on the design chain; baseline recorded — &lt;result&gt;
+- [ ] M2: Re-prove F1–F5 on the base, each as a failing test — &lt;result&gt;
+- [ ] M3: Fix F1–F5 at their root — &lt;result&gt;
+- [ ] M4: ONE keymap table + dispatcher (the prefix engine) — &lt;result&gt;
+- [ ] M5: Key sheet (prefix+?) and aria-keyshortcuts from the same table — &lt;result&gt;
+- [ ] M6: Rename ThreadBreadcrumb → Trail — &lt;result&gt;
+- [ ] M7: Decision record: D2 supersedes SPR-08&#x27;s no-leader rule — &lt;result&gt;
+### Verification gate results
+- Typecheck: pass | fail | skipped (why)
+- Full suite: pass | fail | skipped (why)
+- Defect proofs: pass | fail | skipped (why)
+- Keymap integrity: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Different-lineage critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- MS-01's branch is pushed and its critic accepted. MS-03 and MS-04 base on it.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="inline"
+           data-harness-fanout-unit="None: milestones 3–5 converge on AppShell and the keymap."
+           data-harness-verifier-lenses="F1-F5 tests fail on base | no key reaches two handlers or none"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>inline</code></p><p class="muted">One owning seam (the shell's key and layout lifecycle). A fan-out would collide in AppShell.tsx.</p></div>
+      <div><h3>Fan-out unit</h3><p>None: milestones 3–5 converge on AppShell and the keymap.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Does every F1–F5 test genuinely fail on the base? Rerun it against a clean checkout of the base SHA.</li><li>Can any key reach two handlers, or none? Fuzz the dispatcher with every table combo in every focus context.</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-01 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

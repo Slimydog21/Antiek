@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-04 · Branch tab tree (the signature) — The Antiek motherships</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-04</p>
+    <h1>Branch tab tree (the signature)</h1>
+    <p class="tagline">Tabs that grow as the operator's logic tree, nested without limit, and legible at 174 tabs.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 1</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 8 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The operator (D6, 2026-09-24): sub-branches from sub-branches should be "infinitely layered to represent the precision of the logic tree". Opening a footnote, reference, citation, island or deep research from a tab spawns a <em>child</em> tab. There is no tab concept on main at all (SW-03, N4). The only unbounded tree on main is the investigation tree (<code>parent_investigation_id</code> → the recursive <code>InvestigationSidebar</code>), which is the model to follow.</p><p><strong>Tab ≠ branch</strong> (agreed with lane B). The tab tree is <em>navigation state</em>, server-side per account through the single-writer API. The research branch is <em>provenance</em>, written to the parent investigation's log before the child starts. Pruning a tab never deletes a branch. The design is in <code>DESIGN-MODEL.md</code> §2a:</p><ul><li>a path header, compressed in the middle past about four crumbs</li><li>a sibling strip with a <code>↳ n</code> child chip</li><li>a tree panel with a six-level indent cap, a depth badge and subtree focus</li><li>hierarchical numbers used as addresses (<code>3.2.1</code>)</li><li>keys <code>prefix+u/o/n/p/t</code></li><li>prune by default, or close-only-this, with 10 s undo</li></ul><p>This is the design's single signature element. Spend boldness here and keep everything around it quiet.</p><p><strong>Base:</strong> MS-03. <strong>Branch:</strong> <code>design/mothership-04-branch-tree</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>Tab persistence is <code>GET /projects/{id}/tabs/{mothership}</code> → <code>{tree, active_tab_id, version}</code> and <code>PUT</code> with <code>{tree, active_tab_id, expected_version}</code> (§1.6). Write debounced whole-tree snapshots. On <code>409 {current}</code>, replay pending local operations on <code>current</code> and PUT again; an operation on a tab another device closed is dropped with one quiet toast (Part 2 §2.2).</li><li><code>public_number</code> comes from <code>POST /projects/{id}/tabs/{mothership}/allocate</code>: workstation-wide, never reused even after close. Until it returns, the tab is in <code>numbering</code> (open, reachable by n/p/w, not by digit). Never invent a number locally.</li><li><code>hier_number</code> is computed client-side as <code>&lt;parent&gt;.&lt;next unused child index&gt;</code> counting retired numbers, validated on the PUT and final once accepted; on a 409, recompute pending spawns before acceptance so every local spawn survives (R3-5). Closed and pruned numbers go to <code>retired_numbers</code> keyed by <code>tab_id</code>; restoring the same <code>tab_id</code> reclaims them, a different one never may (R3-1). Hold a close locally through its 10 s undo window so other devices never see an undone close.</li><li>A branch is a durable dependency, not proof the child ran (§1.3). A thread tab can read <code>no_record</code> (a crash-orphan or a lost log: the branch stays live and fails closed), <code>abandoned</code> (only <code>capacity_refused</code> or an operator reconciliation) or <code>spawn_refused</code> (<code>422 parent_investigation_not_found</code> or <code>409 reservation_parent_mismatch</code>); each is designed (Part 2 §2.2). Tabs never point at reserved-only ids. A pending spawn whose parent closed remotely re-attaches to the nearest surviving ancestor (or root) with a fresh number; a replayed prune never closes tabs this device hasn't seen (lift them). Restore from history reads the server's <code>retired[]</code> descriptors. <code>branch_origin.kind</code> "island" is <code>selection</code> in the backend.</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 1, after MS-03. MS-05 (a document opened from a citation becomes a child tab) and MS-06 (Reading's rabbit holes) depend on it.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>Every mothership holds a forest of branch tabs per workstation. Any depth is reachable in two keystrokes by number, and the tree stays legible and fast at the operator's real scale.</strong></p>
+    <p>The fixture is his herdr scale: 20 workstations, one with 174 tabs, and depth greater than 12 in at least one branch. A tab records its parent, its branch origin (the passage it was opened from) and its stable hierarchical number. The UI makes the tree the thing you steer by: the path to where you are, your siblings, and the whole tree on demand.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Tab tree model (contract §2.2), local-first</div>
+        <p class="desc">A tab-tree store: <code>{tab_id, parent_tab_id, branch_origin{doc_id,locator,kind}, hier_number, child_order, last_visited_child_id, pruned_at, kind, ref, mothership}</code>. Numbers are stable, never reused under the same parent, and never renumbered. It persists through an adapter: an in-memory implementation now, and lane B's tab-tree API (§1.6) once W1 ships, following the same adapter pattern as MS-03. Tab state never goes to <code>localStorage</code> or <code>sessionStorage</code> (§1.6).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Property tests: numbers stay unique and stable under random spawn, prune, lift and undo sequences (≥ 1,000 generated sequences).</li><li>Depth is unbounded (a test at depth 200).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/tabTree.ts (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Spawn a child tab from any passage</div>
+        <p class="desc">One <code>spawnChild(parentTab, origin, kind, ref)</code> used by every "open from here" path that MS-05, MS-06 and MS-07 will call. For now, wire it from the existing openers: ChunkModal citations, the DRW evidence reader window, TalkToBook and MetaReading citation jumps.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Each wired opener creates a child with the correct <code>branch_origin</code> (tests).</li><li>Opening from a citation does NOT move the target book's saved position (this fixes the clobbering in R4).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/tabTree.ts</span><span class="file">openers at their call sites</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Path header</div>
+        <p class="desc">The root → current path. Every crumb is a link, and past about four crumbs the middle compresses to an ellipsis that opens the full path. At 390 px it shows only the current tab plus a back affordance.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories at depth 1, 4, 12 and 40 in light and dark at 1280 and 390, with no overflow and no horizontal scroll.</li><li>Keyboard: every crumb is reachable, and Esc closes the expanded path, returning focus.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/tabs/PathHeader.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Sibling strip</div>
+        <p class="desc">The current tab's siblings, herdr-style, with a <code>↳ n</code> child chip and overflow into a searchable menu when the siblings exceed the strip width.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>174 siblings do not break the layout, and the overflow menu is searchable (story + test).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/tabs/SiblingStrip.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Tree panel (the signature) — prefix+t / ctrl+alt+y</div>
+        <p class="desc">The whole forest as an outline:<ul><li>hierarchical numbers and a glyph per surface kind</li><li>live state on thread tabs, and an unseen dot</li><li>indent capped at 6 levels, with deeper nodes carrying a depth badge</li><li>focus-subtree re-roots the panel, and up restores it</li><li>virtualised</li><li>arrow keys move, Enter opens, and <code>←</code>/<code>→</code> collapse and expand (a tree-view ARIA pattern)</li></ul></p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Renders 174 nodes at 60 fps while scrolling (measured with the Performance API in a Playwright run, or NOT MEASURED with the reason).</li><li>It passes the ARIA tree pattern checks (role=tree/treeitem, aria-level, aria-expanded); tested.</li><li>Stories: empty, 1 node, 174 nodes, depth 40, and running/needs-you states.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/tabs/TreePanel.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Numbers as addresses + tree keys</div>
+        <p class="desc">The switcher (MS-03) resolves <code>3.2.1</code> to a tab. <code>prefix+1..9</code> reaches root tabs, <code>prefix+u</code> the parent (returning to the exact origin locator), <code>prefix+o</code> the last-visited child, and <code>prefix+n/p</code> the next/previous sibling. The chord twins come from MS-01's table. <code>ctrl+alt+t</code> is Ubuntu/Fedora's launch-terminal key, so give tree-panel the chord <code>ctrl+alt+y</code>, recording why in the table.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Keyboard tests for every tree key, including focus return and the exact-locator return on <code>prefix+u</code>.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/hotkeys/keymap.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Prune / close-only-this with undo</div>
+        <p class="desc">Close offers prune (the default: the tab and its subtree) or close-only-this (children lift to the parent). Both can be undone for 10 s. On main, LemonToast has no action slot (its lifetimes are 4/6/8 s), so this milestone adds an undo action with a 10 000 ms lifetime. If W2 added a toast action first, reuse it. Pruned subtrees stay in history; branches are never deleted.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Tests: prune+undo restores numbers exactly, lift keeps children's numbers stable, and a pruned research tab's investigation is untouched.</li><li>No confirmation dialog: undo is the safety, as in herdr's close-tab.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/tabTree.ts</span><span class="file">apps/reading/src/shell/tabs/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">8</div>
+      <div>
+        <div class="title">Scale proof + critic</div>
+        <p class="desc">Render the operator's herdr-scale fixture (20 workstations, 252 tabs, one 174-tab tree, a branch deeper than 12) as a rendered walkthrough.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Screenshots in light and dark at 1280 and 390 are saved under <code>.lane/shots/</code> and listed in the PR body.</li><li><code>build:check</code> within budget (the tree panel is lazy).</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"><span class="file">.lane/shots/*</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>"Unbounded depth" is easy to claim and hard to prove. The proof is a test at depth 200, plus a rendered tree panel at depth 40. If virtualisation or indentation degrades somewhere (say depth 60), report the measured limit. Do not write "infinite".</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman herdr's flat tabs, the operator's current tool. They offer zero learning curve and one strip. The tree wins because a rabbit hole <em>is</em> a tree, and he asked for it explicitly (D6). The cost falls on the shallow Writing user, who sees a tree where a strip would do. The sibling strip is exactly that strip, so a depth-1 tree looks like herdr.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Enumerate the number invariants before coding: unique, stable, never reused under a parent, and surviving prune, lift and undo. Encode them two ways. First, enumerate exhaustively every sequence of length ≤ 6 over the four operations (4⁶ + … + 4 = 5,460 sequences). Then run seeded property tests (fast-check, fixed seed, shrinking on failure) over longer sequences with depth up to 200. Record the seed and the sequence-length bound in the test file.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Read the investigation tree's recursion (<code>InvestigationSidebar</code>) and <code>parent_investigation_id</code> handling, and reuse its rendering approach. Read <code>windowsStore.ts</code> (8 windows, memory-only) to understand why it is <em>not</em> the tab system: that choice is recorded in the master spec's rejected alternatives. Read <code>components/lemon/LemonToast.tsx</code>: on main its lifetimes are 4000/6000/8000 ms and it has <em>no</em> action or undo slot. Milestone 7 therefore adds an undo action with a 10 000 ms lifetime. Pruning is the most destructive navigation act, so it outlives the longest existing toast (8 s) by the time it takes to read the pruned-subtree summary. Record that reasoning at the constant. If W2's controls wave adds a toast action first, reuse it and cite its branch.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>The tab tree and the research branch are separate records. Put a comment at the top of <code>tabTree.ts</code> saying so, and linking THREAD-CONTRACT §2.2, so nobody later "simplifies" by deleting a branch when a tab is pruned. Point it at the M7 regression test by name ("a pruned research tab's investigation is untouched"). The tab ≠ branch rule must also be in the signed contract before merge.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-03 — <span class="muted">the chassis: workstations, motherships, switcher</span></li><li>MS-01 — <span class="muted">the keymap</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: the server-side tab tree per account (contract §2.2). Built against the shape until it exists.</li><li>Playwright (Chrome) for the scroll-fps measurement; if it can't launch, NOT MEASURED.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>What a reader, footnote or island shows inside a tab (MS-05, MS-06, MS-07). This sprint moves tabs, not their content.</li><li>Arbitrary pane splits (rejected in the master spec).</li><li>Drag-to-reparent tabs. Tempting, but not asked for; note it as a follow-up.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Property tests</strong></td><td><code>vitest tabTree property suite</code></td><td>≥ 1,000 sequences, 0 invariant violations</td></tr><tr><td><strong>Depth</strong></td><td><code>vitest depth-200 test + depth-40 story</code></td><td>pass; renders without overflow</td></tr><tr><td><strong>Keyboard + ARIA</strong></td><td><code>vitest tree keys + ARIA tree pattern</code></td><td>pass</td></tr><tr><td><strong>Scale walkthrough</strong></td><td><code>rendered fixture screenshots</code></td><td>saved and listed; light/dark at 1280/390</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-04 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Tab tree model (contract §2.2), local-first — &lt;result&gt;
+- [ ] M2: Spawn a child tab from any passage — &lt;result&gt;
+- [ ] M3: Path header — &lt;result&gt;
+- [ ] M4: Sibling strip — &lt;result&gt;
+- [ ] M5: Tree panel (the signature) — prefix+t / ctrl+alt+y — &lt;result&gt;
+- [ ] M6: Numbers as addresses + tree keys — &lt;result&gt;
+- [ ] M7: Prune / close-only-this with undo — &lt;result&gt;
+- [ ] M8: Scale proof + critic — &lt;result&gt;
+### Verification gate results
+- Property tests: pass | fail | skipped (why)
+- Depth: pass | fail | skipped (why)
+- Keyboard + ARIA: pass | fail | skipped (why)
+- Scale walkthrough: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- The tab tree is pushed and accepted, so MS-05/06/07 have spawnChild to call.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="perspective-diverse-verify"
+           data-harness-fanout-unit="Build inline. Verify with distinct lenses."
+           data-harness-verifier-lenses="numbers never reused or renumbered | legible and reachable at depth 40 / 174 siblings"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>perspective-diverse-verify</code></p><p class="muted">The build is one seam (tabTree.ts). The risk is in correctness and legibility, so verification gets diverse lenses.</p></div>
+      <div><h3>Fan-out unit</h3><p>Build inline. Verify with distinct lenses.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Numbers-as-addresses: can any sequence of spawn, prune, lift and undo reuse or renumber a tab?</li><li>Legibility at depth: at depth 40 and 174 siblings, can a keyboard-only user still find the parent and return to the exact passage?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-04 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>
