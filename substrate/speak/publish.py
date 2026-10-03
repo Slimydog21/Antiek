@@ -125,15 +125,3 @@ def publish(
         content_class=content_class,
         accrual_lines=tuple(accrual),
     )
-
-
-def get_publication(con: Any, publication_id: str) -> dict[str, Any] | None:
-    row = con.execute(
-        "SELECT publication_id, project_id, visibility, content_class, served, taken_down "
-        "FROM speak_publications WHERE publication_id = ?",
-        [publication_id],
-    ).fetchone()
-    if row is None:
-        return None
-    return {"publication_id": row[0], "project_id": row[1], "visibility": row[2],
-            "content_class": row[3], "served": bool(row[4]), "taken_down": bool(row[5])}

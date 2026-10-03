@@ -12,7 +12,6 @@ import functools
 import os
 import platform
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -78,12 +77,3 @@ def hot_path_timing(path_name: str) -> Callable[[Callable[P, R]], Callable[P, R]
         return wrapper
 
     return decorate
-
-
-def runtime_fingerprint() -> dict[str, str]:
-    return {
-        "git_sha": current_git_sha(),
-        "python_version": sys.version.split()[0],
-        "os": platform.system(),
-        "platform": platform.platform(),
-    }

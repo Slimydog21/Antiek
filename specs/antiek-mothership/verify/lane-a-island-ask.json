@@ -1,0 +1,129 @@
+{
+  "area": "island-ask",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "IA-01",
+      "claimed": "PARTIAL: the shared FloatMenu is mounted in four hosts, but its lifetime depends on the live selection, so in Chromium the Note, Dialogue and Edit panels unmount as soon as their textarea takes focus",
+      "holds": true,
+      "evidence": "RUN, and stronger than the original, which used a FloatMenu-shaped harness. I bundled the REAL FloatMenu.tsx and the real useFloatMenuSelection.ts from the ground worktree (/tmp/mothership-ground/island-ask-refute/real/{entry.tsx,build.mjs,run.mjs}). In a Playwright run I selected text with a real mouse drag, then clicked each action. Output in both chrome-headless-shell-1243 and Google Chrome.app: '1 sel=\"quick brown fox jumps over the la\" menuitems= Note|Dialogue|Search|Deep-research', then 'after click Dialogue: sel= null | floatmenu= false | textarea= false | active= BODY', and the same for Note. The control holds: 'after click Search: floatmenu= true'. The result does not depend on where the menu sits in the DOM. With the menu rendered INSIDE the scope, as HighlightToolbar does on /inv (run_inscope.mjs), the output is identical. Edit panel (run_edit.mjs, Write props): 'edit panel open= true', then after a click into its textarea 'floatmenu= false sel= null'. READ: FloatMenu.tsx:161 `if (!selection) return null`; :186-188 lets mousedown through only for a TEXTAREA; :366 and :500 set autoFocus; useFloatMenuSelection.ts:113-117 treats text shorter than minLength as null and listens only to selectionchange (:149). The jsdom tests cannot see this: FloatMenu.test.tsx:118-123 mocks window.getSelection with a fixed return. There is no e2e coverage: grepping apps/reading/e2e for floatmenu or getSelection finds nothing. Four hosts confirmed: Reading/index.tsx:395, HighlightToolbar.tsx:42 (mounted at ResearchWorkstation/index.tsx:226), BlockDetail.tsx:90, Write/Outline.tsx:659. Firefox and WebKit are still NOT MEASURED: those Playwright builds are not installed."
+    },
+    {
+      "id": "IA-02",
+      "claimed": "BUILT_AND_WIRED: Deep-research from a selection launches a child research in every host; only /inv keeps it in place",
+      "holds": true,
+      "evidence": "READ. Reading/index.tsx:243-259: a null safeSpawnText returns silently at :245, the call is spinResearch followed by navigate at :249-250, and a failure only reaches console.error at :252. ResearchWorkstation/index.tsx:151-158 opens a ChaseThread floating panel. BlockDetail.tsx:54-67 awaits startInvestigation with no try/catch, then navigates. In Write, Outline.tsx:660-666 routes BOTH Deep-research and 'Spin a sub-agent' into SubAgentProposal; its Accept calls onAccept(child.investigation_id) (SubAgentProposal.tsx:77) and the host discards it at Outline.tsx:605 `onAccept={() => setProposal(null)}`. One correction: the Reading path does not create a CHILD. books.py:2186-2198 emits InvestigationStartRequestedPayload with no parent_investigation_id, so the new research is a root. The only lineage is a question.escalated_to_research event written into the synthetic bucket 'read-spin' (passage_research.py:135-156). The research is not linked to the reading thread read-<doc>."
+    },
+    {
+      "id": "IA-03",
+      "claimed": "PARTIAL: only the transient menu is anchored to the selection; the ChaseThread panel opens at a fixed cascade position",
+      "holds": true,
+      "evidence": "READ: panelLayoutLogic.ts:74-82 sets initialFloatingRect to x=120+off, y=120+off, 560x420, and ResearchWorkstation/index.tsx:156 passes no rect. PanelLayout.tsx:90-103: below 768px it renders a 'use a larger screen' splash and hides the workspace primitives, so floating AND docked panels are gone, including the AISidecar. RUN: the Search panel stays anchored beside the selection while the selection lives (Search 'floatmenu= true'), so an anchored panel does exist, but only a transient one. chase-launcher.ts:105 has no production caller (git grep). PARTIAL is correct."
+    },
+    {
+      "id": "IA-04",
+      "claimed": "BUILT_UNREACHABLE: the semantic anchoring kit has no production callers",
+      "holds": true,
+      "evidence": "READ, git grep on main. makeChaseLauncherAugmentation and makeMarginaliaAugmentation appear only at their definitions (chase-launcher.ts:105, marginalia/index.ts:250) and in tests. MasterMdViewer.tsx:20-30 imports only the servability, ip-holder, quality-cue and review-due augmentations. RegionStore and CanonicalDocumentRegion appear only in substrate/reading/regions.py. researches_for_passage and passage_for_research appear only in substrate/books/passage_research.py:158,180. reading_surface.py:52-56 is still Any-typed protocol stubs."
+    },
+    {
+      "id": "IA-05",
+      "claimed": "PARTIAL: only the Note persists; Dialogue replies, chases and talk sessions live in client storage",
+      "holds": true,
+      "evidence": "READ, with three corrections. (a) The one persistent island action (Note, a marginalia.noted event via floatMenuActions.ts) cannot be reached in Chromium, because its panel unmounts before the user can type (IA-01 RUN). So island persistence is effectively nil in Chrome. (b) The ReadingCompanion 'Saved chases' list is unreachable on main, not just missing the Reading spin. useChaseDraftHandoffs(readingThreadId) at ReadingCompanion.tsx:88 filters on parent read-<doc>. The only writer, recordChaseDraftHandoff at ChaseThread.tsx:111, runs from ChaseThread, and ChaseThread is opened only from ResearchWorkstation/index.tsx:154,168 with parent = the /inv investigation id. Nothing links to /inv/read-<doc>. (c) Persisted ChaseThread props carry spawnContext, parentInvestigationId and reservedChildId, not 'spawnContext only'. launchedId is local state (ChaseThread.tsx:78). Hydration is live: useWorkspaceHydration.ts:83-84 reads the investigation scope. Confirmed: TalkToBook uses sessionStorage key antiek.read.talk.<doc> (useTalkThread.ts:71-92). narrateEvent.ts:295 maps READ_BOOK_ANSWERED to null. useThoughtPartnerThread.ts:25-49 stores the thread in sessionStorage."
+    },
+    {
+      "id": "IA-06",
+      "claimed": "ABSENT: no multi-turn follow-up inside the selection island",
+      "holds": true,
+      "evidence": "READ: FloatMenu.tsx:424-437, where send() calls setReply(null) and dialogueOverSelection sends no history. :497 has the placeholder 'Ask about this passage (one-shot)\u2026'. :525 reads 'One-shot reply (not a full chat) this sprint.' On top of that, in Chromium the Dialogue panel never stays mounted (IA-01 RUN), so even the one-shot path cannot be used there."
+    },
+    {
+      "id": "IA-07",
+      "claimed": "PARTIAL: asking without a highlight goes through the AI sidecar (\u2318/, the Research scene's Ask) plus ContextPicker, which only takes raw @doc/@insight ids",
+      "holds": true,
+      "evidence": "READ and RUN. shortcuts.ts:303 `if (isTextEditing(e.target)) return;` runs before the \u2318/ branch at :328-332, and isTextEditing (:128-139) includes contentEditable. So \u2318/ AND \u2318K are both dead inside the Write editor. SceneChrome.tsx:75 puts Ask in the research scene only; the read and write scene actions have no Ask. ContextPicker.tsx:76-96 is a native select plus a raw id input. RUN: ComposeContextRequest has the single field ['items'], and app.py:1338 declares `kind: Literal[\"doc\",\"insight\"]`. thoughtPartnerSeed.ts:28-38 shows a picked context replaces workspaceContextPrompt. Three entry points the grounding missed: CommandPalette.tsx:590-599 'Toggle AI sidecar'; VoiceNote 'Discuss in Thought Partner' (see missed capabilities); and the server grounds every ask on its own. app.py:6681-6697 runs _retrieve_thought_partner_context over the library and injects account_memory_context, so the 'contextless' ask is not context-free."
+    },
+    {
+      "id": "IA-08",
+      "claimed": "PARTIAL: DRW redirect and deepen steer running cascade researches only; there is no follow-up on a completed thread and no thread kind in the context picker",
+      "holds": true,
+      "evidence": "READ: ResearchPanel.tsx:57-73 renders steer controls only when `!terminal`. Grepping interfaces for '/investigations/...' route strings finds only /investigations/{investigation_id} and /prompt-telemetry, so there is no follow-up, ask or continue route. compose-context accepts doc and insight only. Correction: the ReadingCompanion merge is more than a no-mutation draft merge. :428-486 has preview, then 'rewrite source' (commitSourceMerge with acknowledge_body_rewrite), then restore. The whole block sits inside `handoffs.length > 0` (:334), and IA-05(b) shows that condition is never true on main."
+    },
+    {
+      "id": "IA-09",
+      "claimed": "ABSENT: no model choice on the island or ask surfaces except TalkToBook",
+      "holds": true,
+      "evidence": "RUN (ground worktree, python -P with PYTHONPATH pinned, app file confirmed as ground-main-20260924/interfaces/research/api/app.py). ThoughtPartnerRequest fields are ['history','investigation_id','prompt','system_context']; a model_validate with model_choice plus operation_id dumps without model_choice. SpinResearchRequest fields are ['export_artifact','page_index','passage_text']. AskBookRequest fields are ['history','model_choice','operation_id','question','research_tier']. READ: app.py:2742-2743 raises owner_model_root_required, and AISidecar.tsx:233-238 admits the dropdown is 'reach, not function'. PR: gh pr view 3278 shows OPEN @e22782d98, vitest FAILURE, created 2026-09-20T14:00:04Z, and mergeable is now CONFLICTING (the grounding said UNKNOWN). No other open PR touches float, island, selection, dialogue, sidecar or thread surfaces (gh pr list filter)."
+    },
+    {
+      "id": "IA-10",
+      "claimed": "PARTIAL: streaming and failure states are uneven, and no SSE path exists for thought-partner or book-ask",
+      "holds": true,
+      "evidence": "READ: Dialogue is a blocking call showing 'Asking\u2026' (FloatMenu.tsx:514). ChaseThread shows AIActionFailure plus a live ThinkingStream. Reading has console.error only (index.tsx:252). BlockDetail has no try/catch (:59-66). git grep for text/event-stream in interfaces finds only cascade_routes.py:1956; the other StreamingResponse hits are file downloads (export and multimedia). SubAgentProposal.tsx:98-104 does show AIActionFailure on a spawn failure."
+    },
+    {
+      "id": "IA-11",
+      "claimed": "PARTIAL: the floating panel can be dragged, pinned and docked, but there is no minimise, and the FloatMenu island cannot be kept open",
+      "holds": true,
+      "evidence": "READ: git grep -i 'minimi' in workspace/ and components/windows/ finds only a shortcuts.ts:28 comment. windowsStore.ts:51-60 documents a deliberate absence of persistence. FloatMenu.tsx:143-161: Esc calls removeAllRanges, and a null selection unmounts the menu."
+    },
+    {
+      "id": "IA-12",
+      "claimed": "BUILT_UNREACHABLE: the Hybrid ask-first stub",
+      "holds": true,
+      "evidence": "READ: git grep hybridEnabled outside FloatMenu.tsx and tests hits only HYBRID_DECISION.md:18,22. The stub at FloatMenu.tsx:272-280 is text only, with no handler."
+    },
+    {
+      "id": "IA-13",
+      "claimed": "BUILT_UNREACHABLE: the ArtifactFeedbackReview anchored agent threads",
+      "holds": true,
+      "evidence": "READ: git grep -l VITE_ANTIEK_FEEDBACK_ENABLED across the whole repo matches only StyleWheel.tsx and StyleWheel.test.tsx, so it is not in .env files, .github or infra. StyleWheel.tsx:86-87 and :565 gate on it. feedback_routes.py has exactly POST /artifacts/{id}/versions/{v}/feedback/threads (:123), GET /feedback/threads/{thread_id} (:187) and POST .../resolve (:218), with no list route. Cloudflare Pages dashboard env vars are NOT MEASURED."
+    },
+    {
+      "id": "IA-14",
+      "claimed": "BUILT_AND_WIRED: book-level TalkToBook with history, model choice and read.book_answered capture",
+      "holds": true,
+      "evidence": "READ: Reading/index.tsx:54 `openTalkOnLoad = searchParams.get(\"talk\") === \"1\"` and :574-579 mounts it. TalkToBook.tsx:258 is the fixed bottom-6 right-6 z-30 bookmark. :330 leaks the copy 'Same thought partner as Surface E'. :444-447 renders adjacent JSX strings, so when models fail and there is no choice the line reads 'available.Uses'. RUN: the AskBookRequest fields are as listed under IA-09."
+    },
+    {
+      "id": "IA-15",
+      "claimed": "PARTIAL: the Write-surface island actions ignore the span or orphan their result",
+      "holds": true,
+      "evidence": "READ: Outline.tsx:388-410. For rewrite and stronger, onRewrite calls handleRegenerate() for the whole section. :605 drops the child id. :417-422 splices with prev.replace(sel.text, \u2026), the first occurrence only. handleApplyEdit also reads the live `selection`, which is already null once the Edit textarea has focus (RUN run_edit.mjs), so apply would no-op even if the panel survived. The Deep-research button in Write (:660-666) goes to the same orphaning SubAgentProposal."
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "Wrestle PDF highlight to a region-anchored, persisted distillation chat (/wrestle/:documentId)",
+      "status": "PARTIAL",
+      "evidence": "READ. This is the closest shipped 'highlight, then ask an agent that keeps the context' loop, and the grounding never found it. PdfViewer.tsx:157-221: on mouseup it posts a typed `document.region_selected` event {region_id, page, char_start, char_end, bbox, text_excerpt} through postTypedEvent. That is a durable region anchor, but char_start comes from indexOf (the first match) per :179-185. NotesPanel.tsx:51 and :99-104 wire ChatInput to the last selected region. ChatInput.tsx:41-53 emits `distillation.requested` with that region_id. The backend worker (interfaces/research/api/wrestling.py:303-443, registered by default because app.py:1603 sets register_wrestling=True and :2152-2159 wires it) resolves the region text and emits `distillation.delivered` claim cards. Claims can then be challenged: NotesPanel renders claim.challenge_raised and the grounding_check verdicts. It is reachable from DocumentsIndex (index.tsx:168), CommandPalette.tsx:470 and ChunkModal.tsx:186. Limits: PdfViewer renders ONLY page 1 (pdf.getPage(1) at :100, pageNum hard-set to 1 at :143; the initialPage prop is ignored). The thread id is one per browser tab (sessionStorage 'antiek.investigation_id', WrestleApp/index.tsx:48-51), so it is shared across documents and lost with the tab. It is PDF only, has no FloatMenu, and the island work should reconcile with it (document.region_selected is an existing anchor schema)."
+    },
+    {
+      "name": "'Research this page': a no-highlight research spawn from the book reader",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: ResearchThis.tsx:33-92 is mounted at Reading/index.tsx:504 as `passageText={selection?.text ?? page.text}`. It calls spinResearch(..., export_artifact=true), opens a 'researchArtifactReceipt' window (openWindow at :49-63) and navigates to /inv/:id. Unlike the highlight path it has a busy state and a visible inline error (:84-89). It navigates away and writes no chase handoff. It is NOT MEASURED whether the mousedown on the button collapses the highlight first, which would make it always send page.text."
+    },
+    {
+      "name": "VoiceNote 'Discuss in Thought Partner' seed (reader), a dead path while the sidecar is closed",
+      "status": "PARTIAL",
+      "evidence": "READ: VoiceNote.tsx:68-81 dispatches THOUGHT_PARTNER_SEED_EVENT with a prompt and system_context. It fires automatically after a save that parks questions (:101-104) and from a 'Discuss in Thought Partner' button (:195-201). The only listeners are AISidecar.tsx:110-127, mounted only while the \u2318/ panel is open, and BrainstormStation ThoughtPartnerPanel.tsx:88, which does not exist on /read. Nothing calls toggleAISidecar on seed, so with the sidecar closed the click is silently lost. Either the seed bus should open the sidecar, or this becomes an island ask."
+    },
+    {
+      "name": "ReadingCompanion 'Saved chases', draft merge and source-merge rewrite (the fork-into-document vertical) are unreachable",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ: ReadingCompanion.tsx:88 `useChaseDraftHandoffs(readingThreadId)`, and the whole section, including draftReadyChases (:346), preview (:428), 'rewrite source' commitSourceMerge (:481-486) and restore (:519), is inside `handoffs.length > 0` (:334). The only handoff writer is ChaseThread.tsx:111, whose parent is always an /inv id (ResearchWorkstation/index.tsx:155,171). No code path records a handoff with parent read-<doc>, so this 'merge insights into a document, making a forked version' surface cannot appear in the shipped app."
+    },
+    {
+      "name": "CommandPalette 'Toggle AI sidecar' action plus a palette model picker broadcast on the seed bus",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ: CommandPalette.tsx:590-599 runs toggleAISidecar. :376-386 chooseDriver dispatches THOUGHT_PARTNER_SEED_EVENT {owner_model}, which the sidecar adopts only while it is open (AISidecar.tsx:118-121). It is still reach without function, because ThoughtPartnerRequest drops model_choice (RUN, IA-09)."
+    },
+    {
+      "name": "Server-side grounding and account memory on every thought-partner ask",
+      "status": "PARTIAL",
+      "evidence": "READ: app.py:6681-6697 retrieves library notes (_retrieve_thought_partner_context, which is gated by policy tag) and injects OWNER-PRIVATE MEMORY CONTEXT from account_memory_context. :6719-6726 record_account_memory_from_turn writes extracted facts, but it is dark unless interaction_memory_enabled() (account_memory_context.py:90). This matters for the island's 'context' design, because an ask already carries graph and memory context it does not show. Spec antiek-thought-partner-memory (README: BUILD operator-gated) was not in the grounding's spec list."
+    }
+  ],
+  "summary": "I re-checked all 15 statuses against main at 15e78e276 in /Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924. All 15 hold. The headline defect is now proven with stronger evidence than the original harness. I bundled the real FloatMenu.tsx and the real useFloatMenuSelection.ts with esbuild and drove them with a real mouse drag in chrome-headless-shell-1243 and in Google Chrome. Clicking Note or Dialogue gives 'sel= null | floatmenu= false | textarea= false', and the same happens when the menu is rendered inside the selection scope, as on /inv. The Write Edit panel dies on the first click into its textarea. Search, which has no textarea, survives as a control. The harness is in /tmp/mothership-ground/island-ask-refute/real/. In Chromium, then, the only island actions that work are Search and Deep-research, and the one persistent island action (Note) cannot be reached. Firefox and WebKit were NOT MEASURED because those Playwright builds are not installed.\n\nFour corrections:\n1. Reading's highlight Deep-research (spin-research) creates a ROOT research, not a child. Its only lineage is a 'read-spin' bucket event (books.py:2186-2198, passage_research.py:135-156).\n2. PR #3278 is now CONFLICTING, and vitest is still failing.\n3. Persisted ChaseThread props also carry parentInvestigationId and reservedChildId.\n4. The ReadingCompanion 'Saved chases' plus draft-merge plus source-rewrite vertical is fully unreachable. Its only writer (ChaseThread) always uses an /inv parent, never read-<doc>.\n\nMissed capabilities, most important first:\n- **Wrestle** (/wrestle/:documentId) is the only shipped highlight-to-agent loop with a durable anchor. A PDF selection writes a document.region_selected event (region_id, char offsets, bbox), and a docked chat sends distillation.requested scoped to that region. The default-registered wrestling.py worker answers with claim cards, and each claim can be challenged. It renders PDF page 1 only, and its thread id is one per browser tab.\n- **'Research this page'** (ResearchThis.tsx, mounted at Reading/index.tsx:504) spawns research without a highlight and shows a visible error.\n- **VoiceNote 'Discuss in Thought Partner'** seeds the sidecar through an event bus but never opens it, so the click is silently lost while the sidecar is closed.\n- **CommandPalette 'Toggle AI sidecar'**.\n- **Server-side grounding**: /thought-partner always retrieves library notes and injects account memory, so the 'contextless' ask already carries hidden context.\n\nA spec author should reconcile the island's anchor and thread model with the existing document.region_selected / distillation schema before adding a fourth store."
+}

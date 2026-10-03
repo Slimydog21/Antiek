@@ -85,12 +85,6 @@ from .schema import ensure_speak_schema
 PASSING_SCORE: float = DEFAULT_SLOP_THRESHOLD
 
 
-class BudgetExhausted(Exception):
-    """Raised when the requester's payout budget is exhausted. The
-    interview is still RECORDED + graded — only further payout stops
-    (edge case (c): budget exhausted mid-project)."""
-
-
 @dataclass(frozen=True)
 class InterviewGoal:
     """What the REQUESTER wants the interview to cover, plus the money

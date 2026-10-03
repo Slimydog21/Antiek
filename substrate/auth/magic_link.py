@@ -192,19 +192,23 @@ def verify_magic_link_token(
 # ── Session cookies ──────────────────────────────────────────────────
 
 
-def mint_session_cookie(*, user_id: str, email: str) -> str:
+def mint_session_cookie(
+    *, user_id: str, email: str, max_age_seconds: int = SESSION_TTL_SECONDS
+) -> str:
     """Mint a signed session-cookie value.
 
     Carries ``user_id`` + ``email`` so the middleware can reconstruct
     ``UserClaims`` without a DB lookup. Multi-user Sprint 22 will
     keep this shape and add a per-user scope list.
     """
+    now = int(time.time())
     return _encode(
         _SESSION_AUDIENCE,
         {
             "user_id": user_id,
             "email": email.strip().lower(),
-            "iat": int(time.time()),
+            "iat": now,
+            "exp": now + max_age_seconds,
         },
     )
 
@@ -226,6 +230,10 @@ def verify_session_cookie(
         expired_exc=InvalidSessionCookie,
         invalid_exc=InvalidSessionCookie,
     )
+    if "exp" in payload:
+        expiry = payload["exp"]
+        if type(expiry) is not int or int(time.time()) >= expiry:
+            raise InvalidSessionCookie("session expired or expiry malformed")
     user_id = payload.get("user_id")
     email = payload.get("email")
     iat = payload.get("iat")
