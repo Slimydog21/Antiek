@@ -376,6 +376,29 @@ def get_notebook(con: Any, notebook_id: str) -> Notebook | None:
     )
 
 
+class NotebookReadWithheld(PermissionError):
+    """The notebook exists, but its ownership does not authorize this reader."""
+
+
+def readable_notebook_for(
+    con: Any, notebook_id: str, *, owner_user_id: str,
+) -> Notebook | None:
+    """Read an exact owner's notebook; unknown ownership withholds.
+
+    Public classification is not a grant: the promotion route does not yet
+    verify the actor owns the notebook. Missing and withheld stay distinct.
+    Internal writers may use ``get_notebook``; caller-facing reads use this seam.
+    """
+    row = con.execute(
+        "SELECT owner_user_id FROM notebooks WHERE notebook_id = ?", [notebook_id],
+    ).fetchone()
+    if row is None:
+        return None
+    if not owner_user_id.strip() or row[0] != owner_user_id:
+        raise NotebookReadWithheld("notebook access withheld")
+    return get_notebook(con, notebook_id)
+
+
 def list_notebooks(
     con: Any,
     *,

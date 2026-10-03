@@ -5575,13 +5575,17 @@ def create_app(
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import create_notebook, get_notebook
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:create_notebook") as con:
@@ -5590,6 +5594,7 @@ def create_app(
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
+                    owner_user_id=owner_user_id,
                     content_class=req.content_class,
                 )
                 return get_notebook(con, nb_id)
@@ -5632,19 +5637,24 @@ def create_app(
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
-        from runtime.db_lock import connect_write
+    async def get_notebook_endpoint(notebook_id: str, request: Request) -> NotebookResponse:
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
 
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:get_notebook") as con:
-                return get_notebook(con, notebook_id)
+            with connect_read(db_path) as con:
+                return readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
 
-        # flock wait off the uvicorn loop (#3111 to_thread class).
-        nb = await asyncio.to_thread(_sync)
+        try:
+            nb = await asyncio.to_thread(_sync)
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
