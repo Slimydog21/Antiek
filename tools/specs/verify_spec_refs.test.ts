@@ -206,3 +206,56 @@ describe("lintHtmlFile — end-to-end on a planted-fiction fixture", () => {
     expect(verdicts).not.toContain("FAIL");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: a `.file` chip is a PATH, not a text container.
+//
+// Measured over the real 125-file spec corpus (specs/**/*.html +
+// docs/htmlspec/**/*.html), the chip branch reported 161 "fiction" entries, of
+// which 93 were prose fragments - "(per branch)", "call sites", "see each
+// wave's brief in the design workflow script" - pulled out of chips that never
+// contained a path. Only 22 were literal repo paths.
+//
+// The <code> branch has always applied looksLikeRepoPath(); the chip branch did
+// not. These cases pin that asymmetry shut from both directions: prose must be
+// rejected, and REAL paths - including ones under a directory that does not
+// exist - must still be extracted.
+// ---------------------------------------------------------------------------
+describe("chip extraction: prose is not a path, absent paths still are", () => {
+  const chip = (t: string) => `<p><span class="file">${t}</span></p>`;
+
+  it.each([
+    "(per branch)",
+    "call sites",
+    "see each wave&#x27;s brief in the design workflow script",
+    "(worktree setup only)",
+  ])("rejects prose inside a .file chip: %s", (prose) => {
+    const refs = extractRefsFromHtml(decodeEntitiesish(prose));
+    expect(refs.map((r) => r.raw)).toEqual([]);
+  });
+
+  it("still extracts a path under a directory that does NOT exist", () => {
+    // services/ is absent from the repository. Listing it in REPO_DIR_PREFIXES
+    // is what makes this VERIFIABLE, so the fictional tree is reported as
+    // fiction rather than silently dropped as a non-path.
+    const refs = extractRefsFromHtml(chip("services/mcp_server/server.py"));
+    expect(refs.map((r) => r.raw)).toContain("services/mcp_server/server.py");
+  });
+
+  it("still extracts the known fiction constant", () => {
+    const refs = extractRefsFromHtml(chip(FICTION));
+    expect(refs.map((r) => r.raw)).toContain(FICTION);
+  });
+
+  it("looksLikeRepoPath keeps rejecting prose and accepting paths", () => {
+    expect(looksLikeRepoPath("(per branch)")).toBe(false);
+    expect(looksLikeRepoPath("call sites")).toBe(false);
+    expect(looksLikeRepoPath("services/mcp_server/server.py")).toBe(true);
+  });
+});
+
+// The harness decodes entities the same way the extractor does, so prose that
+// arrives HTML-escaped is tested as prose rather than as a decoded path.
+function decodeEntitiesish(s: string): string {
+  return s.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
