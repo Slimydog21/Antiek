@@ -14,7 +14,15 @@ provenance captured AT WRITE TIME, never reconstructed.
 THE BYTE-VERIFICATION: an author_verbatim bite's normalized text hash must
 EQUAL its source span's — a mismatch is REJECTED and reclassed
 llm_compressed with an audit event (never silently mislabeled; the DB CHECK
-is the backstop). THE NOVELTY CEILING: null-source bites ("no direct
+is the backstop). THE RESEARCH-VERIFICATION (same pattern, one class over):
+a research_supplemented bite's investigation must have a NON-EMPTY distilled
+product in this substrate (>= 1 live insight/question node, read through the
+distill API's own seam) — an unverifiable claim is reclassed llm_expanded
+with the id nulled and an audit event, never trusted by declaration.
+THE ROUTE RECEIPT: the generation record's model/provider name the responder
+(dispatch's DispatchResult) — the requested label rides in
+params_json.requested_model; a seam-generated record (no receipt) keeps the
+declared label with provider NULL, the honest no-receipt state. THE NOVELTY CEILING: null-source bites ("no direct
 source") past the cap (default 20% of bites) flip the generation record's
 honest mostly_generated flag + an audit event — the bites stay, honestly
 marked (dropping them would hide the shape the operator asked to see).
@@ -111,7 +119,22 @@ class GeneratedBite:
 #: The generator seam (the daemon's SpawnFn precedent): (prompt, blocks,
 #: params) → the bites. The REAL one rides the one dispatch path; tests
 #: inject a deterministic fixture generator.
-GenerateFn = Callable[[str, list[SourceBlock], dict[str, Any]], list[GeneratedBite]]
+@dataclass(frozen=True)
+class GenerationOutcome:
+    """What a generator returns beyond the bare bites: the ROUTE RECEIPT —
+    the provider and model that ANSWERED (dispatch's DispatchResult), so the
+    generation record can name the responder rather than the request. The
+    injectable test seam returns bare bites (no receipt); that absence is
+    recorded honestly (provider NULL), never backfilled with a guess."""
+
+    bites: list[GeneratedBite]
+    resolved_provider: str | None = None
+    resolved_model: str | None = None
+
+
+GenerateFn = Callable[
+    [str, list[SourceBlock], dict[str, Any]], list[GeneratedBite] | GenerationOutcome
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +145,10 @@ class ReformatResult:
     contribution_classes: list[str]
     mostly_generated: bool
     reclassed_verbatim: int
+    #: Research-supplement claims reclassed to llm_expanded because the named
+    #: investigation has no distilled product in this substrate (the same
+    #: reclassify-with-evidence pattern as author_verbatim, one class over).
+    reclassed_research: int
     null_source_share: float
 
 
@@ -163,12 +190,38 @@ def _source_blocks(con: Any, document_id: str, served_text: str) -> list[SourceB
     return out
 
 
+def _investigation_has_distilled_product(
+    db_path: str, investigation_id: str, events_dir: str | None
+) -> bool:
+    """Whether the named investigation has a NON-EMPTY distilled product in
+    THIS substrate — at least one live insight/question node — read through
+    the shipped seam the distill API itself serves
+    (roles.note_taker.distillation_for: the per-investigation trajectory walk
+    + the live node rows). The substrate has no investigations table by
+    design (graph/schema.py's V1 note), so a research's EXISTENCE is not
+    queryable; its PRODUCT is. An empty distillation means the claim is
+    unverifiable here — reclass, never trust the declaration.
+
+    The residual this does NOT prove: that the distilled product is RELATED
+    to the bite's claim. Relatedness is a semantic judgment (a review-time
+    question over inspectable artifacts), not a write-time gate — the writer
+    never dispatches another model call to grade its own generator."""
+    from roles.note_taker.distill_query import distillation_for
+
+    return not distillation_for(
+        investigation_id, db_path=db_path, events_dir=events_dir
+    ).empty
+
+
 def _dispatch_generate(
     prompt: str, blocks: list[SourceBlock], params: dict[str, Any]
-) -> list[GeneratedBite]:
+) -> GenerationOutcome:
     """The REAL generator: ONE dispatch call (the single entry — the typed
     DispatchCall event, the lineup, the cost ledger) with a STRICT JSON
-    contract; a malformed generation is an honest refusal, never a guess."""
+    contract; a malformed generation is an honest refusal, never a guess.
+    The route receipt (DispatchResult.provider / .model — who ANSWERED,
+    after overrides and fallback) rides out on the GenerationOutcome so the
+    generation record names the responder, never the requested string."""
     from substrate.dispatch.router import dispatch
 
     schema_hint = (
@@ -215,7 +268,11 @@ def _dispatch_generate(
                 ),
             )
         )
-    return bites
+    return GenerationOutcome(
+        bites=bites,
+        resolved_provider=result.provider,
+        resolved_model=result.model,
+    )
 
 
 def reformat_document(
@@ -268,8 +325,18 @@ def reformat_document(
         rcon.close()
 
     # 2. Generate (the dispatch path by default). No lock held across the
-    #    LLM call — the arXiv lesson.
-    bites = generate(prompt, blocks, params)
+    #    LLM call — the arXiv lesson. The dispatch generator returns a
+    #    GenerationOutcome carrying the route receipt; the injectable seam
+    #    returns bare bites (no receipt — recorded honestly as provider NULL).
+    generated = generate(prompt, blocks, params)
+    if isinstance(generated, GenerationOutcome):
+        bites = generated.bites
+        resolved_provider = generated.resolved_provider
+        resolved_model = generated.resolved_model
+    else:
+        bites = generated
+        resolved_provider = None
+        resolved_model = None
 
     # 3. Verify + class honestly, then write in ONE bounded atomic scope.
     by_index = {b.index: b for b in blocks}
@@ -278,6 +345,8 @@ def reformat_document(
     out_bites: list[BiteRow] = []
     derived_paragraphs: list[str] = []
     reclassed = 0
+    reclassed_research_ids: list[str] = []
+    research_product_cache: dict[str, bool] = {}
     null_source = 0
     for ordinal, bite in enumerate(bites):
         text = normalize_node_text(bite.text).strip()
@@ -306,6 +375,7 @@ def reformat_document(
         derived_sha = text_sha256(text)
 
         cls = declared
+        investigation_id = bite.investigation_id
         if declared == "author_verbatim":
             # BYTE-VERIFIED or reclassed — never trusted by declaration.
             if source_sha is not None and source_sha == derived_sha:
@@ -321,6 +391,24 @@ def reformat_document(
                 raise ReformatError(
                     "a research_supplemented bite carries no investigation id"
                 )
+            # PRODUCT-VERIFIED or reclassed — the same pattern as
+            # author_verbatim one class over. A declaration is never trusted:
+            # the named investigation must have a NON-EMPTY distilled product
+            # (>= 1 live insight/question node) in THIS substrate, read
+            # through the same seam the distill API serves. An unverifiable
+            # claim reclasses to llm_expanded with the id nulled (the schema
+            # CHECK ties the id to the class); the bite STAYS, honestly
+            # classed — a bare rejection would hide the generation's shape.
+            has_product = research_product_cache.get(bite.investigation_id)
+            if has_product is None:
+                has_product = _investigation_has_distilled_product(
+                    db_path, bite.investigation_id, events_dir
+                )
+                research_product_cache[bite.investigation_id] = has_product
+            if not has_product:
+                cls = "llm_expanded"
+                investigation_id = None
+                reclassed_research_ids.append(bite.investigation_id)
         else:
             raise ReformatError(f"unknown contribution class: {declared!r}")
 
@@ -335,7 +423,7 @@ def reformat_document(
                 ordinal=ordinal,
                 contribution_class=cls,
                 source_refs=None if source_refs is None else tuple(source_refs),
-                investigation_id=bite.investigation_id,
+                investigation_id=investigation_id,
                 derived_text_sha256=derived_sha,
                 source_span_sha256=source_sha,
             )
@@ -404,6 +492,13 @@ def reformat_document(
                     len(derived_paragraphs[i].split()),
                 ],
             )
+        # THE RECORD NAMES THE RESPONDER: model/provider come from the
+        # dispatch route receipt (who ANSWERED, after overrides + fallback);
+        # the requested label rides in params_json.requested_model. When the
+        # generator was the injectable seam there is NO receipt — provider
+        # stays NULL and model keeps the caller-declared label, the honest
+        # "no dispatch receipt" state, never a fabricated identity.
+        requested_model = str(params.get("model") or model)
         ProvenanceStore().record_generation(
             con,
             record=GenerationRecordRow(
@@ -412,8 +507,12 @@ def reformat_document(
                 source_document_id=source_document_id,
                 derived_document_id=derived_document_id,
                 prompt=prompt,
-                model=str(params.get("model") or model),
-                params_json=json.dumps({"mode": mode, **params}, sort_keys=True),
+                model=resolved_model or requested_model,
+                provider=resolved_provider,
+                params_json=json.dumps(
+                    {"mode": mode, "requested_model": requested_model, **params},
+                    sort_keys=True,
+                ),
                 mostly_generated=mostly_generated,
                 created_at="",  # the DDL default stamps it
             ),
@@ -429,6 +528,20 @@ def reformat_document(
             payload={
                 "generation_id": generation_id,
                 "reclassed": reclassed,
+                "document_id": source_document_id,
+            },
+            document_id=source_document_id,
+            events_dir=events_dir,
+        )
+    if reclassed_research_ids:
+        log_event(
+            f"read-{source_document_id}",
+            "reformat.research_reclassified",
+            payload={
+                "generation_id": generation_id,
+                "reclassed": len(reclassed_research_ids),
+                # ids are metadata (the claim's handle), never bite text.
+                "investigation_ids": sorted(set(reclassed_research_ids)),
                 "document_id": source_document_id,
             },
             document_id=source_document_id,
@@ -456,5 +569,6 @@ def reformat_document(
         contribution_classes=[b.contribution_class for b in out_bites],
         mostly_generated=mostly_generated,
         reclassed_verbatim=reclassed,
+        reclassed_research=len(reclassed_research_ids),
         null_source_share=null_share,
     )
