@@ -246,15 +246,30 @@ role_tiers:
   # knowledge_extractor / thought_partner / creative_writer / autocomplete.
   # Tier=pro (conversational question generation, precedent-matched).
   interviewer: pro
-  # R6 BOUNDARY REPAIR (2026-10-02): the reformat pipeline's real generator
-  # (_dispatch_generate) dispatches role="reformat" but had NO role_tiers
-  # entry — POST /books/{id}/reformats 500'd with KeyError on the default
-  # path, so the generation record only ever carried the requested model
-  # string, never a route receipt. Same one-line-routing precedent as
-  # knowledge_extractor / thought_partner / creative_writer / autocomplete /
-  # interviewer. Tier=flash (bounded reformat generation over a gated
-  # source's blocks — volume work, not synthesis).
-  reformat: flash
+  # R6 REFORMAT (2026-10-02): substrate/reformat/pipeline.py:180 calls
+  # ``dispatch(prompt, "reformat", ...)`` and this file had NO role_tiers
+  # entry for it, so router._dispatch_authoritative raised
+  # KeyError("Role 'reformat' not in config.role_tiers") on EVERY call. The
+  # reformulation path could not run once -- not degraded, not partial. This
+  # is the fifth instance of the same production-only routing gap as the
+  # knowledge_extractor / thought_partner / creative_writer / interviewer
+  # precedents above, and the role tier entry alone is the established fix.
+  #
+  # Why no test found it, which is the part worth keeping: the reformat
+  # pipeline accepts an injected ``generate_fn``, every test in
+  # tests/test_reformat_pipeline.py and tests/test_reformat_routes.py injects
+  # a fixture generator, and so the ONE function that reaches the real
+  # dispatch path -- ``_dispatch_generate``, whose own neighbourhood says
+  # "the REAL one rides the one dispatch path" -- had zero callers in the
+  # suite. The real path was the only path never run. The guard that now
+  # closes the whole class is tests/test_dispatch_role_coverage.py: remove
+  # this entry and that test fails naming substrate/reformat/pipeline.py:180.
+  #
+  # Tier=pro -- generative prose rewriting, precedent-matched to
+  # creative_writer, which is the nearest call type. The operator can bump it
+  # to 'synthesis' if reformulation quality demands reasoning, exactly as the
+  # creative_writer comment above allows.
+  reformat: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

@@ -1,0 +1,594 @@
+{
+  "area": "shell-workstations",
+  "summary": "Ground truth is origin/main 15e78e276. All paths below are relative to /Users/slimydog/Antiek/platform/.claude/worktrees/ground-main-20260924. Proof scripts are in /tmp/mothership-ground/shell-workstations/proof/.\n\nToday the app organises work by workflow and route. It has no notion of a project or workstation. One AppShell (apps/reading/src/AppShell.tsx:68-201) wraps every authenticated route: Topbar breadcrumbs, a SceneChrome action bar with static view tabs for each workflow, one Zustand panel workspace (docks left, right and bottom, floating panels, popout), a separate in-memory layer of up to 8 \"workspace windows\", a bottom NavRail with four doors (Research \u2318J, Read \u2318E, Write \u2318Y, Speak \u2318U) plus Home \u2318O and More \u2318I, a \u2318K palette, a `?` hotkey HUD and a floating mascot that opens a \"project tree\". That tree is scoped to the current workflow's nouns, not to a project. Research and Write are separate route families (/, /inv/:id, /deep-research vs /write/:id, /create) inside the same shell. Clicking a door always goes to that workflow's default route, so switching workflows loses your place.\n\nAgainst herdr (session > workspaces > tabs > panes, a sidebar of spaces and agents with state, prefix+1..9 and a workspace picker, resume on restore, toast/sound/system notifications): Antiek has the pane layer (panel docks and floats, \u2318[/\u2318] focus cycling, popout) and part of the attention layer. The herdr transfer P0 shipped in #3078: a state registry, rollup, unseen axis, clickable toasts and state: chips in the palette. The workspace and tab layers are missing entirely, and so is any hotkey for them. The follow-up P1 (#3088: completion sound, window-title status) and P2 (#3092: favicon dot, layout presets) PRs have been OPEN and unmerged since 2026-08-14.\n\nFour defects matter before anyone builds on this shell. I proved the first three by running the real main modules (bundled with esbuild, run under jsdom with react 18.3.1, react-router 6.30.6 and zustand 5.0.15 borrowed from the design-audit worktree's node_modules, since main has no node_modules):\n\n1. \u2318K does not open the palette unless focus is in a text field. CommandPalette's own keydown handler and the shell's PALETTE_TOGGLE event both flip the state, so they cancel out. The NavRail Search button and \u2318\u21e7P still work.\n2. On fresh storage, AppShell's hydration effect runs after the route's PanelHost starters open (React fires child effects first) and wipes them. The investigation sidebar and chat do not dock on /inv/:id.\n3. AppShell calls useParams outside the inner <Routes>, so it gets {\"*\":\"inv/abc123\"} and never sees investigationId. The per-investigation layout scope is never read or written. All investigations share the key \"antiek.workspace.route./inv/:id\", and the palette's \"Reset layout (this investigation)\" clears a key that is never written.\n4. The single-\u2318+key space is used up: 0 plain \u2318+letter combos are free, and \u23181..9 are reserved for the browser. SPR-08 banned leader keys and chords. Number-hopping between workstations therefore needs a key-scheme decision before any code is written. Also, `comboSpecFor` reads `e.key`, which on macOS turns \u23251 into \"\u00a1\" (an OS behaviour I did not run in a browser).\n\nOn the backend, the only project-like records are speak_projects, interview_projects, write_folders (collections of blocks that span investigations, stored as membership edges rather than copies), deliverables.investigation_root_id, and parent_investigation_id research families. Research sessions can only be fetched one at a time (GET /research/sessions/{id}); there is no list endpoint. There is no attention or inbox table.\n\nThe operator's live herdr has 20 workspaces and 252 tabs, one workspace alone has 174 tabs, and nearly every tab is a single pane. So the tab layer carries the load, and it needs overflow handling and a fuzzy go-to on top of 1..9.",
+  "capabilities": [
+    {
+      "id": "SW-01",
+      "name": "Workstation = project entity (frontend state + backend record)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "git grep -n -i -E 'activeProject|currentProject|useProject\\b|projectStore|workstationStore|useWorkstation' -- apps/reading/src",
+          "note": "zero matches: no active-project or workstation store exists"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/MascotStation.tsx:34,52-53,440-441",
+          "note": "the comment says 'exactly ONE Mascot, always representing the ACTIVE project', but a double-click just runs navigate('/home'); no project id is involved"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Home/Home.tsx:12-20",
+          "note": "/home, the so-called project home, is a static landing page with four doors"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:17-32,146-157",
+          "note": "the 'project tree' is scoped to the active WORKFLOW's nouns, not to a project"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/write/folders.py:1-30,57-76",
+          "note": "write_folders + write_folder_members: collections of blocks spanning investigations, stored as membership edges ('views/edges over graph nodes, not copies'); folder writes emit no typed events"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/graph/schema.py:279-294",
+          "note": "deliverables.investigation_root_id links one Write piece to one research root"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/speak/schema.py:48; substrate/graph/schema.py:325",
+          "note": "speak_projects / interview_projects are the only tables named 'project'; both are Speak-only"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep for '\"/(projects?|folders?|workspaces?|workstations?)' routes in interfaces/",
+          "note": "only /speak/projects* and /write/folders* exist; no workspace or workstation API"
+        }
+      ],
+      "gap": "Needs a first-class Workstation. Backend: a `workstations` table (workstation_id, owner_user_id DEFAULT '__operator__', title, created_at, updated_at, archived_at, metadata) and `workstation_members` (workstation_id, member_kind IN ('investigation','drw_session','document','deliverable','notebook','write_folder','thread'), member_id, added_at, PK(workstation_id, member_kind, member_id)). Membership must be edges, never copies, following the write_folders precedent. It needs typed WorkstationCreated/MemberAdded/MemberRemoved event payloads in substrate/schemas/events.py, and all writes must go through runtime/db_lock. Endpoints: GET/POST /workstations, GET/PATCH /workstations/{id}, POST/DELETE /workstations/{id}/members. Frontend: a route prefix /w/:workstationId/* and a `useWorkstations` store holding the active workstation id. Research families (parent_investigation_id roots) and deliverables with investigation_root_id could be proposed as starter workstations."
+    },
+    {
+      "id": "SW-02",
+      "name": "Multiple open workstations held at once",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:112-296",
+          "note": "one route tree and one active route; no container for several open workstations"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51-60,150",
+          "note": "the only in-app multiplicity: up to 8 workspace windows (MAX_WINDOWS = 8), memory only, gone on reload"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:83-115",
+          "note": "only 5 page kinds can live in a window (stats, library, subaction, researchArtifactReceipt, reader); ResearchWorkstation and WrestleApp are explicitly out of contract (openWindow.ts:36-47)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:313; apps/reading/src/workspace/popout.ts:6-37",
+          "note": "/_panel/:panelId popout OS windows over BroadcastChannel are per panel, not per workstation"
+        }
+      ],
+      "gap": "Needs an `openWorkstations: WorkstationId[]` list plus `activeWorkstationId`. Each open workstation keeps its own last route, tab list, focused tab and panel layout, and switching preserves them (herdr's workspace carries active_tab_id). Browser tabs are the only real workaround today, and all of them share one localStorage namespace."
+    },
+    {
+      "id": "SW-03",
+      "name": "Tabs within a workstation (open objects: docs, researches, pieces, threads)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/SceneChrome.tsx:53-60,67-130,219-243",
+          "note": "'tabs' are STATIC per-workflow route links (Workstation / My research / Outcomes; Library / Documents / Notebooks; Projects / Interviews), not open objects"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/SceneChrome.tsx:180-181",
+          "note": "tabActive matches '/' exactly, so on /inv/:id no Research tab is marked active"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/.design-shots-2026-09-23/research/route-authmock-inv-demo-investigation__light__1280.png",
+          "note": "viewed: none of the three tabs is underlined on /inv/demo-investigation"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep -n -i -E 'openTabs|tabStrip|TabBar|role=\"tablist\"|LemonTabs' -- apps/reading/src",
+          "note": "only filter/settings tablists (Library, Settings, SpeakIndex, LibraryView); there is no tab strip of open objects anywhere"
+        }
+      ],
+      "gap": "Needs a `WorkstationTab` model {tab_id, workstation_id, kind: 'investigation'|'drw_session'|'reader'|'deliverable'|'notebook'|'thread', entity_id, route, title, pinned, last_focused_at, attention}. It needs a tab strip in the SceneChrome zone with overflow and a fuzzy go-to (the operator has one herdr workspace with 174 tabs), plus open/close/reorder/rename. The existing '/' SceneChrome view tabs should be demoted or folded in. Decide first whether windowsStore windows ARE tabs: the STRATEGY-TRANSFER doc warns 'do not create a third concept blindly'."
+    },
+    {
+      "id": "SW-04",
+      "name": "Hotkey hop between workstations (herdr prefix+shift+1..9 / workspace_picker prefix+w)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:280-349",
+          "note": "global bindings are \u2318K, \u2318\u21e7P, \u2318B, \u2318/, \u2318[, \u2318], \u2318W and ?, plus 6 products and 2 sub-actions; no workstation or tab bindings"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:437-473",
+          "note": "RESERVED_COMBOS includes \u23181..\u23189 and \u23180 (browser tab jump / zoom)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "python3 over bindings.ts (RESERVED_COMBOS minus owned specs)",
+          "note": "output: FREE plain mod+letter: [] ; FREE mod+punct: [',', '.', \"'\"]. The single-\u2318 key space is exhausted"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:11-15",
+          "note": "SPR-08 removed all leader and chord machinery by operator ratification"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-mountain-shell-v2/sprint-08-hotkeys-command-scheme.html (Out of scope)",
+          "note": "'Inventing a brand-new modifier scheme (Leader keys, \u2325-prefixed namespaces, a command-mode)' is excluded: the operator asked for \u2318+key"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:157-168",
+          "note": "comboSpecFor builds the spec from e.key. On macOS \u2325+1 yields e.key '\u00a1' (platform behaviour, NOT MEASURED in a browser), so an 'alt+1' binding could never match; digit bindings must use e.code"
+        },
+        {
+          "cls": "RUN",
+          "ref": "~/.local/bin/herdr --default-config; /Users/slimydog/.config/herdr/config.toml",
+          "note": "herdr defaults: prefix ctrl+b, workspace_picker prefix+w, goto prefix+g, switch_tab prefix+1..9, next/prev tab prefix+n/p, switch_workspace optional prefix+shift+1..9"
+        }
+      ],
+      "gap": "The key scheme must be decided before any code, because it conflicts with the ratified SPR-08 no-chord rule. Options: (a) ratify one leader key (e.g. ctrl+b like herdr, or \u2318; which is currently the Read-library sub-action) with a visible prefix-mode HUD, then 1..9 for tabs, shift+1..9 for workstations, w for the picker, g for go-to, n/p for next/prev; (b) \u2325/\u2303+digit resolved from e.code (Digit1..9), which needs a comboSpecFor change; (c) \u2318\u21e7+digit (check each browser). Whichever wins needs a new `WORKSTATION_BINDINGS` table in bindings.ts, conflict entries, HUD rows and a picker modal. The shortcuts.ts handler must add a digit branch based on e.code."
+    },
+    {
+      "id": "SW-05",
+      "name": "Hotkey hop between tabs / panes inside a workstation",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:218-233,334-344",
+          "note": "\u2318[ / \u2318] cycle focus across docked and floating PANELS (the herdr cycle_pane analogue); workspace windows (windowsStore) are excluded"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:345-355",
+          "note": "\u2318W closes the focused floating panel only; otherwise the browser closes the tab"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:142-153",
+          "note": "windows have no keyboard verbs (no focus-next, close or expand keys)"
+        }
+      ],
+      "gap": "No tab layer exists to hop between. Panel focus cycling works (pane level). Needed: next/prev tab, switch to tab N, a recent-tab toggle (herdr last_pane), close tab, reopen closed tab; window focus cycling should join the same ring."
+    },
+    {
+      "id": "SW-06",
+      "name": "Sidebar listing workstations/agents/threads with live state",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/InvestigationSidebar.tsx:1-60,82",
+          "note": "a Research-only docked panel: investigation tree with state dots, subtree attention rollup and unseen marks"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useInvestigationList.ts:22-23,51-60",
+          "note": "polls GET /investigations every 30 s (default limit 50) and PAUSES while the document is hidden, so a background tab learns nothing"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/NavRail.tsx:272-291",
+          "note": "a Research door badge counts research families that need attention, polled every 60 s"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shared/researchState.ts:62-77",
+          "note": "'blocked' only means status=failed; there is no awaiting-input or needs-approval state"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/cascade_routes.py:683-810,1782-1891",
+          "note": "research plans await /plans/{root_id}/approve, which is a real 'agent needs you' moment; sessions are GET-by-id only, with no list endpoint for a sidebar"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:88-99,169-176",
+          "note": "ProjectTree maps status itself (running/done/failed, stopped counted as done) instead of using the registry; Write/Speak 'Recent' is always []"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/shell-workstations/proof/entry.tsx (esbuild+jsdom, real WorkspaceStore + useWorkspaceHydration)",
+          "note": "output: child effect opened ['InvestigationSidebar:default'], then AFTER MOUNT dockLeftIds = [] and panels = []. Hydration wipes the sidebar starter on fresh storage"
+        }
+      ],
+      "gap": "Needs a shell-level, always-available sidebar (not a Research-only panel). It should list open workstations with a rolled-up state, then their agents and threads: DRW sessions (needs GET /research/sessions?owner&state), investigations, thread-partner and anchored-comment agent_work threads, and Write generation jobs. Each row needs a state from ONE registry, extended with an 'awaiting_input' state for plan approvals, spend approvals and agent questions. The sidebar should subscribe to /ws/events (today no shell-level event consumer exists: git grep useEventStream finds only Replay, StartResearch, WrestleApp and the hooks) instead of 30 s polls that stop when the tab is hidden. It needs a spaces/priority sort like herdr's agent_panel_sort."
+    },
+    {
+      "id": "SW-07",
+      "name": "Session save/restore (layout, open objects, focus, per-workstation state)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/persistence.ts:1-50,113-145",
+          "note": "localStorage scopes global / route.<key> / inv.<id>, plus a one-shot ?ws= URL (useWorkspaceHydration.ts:87-92)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/shell-workstations/useparams-proof.cjs",
+          "note": "output: AppShell useParams() = {\"*\":\"inv/abc123\"}; route leaf = {..., investigationId:'abc123'}; AppShell investigationId = null (useWorkspaceHydration.ts:51-52 runs in AppShell.tsx:99)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/shell-workstations/proof/entry.tsx",
+          "note": "output: after opening a panel on /inv/abc123 the only key written is 'antiek.workspace.route./inv/:id'; the per-investigation scope is never written, so all investigations share one layout"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:630-650",
+          "note": "'Reset workspace layout (this investigation)' clears antiek.workspace.inv.<id>, which is never written"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51-60",
+          "note": "windows are deliberately not persisted; a reload starts with zero windows"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/navigation/pinnedStore.ts:6-8",
+          "note": "pins are memory-only ('S9 lands localStorage persistence' never happened)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/NavRail.tsx:304-311",
+          "note": "a door click always navigates to WORKFLOWS[wf].defaultRoute; the last location per workflow is not remembered"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/seen.ts (P0-3)",
+          "note": "per-investigation lastSeenAt is persisted (versioned key) and syncs across tabs"
+        }
+      ],
+      "gap": "Needs a server-backed session (per owner: open workstations, each with tabs, active tab, last route and panel layout), so state follows the operator across devices the way herdr resume does. localStorage can stay as a cache. Fix the hydration scope first: read investigationId from matchPath(location.pathname) rather than useParams at shell level. Also fix the ordering: hydrate in a layout effect or before PanelHost starters mount, or make starters idempotent re-openers after hydration. Persist windows (the named follow-up in windowsStore.ts:57-60) and pins. Add a per-workflow and per-workstation last-route memory."
+    },
+    {
+      "id": "SW-08",
+      "name": "Unified Research + Write shell (one mothership)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:112-296; apps/reading/src/AppShell.tsx:143-166",
+          "note": "one AppShell, NavRail, palette, panel system and windows layer for every route: the shell is shared"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:140-146,156-159",
+          "note": "Research (/, /inv/:id, /deep-research/:sessionId) and Write (/write/:deliverableId, /create/:id) are separate route families with no shared context object"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/WriteHome.tsx:52,144-157",
+          "note": "Write can seed a piece from an investigation (?investigation=, POST /write/deliverables/from-investigation), which is the only Research to Write link"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/workflowTaxonomy.ts:741-761",
+          "note": "workflowForPath falls through to 'research' for unknown prefixes; /home has no taxonomy entry, so it gets Research chrome and the Research door is highlighted"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:58",
+          "note": "Write's 'All deliverables' links to /create (the demoted studio), not the /write door"
+        }
+      ],
+      "gap": "One shell, but two products. To become a mothership, a workstation must hold research runs AND written pieces as tabs side by side, with the reader able to open inside either (WINDOW_PAGES.reader already exists as a window kind). The workflow doors become lenses on the active workstation rather than separate destinations."
+    },
+    {
+      "id": "SW-09",
+      "name": "Command palette as switcher",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:388-397",
+          "note": "indexes routes, investigations (plus a replay row each), documents, notebooks and parked questions"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/paletteFacet.ts:94-131",
+          "note": "state: filters and workflow-lead facets; an empty query returns entries in declaration order (no MRU or recency)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/shell-workstations/proof/palette2.tsx (real CommandPalette.tsx + shortcuts.ts)",
+          "note": "output: A) palette alone \u2318K \u2192 open=true; B) shell+palette, \u2318K in <input> \u2192 open=true, shell toggle events=0; C) shell+palette, \u2318K on body \u2192 before=false after=false, shell toggle events=1 (plus the in-component toggle = 2 flips)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:511-538; apps/reading/src/workspace/shortcuts.ts:315-320",
+          "note": "both handlers toggle on \u2318K, and the palette's handler has no defaultPrevented or isTextEditing guard. \u2318\u21e7P only hits the shell path, so it works"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/CommandPalette.tsx:744,839",
+          "note": "results are capped at 12; zero results show a bare 'No matches.'"
+        }
+      ],
+      "gap": "Fix the \u2318K double toggle: drop the in-component keydown handler when AppShell is mounted, or check e.defaultPrevented. Then add entity kinds: workstations, open tabs, deliverables (GET /write/deliverables), Speak projects, DRW sessions, threads and claims. Add MRU ordering on an empty query, a 'switch to workstation / open as tab / open in window' secondary action, and match reasons."
+    },
+    {
+      "id": "SW-10",
+      "name": "Notifications / attention when a subagent finishes or asks",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "PR",
+          "ref": "#3078 MERGED 2026-08-13 (1cbf8de18)",
+          "note": "P0 attention layer: researchState registry, attention rollup, seen/unseen, clickable toasts, palette state chips"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/AppShell.tsx:76-93; apps/reading/src/components/lemon/LemonToast.tsx:19-21",
+          "note": "a toast can navigate and focus a panel"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep -n 'target: {' -- apps/reading/src",
+          "note": "toast targets are only used for capacity warnings at research start (lib/api.ts:339,361; api/books.ts:243,266); nothing toasts on completion"
+        },
+        {
+          "cls": "PR",
+          "ref": "#3088 OPEN (c62acaebe, updated 2026-08-14, mergeable UNKNOWN); #3092 OPEN (3bea86ce3)",
+          "note": "#3088 adds useResearchNotifications (sound on observed completed/failed transitions, suppressed while watching), useDocumentTitle and panel zoom; #3092 adds a favicon attention dot, a mobile badge and layout presets. Both unmerged for 41 days"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep -n -E 'Notification\\.|requestPermission|document\\.title\\s*=' -- apps/reading/src",
+          "note": "no OS notifications and no main-app document.title updates (only PanelWindowApp sets a title)"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-personal-attention-inbox-decision-queue-authority-2026-08-11/index.html",
+          "note": "verdict 'many attention signals, no durable operator inbox'; I re-verified that main has no attention_item table or endpoint (git grep interfaces/substrate)"
+        }
+      ],
+      "gap": "Needs a shell-level attention hook on /ws/events (not a visible-only poll) that raises: a toast with target {path, panelId} and suppression while the operator is watching; a document.title count; a favicon dot; optional sound and Notification API. It needs an 'awaiting_input' state for plan approvals, spend approvals and agent questions (herdr's ask-inbox, alt+a in the operator's config), an open-notification-target hotkey (herdr prefix+o), and a durable attention inbox per the personal-attention spec, where acknowledging never executes the underlying action. Decide whether to rebase and land #3088/#3092 or supersede them."
+    },
+    {
+      "id": "SW-11",
+      "name": "Pane layer: panel workspace (dock L/R/bottom, floating, popout, pin, cycle)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/panel.types.ts:13-119; apps/reading/src/workspace/WorkspaceStore.ts:1-140",
+          "note": "a pure-data snapshot with 27 PanelKinds"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelHandle.tsx:19-26,123-124,159-168",
+          "note": "drag, pin and popout affordances"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md:44,118-120",
+          "note": "66 workspace/window lifecycle tests passed there (not re-run: main has no node_modules)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/AppShell.tsx:151; apps/reading/src/workspace/PanelHost.tsx:79",
+          "note": "PanelLayout is NESTED: the shell's PanelLayout plus a second one in every PanelHost route (7 modes); both subscribe to the same dock arrays (PanelLayout.tsx:36-40,133-190)"
+        }
+      ],
+      "gap": "The layer works, but: the hydration wipe (SW-07 RUN), the nested PanelLayout (the narrow banner renders twice per design-audit visual-critiques F-13; whether docks render twice was NOT MEASURED), and ResearchWorkstation is the same component instance on '/' and '/inv/:id', so its starters (deps []) do not reopen with the new investigation's Chat."
+    },
+    {
+      "id": "SW-12",
+      "name": "Workspace windows (floating whole-page frames, 'multiple terminals')",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:1-60,150,190-288",
+          "note": "separate store; cap of 8; expand/restore; focus restack"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:83-115",
+          "note": "5 kinds; callers ProductsLauncher.tsx:156,170, DeepResearchWorkspace/index.tsx:432 (reader), Reading/ResearchThis.tsx:49"
+        }
+      ],
+      "gap": "No persistence, no list or taskbar, no hotkeys, and dock-owning pages (Research, Wrestle) can't live in a window. It is a candidate substrate for tabs, but a second layout model beside WorkspaceStore."
+    },
+    {
+      "id": "SW-13",
+      "name": "Per-entity custom \u2318+key (bind a project/book/deliverable)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:72-126,289-300",
+          "note": "the resolver and hydration of persisted custom bindings are live"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep -n -E 'AssignHotkey|useCustomHotkeys' -- apps/reading/src ':!*test*' ':!*stories*'",
+          "note": "exported from components/hotkeys/index.ts:24-32 but mounted on NO production surface, so a user cannot create a binding"
+        },
+        {
+          "cls": "RUN",
+          "ref": "python3 free-key computation over bindings.ts",
+          "note": "even if mounted, only \u2318, \u2318. \u2318' are assignable"
+        }
+      ],
+      "gap": "Mount <AssignHotkey> on workstation, tab and entity headers once the key scheme (SW-04) frees a namespace; otherwise this feature has no keys to hand out."
+    },
+    {
+      "id": "SW-14",
+      "name": "Cross-workflow thread breadcrumb (ThreadBreadcrumb/ThreadJump over GET /thread/{node_id})",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/SceneChrome.tsx:132-148,250-257",
+          "note": "renders only when the `thread` prop is supplied"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/AppShell.tsx:151",
+          "note": "<SceneChrome>{children}</SceneChrome> with no thread or onThreadJump props; ThreadBreadcrumb/ThreadJump have no other importers (git grep)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/thread.py:171",
+          "note": "the backend GET /thread/{node_id} exists"
+        }
+      ],
+      "gap": "Wire an entity-in-focus resolver in the shell (from the active tab) that fetches /thread/{node_id} and passes it to SceneChrome. This is the natural 'where did this come from and where did it go' strip across Research, Read and Write inside a workstation."
+    },
+    {
+      "id": "SW-15",
+      "name": "Keyboard HUD + global hotkey handler + other keydown owners",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/HotkeyHud.tsx:19-57; apps/reading/src/AppShell.tsx:198",
+          "note": "'?' HUD built from the live binding tables plus custom rows"
+        },
+        {
+          "cls": "RUN",
+          "ref": "git grep addEventListener('keydown') -- apps/reading/src (non-test)",
+          "note": "global window handlers: shortcuts.ts:373, CommandPalette.tsx:538, AISidecar.tsx:199, PanelLayoutPanel.tsx:96, Write/Editor.tsx:129 (capture), FloatMenu.tsx:154, SlashMenu.tsx:263, LemonModal.tsx:78"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/AISidecar.tsx:190-199; apps/reading/src/components/hotkeys/bindings.ts:330",
+          "note": "while the sidecar is mounted, \u2318J both dispatches the dead 'antiek:aisidecar:toggle' event and (via shortcuts.ts) navigates to Research '/'"
+        }
+      ],
+      "gap": "There is no single keymap owner: at least 3 window-level handlers claim \u2318-combos independently (\u2318K doubled, \u2318J conflicting). A mothership keymap needs one dispatcher that owns all global combos, so each key has one owner."
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/docs/herdr-visual-workstation/STRATEGY-TRANSFER.md",
+      "planned": "Carry herdr's attention layer into Antiek. P0: state registry, attention rollup, seen/unseen, navigating toasts, palette state chips. P1: panel zoom, transcript copy mode, sound channel, document.title status, collapsed-rail state dots. P2: panel context menu, favicon dot, mobile badge, release notes, layout presets. Deferred: saved views, shellMode union, token-row sidebar layouts.",
+      "shipped_status": "P0 MERGED #3078 (re-verified on main: shared/researchState.ts, shared/attention.ts, workspace/seen.ts, LemonToast targets, paletteFacet state:). P1 #3088 and P2 #3092 are OPEN and unmerged since 2026-08-14 (gh pr view). The doc never planned workspaces, tabs or number-hop: it assumed Antiek 'already has herdr's spatial skeleton', which is only true at the pane level."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mountain-shell (README)",
+      "planned": "Bottom product bar, per-product sub-action launcher windows, on-screen hotkeys that the user can set per entity, transparent ad-bordered workspace windows, mountainscape, penguin.",
+      "shipped_status": "Superseded by v2. The bottom rail, launcher and windows are on main (NavRail.tsx, ProductsLauncher.tsx, windowsStore.ts)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mountain-shell-v2 (README, RECONCILIATION.md, sprint-08-hotkeys-command-scheme.html)",
+      "planned": "Uniform \u2318+key scheme with chords and leader keys explicitly out of scope; user-assignable \u2318+key per project/book/deliverable that survives reload; windows as the default interaction; HUD.",
+      "shipped_status": "The \u2318 scheme is on main (bindings.ts:280-349; no-chord shortcuts.ts:11-15). The windows default is on main (openWindow.ts). The per-entity assign UI (AssignHotkey) is exported but not mounted anywhere, so it is BUILT_UNREACHABLE (git grep). The chord ban now constrains any herdr-style prefix scheme."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-honest-shell (README)",
+      "planned": "Wire the ProjectTree nouns to real data: SPR-01 research (useInvestigationList + watch-for-later), SPR-02 write (listDeliverables), SPR-03 read (documents), SPR-04 speak honest empty state, SPR-05 shared EmptyState + useWorkflowNouns + lint_shell_honesty CI gate.",
+      "shipped_status": "SPR-01 partial: investigations wired, watch-for-later not in the tree (ProjectTree.tsx:162). SPR-03 shipped via listBooks (ProjectTree.tsx:118-144). SPR-02 NOT shipped: Write recent is always [] (ProjectTree.tsx:169-170). SPR-05 NOT shipped: git grep finds no useWorkflowNouns or lint_shell_honesty. MOCK_RECENT is gone."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader (README)",
+      "planned": "One Reader and one openDocument door for every entry point; highlight dialogue; provenance ingestion.",
+      "shipped_status": "README only, not re-verified sprint by sprint. Shell-relevant: a 'reader' window kind exists (openWindow.ts WINDOW_PAGES.reader), opened from the DeepResearchWorkspace cite-source path (DeepResearchWorkspace/index.tsx:432), so the reader can already float over other surfaces."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-hardening (README)",
+      "planned": "ResearchProvider/router hardening; SPR-08 wires DRW background runs and merging.",
+      "shipped_status": "Not re-verified. Shell-relevant: sessions can only be fetched one at a time (cascade_routes.py:1782-1891), with no list endpoint, so no sidebar can list running research sessions."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-bridge (README)",
+      "planned": "Paste deep-research outputs as blocks; outline writer + gap finder.",
+      "shipped_status": "Not re-verified; no shell or workstation plan."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine (README)",
+      "planned": "Doctrine wedges W1-W9 (budget tuples, brief gate, spans, citation binding, etc.).",
+      "shipped_status": "Not re-verified; no shell plan."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-drw-master-ledger (README)",
+      "planned": "Program-of-record sequencing DRW child specs to prod usability.",
+      "shipped_status": "Not re-verified; no shell plan."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments (index.html)",
+      "planned": "Anchored comments on HTML deliverables with edit_in_place / branch_research actions over the existing one-thread agent_work queue.",
+      "shipped_status": "Not re-verified. Shell-relevant: agent_work threads are the 'existing subagent thread' the operator wants listed; no shell surface lists them."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent (index.html)",
+      "planned": "Live spawn and owner lineage, standing topic registry, re-ingestion, living-folder refresh, learning digest; 'no literal herdr installation'.",
+      "shipped_status": "Not re-verified. No shell or attention surface is planned for the autonomous agent's outputs; the digest is metadata-only."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection (README)",
+      "planned": "HTML as a projection layer (not canonical storage).",
+      "shipped_status": "Not re-verified; no shell plan."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-personal-attention-inbox-decision-queue-authority-2026-08-11 (index.html)",
+      "planned": "A durable, owner-private attention item projection with lifecycle, acknowledge/snooze and dedup; acknowledging never executes; delivery channels are views.",
+      "shipped_status": "SPEC_ONLY: re-verified that main has no attention_item table or /attention or /inbox endpoint."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership",
+      "planned": "(this program)",
+      "shipped_status": "Directories briefs/, ground/ and verify/ exist and are empty."
+    }
+  ],
+  "craft_gaps": [
+    "\u2318K, the primary switcher key, does nothing unless focus is in a text field (RUN, palette2.tsx case C). This is the first thing a keyboard-first user presses; \u2318\u21e7P and the NavRail Search button work.",
+    "Clicking a door throws away your place: Research\u2192Write\u2192Research lands on '/' rather than the open investigation (NavRail.tsx:304-311). In herdr every workspace remembers its active tab.",
+    "/home is misclassified as Research. It shows the Research action bar ('New investigation', 'Ask', 'Outcomes') and view tabs, and highlights the Research door (workflowTaxonomy.ts:741-761 has no /home entry).",
+    "On /inv/:id none of the Research view tabs reads as active, because the check is an exact '/' match (SceneChrome.tsx:180-181; visible in route-authmock-inv-demo-investigation__light__1280.png).",
+    "The ProjectTree's Write and Speak 'Recent' sections always say 'No recent items yet.' even when deliverables exist (ProjectTree.tsx:169-176,247-250). That empty state is untrue.",
+    "The ProjectTree uses its own status vocabulary (stopped counts as 'done', ProjectTree.tsx:88-99) and emoji icons (\ud83d\udcc4, ProjectTree.tsx:337-341), drifting from the shared researchState registry that the herdr transfer made canonical.",
+    "Breadcrumbs show raw route slugs and UUIDs, e.g. 'Investigation \u203a demo-investigation' (Topbar.tsx:28-74). The account button is an emoji \ud83d\udc64 (Topbar.tsx:125). Both are addressed on unmerged design/w3-shell-states-prose-20260923.",
+    "Palette route subtitles leak internal taxonomy ('Mode A \u2014 chat-first investigation surface', 'Wedge 2\u2026'; CommandPalette.tsx:131-265). An empty query shows routes in declaration order with no recent items, and a miss is a dead-end 'No matches.' (CommandPalette.tsx:839).",
+    "Pins disappear on reload (pinnedStore.ts:6-8), which breaks the promise the \u2605 affordance makes.",
+    "The nested PanelLayout (AppShell.tsx:151 + PanelHost.tsx:79) renders the narrow-viewport banner twice (design-audit visual-critiques F-13) and is a candidate cause of the starter panels that go missing.",
+    "Starter docks (the investigation sidebar and the per-investigation chat) do not appear on first visit (RUN, entry.tsx), so the Research workstation's own frame is missing.",
+    "Two independent keydown owners claim \u2318J when the AI sidecar is open (AISidecar.tsx:190-199 vs bindings.ts:330). Pressing it navigates away from the page and also fires an event nothing listens to.",
+    "The mascot sits above panels and windows (z=60; design-audit SCORE-BASELINE-full.md:65) and can cover exactly the region where a tab strip or sidebar would go.",
+    "Backgrounded tabs go silent. The investigation poll pauses while document.visibilityState is hidden (useInvestigationList.ts:51-60), so nothing tells you a research finished while you were elsewhere: no title, no favicon, no sound, no notification."
+  ],
+  "risks": [
+    "The key scheme conflicts with a ratified decision. SPR-08 removed chords and leader keys at the operator's request, the plain \u2318+letter space has 0 free keys (RUN), and \u23181..9 belong to the browser. A herdr-style prefix or number-hop scheme needs an explicit operator re-ratification, or a different modifier family resolved from e.code. Building first and asking later would repeat the v1 'invisible' failure.",
+    "Any new tab or workstation layer built on WorkspaceStore inherits two proven defects: the hydration effect runs after the route's starters and wipes them, and the shell-level useParams never sees :investigationId. Fix both first, or per-workstation layouts will silently collapse into one route-wide key.",
+    "Three layout models would coexist: WorkspaceStore panels, windowsStore windows, and a new tabs model. The 2026-08-13 transfer doc already warned 'do not create a third concept blindly'. Merge windows into tabs, or define tabs as views over one store.",
+    "In-flight collisions: design/w3-shell-states-prose-20260923 (NavRail, Topbar, SceneChrome, PanelLayout, MascotStation), design/w5-motion-20260923 (PanelLayout, MascotStation), design/w7-crashes-20260924 (App.tsx, PanelLayout) and the stale herdr PRs #3088/#3092 (AppShell, PanelLayout, NavRail, WorkspaceStore, useWorkspaceHydration) all edit the exact files a mothership shell must own.",
+    "A backend workstation entity touches the DuckDB single-writer invariant. Membership writes must go through runtime/db_lock, and folders.py notes that no typed folder event payloads exist, so workstation events need registered payload types (untyped payloads under typed names are prohibited).",
+    "Scale: the operator's live herdr has 20 workspaces and 252 tabs, one workspace with 174 (RUN: herdr workspace list). A naive tab strip or 1..9-only hopping will fail at that scale. Overflow, a fuzzy go-to and an attention-sorted view are required from day one.",
+    "State is local to the device. Layout, seen state, custom hotkeys and pins live in localStorage or memory, so a mothership session would not follow the operator across machines the way herdr's resume and resurrect do. A server-side session must respect the single-operator-until-Sprint-22 invariant.",
+    "The \u2318K and hydration findings come from a jsdom harness using react 18.3.1, react-router 6.30.6 and zustand 5.0.15 from the design-audit worktree's node_modules, run against main's source files. Their real-browser behaviour was NOT MEASURED, although the mechanism (two toggles batched in one event; React runs child effects before the parent's) does not depend on the browser."
+  ],
+  "open_questions": [
+    "What is a workstation's identity: a new first-class entity (recommended), a research family root (parent_investigation_id), a write_folder, or a deliverable with investigation_root_id? And can one document or investigation belong to several workstations (edges, not copies)?",
+    "Will the operator re-ratify a leader or prefix key (e.g. ctrl+b or \u2318; with a visible prefix-mode HUD) despite the SPR-08 ban on chords and leader keys? Or should workstation and tab hopping use \u2325/\u2303+digit resolved from e.code? Which one?",
+    "Are tabs URL-backed (each tab a route, the address bar shows the active tab) or store-backed with only the active tab in the URL? How do browser back/forward interact with tab switching?",
+    "Should windowsStore windows become tabs, or stay as floating companions inside a tab? And should the four workflow doors survive as lenses on the active workstation or be replaced by the workstation sidebar?",
+    "Should Read and Speak objects also be workstation tabs, or only Research and Write, with Read embedded everywhere via the reader window?",
+    "Should the session be persisted server-side per owner, or is localStorage acceptable for v1 given single-operator use across Mac mini, laptop and iPad?",
+    "Which notification channels are in scope (in-app toast, document.title, favicon, sound, OS Notification API), and what are the suppression rules? Should #3088/#3092 be rebased and landed, or superseded?",
+    "Which events count as 'agent needs you': plan approval, spend approval, anchored-comment action conflict, a failed run, an explicit agent question? Does the substrate emit a typed event for each, so the sidebar can derive state from events rather than polling?"
+  ]
+}

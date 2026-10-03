@@ -1,0 +1,674 @@
+{
+  "area": "reading-mothership",
+  "summary": "On origin/main 15e78e276 the reading pieces work on their own, but there is no reading mothership and no branch-tab tree. The book reader (/read/:documentId, modes/Reading/index.tsx) is a Charter-serif column split into pages, with a TOC, a Prev/Next pager and a \"Page N of M\" label. It falls short of a Kindle in five ways. It has no page-turn keys, no text-size control, no distraction-free mode and no in-app day/night toggle (dark mode only follows the OS setting). Reading position lives only in sessionStorage, so it is per browser tab, gone when the tab closes, never saved on the server and never synced across devices. Nothing parses or resolves footnotes, endnotes or bibliographies. Ingest strips Wikisource footnotes, and reader_html leaves footnote syntax as literal text. A link inside a sanitized HTML body has no click handler and navigates the whole app away. The citations the product makes itself (TalkToBook, MetaReading) do a full-page navigate to /read/:id and overwrite the target book's saved position. The rabbit-hole primitives exist but are flat. windowsStore holds floating reader windows with no parent field, a hard cap of 8, and in-memory storage only. Deep research launched from a highlight navigates away to /inv/:id. The investigation tree (parent_investigation_id \u2192 recursive InvestigationSidebar) is the one tree of unbounded depth on main, and it is the natural model for the D6 tree. The D6 tab tree itself exists only in THREAD-CONTRACT.md \u00a72.2, which neither lane has signed. The to-read side is missing: there are no read flags, no read-later or bookmark entity, no continue-reading door, and nothing lets an agent flag a document for reading (the research\u2192read seam is typed but nothing in production emits it). /readings is a history of documents you spent time on (built from source.read dwell events), with no position or progress. The Read door (/library, \u2318E) is a shelf plus search, a curate prompt and acquisition forms. Two older specs overlap this area. The Unified Reader spec's rich Reader, clickable citations and openDocument resolver exist only on origin/snapshot/2026-09-21/detached/antiek-rebase-preflight, not on main. The in-flight design branches W1 and W3 add a prose layer (30em measure), an in-app Light/Dark/System theme and loading/error states for the reader, all unmerged.",
+  "capabilities": [
+    {
+      "id": "R1",
+      "name": "Reader typography, measure and prose layer (BookReader / ReadingColumn)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/reader/ReadingColumn.tsx:65-88",
+          "note": "renderBlocks is a light flattener: # to ### collapse to one h2, and every other block becomes a <p>. No lists, tables, math or figures."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/reader/ReadingColumn.tsx:110",
+          "note": "The column's only width class is flex-1 (font-serif text-base leading-[1.7]). The column does not set its own measure."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:404",
+          "note": "The parent's max-w-2xl caps the line at about 80 chars (the audit measured about 165 chars per line in the story)."
+        },
+        {
+          "cls": "READ",
+          "ref": "git show origin/design/w3-shell-states-prose-20260923:apps/reading/src/index.css:163-170",
+          "note": "Unmerged W3 adds .prose-antiek (Charter, 1.1875rem, line-height 1.6, max-width 30em) and switches ReadingColumn to it, with heading level n rendered as h(n+1)."
+        },
+        {
+          "cls": "RUN",
+          "ref": "git -C <ground> merge-base --is-ancestor b4e6c7653 origin/main -> notonmain",
+          "note": "The Unified Reader SPR-03 Reader.tsx (rich block renderer) is only on origin/snapshot/2026-09-21/detached/antiek-rebase-preflight."
+        }
+      ],
+      "gap": "Main has no rich document model and the column does not own its measure. It stays short of the 60\u201372ch Kindle bar until W3 merges. Rich blocks (lists, tables, math) need the stranded Reader.tsx or new work.",
+      "backend_dependency": "The structured document model (Unified Reader SPR-01/02) is not on main. substrate/contracts/reading_surface.py:1-40 is still PROVISIONAL and Any-typed.",
+      "ux_notes": "The TOC aside, TalkToBook bookmark, companion and ad rails all sit around the column. The column itself is calm."
+    },
+    {
+      "id": "R2",
+      "name": "Page-turn keys (arrows / space / PageDown)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -rl -E 'keydown|onKeyDown' modes/Reading components/reader (excluding tests)",
+          "note": "The only hit is TalkToBook.tsx:460, the chat input's Enter handler. The reader has no key handler at all."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:533-555",
+          "note": "Pages turn only with the \u2190 Previous / Next \u2192 LemonButtons."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:281-287",
+          "note": "The global keymap has panel cycling (mod+[ / mod+]) but no reader or page bindings."
+        }
+      ],
+      "gap": "\u2190/\u2192, space, PageUp/PageDown and Home/End need wiring to setPageIndex, with focus-scope rules so the keys never fire inside inputs or FloatMenu.",
+      "ux_notes": "The design model (\u00a72b) calls for \u2190/\u2192 and space."
+    },
+    {
+      "id": "R3",
+      "name": "Progress indicator",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:543",
+          "note": "Plain text \"Page N of M\" in the pager."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TocPanel.tsx:35",
+          "note": "The TOC highlights the current page, with indent by level."
+        }
+      ],
+      "gap": "There is no progress bar, no percentage, no chapter-remaining count, no time-left estimate, and no progress shown on library or home cards.",
+      "ux_notes": "When the pager is hidden (arXiv link-back) there is no progress at all."
+    },
+    {
+      "id": "R4",
+      "name": "Reading position persistence and cross-device sync",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/usePosition.ts:14,18,53",
+          "note": "The key antiek.read.pos.<docId> lives in window.sessionStorage only: per tab, cleared when the tab closes, not shared between tabs, never sent to the server."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rli 'reading_position|read_position' interfaces substrate -> 0",
+          "note": "No server-side reading position exists."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/MetaReading/index.tsx:95-105",
+          "note": "Opening a citation writes the cited page into the target book's saved position, which overwrites where the user actually was. Library/index.tsx:551-562 does the same."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/schemas/events.py:3908-3918",
+          "note": "Precedent: BlockPositionPayload keeps position as a typed event (latest one wins) through the single writer. That pattern would also work for reading position."
+        }
+      ],
+      "gap": "No durable or cross-device position (the D5 bar). Position is also clobbered when a book is opened from a citation.",
+      "backend_dependency": "Needs a new typed event (e.g. reading.position) or an owner-scoped position store through runtime/db_lock, plus a read endpoint for the Continue door."
+    },
+    {
+      "id": "R5",
+      "name": "Distraction-free / focus mode",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -rn -E 'fullscreen|requestFullscreen|zen|distraction' modes/Reading components/reader shell AppShell.tsx",
+          "note": "No hits in the reader."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:370-380,556-580",
+          "note": "The TOC aside, ReadingCompanion and TalkToBook always mount. The shell adds NavRail, scene and mascot on top."
+        }
+      ],
+      "gap": "No prefix+f mode that hides chrome down to the path header.",
+      "ux_notes": "The design audit found chrome takes 35\u201342% of an 844px-tall screen on Read routes, and the mascot (z=60) sits over content."
+    },
+    {
+      "id": "R6",
+      "name": "Day/night reading themes",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/tailwind.config.js:12",
+          "note": "darkMode: \"media\". The theme only follows the OS; there is no in-app toggle on main."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Settings/index.tsx:360",
+          "note": "Settings shows the OS theme read-only."
+        },
+        {
+          "cls": "READ",
+          "ref": "git show origin/design/w1-tokens-foundation-20260923:apps/reading/src/design/useTheme.ts",
+          "note": "Unmerged W1 adds data-theme selector dark mode, a System/Light/Dark AppearancePanel and useTheme."
+        }
+      ],
+      "gap": "No per-reader night toggle and no sepia or paper theme. Dark mode has known contrast defects (the reader error text measures 3.25:1).",
+      "ux_notes": "The audit found 0 of 675 lostpixel baselines are dark, so night-mode reading regressions are invisible to CI."
+    },
+    {
+      "id": "R7",
+      "name": "Text size / font controls",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -rl -E 'fontSize|textSize|zoom' modes/Reading components/reader -> 0",
+          "note": "No size, line-height or font controls."
+        }
+      ],
+      "gap": "No reader Aa control (size, line height, margins, font). Pagination does not depend on text size (usePosition.ts docblock), so adding size controls will not break saved positions."
+    },
+    {
+      "id": "R8",
+      "name": "Layout stability while loading",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:319-321",
+          "note": "While loading, the whole reader is swapped for a centered 'Opening the book\u2026' line. The TOC, column and pager then pop in, so the layout shifts on first paint."
+        },
+        {
+          "cls": "READ",
+          "ref": "git diff origin/main...origin/design/w3-shell-states-prose-20260923 -- apps/reading/src/modes/Reading/index.tsx",
+          "note": "Unmerged W3 replaces it with a LoadingState shape=\"page\" skeleton and a designed ErrorState with retry."
+        }
+      ],
+      "gap": "Even with W3 the skeleton is not shaped like the final TOC and column. Scroll reset on page turn was NOT MEASURED."
+    },
+    {
+      "id": "R9",
+      "name": "PDF reading (PdfViewer / Wrestle)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/PdfViewer.tsx:53,100",
+          "note": "Renders the FIRST page only (pdf.getPage(1)); multi-page is deferred."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/visual-critiques.md:1023,1058",
+          "note": "/wrestle/:documentId does not load by id on main, and DocumentsIndex rows land on 'Load a PDF to wrestle'. Not re-run."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DocumentsIndex/index.tsx:168",
+          "note": "Documents index rows navigate to /wrestle/:id rather than the reader."
+        },
+        {
+          "cls": "RUN",
+          "ref": "git log origin/main..origin/design/w7-crashes-20260924 -> 1b8d637ef fix(wrestle): a /wrestle/:documentId link names the document and where to read it",
+          "note": "The in-flight W7 fix points users to /read/:id."
+        }
+      ],
+      "gap": "PDFs are not a readable book surface: one page only, no page links and no annotation layer."
+    },
+    {
+      "id": "F1",
+      "name": "Footnote / endnote parsing and rendering",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "acquisition/books/wikisource.py:93-114",
+          "note": "<ref> footnotes and '== Footnotes ==' headers are stripped at ingest."
+        },
+        {
+          "cls": "READ",
+          "ref": "acquisition/snapshot/reader_html.py:431-441",
+          "note": "markdown_to_safe_html leaves 'reference links, footnotes' as literal escaped text."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/books/html_sanitizer.py:141,145,214",
+          "note": "The sanitizer keeps id and a[href] (including #fragments), so an EPUB-derived body could keep noteref anchors. But the reader never interprets them."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rli 'footnote|noteref|endnote' apps/reading/src (production files)",
+          "note": "The only hits are false positives (NoteRefined, NoteReferenceBlock). There is no footnote code."
+        }
+      ],
+      "gap": "Footnotes are either deleted at ingest or left as dead text. A #fn anchor on a different page window cannot resolve, because paginate() splits the body into per-page DOMs (paginate.ts:23-60).",
+      "backend_dependency": "Ingest has to keep footnotes as structured notes with a note id and anchor locator (Unified Reader SPR-01/02 document model), rather than stripping them."
+    },
+    {
+      "id": "F2",
+      "name": "Click behaviour for links inside the reader body",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/reader/ReadingColumn.tsx:114",
+          "note": "The sanitized HTML is injected via dangerouslySetInnerHTML with no click interception. An http(s) <a> navigates the SPA tab away and the reading context is lost."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ArxivFrame.tsx:133",
+          "note": "The arXiv link-back opens a new browser window."
+        }
+      ],
+      "gap": "D5 requires 'never a navigation away'. Nothing turns a link click into a child tab or window."
+    },
+    {
+      "id": "F3",
+      "name": "In-product citation to source opening",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/MetaReading/index.tsx:95-105",
+          "note": "A citation seeds the page, then does a full-page navigate('/read/:id')."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:108-117",
+          "note": "TalkToBook citations jump pages within the same book (jumpToPage)."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/index.tsx:432-442",
+          "note": "DRW evidence opens a 'reader' window next to its anchor (replaceOldestAtLimit)."
+        },
+        {
+          "cls": "RUN",
+          "ref": "git branch -r --contains 099cb6046 -> origin/snapshot/2026-09-21/detached/antiek-rebase-preflight",
+          "note": "The Unified Reader's Citation.tsx and lib/openDocument.ts resolver are not on main (ls apps/reading/src/lib/openDocument.ts: No such file)."
+        }
+      ],
+      "gap": "No single openDocument resolver. Citations either navigate away or open a flat window, and none records parentage."
+    },
+    {
+      "id": "F4",
+      "name": "Resolving a reference (DOI / arXiv id) to a library document, or ingesting it on demand",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/dedup.py:18",
+          "note": "Identity precedence DOI > ISBN-13 > arXiv > source-id means ingested works carry stable ids."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:3316-3345",
+          "note": "POST /sources/ingest detects arXiv URLs and does fetch_by_id + ingest_paper. It is only called from StartResearch.tsx:310."
+        },
+        {
+          "cls": "READ",
+          "ref": "acquisition/papers/semantic_scholar.py:1-40,171",
+          "note": "The S2 connector searches papers; it does not fetch a paper's reference list."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn -i '\\bdoi\\b' interfaces (excluding tests) -> 0",
+          "note": "No lookup-by-DOI endpoint."
+        }
+      ],
+      "gap": "There is no reader-facing 'resolve this reference' call (look up by DOI or arXiv id in the graph, else offer rights-aware ingest). There is also no reference-list extraction for papers.",
+      "backend_dependency": "Needs a GET /documents/resolve?doi=|arxiv= over dedup keys, and ingest-on-demand through the existing /sources/ingest with rights stamping."
+    },
+    {
+      "id": "N1",
+      "name": "Opening a document from a document (workspace windows)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:86-94",
+          "note": "The descriptor has id, kind, mode, rect, z, title and payload. There is no parent field."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:150,203-212",
+          "note": "MAX_WINDOWS = 8. At the cap, open() focuses or replaces the oldest window."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51",
+          "note": "No persist middleware: a reload means zero windows."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/windows/openWindow.ts:106-113",
+          "note": "The 'reader' kind hosts the same BookReader in a window."
+        }
+      ],
+      "gap": "The windows are flat and floating, capped at 8, and not persisted. They cannot represent an unbounded rabbit hole, and there is no lineage to return along."
+    },
+    {
+      "id": "N2",
+      "name": "Research spun from a passage, with lineage and return",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:243-252",
+          "note": "Highlight \u2192 Deep-research calls spinResearch and then navigate('/inv/:id'), leaving the book."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ResearchThis.tsx:48-66",
+          "note": "'Research this page' opens a receipt window, then navigates away as well."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2186-2197",
+          "note": "The origin is stored as a free string spawn_context 'read: passage <doc> p<page>' plus document_id on the envelope. There is no typed locator."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/chaseHandoffs.ts:4,83,98",
+          "note": "Reader chase handoffs (parent to child) are kept in localStorage and listed in ReadingCompanion.tsx:581-593 as links to /inv/:id."
+        }
+      ],
+      "gap": "The research branch does not open as a child tab next to the passage. The way back relies on sessionStorage position, and the branch record is not a typed origin {doc_id, locator}.",
+      "backend_dependency": "Lane B B1 (thread = investigation with typed origin anchor), per THREAD-CONTRACT.md \u00a72.2 'Tab \u2260 branch'."
+    },
+    {
+      "id": "N3",
+      "name": "Reusable tree structures (unbounded depth)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/InvestigationSidebar.tsx:62,116,145-151",
+          "note": "TreeRow recurses with depth+1 and no limit. The indent is depth*8px, uncapped."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useInvestigationTree.ts:14-44",
+          "note": "The tree is built from the server-side parent_investigation_id, with localStorage as a fallback."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/useTalkThread.ts:59-68",
+          "note": "TalkBranch.forked_from is a message id, so talk branches can nest to any depth. Stored in sessionStorage."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TocPanel.tsx:35",
+          "note": "TOC nests by level."
+        }
+      ],
+      "gap": "These trees cover investigations, chats and TOCs, not tabs. The D6 visual rules (indent capped at 6 levels plus a depth badge, hierarchical numbers, focus-subtree) are not implemented anywhere.",
+      "ux_notes": "The uncapped depth*8 indent in InvestigationSidebar becomes illegible at depth; D6 requires the cap and badge."
+    },
+    {
+      "id": "N4",
+      "name": "Branch-tab tree (D6) and any tab concept in the reader",
+      "status": "SPEC_ONLY",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-mothership/THREAD-CONTRACT.md:54-80",
+          "note": "Defines Tab with parent_tab_id (unbounded depth), hier_number, pruned_at, spawn_child and close(prune|lift_children)."
+        },
+        {
+          "cls": "READ",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-mothership/THREAD-CONTRACT.md:270-273",
+          "note": "Both lane signatures are _unsigned_. Persistence is open question Q-A1 (:93)."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rln 'role=\"tablist\"' apps/reading/src (production)",
+          "note": "Only Settings, Library filters, SpeakIndex and LibraryView have tablists; they are filter tabs. The reader has no document tabs."
+        }
+      ],
+      "gap": "The whole D6 surface is unbuilt: tab model, path header, sibling strip, tree panel, numbers as addresses, prune/lift with undo, and persistence.",
+      "backend_dependency": "Server-side per-account tab-tree state through the single writer (answers Q-A1), which lane B B1 owns."
+    },
+    {
+      "id": "N5",
+      "name": "Tree navigation keys (parent / child / sibling / tree panel)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:281-287,330-335",
+          "note": "Only the palette, project tree, sidecar, panel cycle and product \u2318-keys are bound. There is no prefix key and no parent/child/sibling bindings."
+        }
+      ],
+      "gap": "The prefix+u/o/n/p/t keys and their direct-chord twins (D2/D6) are missing, and browser-reserved combos (bindings.ts:438-462) limit the choices."
+    },
+    {
+      "id": "N6",
+      "name": "Breadcrumb path / back to passage",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md:87",
+          "note": "Topbar.tsx:33-64 is missing labels for library, read, readings and meta-readings, so crumbs render slugs and ids instead of titles. Not re-run."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ThreadBreadcrumb.tsx:1-40",
+          "note": "ThreadBreadcrumb is a straight line across workflows (Research \u203a Read \u203a Write), not a document-lineage path."
+        }
+      ],
+      "gap": "No root-to-current path of documents, and no 'return to the exact passage' beyond the sessionStorage page index."
+    },
+    {
+      "id": "T1",
+      "name": "Saved reads (/readings PersonalSpace)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/App.tsx:205",
+          "note": "The /readings route mounts PersonalSpace."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2875",
+          "note": "GET /meta-readings."
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/books/personal_space.py:162-185",
+          "note": "Saved reads are the latest source.read event per document (a dwell-threshold history). They carry no position or progress."
+        }
+      ],
+      "gap": "This list is 'what I have read', not a to-read queue or a continue shelf. It could feed Continue once a position exists.",
+      "ux_notes": "The audit found one concept going by four names (meta-reading, Meta-docs, reading asset, Meta-read), and a raw 'Failed to fetch' with no retry."
+    },
+    {
+      "id": "T2",
+      "name": "User read flags / read later / bookmarks",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -rn -i 'read_later|read later|to_read|reading_list|bookmark' (frontend+backend, production)",
+          "note": "The only hits are the TalkToBook 'floating bookmark' (a chat), the curated 'reading list' (a ranking), and the DRW product-mode name 'Read later'."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/navigation/pinnedStore.ts:6-8",
+          "note": "Pins are in-memory only (S9 persistence is still future) and cover project-tree items, not passages."
+        }
+      ],
+      "gap": "No flag entity on documents or passages. THREAD-CONTRACT \u00a72.8 proposes a single flag entity with intent read|diligence and actor user|agent, unsigned.",
+      "backend_dependency": "Lane B B5 flag entity plus the attention inbox (D4)."
+    },
+    {
+      "id": "T3",
+      "name": "Agent-suggested reading / an agent flagging something to read",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "substrate/schemas/events.py:3739-3746",
+          "note": "SeamResearchToReadPayload (research \u2192 read, insight_node) is typed."
+        },
+        {
+          "cls": "RUN",
+          "ref": "grep -rn 'ResearchToReadSeam|SeamResearchToReadPayload' (excluding tests)",
+          "note": "The only hits are the contract, the schema and codegen (substrate/seams/contracts.py:130, tools/codegen/emit_types.py:273). No production code emits it."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Library/index.tsx:179-191",
+          "note": "The closest real behaviour: the Library feed is re-ranked by the themes of in-progress investigations (documentsByTheme). That is ordering, not a flag."
+        }
+      ],
+      "gap": "No agent can put an item in a to-read queue with who, why and which project (the D5 'To read' door).",
+      "backend_dependency": "The flag entity with actor.kind=agent, plus a research-role emitter."
+    },
+    {
+      "id": "T4",
+      "name": "Prompt-to-curate shelf",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Library/index.tsx:210-220",
+          "note": "onCurate calls curateBooks(prompt) and re-ranks the shelf."
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:1285-1296",
+          "note": "curate_reading_list works over servable books only."
+        }
+      ],
+      "gap": "Curation lasts only for the session. It is not saved as a queue and not tied to a project.",
+      "ux_notes": "CuratePrompt.tsx:41 flex-1 lands on the inner input (audit)."
+    },
+    {
+      "id": "H1",
+      "name": "Reading home: three doors (continue / to read / new)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/hotkeys/bindings.ts:331",
+          "note": "\u2318E Read goes to /library, the Read door."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Library/index.tsx:43-58",
+          "note": "The Library shows a Shelf/Preview/All catalogue, CorpusSearch, curate and acquisition forms. It has no Continue or To-read."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/ProjectTree.tsx:118-140,163-170",
+          "note": "The Read tree's 'Recent' is listBooks('all'), not recently read."
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/visual-critiques.md:1029,1064",
+          "note": "The Read 'Library' tab points at /wrestle, and Documents is both an action and a tab. Not re-run."
+        }
+      ],
+      "gap": "Only the 'New' door exists (library, search, import). Continue and To-read are missing, and a standalone book has no reading workstation (Q-A5)."
+    },
+    {
+      "id": "H2",
+      "name": "Continue reading",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "RUN",
+          "ref": "grep -n -i -E 'continue|recent|in progress' apps/reading/src/modes/Library/index.tsx",
+          "note": "The only hits are the in_progress investigations used for theme ranking (:183). There is no continue-reading surface."
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/usePosition.ts:14-24",
+          "note": "There is no durable position to build Continue from."
+        }
+      ],
+      "gap": "Needs a server-side position per (owner, document), joined with source.read history.",
+      "backend_dependency": "Same as R4."
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md (D5, D6) + DESIGN-MODEL.md \u00a72a/\u00a72b + THREAD-CONTRACT.md",
+      "planned": "A Reading mothership entered by continue / to-read / new, with Kindle-grade comfort (60\u201372ch, page keys, synced position, prefix+f focus, day/night, no layout shift). Footnotes, references and citations open child tabs. Infinite branch-tab tree with path header, sibling strip, tree panel (6-level indent cap plus depth badge), hierarchical numbers, prune/lift with undo, and persistence.",
+      "shipped_status": "SPEC_ONLY. THREAD-CONTRACT is unsigned by both lanes (THREAD-CONTRACT.md:270-273). Q-A1 (tab persistence) and Q-A5 (standalone book home) are open. Nothing from it is on origin/main 15e78e276."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader (README, walk-evidence.md)",
+      "planned": "One Reader: a structured document model with citation spans (SPR-01/02), a rich <Reader> with react-markdown/KaTeX over Charter, paginated, day/night and ToC (SPR-03), an openDocument resolver routing every door (SPR-05), clickable citations opening the ingested source in the one Reader (SPR-07), and unified search (SPR-08).",
+      "shipped_status": "NOT ON MAIN (re-verified). walk-evidence.md claims Reader.tsx:129, blocks/Citation.tsx and lib/openDocument.ts:205 on branch caffen/RDR-SPR-09. Those commits (b4e6c7653, 099cb6046, 955a6f953) are reachable only from origin/snapshot/2026-09-21/detached/antiek-rebase-preflight, and ls apps/reading/src/lib/openDocument.ts fails on main. Main still has the flattener (ReadingColumn.tsx:65) and the PROVISIONAL reading_surface.py. This is the largest salvage candidate for footnotes and citations."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reading-convergence (README)",
+      "planned": "SPR-01 moves reader highlight\u2192spawn onto windowsStore (floating+full); SPR-02 one twin; SPR-03 collective and fullscreen from the book highlight; SPR-04 one source-merge vertical.",
+      "shipped_status": "PARTIAL (re-verified in part). windowsStore has floating/full and a 'reader' kind (openWindow.ts:106), which DRW uses (DeepResearchWorkspace/index.tsx:432). The book highlight still navigates away to /inv/:id (Reading/index.tsx:250), and a no-mutation chase merge draft exists in ReadingCompanion.tsx:282-352."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection (README, sprint-06)",
+      "planned": "A derived, script-free, deterministic HTML projection for exporting synthesis, notebooks and Write deliverables, plus .antiek containers. It is an export and sharing layer, not a reader.",
+      "shipped_status": "services/html_projection exists on main (ls services). Export parity per sprint was not re-verified. Relevance: D3 companion docs derive from it (lane B). It does not provide in-app reading comfort or footnotes."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments (README)",
+      "planned": "Anchored comments with a reader docket UI (SPR-03), comment dispatch, and editable HTML deliverables on the existing substrate/feedback + agent_work.",
+      "shipped_status": "The README says status=spec-only, implementation=blocked-until-acceptance. Not re-verified in code. Relevant as the anchor/locator source for passage flags."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-malleable-reading (README)",
+      "planned": "A facet engine (decorations, anchored widgets, layout map, multi-render minimap) plus SiteSee citation-history tint and voice marginalia.",
+      "shipped_status": "PARTIAL (re-verified in part). apps/reading/src/reading-physics/ exists with augmentations. resolveCitationHistory.ts and FloatMenu consume it, but BookReader (modes/Reading/index.tsx) imports no reading-physics module, so the book reader does not compose facets."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-book-import-real-port (README)",
+      "planned": "SPR-01 sanitize-on-write for book HTML; SPR-02 epub/pdf\u2192HTML conversion; later a purchase and port pipeline and a serve gate.",
+      "shipped_status": "SPR-01 appears shipped: substrate/books/html_sanitizer.py allowlist, with ReadingColumn rendering html only under content_format (ReadingColumn.tsx:114). SPR-02 conversion was not verified; the Library has html conversion/publish job UI (Library/index.tsx:6-30). Footnotes are not carried as structure."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-personal-citation-entailment-locator-authority-2026-08-11 (README)",
+      "planned": "Durable citations need exact source version, region, context, typed claim relation and replayable rendering locators.",
+      "shipped_status": "The README states it authorizes no implementation. Treated as SPEC_ONLY and not re-verified. It bears on the D6 locator format (Q-A4)."
+    }
+  ],
+  "craft_gaps": [
+    "Reader measure is not owned by the column. ReadingColumn.tsx:110 is flex-1 while its docblock says 'width-capped'. The story renders about 165\u2013180 chars per line; in the product about 80 chars, only because of the parent max-w-2xl at Reading/index.tsx:404 (audit F18). W3's .prose-antiek at max-width 30em fixes this but is unmerged.",
+    "Heading hierarchy collapses: #/##/### all render as the same h2 (ReadingColumn.tsx:65-88). W3 maps level n to h(n+1). Unmerged.",
+    "Loading replaces the whole reader with one italic line, and errors show raw err.message in static text-emperor at 3.25:1 at night (Reading/index.tsx:319-326; audit top-10 #8). W3 LoadingState/ErrorState with retry is unmerged.",
+    "Night mode: darkMode 'media' with 3,173 dark: patches. The body is frozen on Tailwind stone-50 (index.html:14), so a light band shows under dark reading pages, and 0 of 675 visual baselines are dark (audit F5/F6). W1 selector dark mode and AppearancePanel are unmerged.",
+    "The page overflows horizontally on every route (77px at 1280, 23px at 390) because BrainPresence escapes AppShell (audit F5). A reading surface that scrolls sideways fails the book bar.",
+    "The mascot (z=60) and the ghost brain sit over reading content and inputs at 390 (a rubric veto). The Library 'Make a reading asset\u2026' row and the meta-reading CTA are covered.",
+    "Read orientation: the 'Library' tab points to /wrestle (SceneChrome.tsx:93), Documents is both an action and a tab, and crumbs render slugs and ids rather than book titles (Topbar.tsx:33-64). Every browser tab is titled 'Antiek \u2014 reading' (index.html:12).",
+    "Sun-yellow is overspent on Read routes: 5 horizontal plus 2 double vertical frame rules, and 'Preview only' and PROPOSED badges in yellow (api/books.ts:1086, MetaReading/index.tsx:319, Library/index.tsx:690), which teaches that the brand colour means restriction.",
+    "/library can print '0 books readable in full' when the fetch failed (Library/index.tsx:566-571, rubric veto 'invented number'). The W7 branch commit 7c4b0efef fixes it, unmerged.",
+    "The Library landing stacks two search forms with two primary idioms plus an acquisition form (TITLE/AUTHOR/MAX USD) on the reading door (audit, Library/index.tsx:674, :718-731). That is not a calm 'what to read' home.",
+    "Focus rings are missing on reader text inputs: TalkToBook.tsx:459, FloatMenu.tsx:365/:499 and CorpusSearch.tsx:146 remove the outline with no replacement.",
+    "PdfViewer shows page 1 only, and its toolbar wraps at 390 (PdfViewer.tsx:225-249). /wrestle/:id deep links render 'Load a PDF' (W7 1b8d637ef fix in flight).",
+    "The phone layout is a permanent yellow 'designed for \u22651024px' banner (PanelLayout.tsx:91-104, shown twice) instead of a reading layout. Chrome takes 35\u201342% of the height (audit top-10 #10).",
+    "Overall craft score is 24/48 (50%) against a 42/48 floor (SCORE-BASELINE-full.md). Evidence traversal and orientation each score 2."
+  ],
+  "risks": [
+    "The Unified Reader's rich Reader, Citation and openDocument work (the natural base for footnote and reference child tabs) lives only on a 09-21 snapshot branch. Rebuilding it from scratch would duplicate lineage the operator already paid for, and salvaging it means rebasing across the W1/W3 prose and token rewrite.",
+    "Pagination splits the body into separate per-page DOMs on '## Page N' markers (paginate.ts:23-60). Any footnote or anchor resolution by in-DOM #fragment will break across pages. Footnotes need a document-level note index, not DOM anchors.",
+    "Links in the sanitized HTML body are live and navigate the SPA away (ReadingColumn.tsx:114, no handler). Intercepting them for child tabs must keep the sanitizer as the trust floor and must not add client-side HTML rewriting that bypasses it.",
+    "Citation openers write the cited page into the target book's position (MetaReading/index.tsx:98, Library/index.tsx:555). Once position is durable and cross-device, the same pattern would silently lose the user's real place. Position for a child tab has to be separate from the book's continue position.",
+    "windowsStore is deliberately flat, capped at 8 and in-memory (windowsStore.ts:51,150). Extending it into the infinite D6 tree would fight documented invariants (FPS budget, focus-oldest at the cap). The tab tree needs its own model, with windows as one way to render a tab.",
+    "The tab tree and flags need server-side persistence (a rabbit hole must survive a device change). Every write must go through the DuckDB single-writer funnel (runtime/db_lock), and tab churn can be high-frequency. Batching and coalescing need design so reading does not contend with research writes.",
+    "Rights: child tabs for references must honour the serve gate (a gated book shows only a snippet, arXiv T2/T3 are link-back only). Ingest-on-demand from a reference must stamp rights at fetch time, like /research/tools/ingest does with PERSONAL_READING_CONTENT_CLASS.",
+    "The ad-impression and attribution trackers key on pageIndex and data-akb-asset-id (Reading/index.tsx:289-360). Many open reader tabs could attribute dwell seconds wrongly unless only the focused tab counts.",
+    "The design branches W1, W3, W5 and W7 all touch Reading/index.tsx, ReadingColumn.tsx, Library/index.tsx and PanelLayout. Mothership reader work collides with them unless it is sequenced after they merge through the Nudge train.",
+    "Lane A must not edit substrate/event_log/events.py or substrate/provenance/pointers.py (DECISIONS.md:23). Server position, flags and tab state must come through lane B contract fields."
+  ],
+  "open_questions": [
+    "Q-A1 (tab persistence): server-side per account or per browser? D6 says the rabbit hole must survive a device change, which implies server-side. Who owns the event type, and at what write frequency?",
+    "Q-A5: where does a standalone book live (use case i)? Is it an implicit per-book reading workstation, and how is it linked into a project later?",
+    "Q-A4: the locator format for footnote, reference and passage anchors. Reuse passage_research's locator, the page_index locator (paginate.ts), or the Unified Reader document-model block and span ids? The spin-research origin is only a free-string spawn_context today (books.py:2186).",
+    "Salvage or rebuild: should the Reader.tsx, Citation.tsx and openDocument.ts lineage on origin/snapshot/2026-09-21/detached/antiek-rebase-preflight be rebased onto main after W1/W3, or is the W3 prose layer over ReadingColumn the base?",
+    "Footnotes at ingest: which sources actually carry structured notes today (Standard Ebooks EPUB endnotes, Wikisource <ref>, arXiv LaTeX \\footnote and bibliographies)? This is NOT MEASURED against the prod corpus. Ingest currently strips or flattens them.",
+    "Should a reference to a work not in the graph open a child tab showing a metadata or rights card with an 'ingest' action (consent and spend), or ingest automatically? D4's per-flag consent suggests the former.",
+    "How should a child tab of a gated or link-back work render (snippet only, arXiv frame) without the tree implying full-text access?",
+    "Should 'Continue' positions be per (owner, document) or per (owner, document, workstation), given that the same book can be read standalone and inside a project?",
+    "Page model versus scroll: D5 asks for page keys and progress, while HTML bodies render per page window. Keep the '## Page N' windows for all formats, or reflow pages client-side by viewport? The latter changes the locator contract that the ads, voice notes and spin-research depend on."
+  ]
+}

@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-08 · Threads UX — The Antiek motherships</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 80px 28px;
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px 28px 24px 28px;
+  margin-bottom: 28px;
+}
+
+header.hero .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+header.hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 24px 20px 24px;
+  margin: 0 0 22px 0;
+}
+
+section.block > h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 18px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+section.block h3 {
+  margin: 22px 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 12px 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 12px 0;
+  padding-left: 22px;
+}
+
+section.block li { margin-bottom: 4px; }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+}
+
+table.spec th, table.spec td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 14px 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin: 10px 0 14px 0;
+  font-size: 14px;
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.rigor-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: 14px;
+}
+
+.milestone .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: 4px;
+}
+
+.milestone .desc {
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: 4px 0 0 0; padding-left: 18px; }
+.milestone .criteria li { margin-bottom: 3px; }
+
+.milestone .files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: var(--border-thin);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: 14px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: 24px 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: 20px 0 6px 0;
+  padding: 6px 10px;
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-08</p>
+    <h1>Threads UX</h1>
+    <p class="tagline">Every subagent run is a thread you can find, reopen, ask again with its context, and merge with others while seeing where each claim came from.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 7 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The operator wants to "ask that specific thread who holds that context to dig deeper", and contexts "merged manually or automatically". Grounding (<code>ground/lane-a-threads-merge-fork-companion.json</code>):</p><ul><li>Per-document thread data exists but nothing serves it: <code>researches_for_passage</code>, chases parented to <code>read-&lt;doc&gt;</code>, and <code>read.book_answered</code> (C01, BUILT_UNREACHABLE).</li><li>There is no per-workstation list (C02).</li><li>Ask-this-thread is ABSENT (C03). DRW's Deepen follow-up is stored and never consumed.</li><li>Manual merge is PARTIAL. ArtifactOutlineShelf's draft merge produces an output that can't be continued (C05).</li><li>Automatic merge is ABSENT (C06).</li><li>Process and outcome views exist for research threads, but not for Dialogue or TalkToBook (C07, C08).</li></ul><p><strong>Contract:</strong> row state derives from the event log's terminal reader. <code>merged_into</code> is investigation-level lineage. <strong>Base:</strong> MS-07. <strong>Branch:</strong> <code>design/mothership-08-threads</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>Row states are <code>queued, running, needs_you, done, failed, stopped, idle</code> (reading threads) and <code>merged_into</code>; <code>done</code> carries an unseen marker from <code>thread_seen</code>. Opening a thread sends <code>POST /investigations/{id}/seen {through_event_id}</code>, only ever forward (§1.5). There is no <code>capped</code> row state (§1.1.4).</li><li>Lists come from <code>GET /investigations</code> with <code>project_id</code>, <code>document_id</code>, <code>kind</code>, <code>state</code> and <code>parent_thread_id</code> filters (§1.2). <code>claim_count</code>, <code>source_count</code> and <code>spend_cents</code> are nullable and render "—" with a reason. The process view is a projection of <code>GET /trajectory/{id}</code>.</li><li>Merge preview is <code>POST /threads/merge/preview</code> → <code>{preview_digest, items[], conflicts[]}</code>. Commit is <code>POST /threads/merge {thread_ids[], preview_digest, question, idempotency_key}</code>: <code>409 preview_stale</code> (the digest covers gated text, pointers and rights) re-previews and keeps the question; <code>503</code> means nothing has run, and Retry with the same key resumes from <code>thread.merge_started</code>. Show <code>merged</code> only when the start event is confirmed; member rows read <code>merge_pending</code> / <code>merge_failed</code> until then (§1.10, Part 2 §2.4–2.5). <code>409 idempotency_conflict</code> is a lane-A bug. Every item is a <code>GatedText</code>: render Part 2 §2.10 by <code>gate</code>, never by empty text.</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 3. It needs MS-07 (threads come from islands) and lane B's thread lists, continuation and merge entity.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>Threads are listed where they were made (per document, per workstation), can be asked again with their held context, and can be merged with the provenance and conflicts made visible.</strong></p>
+    <p>The document's rail and its margin marks list its threads. The workstation's Threads tab and the sidebar list all of them with live state. Any row opens an "ask this thread" composer. Selecting two or more rows offers Merge: a preview tags every claim and source with its origin thread, conflicts are shown and never averaged, and accepting produces a merged thread with lineage. An automatic merge from lane B arrives as an inbox suggestion and is never applied silently.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Thread list per document (rail + margin marks)</div>
+        <p class="desc">States: loading, empty (truthful), error, ready. Each row shows state, anchor, model, spend, last activity and source/claim counts, all from contract §2.4.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories for every state; state derived only from the API (no client-side state column).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/threads/DocThreads.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Thread list per workstation (Threads tab + sidebar)</div>
+        <p class="desc">The same rows, filterable by state and mothership, and virtualised for hundreds of threads.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A fixture of 500 threads scrolls at 60 fps (measured, or NOT MEASURED with the reason).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/threads/WorkstationThreads.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Ask this thread</div>
+        <p class="desc">A composer on any row continues that investigation with its held context, through lane B's continuation. It uses the same stream states as the island.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: the request carries <code>thread_id</code>, and the new turns append to that thread (not a new thread).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/threads/AskThread.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Process view on every thread kind</div>
+        <p class="desc">Steps, sources consulted (with servability) and a timeline, for research, Dialogue and TalkToBook threads alike.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories for each thread kind.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/threads/ProcessView.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Merge: select → preview → conflicts → accept</div>
+        <p class="desc">Select two or more threads and choose Merge. The preview lists claims and sources with origin chips. Conflicts are shown side by side with a reason. Accepting produces a merged thread with <code>merged_from[]</code>, and the sources show <code>merged_into</code>.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: conflicting claims are never collapsed into one.</li><li>The lineage is visible on the sources and on the result (story).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/threads/MergeFlow.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Automatic merge suggestions via the inbox</div>
+        <p class="desc">Lane B's merge suggestions appear as inbox items that open the same preview. No suggestion is applied without accept.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: a suggestion never mutates a thread until accepted.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/shell/Inbox.tsx</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Bundle, stories, critic</div>
+        <p class="desc">All lazy.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>If lane B's merge entity isn't ready, the merge flow can preview but not accept. Ship it with Accept disabled <em>with a reason</em>: W2's <code>disabledReason</code> prop on LemonButton if it has landed, otherwise add the prop here. The flow then stops at contract §2.5's <code>previewing</code>/<code>conflicts_shown</code>, with no <code>merging</code>, and the stopping point is checked by a test. Never fake a merged thread client-side.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman merging by concatenating two threads' outcomes into a note: cheap, and it works today. It fails the operator's ask. A concatenation can't be asked again, carries no lineage, and hides conflicts. Cheap merge is what ArtifactOutlineShelf already does (C05), and it was found insufficient. Who pays for the real merge: lane B builds the B2 merge engine and conflict detection (<code>{claim_a, claim_b, reason}</code>). Until it ships, the operator gets a merge that previews but cannot accept.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Conflict display is the correctness core. Build a fixture where two threads assert contradictory claims about the same source, and assert that the preview shows both, with origin chips and the conflict reason. Assert it never picks one. Also assert: a merge of three or more threads previews correctly; a merge <em>suggestion</em> leaves both sources' <code>merged_into</code> unset until accept; and an AskThread request carries <code>thread_id</code>, with its turns appended to that same investigation.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Read <code>MyResearch.tsx</code> (grouping and attention), ArtifactOutlineShelf's draft merge (<code>:128-151</code>), DRW steer (<code>ResearchPanel.tsx:71-92</code>) and the #3078 attention registry before building rows or merge. Before DocThreads, also read ReadingCompanion.tsx's saved-chases section and the backend <code>researches_for_passage</code> (C01). Before ProcessView, read the TalkToBook and Dialogue session stores (C07/C08).</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>The rule that row state comes from the terminal reader, never a client field, goes in a comment on the shared row component (<code>apps/reading/src/threads/ThreadRow.tsx</code>, used by DocThreads and WorkstationThreads), citing the contract §2.4 agreement. Otherwise a future "optimistic state" shortcut will reintroduce the second state column.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-07 — <span class="muted">islands create threads</span></li><li>MS-03 — <span class="muted">sidebar and inbox</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: GET threads by document and by workstation, continuation, merge entity and suggestions.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Companion rendering and merge-into-document (MS-09).</li><li>Flags (MS-10).</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Conflicts</strong></td><td><code>vitest contradictory-claims fixture</code></td><td>both shown, with origin and reason</td></tr><tr><td><strong>Continuation</strong></td><td><code>vitest: ask-this-thread appends to the same thread_id</code></td><td>pass</td></tr><tr><td><strong>States</strong></td><td><code>stories for lists, composer, process and merge</code></td><td>every state</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-08 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Thread list per document (rail + margin marks) — &lt;result&gt;
+- [ ] M2: Thread list per workstation (Threads tab + sidebar) — &lt;result&gt;
+- [ ] M3: Ask this thread — &lt;result&gt;
+- [ ] M4: Process view on every thread kind — &lt;result&gt;
+- [ ] M5: Merge: select → preview → conflicts → accept — &lt;result&gt;
+- [ ] M6: Automatic merge suggestions via the inbox — &lt;result&gt;
+- [ ] M7: Bundle, stories, critic — &lt;result&gt;
+### Verification gate results
+- Conflicts: pass | fail | skipped (why)
+- Continuation: pass | fail | skipped (why)
+- States: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- Threads are listable, continuable and mergeable, so MS-09 can render and merge their findings into documents.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="fan-out-and-synthesize"
+           data-harness-fanout-unit="Milestones 1–2 (lists), 3–4 (ask + process) and 5–6 (merge) are file-disjoint under apps/reading/src/threads/."
+           data-harness-verifier-lenses="state only from terminal reader | merge never hides conflict/lineage"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>fan-out-and-synthesize</code></p><p class="muted">Three disjoint component groups against one contract. Parallel builders then a synthesis pass beat serial.</p></div>
+      <div><h3>Fan-out unit</h3><p>Milestones 1–2 (lists), 3–4 (ask + process) and 5–6 (merge) are file-disjoint under apps/reading/src/threads/.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Can any UI path show a thread state that the terminal reader would not report?</li><li>Can a merge hide a conflict or lose a source's lineage?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-08 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

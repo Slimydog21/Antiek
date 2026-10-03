@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from .fetchguard import MAX_BODY_BYTES, GuardedPage, fetch_guarded
+from .fetchguard import MAX_BODY_BYTES
 from .platforms import Platform
 
 Provenance = str  # "oembed" | "og" | "dom" | "platform" | "none"
@@ -210,28 +210,6 @@ def og_from_body(body: bytes, *, canonical_url: str | None = None) -> OGPacket |
         canonical_url=canonical_url or (canon_match.group(1) if canon_match else None),
         raw=meta,
     )
-
-
-def fetch_opengraph(
-    url: str,
-    *,
-    client: httpx.Client | None = None,
-    timeout_s: float = 10.0,
-) -> OGPacket | None:
-    """Rung 2. Guarded fetch (SSRF-checked, redirects re-checked) of the
-    page, then OpenGraph/Twitter-Card meta extraction. Returns None on
-    transport failure, non-HTML content, or an empty meta set — the
-    ladder falls through to the DOM rung."""
-    try:
-        page: GuardedPage = fetch_guarded(
-            url, client=client, timeout_s=timeout_s,
-        )
-    except Exception:
-        return None
-    ctype = page.headers.get("content-type", "")
-    if "html" not in ctype.lower() and page.body.lstrip()[:1] != b"<":
-        return None
-    return og_from_body(page.body, canonical_url=str(page.final_url))
 
 
 # ---------------------------------------------------------------------------

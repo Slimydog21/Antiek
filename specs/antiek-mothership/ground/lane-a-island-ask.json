@@ -1,0 +1,587 @@
+{
+  "area": "island-ask",
+  "summary": "On main 15e78e276 the pieces exist but they do not form an island. One shared FloatMenu (Note, Dialogue, Search, Deep-research) is mounted in four hosts: the Reading book reader, the Research /inv synthesis, the DRW block detail and the Write outline editor. Its lifetime is tied to the live DOM selection: FloatMenu returns null the moment useFloatMenuSelection reports no selection. I bundled the real hook into a harness with a FloatMenu-shaped host and ran it in Chromium (RUN, /tmp/mothership-ground/island-ask/harness/run.mjs). Clicking Dialogue mounts its autoFocus textarea, the focus collapses the document selection, and the panel unmounts: \"menu = unmounted | #ta present = false\". The Note and Edit panels use the same textarea pattern, so they are very likely unusable in Chrome. No e2e test covers this, and the jsdom unit tests cannot see it.\n\nDeep-research from a highlight launches a real child research everywhere, but only /inv keeps it in place. There it opens a floating, draggable ChaseThread panel with a live ThinkingStream, placed at a fixed cascade spot (120,120), not beside the selection. Reading's highlight path calls POST /books/{id}/spin-research and navigates away to /inv/:id. If that call fails, only console.error fires. A withheld selection is a silent no-op. The launch is also not recorded in the ReadingCompanion \"Saved chases\" list, which only ChaseThread fills, from localStorage. The DRW block detail navigates away with no try/catch. In Write, the \"Spin a sub-agent\" action spawns a child research and then throws away its id (Outline.tsx:605).\n\nDialogue is a one-shot /thought-partner call. It does not stream, is not persisted and is not anchored. Its prompt quotes the selection, and system_context adds the workspace and reading focus. Anchoring primitives that would support a durable island exist but nothing calls them: the chase-launcher and marginalia anchored-widget augmentations are used only in tests, RegionStore has no API, researches_for_passage and passage_for_research have no callers, and the Hybrid ask-first stub is off because no host passes the flag.\n\nAsking without a highlight works through the AI sidecar (\u2318/ from anywhere, or Ask in the Research scene bar), a multi-turn thought partner kept in sessionStorage. Context is attached through ContextPicker, which takes typed raw ids of kind @doc or @insight only and has no styling. Brainstorm adds drag-in insight slotting. There is no way to attach notes, prior threads or investigations, and no way to ask a completed thread a follow-up. The DRW redirect and deepen controls act only on running cascade researches.\n\nThe model dropdown works only in TalkToBook, which is book-level and not tied to a selection. The sidecar and Brainstorm dropdowns send model_choice, but ThoughtPartnerRequest drops it (RUN: its fields are history, investigation_id, prompt and system_context). PR #3278 would wire this, but it has been open since 2026-09-20 with vitest failing. Island launches cannot carry a model choice at all: SpinResearchRequest has no model field (RUN), and POST /investigations refuses a model choice on any child launch with owner_model_root_required (app.py:2742-2743). TalkToBook answers are stored server-side as read.book_answered events, but the UI never reads them back; it rebuilds the conversation from sessionStorage.\n\nThe artifact feedback docket (ArtifactFeedbackReview) is the closest thing to a persisted, anchored thread with a research agent. It is behind VITE_ANTIEK_FEEDBACK_ENABLED, which nothing sets, and it has no list endpoint to re-find threads. The design branches in flight (w1 and w3) only restyle FloatMenu and Reading; none of them build island behaviour.",
+  "capabilities": [
+    {
+      "id": "IA-01",
+      "name": "Selection float menu (shared FloatMenu: Note / Dialogue / Search / Deep-research)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:161",
+          "note": "`if (!selection) return null;` means the whole menu and any open panel unmounts whenever the hook reports no selection"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/useFloatMenuSelection.ts:103-151",
+          "note": "only a document selectionchange listener; empty, short, out-of-scope or collapsed selection gives null; no scroll or resize listener"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:366,500",
+          "note": "the Note and Dialogue textareas use autoFocus; FloatMenu.tsx:186-188 skips preventDefault on mousedown only for TEXTAREA"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/island-ask/harness/run.mjs (real useFloatMenuSelection.ts copied byte-identically except a stubbed mascot import, bundled with esbuild, run in Chromium 1243)",
+          "note": "output: '1 after highlight: menu = menu | #dlg present = true' then '2 after clicking Dialogue (textarea autoFocus): menu = unmounted | #ta present = false'. The host is a minimal FloatMenu-shaped harness, not the full component"
+        },
+        {
+          "cls": "RUN",
+          "ref": "/tmp/mothership-ground/island-ask/probe2.mjs",
+          "note": "a mouse click into a textarea inside the menu also drops the selection (open=false, activeElement=ta), so the Edit panel (no autoFocus) dies on first click too"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:395-399; modes/ResearchWorkstation/HighlightToolbar.tsx:39-54; modes/DeepResearchWorkspace/BlockDetail.tsx:52,90-97; modes/Write/Outline.tsx:274,659-670",
+          "note": "four live hosts: Reading book reader, /inv synthesis, DRW block detail, Write outline editor"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/e2e/ (grep floatmenu|getSelection|Dialogue gives no match)",
+          "note": "no real-browser test of the menu panels; the jsdom FloatMenu.test.tsx:223 only asserts the menu dismisses when the selection empties"
+        },
+        {
+          "cls": "NOT MEASURED",
+          "ref": "Firefox / Safari behaviour; the full FloatMenu component in the deployed app",
+          "note": "only Chromium measured, and only with the real hook"
+        }
+      ],
+      "gap": "The island's lifetime has to be separated from the transient DOM selection. Needed: an IslandStore (zustand: {islandId, anchor, docId, projectId, threadId, state}) that snapshots the selection when the island opens (text + Region + rect) and then renders independently of selectionchange. Only the four-button menu bar should stay bound to the live selection. Without this, Note, Dialogue and Edit are expected to be unusable in Chromium. Also needed: repositioning on scroll and resize (today the fixed rect goes stale), and a Playwright e2e test that highlights text, opens Dialogue, types and gets a reply in a real browser.",
+      "backend_dependency": "none for the lifetime fix; a durable anchor needs the Region write path (see IA-04)",
+      "ux_notes": "The menu is a dark ink pill with shadow-lg (blurred) and no enter or exit motion. Panel back control is a bare '\u2190' glyph. Textareas use outline-none with no focus-visible replacement (FloatMenu.tsx:365,499, also flagged in the design baseline)."
+    },
+    {
+      "id": "IA-02",
+      "name": "Deep-research from a selection (child research launch)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:243-259",
+          "note": "Reading: spinResearch(documentId, pageIndex, safeText), then navigate(`/inv/${id}`); on error only console.error('spin-research from highlight failed'); a withheld (null) selection returns silently at :245"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2111-2266",
+          "note": "POST /books/{id}/spin-research builds a gate-safe seed, emits investigation.start_requested with spawn_context 'read: passage {doc} p{page}' (:2187), broadcasts to Loop One, and links passage to research at page granularity (:2227)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:151-158,226-230",
+          "note": "/inv: Deep-research opens the ChaseThread workspace panel {mode:'floating', title:'Follow this'}; the child launches on an explicit click via startInvestigation with parent_investigation_id"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.tsx:55-68",
+          "note": "DRW: startInvestigation, then navigate(`/inv/${id}`), with no try/catch (a failure is an unhandled rejection)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:599-607; modes/Write/SubAgentProposal.tsx:77",
+          "note": "Write: runs a search proposal first; Accept spawns a child, then the host calls setProposal(null) and drops the child id (orphaned, no progress, no link)"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-living-roadmap/sprint-04-highlight-float-menu.html M2",
+          "note": "planned: Deep-research spawns a child linked to the source highlight via the chase path. Shipped for /inv and DRW; Reading uses spin-research linked by page, not by highlight. Re-verified by READ"
+        }
+      ],
+      "gap": "Launch works, but the result is not an island. Reading and DRW take the user away. Write orphans the child. Reading records the link only at page granularity (passage_id = doc + page_index) under the synthetic parent 'read-spin', not the selected span. Needed: one launchFromSelection(selection, {projectId, docId, region}) API used by every host; it returns a thread id that the island renders in place, with a live stream, instead of navigating. Reading failures need a visible AIActionFailure. A withheld Deep-research needs the WITHHELD_OUTBOUND_REASON message, which Search already shows.",
+      "backend_dependency": "spin-research should accept a Region (char span + chunk id) and a projectId; the reader has no chunk ids today (Reading/index.tsx:132-150 'HONEST GAP')"
+    },
+    {
+      "id": "IA-03",
+      "name": "Island anchored to the selection (in-place, beside the passage)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:86-107,163-183",
+          "note": "only the transient menu is anchored: clampPosition from the raw selection rect, position:fixed"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/panelLayoutLogic.ts:74-82",
+          "note": "the ChaseThread floating panel opens at x=120+off, y=120+off, 560x420, not at the passage"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelLayout.tsx:90-103",
+          "note": "below 768px (sm tier) floating panels are not rendered at all, so there is no phone path for the chase panel"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/reading-physics/augmentations/chase-launcher.ts:103-140",
+          "note": "a passage-anchored ChaseLauncher widget (inline-end lane, semantic anchor) exists; makeChaseLauncherAugmentation is referenced only by tests (grep: readingGeometryPass.test.ts, anchored-widgets.test.ts, spatial-transform.test.ts)"
+        }
+      ],
+      "gap": "No persistent island is pinned to the passage. Needed: an <Island> component rendered through the reading-physics anchored-widgets facet (lane inline-end or right-gutter) keyed on a semantic Region, following reflow and pagination, and supplied by the host through ctx.components (the ChaseLauncher seam already exists). It needs a detach-to-float option (WorkspaceStore floating) and a narrow-screen form (a bottom sheet).",
+      "backend_dependency": "Region ids for reader text (CanonicalDocumentRegion in substrate/reading/regions.py) have to be exposed by the /books read path"
+    },
+    {
+      "id": "IA-04",
+      "name": "Semantic anchoring kit (anchored widgets, marginalia, RegionStore, passage-to-research links)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/reading-physics/augmentations/marginalia/index.ts:250",
+          "note": "makeMarginaliaAugmentation (quote-anchored margin notes) has no production caller"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/reading/regions.py:18-75",
+          "note": "CanonicalDocumentRegion + RegionStore (append-only); grep finds no interfaces/ or frontend caller"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/books/passage_research.py:158-196",
+          "note": "researches_for_passage / passage_for_research ('Surfaced in the reader as this passage spawned N researches') have no caller outside the module"
+        },
+        {
+          "cls": "READ",
+          "ref": "substrate/contracts/reading_surface.py:46-56",
+          "note": "anchor_note / render_region / locate_node are still Any-typed protocol stubs"
+        }
+      ],
+      "gap": "Needed: GET /documents/{id}/threads?region= (or /books/{id}/passages/{pid}/researches) plus a POST that writes a Region for a selection, and a mount of the chase-launcher and marginalia augmentations in ReadingColumn / MasterMdViewer. Without these an island cannot be re-found at its passage.",
+      "backend_dependency": "a Region write route through the single writer; reader text must carry chunk ids and offsets"
+    },
+    {
+      "id": "IA-05",
+      "name": "Island persistence and reopen from the document",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/floatMenuActions.ts:83-110",
+          "note": "a Note persists as a marginalia.noted typed event (user-sourced, chunk_id null on books); ReadingCompanion lists it via deriveNotes"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/floatMenuActions.ts:209-242; FloatMenu.tsx:418-449",
+          "note": "a Dialogue reply lives only in component state; nothing is written and it is lost on dismiss"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/chaseHandoffs.ts:4,40-54,94-101",
+          "note": "'Saved chases' are localStorage only (antiek.chase.draftHandoffs.v1), per browser, capped at 100, and written only by ChaseThread (ChaseThread.tsx:111)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:334-341,596",
+          "note": "the companion lists saved chases whose parent is read-<doc>; Reading's highlight Deep-research (spin-research) never records one, so it does not appear"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx:76-78,133-142; workspace/persistence.ts:52-60",
+          "note": "launchedId is local state; persisted panel props carry spawnContext only, so a restored chase panel shows the pre-launch 'Follow this' form again (possible double launch; NOT MEASURED)"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2442-2476; apps/reading/src/modes/Reading/useTalkThread.ts:73-94",
+          "note": "talk-to-book answers are captured as read.book_answered in read-<doc>, but the UI rehydrates from sessionStorage (antiek.read.talk.<doc>) and never reads the events (narrateEvent.ts:295 maps them to null)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/hooks/useThoughtPartnerThread.ts:4,27-53",
+          "note": "the sidecar and thought-partner thread live in sessionStorage keyed by reading doc or __workspace__, with no server record of the exchange"
+        }
+      ],
+      "gap": "Needed: a server-side thread index per document and project (thread = investigation or talk session, with anchor Region, origin surface and status) and a rehydrating hook, useDocumentThreads(docId), that feeds a companion 'Threads on this document' list and per-passage gutter markers. Dialogue and talk-to-book turns should persist as typed events (read.book_answered already exists; add a selection-dialogue event carrying region_id), and the UI should replay them instead of relying on sessionStorage.",
+      "backend_dependency": "thread index endpoint plus a selection-dialogue event schema (lane B contract per /Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md)"
+    },
+    {
+      "id": "IA-06",
+      "name": "Follow-up in the same selection island (multi-turn)",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:424-437,513-525",
+          "note": "'Ask again' replaces the reply (setReply(null)), sends no history; the UI copy reads 'One-shot reply (not a full chat) this sprint.'"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/useTalkThread.ts:10-28; TalkToBook.tsx:196-224",
+          "note": "multi-turn with branches exists only at book level (TalkToBook) and is not seeded by a selection"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-reader/sprint-06-highlight-dialogue.html M2-M4",
+          "note": "planned SSE-streamed, multi-turn Dialogue anchored to a Region and persisted via anchor_note; not shipped (re-verified by READ)"
+        }
+      ],
+      "gap": "Needed: island Dialogue on a thread model ({threadId, regionId, turns[]}) with history sent on each turn, a composer that stays mounted, and a 'Continue in Talk-to-book' or 'Open as thread' promotion. It should reuse historyPayload (useThoughtPartnerThread.ts) or AskBookRequest.history instead of adding a third conversation store."
+    },
+    {
+      "id": "IA-07",
+      "name": "Ask without a highlight, with context attached by hand",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/shortcuts.ts:194-206,328-332",
+          "note": "\u2318/ toggles the AISidecar panel docked right from any route (AppShell.tsx:74 installs it); guarded by isTextEditing (:128-139), so it is dead while the caret is in an input, textarea or contentEditable (the Write editor)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/shell/SceneChrome.tsx:75",
+          "note": "'Ask' is in the Research scene action bar only; the Read and Write scenes have no Ask verb"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/ai/ContextPicker.tsx:76-96",
+          "note": "attach = a <select> of @doc|@insight plus a raw id text input; no search or autocomplete; no styling (grep 'context-picker' finds no CSS)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "PYTHONPATH=<ground> .venv/bin/python -P -c 'print(sorted(ComposeContextRequest.model_fields))'",
+          "note": "['items']; the item kinds are doc and insight only (app.py _compose_context :1354-1385)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/components/ai/thoughtPartnerSeed.ts:28-38; lib/readingFocus.ts:1-60",
+          "note": "the open book's current page (servable only) is appended automatically; a picked context REPLACES workspaceContextPrompt, so the @@actions contract disappears when context is picked"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/BrainstormStation/ThoughtPartnerPanel.tsx:1-12,265",
+          "note": "Brainstorm adds insight 'Lego' drag-slotting into a focus tray, composed via /compose-context"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/StartResearch.tsx:69-71,286,601",
+          "note": "a research agent launched without a highlight can 'attach a file or link', which ingests into the corpus; this does not scope existing items to the run"
+        }
+      ],
+      "gap": "The contextless ask is a thought partner, not a research subagent. Nothing lets the user open a research agent in place and attach existing documents, notes or threads. Needed: an AskComposer (palette-summoned, e.g. \u2318K then 'Ask\u2026', with a Read and Write scene verb) that has a chip-based @-picker searching documents, notes, insights, investigations and threads (CommandPalette's /documents and /investigations index can feed it), a choice between thought partner and deep research, and a launch that carries the attachment ids as scoped context.",
+      "backend_dependency": "ComposeContextItem kinds extended with note, investigation and thread; StartInvestigationRequest gains context_items[] resolved server-side through the \u00a79.0 gate"
+    },
+    {
+      "id": "IA-08",
+      "name": "Attach existing threads as context / ask an existing thread to dig deeper",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:1354-1385",
+          "note": "compose-context resolves only doc and insight; no investigation or thread kind"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/DeepResearchWorkspace/ResearchPanel.tsx:57-90",
+          "note": "Redirect (a new sub_question) and Deepen (+$0.25 budget) exist only for non-terminal cascade researches"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/index.tsx:163-177; ChaseThread.tsx:99-108",
+          "note": "chasing an open question on a completed /inv spawns a CHILD with parent_investigation_id plus spawn_context text; the parent is used for chase depth and cost walks (orchestrator.py:2190-2245), not as model context"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/ReadingCompanion.tsx:163-240",
+          "note": "a draft merge of two or more completed chase artifacts (no mutation) exists; this is artifact composition, not context for a new ask"
+        }
+      ],
+      "gap": "Needed: POST /investigations/{id}/followups (or /threads/{id}/ask) that continues a completed thread with its distilled notes, synthesis and sources as context, plus a 'Pick thread' list in the island and composer (threads in this document or project) and a thread kind in the @-picker.",
+      "backend_dependency": "thread follow-up endpoint plus a context-pack builder from a finished investigation (lane B, B1/B2)"
+    },
+    {
+      "id": "IA-09",
+      "name": "Model choice (BYOT dropdown) on the island and ask surfaces",
+      "status": "ABSENT",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:55-84",
+          "note": "FloatMenuProps has no model prop; ChaseThread, BlockDetail and SubAgentProposal mount no ModelUsagePicker"
+        },
+        {
+          "cls": "RUN",
+          "ref": "python: sorted(books.SpinResearchRequest.model_fields)",
+          "note": "['export_artifact', 'page_index', 'passage_text']: spin-research cannot carry a model"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/app.py:2740-2743",
+          "note": "POST /investigations returns 422 owner_model_root_required when model_choice is combined with parent_investigation_id or spawn_context, so every chase or child is barred from a model choice"
+        },
+        {
+          "cls": "RUN",
+          "ref": "python: ThoughtPartnerRequest.model_validate({... 'model_choice':..., 'operation_id':'op-1'}).model_dump()",
+          "note": "FIELDS ['history','investigation_id','prompt','system_context']; the dump has no model_choice, so the AISidecar and Brainstorm dropdowns are reach without function (AISidecar.tsx:233-238 says so)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TalkToBook.tsx:196-224,404-450; interfaces/research/api/books.py:1030-1038",
+          "note": "the only functional ask-surface dropdown: AskBookRequest carries model_choice plus operation_id, with operation reconcile and cancel states"
+        },
+        {
+          "cls": "PR",
+          "ref": "gh pr 3278 @e22782d98 feat/thought-partner-owner-model-20260920",
+          "note": "would wire owner models into /thought-partner (thought_partner_byot.py); OPEN since 2026-09-20T14:01Z, vitest FAILURE, mergeable UNKNOWN"
+        }
+      ],
+      "gap": "Needed: a ModelUsagePicker in the island header (default = house route) whose choice rides on Dialogue (after #3278 lands), on spin-research (add model_choice + operation_id to SpinResearchRequest) and on child launches. Child launches need a server policy decision to lift owner_model_root_required, or a separate owner-paid child-launch path with the same idempotency ledger as TalkToBook.",
+      "backend_dependency": "#3278 merge; the owner_model_root_required policy; SpinResearchRequest model fields"
+    },
+    {
+      "id": "IA-10",
+      "name": "Streaming, progress and honest-failure states on island surfaces",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:442-471,513-515",
+          "note": "Dialogue: a blocking fetch with an 'Asking\u2026' label and no token streaming; 503 shows the honest AIActionFailure no-key state"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ChaseThread.tsx:180-187,263-267",
+          "note": "the chase panel shows AIActionFailure on launch error and a live ThinkingStream over useInvestigation (WebSocket, hooks/useInvestigation.ts:17)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:245,251-253",
+          "note": "Reading highlight Deep-research: a withheld selection is a silent return, a failure is console.error only, and there is no busy state"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TalkToBook.tsx:364-395,396-400",
+          "note": "TalkToBook has careful operation-state recovery (prepared, settlement_pending, unknown, abandon) but only 'Reading the book\u2026' as progress"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep text/event-stream in interfaces: only cascade_routes.py:1956 (DRW session stream)",
+          "note": "no SSE endpoint for thought-partner or book-ask"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-living-roadmap/sprint-04-highlight-float-menu.html M2; antiek-reader/sprint-06 M2",
+          "note": "both planned 'DIALOGUE streams a reply'; not shipped (re-verified by READ)"
+        }
+      ],
+      "gap": "Needed: an SSE /thought-partner/stream (and /books/{id}/ask/stream) with done and interrupted events and a retry/resume affordance; a shared IslandStatus component with states idle, sending, streaming, awaiting-research, completed, failed, withheld and no-key; the Reading and DRW launch paths moved onto it instead of console.error or an unhandled rejection."
+    },
+    {
+      "id": "IA-11",
+      "name": "Keep open / move / minimise / reopen the island window",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/PanelHandle.tsx:19-30,139-165,263-281; workspace/WorkspaceStore.ts:1-20",
+          "note": "the ChaseThread floating panel has a drag grip, resize, pin, dock modes and close; there is no minimise action (grep 'minim' finds nothing)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/workspace/windowsStore.ts:51-60",
+          "note": "the windows layer (reader, research-artifact receipt) has NO persistence; WorkspaceStore panels persist to localStorage by scope (persistence.ts:52-60)"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:143-161",
+          "note": "the FloatMenu island cannot be kept open: Esc or click-away collapses the selection, which unmounts it"
+        }
+      ],
+      "gap": "Needed: island window verbs of pin, minimise-to-chip (a tray per workstation, herdr-style), expand to a full tab, and reopen from the companion rail; the island state must be persisted with the thread id (not the pre-launch props) so a reload reattaches to the running thread."
+    },
+    {
+      "id": "IA-12",
+      "name": "Hybrid clarifying-question step before Deep-research",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:269-280",
+          "note": "flag-gated row 'Hybrid \u2014 coming (AI asks first)', a non-functional stub"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep hybridEnabled outside shared/FloatMenu and tests: no match",
+          "note": "no host passes hybridEnabled"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/HYBRID_DECISION.md",
+          "note": "ask-vs-launch decision deferred to the operator plus a measured wasted-launch rate"
+        }
+      ],
+      "gap": "The operator's goal ('engage an LLM deep-research subagent' in the island) implies a scoping turn before spend. Either build it as island step 1 (a clarify-then-launch form with a cost preview) or delete the stub, per its own reverse-if clause."
+    },
+    {
+      "id": "IA-13",
+      "name": "Anchored research-agent comment threads on artifacts (ArtifactFeedbackReview)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx:86-87,565-571",
+          "note": "mounted only when import.meta.env.VITE_ANTIEK_FEEDBACK_ENABLED is 1/true/yes"
+        },
+        {
+          "cls": "READ",
+          "ref": "grep VITE_ANTIEK_FEEDBACK_ENABLED across repo: only StyleWheel.tsx and StyleWheel.test.tsx",
+          "note": "not in .env.example, .github or docs, so it is off by default"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/ResearchWorkstation/ArtifactFeedbackReview.tsx:147-196; interfaces/research/api/feedback_routes.py:123-219",
+          "note": "quote/prefix/suffix-anchored thread with 'Send to research agent'; replies arrive through the agent_work bridge (substrate/agent_work/service.py); routes are create, get and resolve with NO list route, so threads cannot be re-found after reload"
+        },
+        {
+          "cls": "PRIOR",
+          "ref": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments/README.md + sprint-03/04",
+          "note": "planned list hydration, five colours, anchor status, edit_in_place and branch_research dispatch; README status=spec-only, implementation blocked-until-acceptance (re-verified: no list route on main)"
+        }
+      ],
+      "gap": "This is the only existing persisted, anchored, agent-answered thread, but it applies to style-wheel artifact previews, not reading or writing documents. Decide whether the island thread model reuses substrate/feedback (anchor = NodeTextAnchor) or supersedes it. At minimum it needs GET /feedback/threads?artifact_id=&version= and a production flag decision.",
+      "backend_dependency": "D2 SPR-02 list route; agent_work bridge running in prod (NOT MEASURED)"
+    },
+    {
+      "id": "IA-14",
+      "name": "Book-level ask without a highlight (TalkToBook)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/index.tsx:574-579; TalkToBook.tsx:226-243",
+          "note": "a floating 'Thought partner' bookmark (fixed bottom-6 right-6 z-30), opens to a multi-turn panel; ?talk=1 opens it on load"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Reading/TalkToBook.tsx:196-224",
+          "note": "sends history plus an optional model_choice/operation_id to POST /books/{id}/ask; citations jump to pages; branching via thread.branchFrom"
+        },
+        {
+          "cls": "READ",
+          "ref": "interfaces/research/api/books.py:2442-2476",
+          "note": "each answer captured as a read.book_answered typed event (answer_id returned; judgment endpoint exists)"
+        },
+        {
+          "cls": "RUN",
+          "ref": "python: sorted(books.AskBookRequest.model_fields)",
+          "note": "['history','model_choice','operation_id','question','research_tier']"
+        }
+      ],
+      "gap": "This is not connected to selection or the island: the current highlight is not passed; the conversation is sessionStorage per tab, and captured answers are never rehydrated; there is no project scope. It should become the thread backend the island promotes into, not a parallel conversation store.",
+      "ux_notes": "The empty-state copy leaks 'Same thought partner as Surface E' (TalkToBook.tsx:330). The status line concatenates 'available.Uses' with no space (TalkToBook.tsx:444-447, visible in speak/read-talk-to-book--model-choice__light__1280.png)."
+    },
+    {
+      "id": "IA-15",
+      "name": "Write-surface island actions (Rewrite / Make stronger / Spin a sub-agent / Edit\u2026)",
+      "status": "PARTIAL",
+      "evidence": [
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:388-410",
+          "note": "'rewrite' and 'stronger' both call handleRegenerate(), which regenerates the whole section and ignores the highlighted span"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/Write/Outline.tsx:599-607",
+          "note": "a sub-agent Accept spawns a child that the host discards (onAccept={() => setProposal(null)})"
+        },
+        {
+          "cls": "READ",
+          "ref": "apps/reading/src/modes/shared/FloatMenu/FloatMenu.tsx:630-704",
+          "note": "the Edit panel posts /write/edit-selection and splices the first textual occurrence (Outline.tsx:417-422); its textarea is subject to the IA-01 selection-collapse defect"
+        }
+      ],
+      "gap": "Needed: span-scoped rewrite (send the Region, not the section), a sub-agent result that lands as an island thread attached to the draft paragraph with merge-into-draft (fork) controls, and an Edit panel that survives focus."
+    }
+  ],
+  "prior_specs_read": [
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-living-roadmap/sprint-04-highlight-float-menu.html",
+      "planned": "One shared float window at the selection, anchored via SPR-02 geometry, with dismiss and reposition on scroll; four actions end-to-end (Note typed event user-sourced; Dialogue STREAMED via dispatch; Search corpus; Deep-research child linked to the highlight via the chase path); voice on Note and Dialogue; flagged Hybrid stub.",
+      "shipped_status": "Mostly shipped as a component in four hosts (READ). Divergences: Dialogue is one-shot, not streamed; no reposition on scroll (selectionchange only); the Note and Dialogue panels self-dismiss in Chromium (RUN harness); Reading Deep-research uses spin-research (page-linked), not the highlight-linked chase; the Hybrid stub is reachable in no host."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-living-roadmap/sprint-08-read-talk-meta-reading.html",
+      "planned": "Talk-to-book with page-cited answers, a floating bookmark that persists and branches the conversation across navigation, TTS, and meta-reading.",
+      "shipped_status": "Talk-to-book shipped (READ TalkToBook.tsx) with citations, branches and model choice; persistence is sessionStorage, and server capture (read.book_answered) is not replayed."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reader/README.md + sprint-06-highlight-dialogue.html",
+      "planned": "SPR-06: Dialogue on the real dispatch tier, SSE-streamed, multi-turn, anchored to a Region (document_id + chunk_id + char range), persisted via reading_surface.anchor_note, reattaching on reopen; HighlightToolbar converged into the FloatMenu spine; TalkToBook moved off sessionStorage.",
+      "shipped_status": "M1 real dispatch plus honest 503: shipped. M2 SSE: not shipped. M3 Region anchor: not shipped (reader chunk ids are null; anchor_note is still an Any-typed stub; RegionStore has no API). M4 graph persistence: not shipped. M5 convergence: HighlightToolbar is now a thin FloatMenu host (done); TalkToBook is still on sessionStorage."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-malleable-reading/sprint-04-anchored-widgets.html, sprint-07-voice-anchored-marginalia.html",
+      "planned": "An anchored-widgets facet plus layout map; ChaseThread launchers re-homed as passage-anchored widgets; quote-anchored marginalia persisted as substrate events, shipped in the production reading surface.",
+      "shipped_status": "The kit is built (reading-physics/augmentations/chase-launcher.ts, marginalia/), but the chase-launcher and marginalia factories are called only from tests: BUILT_UNREACHABLE."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-anchored-comments/ (README, sprint-03, sprint-04)",
+      "planned": "Extend substrate/feedback into coloured anchored comments with durable list hydration, anchor status, and edit_in_place / branch_research dispatch through agent_work.",
+      "shipped_status": "README says spec-only and blocked-until-acceptance. Main has the baseline create/get/resolve feedback routes and the ArtifactFeedbackReview docket behind an unset Vite flag; no list route and no D2 dispatch."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-voicenote-2026-08-28-never-sleeping-agent/README.md",
+      "planned": "D3 live spawn and owner lineage, a standing topic registry, and a learning digest (feeds autonomous diligence).",
+      "shipped_status": "spec-only per README; not in this area's code paths. NOT re-verified beyond the README."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-reading-convergence/README.md",
+      "planned": "SPR-01: converge the reader highlight-to-spawn onto windowsStore (float, fullscreen, merge from one surface); a collective 'prompt as a unit' from the book highlight; a one-source merge vertical.",
+      "shipped_status": "The merge vertical (preview, commit, restore) is on main in ReadingCompanion. The highlight-to-window convergence is not: Reading highlight still navigates to /inv/:id (Reading/index.tsx:250). The engagement spine and CollectiveResearchPanel are absent on main (grep)."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-bridge/README.md",
+      "planned": "Paste deep-research outputs as blocks, then an extractor, a block UI and a gap finder.",
+      "shipped_status": "Tangential to islands: PasteIngest and the block canvas exist (DRW BlockDetail is a FloatMenu host). Not re-verified further."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-deep-research-doctrine/README.md, antiek-deep-research-hardening/README.md, antiek-drw-master-ledger/README.md",
+      "planned": "Research-engine doctrine, provider routing (Exa/Parallel) and the DRW program ledger: the engine an island's Deep-research would run on.",
+      "shipped_status": "Engine-side and outside the UI area. The relevant fact re-verified: island launches go through Loop One (POST /investigations, spin-research broadcast at books.py:2203-2226), not the DRW cascade. The DRW steer (redirect/deepen) is the only 'ask a running thread' control."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-html-projection/README.md",
+      "planned": "HTML as a derived projection of the doc model; exports of synthesis, notebook and Write through one renderer.",
+      "shipped_status": "Relevant only as the companion-doc substrate (lane B). Not re-verified in this area."
+    },
+    {
+      "path": "/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md",
+      "planned": "The current program (not a prior spec): D1 two motherships over shared projects; D3 a companion tab plus a per-evidence rail; lane A3 = highlight to island plus ask-without-highlight; THREAD-CONTRACT.md signed by both lanes before building.",
+      "shipped_status": "Read for alignment only; ground/ and briefs/ were empty at read time."
+    }
+  ],
+  "craft_gaps": [
+    "The island dies on focus: in Chromium the Note and Dialogue panels unmount the moment their autoFocus textarea mounts (RUN harness). There is no designed 'island' state at all, only a transient menu.",
+    "FloatMenu has no enter or exit motion (design baseline full-audit-motion-interaction.md:100 lists FloatMenu as 'none'), uses a blurred shadow-lg (FloatMenu.tsx:189) against the spec's hard 5px offset for floating islands (DESIGN-SPEC.md:47), and puts a bare '\u2190' glyph in the panel header (FloatMenu.tsx:614-621).",
+    "Sprint and internal language reaches users: 'One-shot reply (not a full chat) this sprint.' (FloatMenu.tsx:525), 'Hybrid \u2014 coming (AI asks first)' (FloatMenu.tsx:278), 'Saved \u2014 user-sourced, anchored to your selection.' (FloatMenu.tsx:353), 'Same thought partner as Surface E' (TalkToBook.tsx:330), and the dialogue 'shape' enum (CHALLENGE/SYNTHESIS) shown raw as a mono label (FloatMenu.tsx:487-491, AISidecar.tsx:448-450).",
+    "Text controls on island surfaces remove the outline with no focus-visible replacement: FloatMenu.tsx:365 and :499, TalkToBook.tsx:459 (SCORE-BASELINE-full.md:149).",
+    "AISidecar and ContextPicker are hand-rolled with native controls. ContextPicker has no CSS at all (class names only, grep finds none) and makes the user type raw document or insight ids. The AISidecar textarea has no background, so typed text is 1.13:1 at night (SCORE-BASELINE-full.md:188).",
+    "Hotkeys are incoherent: AISidecar's own \u2318J handler dispatches 'antiek:aisidecar:toggle', which has no production listener (AISidecar.tsx:190-196 and shortcuts.ts comment); \u2318/ is swallowed whenever focus is in any text field or contentEditable (shortcuts.ts:128-139), which covers the whole Write editor; 'AI sidecar \u2318J' collides with 'Research \u2318J' in the HUD (visual-critiques.md:1781).",
+    "Failure states are uneven: Reading highlight Deep-research fails silently (console.error, Reading/index.tsx:252); DRW BlockDetail throws an unhandled rejection (BlockDetail.tsx:55-68); a withheld Deep-research click does nothing with no message (Reading/index.tsx:245, HighlightToolbar.tsx:51), while Search shows the withheld reason.",
+    "No phone path: floating panels are not rendered below 768px (PanelLayout.tsx:90-103), so the highlight-to-chase island does not exist on narrow screens, and TalkToBook's fixed bottom sheet is the only narrow-screen ask.",
+    "Progress is text-only on the ask surfaces ('Asking\u2026', 'Reading the book\u2026'); only the /inv ChaseThread panel shows a live, narrated ThinkingStream. There is no token streaming anywhere on the thought-partner path.",
+    "Two separate 'Ask' verbs share the Research screen (the sidecar toggle in SceneChrome.tsx:75 and the composer submit); the Read and Write scenes have no Ask verb (visual-critiques.md:1657)."
+  ],
+  "risks": [
+    "The RUN finding (the selection collapses on textarea focus, so the panels unmount) comes from the real hook in a FloatMenu-shaped harness in Chromium only. The full FloatMenu inside the deployed app, and Firefox and Safari, are NOT MEASURED. The first step of any island work should be a Playwright e2e test in apps/reading/e2e that reproduces the harness against /read/:id and /inv/:id.",
+    "The backend bars owner-selected models on any child or chase launch (app.py:2742-2743 owner_model_root_required). A BYOT dropdown on the island therefore needs a policy decision and possibly a new owner-paid child path; a UI-only dropdown would repeat the AISidecar 'reach, not function' pattern.",
+    "Reading chunk ids are null by design (Reading/index.tsx:132-150), so a Region-anchored island over book text needs a /books endpoint change first. Anchoring by quote (marginalia resolve-quote.ts) is the only anchor available client-side today.",
+    "Island persistence has three stores today: localStorage chase handoffs, sessionStorage talk and thought-partner threads, and typed events (marginalia.noted, read.book_answered). A new island thread model must converge on the event log (single writer via /events/typed) instead of adding a fourth store.",
+    "The spin-research passage link uses the synthetic parent 'read-spin' at page granularity (passage_research.py:135-156). A thread index keyed on it would merge different highlights on the same page.",
+    "A restored ChaseThread panel (WorkspaceStore persistence) re-renders the pre-launch form because launchedId is not persisted (ChaseThread.tsx:76-78), which could lead to a duplicate paid child launch (NOT MEASURED).",
+    "PR #3278 (thought-partner owner models) is open with vitest failing since 2026-09-20. Island Dialogue model choice depends on it or on an equivalent change, and it touches AISidecar.tsx and ThoughtPartnerPanel.tsx, where lane A work would collide.",
+    "Lane boundary: per specs/antiek-mothership/DECISIONS.md, lane A must not edit substrate/event_log/events.py or research_artifact context files. The island's durable thread fields (region_id, origin surface, project id) must come through THREAD-CONTRACT.md from lane B.",
+    "FloatMenu tests were NOT RUN in the ground worktree (apps/reading/node_modules absent there); the vitest claims above rest on READ of FloatMenu.test.tsx."
+  ],
+  "open_questions": [
+    "Is an island a new object, or a view over an investigation (Deep-research) plus a talk session (Dialogue)? Should Dialogue turns on a selection promote into the same thread as a later Deep-research on that selection?",
+    "Should island Deep-research launch through Loop One (POST /investigations, today) or through a DRW cascade session (which has the steer and redirect controls a 'dig deeper' thread needs)?",
+    "Policy on owner_model_root_required: may a user pick their own model for a highlight-spawned child research, and who pays: the parent's owner route or the house route?",
+    "What should anchor an island on book text before chunk ids are exposed: quote plus prefix/suffix (NodeTextAnchor, as substrate/feedback uses) or a CanonicalDocumentRegion (substrate/reading/regions.py)? One scheme should be picked for both reading and artifact feedback.",
+    "Should ArtifactFeedbackReview (flag-off, anchored, agent-replied threads) be adopted as the island thread backend, or retired in favour of the lane B thread model?",
+    "Does the contextless ask default to a thought partner (fast, /thought-partner) or a research subagent (costed, /investigations)? Should the composer show both with a cost preview, which fits the Hybrid ask-first decision still open in HYBRID_DECISION.md?",
+    "Should Talk-to-book survive as a separate book-level surface, or become the island's 'no highlight, this document' mode, with its captured read.book_answered events as the persisted history?",
+    "Is the agent_work bridge that answers feedback threads actually running in prod? (NOT MEASURED; relevant if the island reuses it.)"
+  ]
+}

@@ -552,7 +552,12 @@ def run_bulk_sync(
 
     The whole-run flock serializes timer/CLI callers. Each bounded DuckDB
     transaction commits selected document rows with the next physical line
-    offset, cumulative event counts and bulk maximum date. On interruption,
+    offset, cumulative event counts and bulk maximum date. Between slices the
+    bulk phase yields via ``_yield_between_lock_sessions`` — a floor sleep
+    plus a bounded wait on ``write_handoff_requested`` — so a queued API
+    writer is served instead of losing the re-acquisition race to a blind
+    timer (prod incident 2026-10-02: ~85% of frame-telemetry writes refused
+    while ``incremental --bulk`` ran). On interruption,
     the DB cursor resumes the suffix; a tail failure leaves phase ``tail`` and
     replays its inclusive date window. Only complete success advances the DB
     high-water and writes the observational JSON mirror.
@@ -622,8 +627,7 @@ def run_bulk_sync(
                                 cast(int, progress["selected_record_count"]),
                             )
                         del pending[:consumed]
-                        if yield_s > 0:
-                            time.sleep(yield_s)
+                        _yield_between_lock_sessions(resolved_db, yield_s)
                     selected = 0
                 while pending:
                     assert_snapshot_unchanged(source)
@@ -642,8 +646,7 @@ def run_bulk_sync(
                             cast(int, progress["selected_record_count"]),
                         )
                     del pending[:consumed]
-                    if yield_s > 0:
-                        time.sleep(yield_s)
+                    _yield_between_lock_sessions(resolved_db, yield_s)
             assert_snapshot_unchanged(source)
             if verify_snapshot(source.path).sha256 != source.sha256:
                 raise ValueError("bulk snapshot digest changed during scanning")
