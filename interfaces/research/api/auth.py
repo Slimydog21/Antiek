@@ -748,9 +748,20 @@ def register_auth_routes(
                 credential=payload.credential,
             )
         except PasskeyError as exc:
+            # ONE message for every PasskeyError. `substrate/auth/passkeys.py:298-313` raises
+            # "This passkey is not registered with Antiek." for a missing candidate and
+            # "Antiek could not verify that passkey." for a stored one with invalid proof, and
+            # publishing `str(exc)` answered "is this credential registered?" for anyone who
+            # supplied an id. Measured: a synthetic stored credential and an unregistered id
+            # returned different text, both 400. The cause is logged, where it is useful, and
+            # not published, where it is not.
+            _LOGGER.warning("passkey verification failed (%s)", type(exc).__name__)
             raise HTTPException(
                 status_code=400,
-                detail={"code": "passkey_verification_failed", "message": str(exc)},
+                detail={
+                    "code": "passkey_verification_failed",
+                    "message": "Antiek could not verify that passkey. Try again.",
+                },
             ) from exc
         allow = sorted(_resolve_allowlist())
         if not allow:
@@ -785,9 +796,18 @@ def register_auth_routes(
                 label=payload.label,
             )
         except PasskeyError as exc:
+            # The SAME boundary as verification, and my first attempt at this fixed only that
+            # one. The property is not "the verification route does not leak" -- it is that no
+            # passkey route answers whether a credential id is known, and this handler publishes
+            # the same `str(exc)` from the same exception family. Found by reading main rather
+            # than my own branch, which is where the miss had been hiding.
+            _LOGGER.warning("passkey registration failed (%s)", type(exc).__name__)
             raise HTTPException(
                 status_code=400,
-                detail={"code": "passkey_registration_failed", "message": str(exc)},
+                detail={
+                    "code": "passkey_registration_failed",
+                    "message": "Antiek could not register that passkey. Try again.",
+                },
             ) from exc
         return {
             "registered": True,
