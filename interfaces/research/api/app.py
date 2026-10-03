@@ -5575,13 +5575,17 @@ def create_app(
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import create_notebook, get_notebook
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:create_notebook") as con:
@@ -5590,6 +5594,7 @@ def create_app(
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
+                    owner_user_id=owner_user_id,
                     content_class=req.content_class,
                 )
                 return get_notebook(con, nb_id)

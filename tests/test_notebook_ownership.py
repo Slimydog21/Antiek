@@ -125,3 +125,35 @@ def test_public_class_is_not_a_share_grant(notebook_clients, route):
     owner = notebook_clients["bob"].get(path)
     assert owner.status_code == 200
     assert PRIVATE in owner.text
+
+
+
+def test_session_creator_can_read_but_cannot_choose_notebook_owner(notebook_clients):
+    notebooks = {}
+    for caller in ("alice", "bob"):
+        foreign = "bob" if caller == "alice" else "alice"
+        response = notebook_clients[caller].post(
+            "/notebooks", params={"owner_user_id": foreign, "user_id": foreign},
+            headers={"X-User-Id": foreign},
+            json={"title": f"Created by {caller}", "owner_user_id": foreign, "user_id": foreign},
+        )
+        assert response.status_code == 201
+        notebooks[caller] = response.json()["notebook_id"]
+    observed = []
+    for caller in ("alice", "bob"):
+        for creator, notebook_id in notebooks.items():
+            for route in ROUTES:
+                response = observe(notebook_clients[caller], caller, route.format(notebook_id=notebook_id))
+                observed.append((caller, creator, response))
+    for caller, creator, response in observed:
+        assert response.status_code == (200 if caller == creator else 403)
+        if caller == creator:
+            assert f"Created by {creator}" in response.text
+        else:
+            assert f"Created by {creator}" not in response.text
+    with connect_write(default_db_path()) as con:
+        stored = dict(con.execute("SELECT notebook_id, owner_user_id FROM notebooks").fetchall())
+    assert {creator: stored[notebook_id] for creator, notebook_id in notebooks.items()} == {
+        "alice": "alice", "bob": "bob",
+    }
+    assert notebook_clients["anonymous"].post("/notebooks", json={"title": "no owner"}).status_code == 401
