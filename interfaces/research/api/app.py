@@ -93,6 +93,7 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
 # Retry-After hint (seconds) served with every 503 mapped from
 # runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
@@ -215,10 +216,8 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
-    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
-    # be starved of the DuckDB write lock for hours while /health says "ok";
-    # this is the field that makes that state visible without opening a log.
-    # Empty dict when the worker is disabled or has not run a pass yet.
+    # Last admitted replay worker phase only; even "current" is not a reader
+    # availability or recovery guarantee. An empty dict means no admitted phase.
     note_taker_replay: dict[str, Any] = {}
 
 
@@ -2484,8 +2483,8 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
-            note_taker_replay=dict(
-                getattr(app.state, "note_taker_recovery", {}) or {}
+            note_taker_replay=_public_note_taker_replay(
+                getattr(app.state, "note_taker_recovery", {})
             ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
