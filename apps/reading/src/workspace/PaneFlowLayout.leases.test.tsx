@@ -305,4 +305,61 @@ describe("actual frame and controller registration ownership", () => {
     expect(frame("outside").restoreZoom()).toBe(false);
     expect(useWorkspace.getState().paneZoom).toEqual(CORE_PANE);
   });
+
+  it("refuses a current A lease beneath live B without delegating or mutating zoom", () => {
+    render(<PaneFlowLayout><ControlledFrame name="a-core" target={CORE_PANE} />
+      <ControlledFrame name="a-companion" target={COMPANION_PANE} /></PaneFlowLayout>);
+    render(<PaneFlowLayout><ControlledFrame name="b-core" target={CORE_PANE} />
+      <ControlledFrame name="b-companion" target={COMPANION_PANE} /></PaneFlowLayout>);
+    const node = element("a-core");
+    const originalParent = node.parentElement;
+    const rootB = element("b-core").closest("[data-pane-flow-root]");
+    if (!originalParent || !(rootB instanceof HTMLElement)) throw new Error("Missing actual provider roots");
+    const currentRef = frame("a-core").ref;
+    expect(paneEventTarget(eventAt(node))).toEqual(CORE_PANE);
+    expect(paneEventTarget(eventAt(element("b-core")))).toEqual(CORE_PANE);
+    act(() => { useWorkspace.getState().togglePaneZoom(COMPANION_PANE); });
+    const state = useWorkspace.getState();
+    const scroll = rootB.scrollLeft;
+    const active = document.activeElement;
+    rootB.append(node);
+    try {
+      expect(frame("a-core").ref).toBe(currentRef);
+      expect(node.closest("[data-pane-flow-root]")).toBe(rootB);
+      expect(frame("a-core").restoreZoom()).toBe(false);
+      expect(useWorkspace.getState()).toBe(state);
+      expect(useWorkspace.getState().paneZoom).toEqual(COMPANION_PANE);
+      expect(rootB.scrollLeft).toBe(scroll);
+      expect(document.activeElement).toBe(active);
+    } finally {
+      originalParent.append(node);
+    }
+    // The same still-current A attachment restores through its own controller.
+    let restored = false;
+    act(() => { restored = frame("a-core").restoreZoom(); });
+    expect(frame("a-core").ref).toBe(currentRef);
+    expect(restored).toBe(true);
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+  });
+
+  it("allows the current core controller to restore itself and another zoomed pane", () => {
+    render(<PaneFlowLayout><ControlledFrame name="core" target={CORE_PANE} />
+      <ControlledFrame name="companion" target={COMPANION_PANE} /></PaneFlowLayout>);
+    const node = element("core");
+    const currentRef = frame("core").ref;
+    act(() => { useWorkspace.getState().togglePaneZoom(CORE_PANE); });
+    let restored = false;
+    act(() => { restored = frame("core").restoreZoom(); });
+    expect(restored).toBe(true);
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    act(() => { useWorkspace.getState().togglePaneZoom(COMPANION_PANE); });
+    expect(frame("core").hidden).toBe(true);
+    expect(frame("companion").zoomed).toBe(true);
+    expect(element("core")).toBe(node);
+    expect(frame("core").ref).toBe(currentRef);
+    act(() => { restored = frame("core").restoreZoom(); });
+    expect(restored).toBe(true);
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+  });
+
 });

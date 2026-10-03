@@ -6,7 +6,7 @@ export type PaneHostLease<Record extends object> = {
 
 /** A cleanup owns the installed record, never the next occupant of its key. */
 export function installPaneHostLease<Key, Record extends object>(
-  registry: Pick<Map<Key, Record>, "get" | "set" | "delete">,
+  registry: Pick<Map<Key, Record>, "get" | "delete"> & { set(key: Key, record: Record): void },
   key: Key,
   record: Record,
 ): PaneHostLease<Record> {

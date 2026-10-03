@@ -201,6 +201,9 @@ export function usePaneFlowFrame(target: PaneTarget) {
     if (!attachment?.lease?.isCurrent()) return false;
     const root = nodeRef.current?.closest("[data-pane-flow-root]");
     const controller = root ? controllers.get(root) : null;
+    const host = attachment.lease.record;
+    if (!controller || controller.hosts.get(paneKey(host.target)) !== host
+        || host.node !== attachment.node || attachment.node !== nodeRef.current) return false;
     if (event && (event.defaultPrevented || event.repeat || event.isComposing
         || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.getModifierState("AltGraph")
         || event.target !== document.activeElement || !(event.target instanceof HTMLElement)
