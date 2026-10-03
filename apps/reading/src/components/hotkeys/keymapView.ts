@@ -60,7 +60,7 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
  * hand-written claim about a different preset cannot pass.
  */
 export function layoutPresetHelp(defaultPreset: LayoutPreset): string {
-  return `Switches between docked and the cockpit inset (two tall panes). A workspace that has never chosen one starts ${defaultPreset}, so this key brings the cockpit in.`;
+  return `Switches between docked and the cockpit inset (two tall panes). A workspace that has never chosen one starts ${defaultPreset}; this key switches to the other layout.`;
 }
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
