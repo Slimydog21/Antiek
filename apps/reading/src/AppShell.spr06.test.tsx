@@ -135,7 +135,8 @@ describe("AppShell SPR-06 M3 — symmetric full-width region + edge seam", () =>
     expect(frame.className).toMatch(/\boverflow-hidden\b/);
   });
 
-  it("renders the nav BELOW the working region (bottom rail, no left gutter)", () => {
+  it("renders the explicit docked preset's nav BELOW the working region", () => {
+    useWorkspace.getState().setLayoutPreset("docked");
     const { container } = mountShell();
     const region = container.querySelector('[data-testid="main-region"]');
     const navGroup = container.querySelector('[data-testid="navrail-workflows"]');
