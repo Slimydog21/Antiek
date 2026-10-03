@@ -217,6 +217,17 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # UPDATE. The body never leaves storage on this path — no serve surface,
         # no caller return — the same internal-writer category as book_import
         # publish.py above. Owner reads still go only through serve_full_text_guarded.
+        # Document fork creation (thread-merge + document-fork SPR-01): the
+        # fork's full body copy reads the parent's raw_text ONLY to write the
+        # fork's own row (documents + re-keyed chunks + book_assets) — an
+        # internal WRITER, never a serve-out: no caller receives the body on
+        # this path, and reading the fork's body afterwards goes through the
+        # same serve_full_text_guarded gate as any document (the fork inherits
+        # the parent's rights posture deny-by-default via register_source_document;
+        # derived content classes are refused outright). Both capture hashes
+        # (parent + fork) are recorded at write time. Same internal-writer
+        # category as source_merge.py and book_import/publish.py above.
+        "substrate/documents/forks.py",
         "substrate/research_artifact/source_merge.py",
     }
 )
