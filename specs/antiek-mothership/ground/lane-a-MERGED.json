@@ -1,0 +1,1157 @@
+[
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-01",
+  "status": "ABSENT",
+  "name": "Flag a concept from a document, highlight or thread",
+  "gap": "Needs a user-authored ConceptFlaggedPayload (flag_id, concept_text, chunk_id, document_id, investigation_id|project_id, source_kind:'user', intent: watch|diligence) emitted through postTypedEvent. It also needs a FloatMenu 'Flag' action (keyboard: F while the menu is focused), a flags projection with GET /flags?scope=project|document, and a flag chip rendered inline on the anchored span in ReadingColumn, the DRW BlockDetail and the Write editor."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-02",
+  "status": "PARTIAL",
+  "name": "Flag or park an open question for later diligence",
+  "gap": "Needs a user path to park a question: a FloatMenu 'Park question' action, plus a '+' on each ReadingCompanion open-question row. Both should emit QuestionIdentifiedPayload with anchor_region_id and source_kind 'user' (the payload has no source_kind field today, events.py:1260-1264). Parked questions also need a document/project scope filter (the GET /watch-for-later query is global) and an 'auto-diligence' toggle per parked question."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-03",
+  "status": "PARTIAL (weak): a user-authored insight node exists, but there is no 'key' marking and no diligence consumer*",
+  "name": "Flag a key insight",
+  "gap": "Needs an InsightFlaggedPayload (or a 'key' boolean on graph insight nodes via knowledge_event_projector), a FloatMenu/BlockCard 'Mark key insight' action, and a 'Key insights' section in the per-document ReadingCompanion and the project companion. Key insights also need to feed diligence as 'find disconfirming evidence' seeds."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-04",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Autonomous run on flags/gaps: the continuous-research daemon (\u00a77.3/\u00a77.4)",
+  "gap": "Wire a real SpawnFn in orchestration/continuous/live_spawn.py (the D3 SPR-01 plan). It should post through an owner-scoped internal route POST /internal/agent-work/daemon/spawn, behind a default-off flag. Before that it needs owner lineage (the scan is global today, daemon.py:90-102), persisted chase counts and topics (in memory only, daemon.py:70-85; research_topic.py:16-19), and a ledger authority on the primary DB instead of the JSON sidecar. It must also add user flags (AD-01..03) as first-class inputs to scan_gaps."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-05",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Autonomous follow-up inside one investigation (chase_mode depth/duration)",
+  "gap": "Expose chase_mode, chase_value and chase_budget_usd on InvestigationStartRequest, and add a 'Keep digging' control (depth N or hours H, with a $ ceiling) to StartResearch, ChaseThread and the island. Surface investigation.chase_halted reasons in the thread."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-06",
+  "status": "BUILT_AND_WIRED",
+  "name": "Human-gated chase of suggested gaps and parked questions",
+  "gap": "This is the manual half of diligence and it works. What is missing is a 'let the loop chase this' option per suggestion (autonomous opt-in), and batch chase with one approved ceiling."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-07",
+  "status": "PARTIAL",
+  "name": "Diligence result lands in a thread or companion document",
+  "gap": "Needs a persisted research_topic, or a companion object per project and per evidence document (CompanionDoc: id, scope, sections[open_questions, key_insights, diligence_outcomes], version). A diligence run must append a DiligenceOutcomeRecorded event keyed to the flag_id, and the outcome must render in the ReadingCompanion and the project companion with a link to the child thread. Enable the feedback thread in prod once agent_work consumers are verified."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-08",
+  "status": "PARTIAL",
+  "name": "Attention UI: diligence queue, status and inbox",
+  "gap": "Needs a Diligence queue surface (route /diligence, or a tab in each workstation) listing flags with states queued, running, needs-approval, done, stale and declined. It also needs a server-side seen-state (GET/PUT /attention/seen) so unread survives devices, an 'away digest' card on the workstation home, and a hotkey to jump to the next unread item."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-09",
+  "status": "PARTIAL",
+  "name": "Budget and consent controls for autonomous spend",
+  "gap": "Needs an autonomy consent object: PUT /settings/autonomy {enabled, daily_cap_usd, per_run_cap_usd, max_depth, allowed_sources, require_approval_over_usd}, with an Autonomy panel in Settings (toggle, cap, pause-all) and a per-flag 'approve spend' step when a run exceeds its threshold. Fix the env var mismatch. Make the primary-DB BudgetLedger the single authority (D3 invariant), not the sidecar."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-10",
+  "status": "SPEC_ONLY",
+  "name": "Standing topics, schedules and re-ingestion (never-sleeping agent)",
+  "gap": "Needs the whole D3 package: an owner-scoped standing-topic registry with UI to register or archive a topic and its sources, a cadence scheduler, bounded re-ingestion windows and living-folder refresh."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-11",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Monitoring mode (saved feed over the personal lane, refresh, putter)",
+  "gap": "Needs /monitors CRUD plus a refresh route, and a 'Watch this topic' affordance that binds a monitor to an investigation or project. Show fresh items in the attention queue."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "AD-12",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Autoresearch (Wedge 1 prompt mutation, Wedge 3 config sweeps)",
+  "gap": "Not user diligence. These tools tune the system itself, so this row is out of scope for flag-driven diligence and recorded only so it is not mistaken for it."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-01",
+  "status": "PARTIAL",
+  "name": "Dark mode and theme on shell, reader, float menu, thread and companion",
+  "gap": "Merge w1 (it merges cleanly onto main alone per git merge-tree). Then check each mothership surface for night pairs: FloatMenu is bg-ink in both themes, and ReadingCompanion uses 33 dark: patches and 13 text-xxs/moonlight uses."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-02",
+  "status": "PARTIAL",
+  "name": "Shell at 390px and across the 768px tier boundary",
+  "gap": "Land one 768 fix (w7's or w3's, not both) and w3's docked mascot. Define a phone layout for workstation tabs: tabs collapse to a select, a 5-key dock, 44px targets."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-03",
+  "status": "PARTIAL",
+  "name": "Island (FloatMenu) keyboard, focus and ARIA",
+  "gap": "Needs: focus moves to the first menuitem when a selection is made by keyboard (Shift+arrows); arrow keys rove; Esc returns focus to the selection's anchor node; a focus-visible ring on the inner textareas; aria-haspopup/aria-expanded on the view switches."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-04",
+  "status": "PARTIAL*",
+  "name": "Island physics and motion (float menu, chase panel), including reduced motion",
+  "gap": "Island arrival: popover class, 80ms, opacity plus 4px from the anchor edge, on the motion tokens. Expanded views need re-measuring (ResizeObserver) and a flip or clamp with real height. Wrap floating panels in AnimatePresence. The morph from island to ChaseThread panel should be one surface, not a jump. All of it must be zeroed under useMotionPreference (w1 useTheme)."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-05",
+  "status": "PARTIAL*",
+  "name": "Island and thread at phone width (highlight-to-chase on 390)",
+  "gap": "At sm, render floating panels as full-height bottom sheets (drag handle, Esc or swipe to close, focus trap, focus return to the highlight), and pin FloatMenu above the on-screen keyboard."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-06",
+  "status": "PARTIAL",
+  "name": "Designed states on autonomy surfaces (loading, empty, error, launching)",
+  "gap": "Split the SuggestedResearch states: 'no open threads yet' (a true empty state that invites 'Flag something to watch'), 'can't reach Antiek' (unreachable, with Retry), and 'provider not configured' (only when the server says so). Do not show '$0.0000' or '0 running' while loading or in error. The launching state should keep the button's width."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-07",
+  "status": "PARTIAL",
+  "name": "Reader companion and thread surfaces at narrow widths",
+  "gap": "Needs a companion toggle (hotkey and a button in the reader header) that opens the companion as a sheet at sm/md. The thread breadcrumb should collapse to 'current + back' at 390."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "CR-08",
+  "status": "PARTIAL*",
+  "name": "Visual-regression coverage of mothership surfaces",
+  "gap": "Add state-matrix stories for FloatMenu (menu, note, dialogue, search, withheld, hybrid; light/dark; 1280/390, with a programmatic selection), SuggestedResearch (loading, empty, error, ready, chasing), ReadingCompanion and ChaseThread. Add dark and 390 axes to lostpixel (w1 adds the Storybook theme decorator)."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS1",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Reactive agents on user signals in /wrestle: claim challenge starts the grounder; the cross-doc watcher auto-answers open questions",
+  "gap": "READ app.py:2152-2182 registers wrestling, grounding, note_taking and cross_doc handlers when register_wrestling=True, the default (app.py:1603). grounding.py:1-18 and 408-419: claim.challenge_raised searches chunks, dispatches the grounder and emits claim.grounding_check_passed/failed. ClaimCard.tsx:67-119 is the 'challenge this claim' button, reached through NotesPanel and the ClaimInspector panel. cross_doc.py:1-40 watches question.identified and note.emerged and emits cross_doc.question_answered, which removes the question from /watch-for-later (app.py:5030-5031). It renders in the CrossDocs dock at /wrestle (WrestleApp/index.tsx:124-129; App.tsx:148-149). This is the only event-driven autonomous follow-up on open questions that ships today."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS2",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Note challenge that re-weighs a note and escalates it to an open question with a reserved chase child",
+  "gap": "READ NotesPanel.tsx:213-273: 'challenge this' calls challengeNote (lib/api.ts:1586-1592), which POSTs /research/notes/{node_id}/challenge (distill_routes.py:121). The escalated state reads 'saved as an open question to chase' (NotesPanel.tsx:310-313). roles/note_taker/distill_query.py:104-108,158 carries reserved_child_investigation_id. DistillView QuestionRow onChase (DistillView.tsx:147) launches into the reserved id (ResearchWorkstation/index.tsx:165-177). The launch is human-gated."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS3",
+  "status": "BUILT_AND_WIRED+",
+  "name": "AutoNotebook: auto-derived per-investigation companion view (synthesis, insights, open questions)",
+  "gap": "READ App.tsx:162-172 routes /notebook/auto/:investigationId (RATIFIED 2026-09-18). deriveAutoNotebook.ts:42 AutoNotebookSectionKind = 'synthesis'|'insights'|'questions'; :125-140 set the headings 'Insights' and 'Open questions'. It is linked from DistillView.tsx:119,126 and CommandPalette.tsx:732-733. It is not persisted, has no per-document scope and no diligence-outcome section. It is the natural base for the per-project companion document."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS4",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "DRW structural gap detection over graph topology (unanswered questions, unsupported claims, contradictions)",
+  "gap": "READ substrate/gap_detection/__init__.py:1-14,43 (detect_gaps), tested in tests/test_gap_detection.py. Its only production consumer is Speak's interviewer context (substrate/speak/drw_gap_source.py:86-90,139-150, via interviewer_context.py:159). RUN grep: roles/cascade_planner plan_from_gap and plan_from_note_challenge (planner.py:141; __init__.py:29,38) have 0 production callers. No research UI or daemon consumes it. It is the graph-grounded gap source that autonomous diligence could use in place of model-emitted evidentiary_gaps."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS5",
+  "status": "BUILT_AND_WIRED+",
+  "name": "User-authored insight node from a FloatMenu Note (marginalia.noted promotion)",
+  "gap": "READ app.py:2439-2456: POST /events/typed with marginalia.noted calls promote_from_marginalia_event(matching, enabled=True), which writes a source_kind='user' insight node through db_lock. The ReadingCompanion renders it as user-sourced (Reading/index.tsx:386). There is no 'key' flag and nothing autonomous consumes it."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS6",
+  "status": "PARTIAL+",
+  "name": "Generic POST /events/typed can start a chase_mode investigation and park a question (API-only, bypasses the capacity precheck)",
+  "gap": "RUN TypeAdapter(TypedPayload) validates investigation.start_requested with chase_mode='depth', chase_value=3, chase_budget_usd=1.0, and validates question.identified. READ app.py:2385-2434: the route emits and broadcasts to the orchestrator handler (orchestrator.py:2082-2097) without calling run_capacity_precheck, which POST /investigations calls at app.py:2705. It sits behind operator auth middleware (app.py:1738). PLAUSIBLE; not executed end-to-end. It matters both as a spend-control bypass and as an existing backend hook for user flags."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS7",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Per-run spend preview and durable owner-bound spend approval for cascade launches",
+  "gap": "READ cascade_routes.py:810 (POST /research/plans/{root_id}/spend-preview) and :1203-1235 (POST /spend-approval: hard-ceiling, owner-bound digest). UI: CascadeProposal.tsx:186 getSpendPreview and :282 approveSpend (api/research.ts:262-290). This is the existing consent pattern that AD-09's 'approve spend per flag' should reuse."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS8",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Scheduled system re-ingestion (arXiv OAI-PMH incremental sync timer)",
+  "gap": "READ infrastructure/ansible/templates/antiek-arxiv-oai-sync.timer.j2: OnCalendar=*-*-* 04:20:00 UTC, Persistent=true; the service j2 says 'systemd owns the schedule, tools.arxiv_oai_sync owns the high-water mark'. It is system-level, not user standing topics. It is the only research-adjacent scheduler on main."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS9",
+  "status": "PARTIAL+",
+  "name": "Honesty defect: Notebook question card promises to park a question and does not",
+  "gap": "READ NotebookCanvas.tsx:422-430: 'Question text (will surface as a parked question)'. RUN grep question_card in interfaces and substrate: only graph/schema.py:531, notebooks/tiptap_codec.py:33,52,189 and notebooks/__init__.py:46. There is no question.identified emission, so it never reaches /watch-for-later (app.py:5027-5061 reads question.identified only)."
+ },
+ {
+  "area": "autonomy-and-craft-baseline",
+  "id": "MISS10",
+  "status": "PARTIAL+",
+  "name": "Reader highlight Deep-research navigates away and fails silently",
+  "gap": "READ Reading/index.tsx:243-258: spinResearch then navigate('/inv/:id'). The catch only runs console.error('spin-research from highlight failed'). The reader has no island and no in-context ChaseThread, which contradicts the comment at Reading/index.tsx:558-560 ('highlight chases open in floating workspace chrome'). The mothership goal (an island that stays in the document) is not met in Read."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-01",
+  "status": "PARTIAL",
+  "name": "Selection float menu (shared FloatMenu: Note / Dialogue / Search / Deep-research)",
+  "gap": "The island's lifetime has to be separated from the transient DOM selection. Needed: an IslandStore (zustand: {islandId, anchor, docId, projectId, threadId, state}) that snapshots the selection when the island opens (text + Region + rect) and then renders independently of selectionchange. Only the four-button menu bar should stay bound to the live selection. Without this, Note, Dialogue and Edit are expected to be unusable in Chromium. Also needed: repositioning on scroll and resize (today the fixed rect goes stale), and a Playwright e2e test that highlights text, opens Dialogue, types and gets a reply in a real browser."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-02",
+  "status": "BUILT_AND_WIRED",
+  "name": "Deep-research from a selection (child research launch)",
+  "gap": "Launch works, but the result is not an island. Reading and DRW take the user away. Write orphans the child. Reading records the link only at page granularity (passage_id = doc + page_index) under the synthetic parent 'read-spin', not the selected span. Needed: one launchFromSelection(selection, {projectId, docId, region}) API used by every host; it returns a thread id that the island renders in place, with a live stream, instead of navigating. Reading failures need a visible AIActionFailure. A withheld Deep-research needs the WITHHELD_OUTBOUND_REASON message, which Search already shows."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-03",
+  "status": "PARTIAL",
+  "name": "Island anchored to the selection (in-place, beside the passage)",
+  "gap": "No persistent island is pinned to the passage. Needed: an <Island> component rendered through the reading-physics anchored-widgets facet (lane inline-end or right-gutter) keyed on a semantic Region, following reflow and pagination, and supplied by the host through ctx.components (the ChaseLauncher seam already exists). It needs a detach-to-float option (WorkspaceStore floating) and a narrow-screen form (a bottom sheet)."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-04",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Semantic anchoring kit (anchored widgets, marginalia, RegionStore, passage-to-research links)",
+  "gap": "Needed: GET /documents/{id}/threads?region= (or /books/{id}/passages/{pid}/researches) plus a POST that writes a Region for a selection, and a mount of the chase-launcher and marginalia augmentations in ReadingColumn / MasterMdViewer. Without these an island cannot be re-found at its passage."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-05",
+  "status": "PARTIAL",
+  "name": "Island persistence and reopen from the document",
+  "gap": "Needed: a server-side thread index per document and project (thread = investigation or talk session, with anchor Region, origin surface and status) and a rehydrating hook, useDocumentThreads(docId), that feeds a companion 'Threads on this document' list and per-passage gutter markers. Dialogue and talk-to-book turns should persist as typed events (read.book_answered already exists; add a selection-dialogue event carrying region_id), and the UI should replay them instead of relying on sessionStorage."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-06",
+  "status": "ABSENT",
+  "name": "Follow-up in the same selection island (multi-turn)",
+  "gap": "Needed: island Dialogue on a thread model ({threadId, regionId, turns[]}) with history sent on each turn, a composer that stays mounted, and a 'Continue in Talk-to-book' or 'Open as thread' promotion. It should reuse historyPayload (useThoughtPartnerThread.ts) or AskBookRequest.history instead of adding a third conversation store."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-07",
+  "status": "PARTIAL",
+  "name": "Ask without a highlight, with context attached by hand",
+  "gap": "The contextless ask is a thought partner, not a research subagent. Nothing lets the user open a research agent in place and attach existing documents, notes or threads. Needed: an AskComposer (palette-summoned, e.g. \u2318K then 'Ask\u2026', with a Read and Write scene verb) that has a chip-based @-picker searching documents, notes, insights, investigations and threads (CommandPalette's /documents and /investigations index can feed it), a choice between thought partner and deep research, and a launch that carries the attachment ids as scoped context."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-08",
+  "status": "PARTIAL",
+  "name": "Attach existing threads as context / ask an existing thread to dig deeper",
+  "gap": "Needed: POST /investigations/{id}/followups (or /threads/{id}/ask) that continues a completed thread with its distilled notes, synthesis and sources as context, plus a 'Pick thread' list in the island and composer (threads in this document or project) and a thread kind in the @-picker."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-09",
+  "status": "ABSENT",
+  "name": "Model choice (BYOT dropdown) on the island and ask surfaces",
+  "gap": "Needed: a ModelUsagePicker in the island header (default = house route) whose choice rides on Dialogue (after #3278 lands), on spin-research (add model_choice + operation_id to SpinResearchRequest) and on child launches. Child launches need a server policy decision to lift owner_model_root_required, or a separate owner-paid child-launch path with the same idempotency ledger as TalkToBook."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-10",
+  "status": "PARTIAL",
+  "name": "Streaming, progress and honest-failure states on island surfaces",
+  "gap": "Needed: an SSE /thought-partner/stream (and /books/{id}/ask/stream) with done and interrupted events and a retry/resume affordance; a shared IslandStatus component with states idle, sending, streaming, awaiting-research, completed, failed, withheld and no-key; the Reading and DRW launch paths moved onto it instead of console.error or an unhandled rejection."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-11",
+  "status": "PARTIAL",
+  "name": "Keep open / move / minimise / reopen the island window",
+  "gap": "Needed: island window verbs of pin, minimise-to-chip (a tray per workstation, herdr-style), expand to a full tab, and reopen from the companion rail; the island state must be persisted with the thread id (not the pre-launch props) so a reload reattaches to the running thread."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-12",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Hybrid clarifying-question step before Deep-research",
+  "gap": "The operator's goal ('engage an LLM deep-research subagent' in the island) implies a scoping turn before spend. Either build it as island step 1 (a clarify-then-launch form with a cost preview) or delete the stub, per its own reverse-if clause."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-13",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Anchored research-agent comment threads on artifacts (ArtifactFeedbackReview)",
+  "gap": "This is the only existing persisted, anchored, agent-answered thread, but it applies to style-wheel artifact previews, not reading or writing documents. Decide whether the island thread model reuses substrate/feedback (anchor = NodeTextAnchor) or supersedes it. At minimum it needs GET /feedback/threads?artifact_id=&version= and a production flag decision."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-14",
+  "status": "BUILT_AND_WIRED",
+  "name": "Book-level ask without a highlight (TalkToBook)",
+  "gap": "This is not connected to selection or the island: the current highlight is not passed; the conversation is sessionStorage per tab, and captured answers are never rehydrated; there is no project scope. It should become the thread backend the island promotes into, not a parallel conversation store."
+ },
+ {
+  "area": "island-ask",
+  "id": "IA-15",
+  "status": "PARTIAL",
+  "name": "Write-surface island actions (Rewrite / Make stronger / Spin a sub-agent / Edit\u2026)",
+  "gap": "Needed: span-scoped rewrite (send the Region, not the section), a sub-agent result that lands as an island thread attached to the draft paragraph with merge-into-draft (fork) controls, and an Edit panel that survives focus."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS1",
+  "status": "PARTIAL+",
+  "name": "Wrestle PDF highlight to a region-anchored, persisted distillation chat (/wrestle/:documentId)",
+  "gap": "READ. This is the closest shipped 'highlight, then ask an agent that keeps the context' loop, and the grounding never found it. PdfViewer.tsx:157-221: on mouseup it posts a typed `document.region_selected` event {region_id, page, char_start, char_end, bbox, text_excerpt} through postTypedEvent. That is a durable region anchor, but char_start comes from indexOf (the first match) per :179-185. NotesPanel.tsx:51 and :99-104 wire ChatInput to the last selected region. ChatInput.tsx:41-53 emits `distillation.requested` with that region_id. The backend worker (interfaces/research/api/wrestling.py:303-443, registered by default because app.py:1603 sets register_wrestling=True and :2152-2159 wires it) resolves the region text and emits `distillation.delivered` claim cards. Claims can then be challenged: NotesPanel renders claim.challenge_raised and the grounding_check verdicts. It is reachable from DocumentsIndex (index.tsx:168), CommandPalette.tsx:470 and ChunkModal.tsx:186. Limits: PdfViewer renders ONLY page 1 (pdf.getPage(1) at :100, pageNum hard-set to 1 at :143; the initialPage prop is ignored). The thread id is one per browser tab (sessionStorage 'antiek.investigation_id', WrestleApp/index.tsx:48-51), so it is shared across documents and lost with the tab. It is PDF only, has no FloatMenu, and the island work should reconcile with it (document.region_selected is an existing anchor schema)."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS2",
+  "status": "BUILT_AND_WIRED+",
+  "name": "'Research this page': a no-highlight research spawn from the book reader",
+  "gap": "READ: ResearchThis.tsx:33-92 is mounted at Reading/index.tsx:504 as `passageText={selection?.text ?? page.text}`. It calls spinResearch(..., export_artifact=true), opens a 'researchArtifactReceipt' window (openWindow at :49-63) and navigates to /inv/:id. Unlike the highlight path it has a busy state and a visible inline error (:84-89). It navigates away and writes no chase handoff. It is NOT MEASURED whether the mousedown on the button collapses the highlight first, which would make it always send page.text."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS3",
+  "status": "PARTIAL+",
+  "name": "VoiceNote 'Discuss in Thought Partner' seed (reader), a dead path while the sidecar is closed",
+  "gap": "READ: VoiceNote.tsx:68-81 dispatches THOUGHT_PARTNER_SEED_EVENT with a prompt and system_context. It fires automatically after a save that parks questions (:101-104) and from a 'Discuss in Thought Partner' button (:195-201). The only listeners are AISidecar.tsx:110-127, mounted only while the \u2318/ panel is open, and BrainstormStation ThoughtPartnerPanel.tsx:88, which does not exist on /read. Nothing calls toggleAISidecar on seed, so with the sidecar closed the click is silently lost. Either the seed bus should open the sidecar, or this becomes an island ask."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS4",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "ReadingCompanion 'Saved chases', draft merge and source-merge rewrite (the fork-into-document vertical) are unreachable",
+  "gap": "READ: ReadingCompanion.tsx:88 `useChaseDraftHandoffs(readingThreadId)`, and the whole section, including draftReadyChases (:346), preview (:428), 'rewrite source' commitSourceMerge (:481-486) and restore (:519), is inside `handoffs.length > 0` (:334). The only handoff writer is ChaseThread.tsx:111, whose parent is always an /inv id (ResearchWorkstation/index.tsx:155,171). No code path records a handoff with parent read-<doc>, so this 'merge insights into a document, making a forked version' surface cannot appear in the shipped app."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS5",
+  "status": "BUILT_AND_WIRED+",
+  "name": "CommandPalette 'Toggle AI sidecar' action plus a palette model picker broadcast on the seed bus",
+  "gap": "READ: CommandPalette.tsx:590-599 runs toggleAISidecar. :376-386 chooseDriver dispatches THOUGHT_PARTNER_SEED_EVENT {owner_model}, which the sidecar adopts only while it is open (AISidecar.tsx:118-121). It is still reach without function, because ThoughtPartnerRequest drops model_choice (RUN, IA-09)."
+ },
+ {
+  "area": "island-ask",
+  "id": "MISS6",
+  "status": "PARTIAL+",
+  "name": "Server-side grounding and account memory on every thought-partner ask",
+  "gap": "READ: app.py:6681-6697 retrieves library notes (_retrieve_thought_partner_context, which is gated by policy tag) and injects OWNER-PRIVATE MEMORY CONTEXT from account_memory_context. :6719-6726 record_account_memory_from_turn writes extracted facts, but it is dark unless interaction_memory_enabled() (account_memory_context.py:90). This matters for the island's 'context' design, because an ask already carries graph and memory context it does not show. Spec antiek-thought-partner-memory (README: BUILD operator-gated) was not in the grounding's spec list."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-01",
+  "status": "PARTIAL",
+  "name": "Reader as standalone product (/read/:documentId BookReader)",
+  "gap": "The reader only opens documents that have a book_assets row: books, arXiv via register_book, YouTube, and /sources/upload. Web/URL ingests and /ingest/asset conversions return 404, which shows the book-specific copy.\n- Needed: a document-agnostic read endpoint (e.g. GET /documents/{id}/read returning the same FullTextResponse shape through serve_full_text_guarded plus _prefer_reader_html_body, with no book_assets requirement), or register a minimal book_assets row at URL ingest.\n- Needed: designed error, retry and not-found states (currently raw e.message).\n- Needed: page-turn keybindings (ArrowLeft/ArrowRight, j/k).\n- Needed: a breadcrumb that shows the document title."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-02",
+  "status": "BUILT_AND_WIRED",
+  "name": "Library, personal space, meta-reading (Read product shelf surfaces)",
+  "gap": "Every open is a full-page navigate, including from the Library when it is hosted in a window. There is no 'open in window' or 'open beside' action.\n- MetaReading still carries the 'Proposed \u2014 sign-off pending' banner.\n- The Library shelf page carries the operator ingest panels (PRIOR full-audit-type-copy.md C6)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-03",
+  "status": "BUILT_AND_WIRED",
+  "name": "arXiv link-back frame (T2/T3) inside the reader",
+  "gap": "The frame has no highlight/FloatMenu scope, because the body is a cross-origin iframe. A research spawn from a T2/T3 paper can only use 'Research this page' with metadata."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-04",
+  "status": "PARTIAL",
+  "name": "WrestleApp + PdfViewer (PDF reading and region capture)",
+  "gap": "Needed: GET /documents/{id}/pdf (rights-gated, servable only) so /wrestle/:id and the PdfViewer panel can load bytes by id; multi-page rendering that honours initialPage.\n- Or retire /wrestle as an open target and route every door to the reader (antiek-reader SPR-05's plan)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-05",
+  "status": "PARTIAL",
+  "name": "DocumentsIndex (all substrate documents)",
+  "gap": "A row click should open the reader (a window by default, per the windows policy) rather than /wrestle.\n- Rows show raw document_id and investigation_id."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-06",
+  "status": "PARTIAL",
+  "name": "Any-asset-to-HTML reading (projection / sanitized reader HTML)",
+  "gap": "Pipeline: upload \u2192 sanitized HTML \u2192 reader works. Gaps:\n- /ingest/asset (anydoc\u2192docling) and URL snapshots (/sources/{id}/reader-html) have no reader door.\n- HTML documents don't paginate (one page), so position, TOC and page citations degrade.\n- No prose layer: headings and lists render as body text (PRIOR audit-type-copy T2/T4); the fix sits on design/w3-shell-states-prose-20260923 @0d68b6213 (ReadingColumn.tsx + index.css), not on main.\n- Needed: a UI 'Import any file' action that calls /ingest/asset, and a reader route that resolves any document to its HTML sidecar."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-07",
+  "status": "PARTIAL",
+  "name": "Grounded reader windows (reader as a floating window) \u2014 #3384 cherry of #2838",
+  "gap": "Wire the reader window to every evidence door: ChunkModal, MasterMdViewer named sources, Write citations, AutoNotebook, ProjectTree, \u2318K, DocumentsIndex. Suggested helper: `openReaderWindow({documentId, chunkId?, pageIndex?, anchorRect?})`.\n- BookReader must consume a chunkId/pageIndex payload, scroll to it, and paint a highlight.\n- Container-query layout inside windows: collapse the TOC and companion below about 900px container width.\n- Keep TalkToBook inside the window frame.\n- Persist open windows per workstation."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-08",
+  "status": "PARTIAL",
+  "name": "Reader embeddable pane/island in Research (ResearchWorkstation /inv/:id, StartResearch /, DRW)",
+  "gap": "The /inv/:id workstation and StartResearch have no working in-place reader. Needed:\n- A `Reader` PanelKind registered in PanelRegistry, rendering BookReader with {documentId, chunkId, pageIndex} and adapting to its container.\n- Or allow the WindowsLayer reader window over /inv/:id (the layer already overlays every route: AppShell.tsx:158).\n- Replace openPdfPanel callers with it.\n- A workstation tab strip per project that holds reader tabs (the Herdr-style 'mothership' has no reader tabs today)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-09",
+  "status": "ABSENT",
+  "name": "Reader embeddable in Writing (Write /write/:id Outline/Editor, Notebook, CreationStudio)",
+  "gap": "No working path opens a source beside the draft. Needed:\n- The Write citation chip and Notebook blocks open the reader window/panel next to the draft, anchored at the cited chunk (the same `openReaderWindow` helper as RE-07).\n- Fix ClaimInspector: fetch the claim by id, or pass the Claim object.\n- Give RegionEmbed a bytes source.\n- A 'reference shelf' side pane in WriteHome that holds the project's evidence documents as reader tabs."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-10",
+  "status": "PARTIAL",
+  "name": "Open evidence from a claim/citation in place (ChunkModal and other citation doors)",
+  "gap": "Only ChunkModal (chunk text) and TalkToBook (page jump) work in place. Needed:\n- One `openEvidence({chunkId|documentId, pageIndex})` action that opens the reader window scrolled to the chunk, used by ChunkModal (replacing the <a href>), MasterMdViewer, CommandPalette, ProjectTree, DocumentsIndex, Write, and Notebook.\n- The backend must expose chunk\u2192page/offset for book bodies. BookReader hard-codes representativeChunkId = null (index.tsx:150) because /books returns no chunk ids."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-11",
+  "status": "PARTIAL",
+  "name": "Highlight \u2192 island (subagent) from inside the reader",
+  "gap": "Restore an in-place island: highlight \u2192 a ChaseThread-style floating window anchored to the selection, parented to `read-<documentId>`, carrying book provenance through spin-research (keep the \u00a79.0 null guard), with a live trajectory in the island and a 'pin to workstation' action instead of navigation.\n- Surface spin failures in UI (AIActionFailure), not the console."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-12",
+  "status": "PARTIAL",
+  "name": "Ask a research agent with no highlight, with document context",
+  "gap": "Context is page-scoped and client-only: a single global focus, and the last mounted reader wins. Closing one reader window clears the focus even if another reader is still open.\n- Needed: a per-window, per-document context registry, and a 'deep research this document/project' action that launches a subagent (not only the Thought Partner) with the document plus notes as context.\n- Needed: persist talk threads as events on the `read-<docId>` thread."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-13",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Pick an existing subagent thread run in this document and ask it to dig deeper",
+  "gap": "Needed: GET /books/{id}/researches (per page and per document), and a reader 'threads on this document' list in the ReadingCompanion. Selecting a thread should open it in an island and send a follow-up (a continue-investigation endpoint) with the thread's context."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-14",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Merge subagent outcomes into the document (companion chase merge / source merge)",
+  "gap": "The merge chain never gets input from the reader. Reconnect the reader highlight chase (RE-11) so handoffs are recorded against `read-<docId>`.\n- Move handoffs from localStorage to substrate events.\n- Source merge rewrites the source body with a revision and restore. It does not create a FORKED version, as the operator's goal asks. Needed: a fork model (document revision branch with a parent pointer) and a Write-editor diff view."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-15",
+  "status": "PARTIAL",
+  "name": "Shared highlights/notes across Read, Research and Write",
+  "gap": "Highlights are never repainted in any product, because nothing saves an anchor. Needed:\n- Semantic anchors (chunk_id + quote/prefix/suffix, per the anchored-comments D2 plan and malleable-reading PR-4) on marginalia.noted.\n- A decorations facet in BookReader that paints them.\n- The same highlights visible when the document opens from Research or Write.\n- The D2 colored palette is spec-only."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-16",
+  "status": "PARTIAL",
+  "name": "Reading position persistence",
+  "gap": "Position is per tab and dies with the tab: no cross-session, cross-device or per-project resume, and no scroll offset within a page. Needed: a durable reading.position event (or a user_reading_state row) keyed by document, owner and project; restore on open in any host; persist the workstation window/tab layout."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-17",
+  "status": "PARTIAL",
+  "name": "Multi-document side-by-side",
+  "gap": "Only the DRW canvas can put two readers side by side, and only as floating windows. There is no split layout, synced scroll, compare mode, or 'open beside' action.\n- Needed: a split or tile mode in windowsStore (or PanelLayout docking of reader panels) plus container-query reader chrome."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-18",
+  "status": "PARTIAL*",
+  "name": "Hotkeys for reader and reader windows (Herdr-style hopping)",
+  "gap": "Needed:\n- Page next/prev keys scoped to the focused reader.\n- Cycle windows (include windowsStore in cycleFocus).\n- 'Open current citation in reader window'.\n- 'Send selection to island'.\n- Workstation tab hop. Numeric chords conflict with the RESERVED_COMBOS browser keys (bindings.ts:464-473), so a leader-key scheme is needed."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "RE-19",
+  "status": "SPEC_ONLY",
+  "name": "One Reader / openDocument convergence (antiek-reader plan)",
+  "gap": "The one-door resolver (`openDocument(id, opts)`) that routes every door (Library, DocumentsIndex, palette, ChunkModal, MasterMdViewer, DRW cite-source, Write trace) to one Reader never landed. The branches date from June 2026 and are far behind main. The plan must be re-derived against main (window kind 'reader', source-merge companion) rather than merged as-is."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS1",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "Per-entity custom hotkeys (AssignHotkey \u2192 bind \u2318+key to a document/investigation/deliverable route)",
+  "gap": "READ components/hotkeys/AssignHotkey.tsx:18-60 (entityKind document|investigation|deliverable|project|mode, route e.g. '/read/doc-9'). workspace/persistence.ts:230-275 (localStorage antiek.workspace.custom-hotkeys v1). workspace/shortcuts.ts:236-247 installShortcuts hydrates and dispatches custom bindings on load. HotkeyHud lists them. `grep -rn '<AssignHotkey'` outside tests \u2192 0 product mounts. For a Herdr-style hop this is the nearest existing lever: mount <AssignHotkey> in the reader header, ProjectTree rows and /inv headers."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS2",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Workspace-window keyboard control (Esc close, Enter/F full, arrows move, \u2318+arrows resize)",
+  "gap": "READ components/windows/WorkspaceWindow.tsx:172-215 onKeyDown, active when the window root or [data-window-titlebar] (tabIndex=0, :282-284) has focus. It applies to every reader window. There is no global chord to focus or cycle windows (shortcuts.ts has no windowsStore reference)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS3",
+  "status": "BUILT_AND_WIRED+",
+  "name": "ContextPicker in the AI sidecar (@doc/@insight \u2192 POST /compose-context \u00a79.0-aware system_context)",
+  "gap": "READ components/AISidecar.tsx:15,358 mounts components/ai/ContextPicker.tsx:29-60 (composeContext; withheld and missing items shown). It feeds thoughtPartnerSeed.ts:26-35. This is the existing 'ask with no highlight and give it context' door for the Thought Partner. It takes raw ids typed into a text box (a craft gap) and does not launch a research subagent."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS4",
+  "status": "BUILT_AND_WIRED+",
+  "name": "FloatMenu Dialogue: in-place, multi-turn follow-up over a highlighted passage",
+  "gap": "READ modes/shared/FloatMenu/FloatMenu.tsx:418-513 (followUp state, send(followUp)); floatMenuActions.ts:209-230 dialogueOverSelection \u2192 POST /thought-partner with investigation_id=read-<docId> in the reader. It is the only anchored in-place LLM engagement left in BookReader. Persistence of these turns is NOT MEASURED."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS5",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Research-side highlight \u2192 floating ChaseThread island (in place)",
+  "gap": "READ ResearchWorkstation/HighlightToolbar.tsx:45-52 \u2192 index.tsx:151-160 openPanel('ChaseThread', {spawnContext, parentInvestigationId}, {mode:'floating'}); ChaseThread.tsx:99-117 starts the child and records a handoff. This contradicts the grounding's RE-09 note that Write is the only surviving island. Reverting the reader to it (with book provenance) is a small, known-good path."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS6",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Manual merge of research threads (ArtifactOutlineShelf draft merge)",
+  "gap": "READ ResearchWorkstation/DistillView.tsx:153 mounts ArtifactOutlineShelf; ArtifactOutlineShelf.tsx:128-151 onDraftMerge composes the investigation plus selected children, handoffs and typed sibling ids through composeResearchArtifacts (lib/api.ts:1408). This is the existing 'merge subagent contexts manually' at investigation level; the reader companion reuses the same composeResearchArtifacts (ReadingCompanion.tsx:290)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS7",
+  "status": "BUILT_AND_WIRED+",
+  "name": "DRW steer an existing research (deepen / redirect)",
+  "gap": "READ modes/DeepResearchWorkspace/ResearchPanel.tsx:71 (Deepen, extra_budget_usd 0.25) and :75-92 (redirect sub_question); api/research.ts:137 SteerKind; backend POST /sessions/{session_id}/researches/{investigation_id}/steer. This is the existing 'ask that thread to dig deeper' contract. It is limited to DRW sessions and cannot be reached from a document."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS8",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "Offset-anchored PDF region selection (document.region_selected with page/char_start/char_end/bbox)",
+  "gap": "READ components/PdfViewer.tsx:157-215. It reaches users only through a locally chosen PDF in /wrestle (WrestleApp/index.tsx:61-86). It is the one offset-bearing highlight event on main and has no repaint. Any anchored-highlight design should reconcile with it or retire it."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS9",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Panel pop-out to an OS window (/_panel/:panelId)",
+  "gap": "READ workspace/PanelHandle.tsx:241 'Pop out window'; workspace/popout.ts:53 window.open('/_panel/\u2026'); PanelWindowApp.tsx:32 renders PanelRegistry[kind] full-window with BroadcastChannel sync. It works for WorkspaceStore panels. A future Reader PanelKind would inherit it, whereas windowsStore reader windows cannot pop out."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS10",
+  "status": "BUILT_AND_WIRED+",
+  "name": "WorkspaceStore layout persistence (global / per-route / per-investigation, plus ?ws= URL param)",
+  "gap": "READ workspace/persistence.ts:1-50 (antiek.workspace.global|route.<key>|inv.<id>, schemaVersion 1). This is the existing mechanism a per-workstation reader-tab/layout persistence should extend. windowsStore deliberately does not persist (windowsStore.ts:50-62)."
+ },
+ {
+  "area": "reading-embedded",
+  "id": "MISS11",
+  "status": "PARTIAL+",
+  "name": "Web-sourced DRW evidence opens a reader window that 404s",
+  "gap": "READ acquisition/search/exa/adapter.py:556 and acquisition/search/parallel/adapter.py:198 \u2192 acquisition.urls.adapter.ingest_url \u2192 register_source_document (no book_assets). DRW index.tsx:432 then opens a reader window whose getBook 404s \u2192 \"That book isn't in the library.\" (Reading/index.tsx:325). By code path; NOT MEASURED in a browser. This is the one shipped embed, and it fails for the web-found half of research evidence."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-01",
+  "status": "ABSENT",
+  "name": "Workstation = project entity (frontend state + backend record)",
+  "gap": "Needs a first-class Workstation. Backend: a `workstations` table (workstation_id, owner_user_id DEFAULT '__operator__', title, created_at, updated_at, archived_at, metadata) and `workstation_members` (workstation_id, member_kind IN ('investigation','drw_session','document','deliverable','notebook','write_folder','thread'), member_id, added_at, PK(workstation_id, member_kind, member_id)). Membership must be edges, never copies, following the write_folders precedent. It needs typed WorkstationCreated/MemberAdded/MemberRemoved event payloads in substrate/schemas/events.py, and all writes must go through runtime/db_lock. Endpoints: GET/POST /workstations, GET/PATCH /workstations/{id}, POST/DELETE /workstations/{id}/members. Frontend: a route prefix /w/:workstationId/* and a `useWorkstations` store holding the active workstation id. Research families (parent_investigation_id roots) and deliverables with investigation_root_id could be proposed as starter workstations."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-02",
+  "status": "ABSENT",
+  "name": "Multiple open workstations held at once",
+  "gap": "Needs an `openWorkstations: WorkstationId[]` list plus `activeWorkstationId`. Each open workstation keeps its own last route, tab list, focused tab and panel layout, and switching preserves them (herdr's workspace carries active_tab_id). Browser tabs are the only real workaround today, and all of them share one localStorage namespace."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-03",
+  "status": "ABSENT",
+  "name": "Tabs within a workstation (open objects: docs, researches, pieces, threads)",
+  "gap": "Needs a `WorkstationTab` model {tab_id, workstation_id, kind: 'investigation'|'drw_session'|'reader'|'deliverable'|'notebook'|'thread', entity_id, route, title, pinned, last_focused_at, attention}. It needs a tab strip in the SceneChrome zone with overflow and a fuzzy go-to (the operator has one herdr workspace with 174 tabs), plus open/close/reorder/rename. The existing '/' SceneChrome view tabs should be demoted or folded in. Decide first whether windowsStore windows ARE tabs: the STRATEGY-TRANSFER doc warns 'do not create a third concept blindly'."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-04",
+  "status": "ABSENT",
+  "name": "Hotkey hop between workstations (herdr prefix+shift+1..9 / workspace_picker prefix+w)",
+  "gap": "The key scheme must be decided before any code, because it conflicts with the ratified SPR-08 no-chord rule. Options: (a) ratify one leader key (e.g. ctrl+b like herdr, or \u2318; which is currently the Read-library sub-action) with a visible prefix-mode HUD, then 1..9 for tabs, shift+1..9 for workstations, w for the picker, g for go-to, n/p for next/prev; (b) \u2325/\u2303+digit resolved from e.code (Digit1..9), which needs a comboSpecFor change; (c) \u2318\u21e7+digit (check each browser). Whichever wins needs a new `WORKSTATION_BINDINGS` table in bindings.ts, conflict entries, HUD rows and a picker modal. The shortcuts.ts handler must add a digit branch based on e.code."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-05",
+  "status": "PARTIAL",
+  "name": "Hotkey hop between tabs / panes inside a workstation",
+  "gap": "No tab layer exists to hop between. Panel focus cycling works (pane level). Needed: next/prev tab, switch to tab N, a recent-tab toggle (herdr last_pane), close tab, reopen closed tab; window focus cycling should join the same ring."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-06",
+  "status": "PARTIAL",
+  "name": "Sidebar listing workstations/agents/threads with live state",
+  "gap": "Needs a shell-level, always-available sidebar (not a Research-only panel). It should list open workstations with a rolled-up state, then their agents and threads: DRW sessions (needs GET /research/sessions?owner&state), investigations, thread-partner and anchored-comment agent_work threads, and Write generation jobs. Each row needs a state from ONE registry, extended with an 'awaiting_input' state for plan approvals, spend approvals and agent questions. The sidebar should subscribe to /ws/events (today no shell-level event consumer exists: git grep useEventStream finds only Replay, StartResearch, WrestleApp and the hooks) instead of 30 s polls that stop when the tab is hidden. It needs a spaces/priority sort like herdr's agent_panel_sort."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-07",
+  "status": "PARTIAL",
+  "name": "Session save/restore (layout, open objects, focus, per-workstation state)",
+  "gap": "Needs a server-backed session (per owner: open workstations, each with tabs, active tab, last route and panel layout), so state follows the operator across devices the way herdr resume does. localStorage can stay as a cache. Fix the hydration scope first: read investigationId from matchPath(location.pathname) rather than useParams at shell level. Also fix the ordering: hydrate in a layout effect or before PanelHost starters mount, or make starters idempotent re-openers after hydration. Persist windows (the named follow-up in windowsStore.ts:57-60) and pins. Add a per-workflow and per-workstation last-route memory."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-08",
+  "status": "PARTIAL",
+  "name": "Unified Research + Write shell (one mothership)",
+  "gap": "One shell, but two products. To become a mothership, a workstation must hold research runs AND written pieces as tabs side by side, with the reader able to open inside either (WINDOW_PAGES.reader already exists as a window kind). The workflow doors become lenses on the active workstation rather than separate destinations."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-09",
+  "status": "PARTIAL",
+  "name": "Command palette as switcher",
+  "gap": "Fix the \u2318K double toggle: drop the in-component keydown handler when AppShell is mounted, or check e.defaultPrevented. Then add entity kinds: workstations, open tabs, deliverables (GET /write/deliverables), Speak projects, DRW sessions, threads and claims. Add MRU ordering on an empty query, a 'switch to workstation / open as tab / open in window' secondary action, and match reasons."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-10",
+  "status": "PARTIAL",
+  "name": "Notifications / attention when a subagent finishes or asks",
+  "gap": "Needs a shell-level attention hook on /ws/events (not a visible-only poll) that raises: a toast with target {path, panelId} and suppression while the operator is watching; a document.title count; a favicon dot; optional sound and Notification API. It needs an 'awaiting_input' state for plan approvals, spend approvals and agent questions (herdr's ask-inbox, alt+a in the operator's config), an open-notification-target hotkey (herdr prefix+o), and a durable attention inbox per the personal-attention spec, where acknowledging never executes the underlying action. Decide whether to rebase and land #3088/#3092 or supersede them."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-11",
+  "status": "BUILT_AND_WIRED",
+  "name": "Pane layer: panel workspace (dock L/R/bottom, floating, popout, pin, cycle)",
+  "gap": "The layer works, but: the hydration wipe (SW-07 RUN), the nested PanelLayout (the narrow banner renders twice per design-audit visual-critiques F-13; whether docks render twice was NOT MEASURED), and ResearchWorkstation is the same component instance on '/' and '/inv/:id', so its starters (deps []) do not reopen with the new investigation's Chat."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-12",
+  "status": "BUILT_AND_WIRED",
+  "name": "Workspace windows (floating whole-page frames, 'multiple terminals')",
+  "gap": "No persistence, no list or taskbar, no hotkeys, and dock-owning pages (Research, Wrestle) can't live in a window. It is a candidate substrate for tabs, but a second layout model beside WorkspaceStore."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-13",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Per-entity custom \u2318+key (bind a project/book/deliverable)",
+  "gap": "Mount <AssignHotkey> on workstation, tab and entity headers once the key scheme (SW-04) frees a namespace; otherwise this feature has no keys to hand out."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-14",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Cross-workflow thread breadcrumb (ThreadBreadcrumb/ThreadJump over GET /thread/{node_id})",
+  "gap": "Wire an entity-in-focus resolver in the shell (from the active tab) that fetches /thread/{node_id} and passes it to SceneChrome. This is the natural 'where did this come from and where did it go' strip across Research, Read and Write inside a workstation."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "SW-15",
+  "status": "BUILT_AND_WIRED",
+  "name": "Keyboard HUD + global hotkey handler + other keydown owners",
+  "gap": "There is no single keymap owner: at least 3 window-level handlers claim \u2318-combos independently (\u2318K doubled, \u2318J conflicting). A mothership keymap needs one dispatcher that owns all global combos, so each key has one owner."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS1",
+  "status": "PARTIAL+",
+  "name": "Investigation root as the de facto cross-workflow 'project / research folder' identity (the candidate workstation primitive)",
+  "gap": "READ: docs/decisions/spr-09-write-canvas-xray-rewrite.md:29-31 (D-1: Write piece to investigation is 1:1, and many-to-many would need a join table); modes/Write/ConnectResearch.tsx:13-26; interfaces/research/api/app.py:2471-2503 (document.filed_into_investigation -> documents.investigation_id, 1:N via db_lock); modes/Reading/PersonalSpace/index.tsx:21,34 ('file into a research project'); substrate/speak/biography_composition.py:71-99 plus speak.biography.composed event (docs/decisions/spr-11-biography-template-not-graph.md:18-27; guard test_biography_creates_no_new_store). Spec consequence: a workstation defined as an investigation root reuses three ratified links. A new workstations table plus a member-edges table reverses D-1 and needs explicit operator ratification."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS2",
+  "status": "BUILT_AND_WIRED+",
+  "name": "/my-research multi-research monitor (page-level agent list with family grouping and attention aggregate)",
+  "gap": "READ: App.tsx:289 route; SceneChrome.tsx:82 'My research' tab; MyResearch.tsx:1-30,43-48,78-115 (groupByParent, aggregateAttention, hasUnseen); rows link to /inv/:id (:443) and /replay/:id (:476). It is the closest existing analogue to herdr's agent panel, but it is a route, not a persistent sidebar."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS3",
+  "status": "PARTIAL+",
+  "name": "DRW session reachability after launch (MyResearch promises a link into /deep-research/:sessionId that does not exist)",
+  "gap": "READ: MyResearch.tsx:15-17 says it 'links INTO /deep-research/:sessionId', but the only navigation to /deep-research/:id in the app is StartResearch.tsx:501, fired on launch (git grep for '`/deep-research/${'). There is no GET /research/sessions list (cascade_routes.py:1782 is by id only). Once the operator navigates away, a running DRW session can be reached only by its URL. Needs GET /research/sessions?state= plus a session row in MyResearch or the sidebar."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS4",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Nested PanelLayout double-renders every docked or floating panel",
+  "gap": "RUN /tmp/mothership-ground/shell-workstations-refute/nest.tsx: 'left docks in DOM: 2  rendered \"Investigations\" panel regions: 2' (AppShell.tsx:151 PanelLayout + PanelHost.tsx:79 PanelLayout, same store arrays at PanelLayout.tsx:39-42). This is a live defect: duplicate panel instances, duplicate polling and duplicate focus targets. The tab/workstation layer must own exactly one PanelLayout."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS5",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Same-instance route reuse: ResearchWorkstation never remounts across / and /inv/:id, so per-investigation starters never reopen",
+  "gap": "RUN hyd3.tsx: 'RW mounts= 1' after navigating '/' -> '/inv/abc123' -> '/inv/zzz', with panels=[] throughout. PanelHost.tsx:46-72 opens starters once (deps []). ResearchWorkstation/index.tsx:97-115 computes a new Chat starter per investigationId, but it never applies. A tab model keyed by entity must key its content (e.g. key={investigationId}) or make starters reactive."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS6",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Per-window keyboard control (Esc close, Enter/F expand, arrows move, \u2318+arrows resize)",
+  "gap": "READ: components/windows/WorkspaceWindow.tsx:172-200,282. It contradicts the grounding's 'windows have no keyboard verbs'. Still missing: a global hotkey for the window or tab ring."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS7",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "\u2318\u21e7+letter namespace (22 free combos inside the ratified SPR-08 shape)",
+  "gap": "RUN python over bindings.ts: free mod+shift letters = 22 (taken: n,p,t,w). READ: bindings.ts:521-535 SAFE_ASSIGNABLE.isWithinRange accepts mod+shift. shortcuts.ts:157-168 already emits 'mod+shift+<key>'. This is a no-re-ratification option for workstation or tab verbs (e.g. \u2318\u21e7W is reserved but \u2318\u21e7O/\u2318\u21e7G/\u2318\u21e7J are free). Digits under shift remain e.key-unsafe, which was NOT MEASURED in a browser."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS8",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Highlight -> 'Follow this' ChaseThread floating panel (subagent spawn from selection inside the Research workstation)",
+  "gap": "READ: modes/ResearchWorkstation/index.tsx:151-181 (onChaseThis and onChaseQuestion open a ChaseThread panel, mode floating) passed at :225-228,263,274; PanelRegistry ChaseThread at :63. This is shell-adjacent: the island a mothership needs already exists as a floating panel, but only on /inv/:id and outside any tab or thread list. Detailed ownership belongs to the island/subagent area."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS9",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Dead or mismatched view tabs (Read 'Library' -> /wrestle vs the door at /library; Speak 'Interviews' -> redirect to /speak)",
+  "gap": "READ: SceneChrome.tsx:93,123,127; workflowTaxonomy.ts:126 (read.defaultRoute='/library'); App.tsx:265 (/interviews -> Navigate /speak). This is a craft defect in the zone a tab strip would replace."
+ },
+ {
+  "area": "shell-workstations",
+  "id": "MISS10",
+  "status": "PARTIAL+",
+  "name": "Standing operator constraints on a merged mothership",
+  "gap": "READ: spr-09-write-canvas-xray-rewrite.md:82-87 ('Net-new, not merged (the operator's standing choice)'); spr-11-biography-template-not-graph.md:66-95 ('the guard is the contract'); sprint-08-hotkeys-command-scheme.html out-of-scope list (Leader keys AND \u2325-prefixed namespaces). All three must be cited or re-ratified in the mothership spec before any build."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C01",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Thread list per evidence document (researches/conversations spawned from this document, revisitable)",
+  "gap": "Need: GET /documents/{document_id}/threads (union of researches_for_passage over all pages, chases parented to read-<doc>, and grouped read.book_answered turns) backed by an indexed thread table (thread_id, kind, document_id, project_id, parent_thread_id, status, created_at) rather than a trajectory scan; Reader rail component <DocumentThreads> listing them with status + 'open' + 'ask again'; spin-research must parent to read-<doc> (or write the thread row) so book-spawned researches are listable; retire the localStorage handoff list as source of truth."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C02",
+  "status": "PARTIAL",
+  "name": "Thread list per project/workstation",
+  "gap": "No workstation/project entity that owns multiple root researches, documents, notebooks and drafts. Need a projects table + GET /projects/{id}/threads, a per-project thread rail (tabs inside workstation), and a thread picker bound to a hotkey. The CommandPalette lists investigations globally (CommandPalette.tsx:716-740), not per project."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C03",
+  "status": "ABSENT",
+  "name": "Ask an existing RESEARCH thread a follow-up that carries its held context",
+  "gap": "Need a thread-continuation primitive: POST /threads/{thread_id}/turns (or /investigations/{id}/followups) that assembles a context pack from the thread's synthesis, distilled insights/questions (note_injection.build_project_notes_layer), sources and a trajectory summary, runs a scoped answer or child research, and appends the turn to the same thread. UI: a composer bound to the selected thread ('Ask this thread') in the /inv view, Reader rail and DRW canvas, distinct from 'start a new research'."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C04",
+  "status": "PARTIAL",
+  "name": "Follow-up with held context in a READING conversation (talk-to-book / thought partner / wrestle)",
+  "gap": "Conversations can't be reopened across sessions or picked from a list. Need server-side thread identity (thread_id + branch_id on read.book_answered and thought-partner turns), GET /threads/{id} to rehydrate, and a thread picker in TalkToBook. Reader SPR-06's anchored durable Dialogue was planned and not shipped: substrate/contracts/reading_surface.py:1,35,54 is still PROVISIONAL, typed Any."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C05",
+  "status": "PARTIAL",
+  "name": "Manual context merge of two or more threads",
+  "gap": "The merge output can't be asked, continued or cited. Need a merged-context entity: POST /threads/merge {thread_ids, strategy} \u2192 a new thread whose context pack is the union with conflicts surfaced, plus a merge sheet UI (select threads, see overlap and contradictions, confirm). Replace file:// paths with API routes and never send server filesystem paths to the browser."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C06",
+  "status": "ABSENT",
+  "name": "Automatic context merge over a document/project",
+  "gap": "Nothing merges thread contexts automatically. The reuse flywheel records reuse without injecting it; this is PLAUSIBLE from READ and was not RUN. Need a policy-driven background merger, e.g. on investigation.completed where parent or document matches: fold the child's insights and questions into the parent/project companion and the agent evidence base, with a visible 'merged from' lineage and an undo. Fix the discarded reuse pack first."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C07",
+  "status": "BUILT_AND_WIRED",
+  "name": "Process (trajectory, steps, sources consulted) persisted and viewable",
+  "gap": "Process is split from outcome. Talk-to-book and Dialogue processes aren't viewable. 'Sources consulted' is only raw events. Need a process tab on the thread view (steps, sources with servability, cost) linked both ways with the outcome, and a sources-consulted summary endpoint (GET /threads/{id}/sources)."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C08",
+  "status": "BUILT_AND_WIRED",
+  "name": "Outcome (answer, claims, insights, questions) persisted and viewable",
+  "gap": "The outcome is per thread only. There is no cross-thread outcome, and reading-conversation outcomes can't be reopened after the session ends."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C09",
+  "status": "PARTIAL",
+  "name": "Human-facing companion document per PROJECT accumulating subagent findings",
+  "gap": "Need a persistent project companion (e.g. /projects/:id/companion) that accumulates findings across all the project's threads (root plus chases plus reading conversations), with 'from thread X' provenance, a 'new since you last looked' marker, and fork/merge into Write. AutoNotebook needs to include child threads."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C10",
+  "status": "PARTIAL",
+  "name": "Human-facing companion per EVIDENCE DOCUMENT",
+  "gap": "Need a per-document companion that aggregates: user notes, findings from threads spawned from the document (per passage), talk-to-book Q&A, and claims elsewhere that cite the document (from /docs/{id}/explain). It needs a route (e.g. GET /documents/{id}/companion) and a Reader rail tab. Decide whether the twin store is that substrate; if so it must move under the DuckDB single-writer with owner scoping."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C11",
+  "status": "PARTIAL",
+  "name": "Agent-facing richer evidence base, distinct from the human companion",
+  "gap": "The graph plus event log is the de-facto agent evidence base, but there's no per-project or per-document agent evidence bundle that subagents actually read at run time, because note_injection and reuse are unwired (see C03 and C06). Need a named evidence-base object (project_id/document_id \u2192 nodes, chunks, trajectories, unresolved questions) with a context-pack builder, kept distinct from the prose companion."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C12",
+  "status": "PARTIAL",
+  "name": "Merge a thread's insight INTO a document (Write / Notebook / HTML projection / source)",
+  "gap": "No 'merge this insight into <document>' action from a thread. Need POST /documents/{id}/merge-proposals {thread_id, insight_node_ids, target_section} producing a proposed revision (never an in-place source rewrite), plus insert-into-Notebook/Write with a thread picker."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C13",
+  "status": "BUILT_UNREACHABLE*",
+  "name": "Forked version with lineage (merge creates a fork, parent pointer kept)",
+  "gap": "Build the SDAM SPR-01/02 repository (create/revise/restore in one write-lock transaction + CAS pointer), routes POST /derived-assets, POST /derived-assets/{id}/revisions, GET /derived-assets/{id}/revisions, and a lineage view (revision graph with 'forked from thread X / document Y')."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C14",
+  "status": "ABSENT",
+  "name": "Diff / accept / reject UI for merged or AI-edited versions",
+  "gap": "Need a DiffReview component (paragraph/block diff over two revisions, per-hunk accept/reject, AI vs operator change source) wired to the derived-asset revisions and notebook/deliverable versions; GET /derived-assets/{id}/revisions/{a}/diff/{b}."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C15",
+  "status": "BUILT_UNREACHABLE",
+  "name": "Cross-workflow thread breadcrumb/jump (GET /thread/{node_id})",
+  "gap": "This 'thread' is one entity's hop across Research/Read/Write/Speak, not a subagent conversation. Either wire it (fetch in SceneChrome for the focused entity) or rename it to avoid colliding with the subagent-thread concept the mothership needs."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "C16",
+  "status": "PARTIAL",
+  "name": "Highlight-spawned thread stays attached to its source (island) instead of navigating away",
+  "gap": "One island primitive (windowsStore window anchored to the highlight) across Reader, DRW and Write that holds the thread and can be minimized into the document's thread list."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS1",
+  "status": "PARTIAL+",
+  "name": "AISidecar @-context picker: ask an agent with composed context and no highlight (Cmd+/)",
+  "gap": "READ components/ai/ContextPicker.tsx:28-88 (raw 'document or insight id' input), lib/api.ts:899 ContextItemKind='doc'|'insight' (no investigation or thread kind), app.py:6765-6783 POST /compose-context, AISidecar.tsx:226-262,358 (posts /thought-partner with investigation_id '__sidecar__'), shortcuts.ts:328-331 Cmd+/. The thread is sessionStorage-only (useThoughtPartnerThread.ts:38,49). Closest shipped primitive to 'ask a research agent and give it context'. It needs a thread/investigation item kind and a picker in place of raw ids."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS2",
+  "status": "PARTIAL+",
+  "name": "Panel-hop hotkeys + per-investigation panel layout persistence (nearest thing to herdr tabs)",
+  "gap": "READ workspace/shortcuts.ts:335-343 (Cmd+[ / Cmd+] cycle focused panel), :345-353 (Cmd+W closes a floating panel), useWorkspaceHydration.ts:19-29 (scope antiek.workspace.inv.<id>), persistence.ts:117,131 (localStorage). Floating ChaseThread panels are workspace panels, so they are hoppable and restored per investigation per browser. There is no thread-level tab strip and no server persistence."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS3",
+  "status": "PARTIAL+",
+  "name": "ProjectTree panel (Cmd+B), workflow-scoped not project-scoped",
+  "gap": "READ shell/ProjectTree.tsx:18-33 ('Research \u2192 Investigations / Chase trees / Outcomes'; Recent/Pinned from live data), shortcuts.ts:171-177. It is a tree of nouns per workflow and has no project entity."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS4",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Embedded reader window beside research (DRW evidence \u2192 reader)",
+  "gap": "READ DeepResearchWorkspace/index.tsx:410-441,487. On main via 597f659a3. The evidenceSourceContext prop is unconsumed, and a highlight spawn inside the window navigates the app away (Reading/index.tsx:246-256)."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS5",
+  "status": "PARTIAL+",
+  "name": "Reader 'Research this page' artifact receipt window (companion links)",
+  "gap": "READ ResearchThis.tsx:42-64, ResearchArtifactReceipt.tsx:24-28,83-93. RUN: GET /research/{id}/artifact/html \u2192 404 against artifact_router (the only route is /artifact.html). ResearchArtifactReceipt.test.tsx:24 asserts the broken href, so the test is vacuous. The twin-notes link works (artifact_routes.py:310)."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS6",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "Document fork-with-lineage primitive (create_document_version / document_versions)",
+  "gap": "READ substrate/research_bridge/versioning.py:72-108,111+. There is no production caller (grep outside tests finds only lint baselines). It is a candidate substrate for the 'merge creates a FORKED version' goal, alongside the SDAM tables."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS7",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "File a reading/meta-doc into a research project (document.filed_into_investigation)",
+  "gap": "READ Reading/PersonalSpace/index.tsx:15-37, lib/researchSuggestion.ts:151-166 (emits the event on accept), app.py:2471-2483 (validation only), events.py:465,4151-4161. No reader consumes the filing: nothing shows filed docs in a project view and nothing injects them into a thread's context. The event is write-only, so the document\u2194project association is recorded but inert."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS8",
+  "status": "BUILT_UNREACHABLE+",
+  "name": "Loop One continuous chase mode (autonomous child threads from open questions)",
+  "gap": "READ orchestrator.py:2270-2382 spawns a child with parent_investigation_id plus spawned_from and halts on depth, duration or budget. In the frontend chase_mode appears only in generated/types.ts:1743, so the UI cannot turn it on. Children inherit ctx.context (the original string), not the parent's synthesis. Relevant to 'open questions feed autonomous diligence'."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS9",
+  "status": "PARTIAL+",
+  "name": "DRW live steer Deepen/Redirect",
+  "gap": "READ ResearchPanel.tsx:71 (Deepen sends {extra_budget_usd:0.25} only), :75-92 (Redirect sub_question), host_local.py:457-466. The deepen follow_up is stored in st.follow_ups and never consumed. It applies to live in-memory sessions only (cascade_routes.py:1880-1882 returns 404 if not live)."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS10",
+  "status": "PARTIAL+",
+  "name": "Write sub-agent proposal accept (spawns a child, then drops it)",
+  "gap": "READ Write/SubAgentProposal.tsx:72-77 calls startInvestigation with parent; Write/Outline.tsx:603-605 has onAccept={() => setProposal(null)}. The child id is lost and its outcome never returns to the draft."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS11",
+  "status": "RISK (READ, not RUN)+",
+  "name": "Risk: unconfined server-path reads in the merge/notes routes",
+  "gap": "READ source_merge.py:189-193 (Path(draft_merge_path).read_text with no root confinement, reached by preview and commit), artifact_routes.py:219-250 (preflight never checks the path), artifact_routes.py:294-297 (import_agent_notes(Path(body.path))). Combined with the in-place UPDATE documents SET raw_text (source_merge.py:410-413), an authenticated caller could copy an arbitrary server file into a document body."
+ },
+ {
+  "area": "threads-merge-fork-companion",
+  "id": "MISS12",
+  "status": "PARTIAL+",
+  "name": "Craft: Reader highlight Deep-research fails silently",
+  "gap": "READ Reading/index.tsx:246-256: on error, catch only calls console.error, with no toast or inline state. Contrast ResearchThis.tsx:65-67, which sets an error. 'Every state designed' is violated for the primary highlight gesture."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R1",
+  "status": "PARTIAL",
+  "name": "Reader typography, measure and prose layer (BookReader / ReadingColumn)",
+  "gap": "Main has no rich document model and the column does not own its measure. It stays short of the 60\u201372ch Kindle bar until W3 merges. Rich blocks (lists, tables, math) need the stranded Reader.tsx or new work."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R2",
+  "status": "ABSENT",
+  "name": "Page-turn keys (arrows / space / PageDown)",
+  "gap": "\u2190/\u2192, space, PageUp/PageDown and Home/End need wiring to setPageIndex, with focus-scope rules so the keys never fire inside inputs or FloatMenu."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R3",
+  "status": "PARTIAL",
+  "name": "Progress indicator",
+  "gap": "There is no progress bar, no percentage, no chapter-remaining count, no time-left estimate, and no progress shown on library or home cards."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R4",
+  "status": "PARTIAL",
+  "name": "Reading position persistence and cross-device sync",
+  "gap": "No durable or cross-device position (the D5 bar). Position is also clobbered when a book is opened from a citation."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R5",
+  "status": "ABSENT",
+  "name": "Distraction-free / focus mode",
+  "gap": "No prefix+f mode that hides chrome down to the path header."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R6",
+  "status": "PARTIAL",
+  "name": "Day/night reading themes",
+  "gap": "No per-reader night toggle and no sepia or paper theme. Dark mode has known contrast defects (the reader error text measures 3.25:1)."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R7",
+  "status": "ABSENT",
+  "name": "Text size / font controls",
+  "gap": "No reader Aa control (size, line height, margins, font). Pagination does not depend on text size (usePosition.ts docblock), so adding size controls will not break saved positions."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R8",
+  "status": "PARTIAL",
+  "name": "Layout stability while loading",
+  "gap": "Even with W3 the skeleton is not shaped like the final TOC and column. Scroll reset on page turn was NOT MEASURED."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "R9",
+  "status": "PARTIAL",
+  "name": "PDF reading (PdfViewer / Wrestle)",
+  "gap": "PDFs are not a readable book surface: one page only, no page links and no annotation layer."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "F1",
+  "status": "ABSENT",
+  "name": "Footnote / endnote parsing and rendering",
+  "gap": "Footnotes are either deleted at ingest or left as dead text. A #fn anchor on a different page window cannot resolve, because paginate() splits the body into per-page DOMs (paginate.ts:23-60)."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "F2",
+  "status": "ABSENT*",
+  "name": "Click behaviour for links inside the reader body",
+  "gap": "D5 requires 'never a navigation away'. Nothing turns a link click into a child tab or window."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "F3",
+  "status": "PARTIAL",
+  "name": "In-product citation to source opening",
+  "gap": "No single openDocument resolver. Citations either navigate away or open a flat window, and none records parentage."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "F4",
+  "status": "PARTIAL",
+  "name": "Resolving a reference (DOI / arXiv id) to a library document, or ingesting it on demand",
+  "gap": "There is no reader-facing 'resolve this reference' call (look up by DOI or arXiv id in the graph, else offer rights-aware ingest). There is also no reference-list extraction for papers."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N1",
+  "status": "PARTIAL",
+  "name": "Opening a document from a document (workspace windows)",
+  "gap": "The windows are flat and floating, capped at 8, and not persisted. They cannot represent an unbounded rabbit hole, and there is no lineage to return along."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N2",
+  "status": "PARTIAL",
+  "name": "Research spun from a passage, with lineage and return",
+  "gap": "The research branch does not open as a child tab next to the passage. The way back relies on sessionStorage position, and the branch record is not a typed origin {doc_id, locator}."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N3",
+  "status": "BUILT_AND_WIRED",
+  "name": "Reusable tree structures (unbounded depth)",
+  "gap": "These trees cover investigations, chats and TOCs, not tabs. The D6 visual rules (indent capped at 6 levels plus a depth badge, hierarchical numbers, focus-subtree) are not implemented anywhere."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N4",
+  "status": "SPEC_ONLY",
+  "name": "Branch-tab tree (D6) and any tab concept in the reader",
+  "gap": "The whole D6 surface is unbuilt: tab model, path header, sibling strip, tree panel, numbers as addresses, prune/lift with undo, and persistence."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N5",
+  "status": "ABSENT",
+  "name": "Tree navigation keys (parent / child / sibling / tree panel)",
+  "gap": "The prefix+u/o/n/p/t keys and their direct-chord twins (D2/D6) are missing, and browser-reserved combos (bindings.ts:438-462) limit the choices."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "N6",
+  "status": "PARTIAL",
+  "name": "Breadcrumb path / back to passage",
+  "gap": "No root-to-current path of documents, and no 'return to the exact passage' beyond the sessionStorage page index."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "T1",
+  "status": "BUILT_AND_WIRED",
+  "name": "Saved reads (/readings PersonalSpace)",
+  "gap": "This list is 'what I have read', not a to-read queue or a continue shelf. It could feed Continue once a position exists."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "T2",
+  "status": "ABSENT",
+  "name": "User read flags / read later / bookmarks",
+  "gap": "No flag entity on documents or passages. THREAD-CONTRACT \u00a72.8 proposes a single flag entity with intent read|diligence and actor user|agent, unsigned."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "T3",
+  "status": "ABSENT*",
+  "name": "Agent-suggested reading / an agent flagging something to read",
+  "gap": "No agent can put an item in a to-read queue with who, why and which project (the D5 'To read' door)."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "T4",
+  "status": "BUILT_AND_WIRED",
+  "name": "Prompt-to-curate shelf",
+  "gap": "Curation lasts only for the session. It is not saved as a queue and not tied to a project."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "H1",
+  "status": "PARTIAL",
+  "name": "Reading home: three doors (continue / to read / new)",
+  "gap": "Only the 'New' door exists (library, search, import). Continue and To-read are missing, and a standalone book has no reading workstation (Q-A5)."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "H2",
+  "status": "PARTIAL*",
+  "name": "Continue reading",
+  "gap": "Needs a server-side position per (owner, document), joined with source.read history."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS1",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Per-book reading event thread `read-<documentId>`",
+  "gap": "READ apps/reading/src/modes/Reading/index.tsx:130 const readingThreadId = `read-${documentId}`, passed to FloatMenu (:397), the notes/voice UI (:510) and ReadingCompanion (:564). It is a de facto per-book event log keyed by document, and a ready candidate home for Q-A5 (standalone book workstation) and for reading.position or flag events. It is not owner-namespaced in the id itself; owner scoping NOT MEASURED."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS2",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Passage-anchored notes and per-page voice notes persisted server-side",
+  "gap": "READ modes/shared/FloatMenu/floatMenuActions.ts:86-106 saveFloatMenuNote sends investigation_id (the read-<doc> thread), chunk_id and document_id; FloatMenu.tsx:194 'Note' action; Reading/VoiceNote.tsx:36,89 saveVoiceNote(documentId, {pageIndex...}). These are the closest existing passage-anchor and 'I flagged this' primitives, and the grounding did not list them under T2 or the locator question Q-A4. There is no cross-book list of these notes as a to-read queue (NOT MEASURED beyond grep)."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS3",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Global single readingFocus bus (one current book/page)",
+  "gap": "READ apps/reading/src/lib/readingFocus.ts:13-40: a module-level `current` ReadingFocus {documentId, pageIndex, pageText, servable} published by BookReader (index.tsx:26 imports set/clearReadingFocus) and merged into Thought Partner system_context. It is a singleton. With many reader tabs (D6), whichever tab mounted last owns the AI context. This is a tab-tree risk the grounding missed, alongside the ad-attribution risk."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS4",
+  "status": "PARTIAL+",
+  "name": "Server-side per-page trace via ad-impression flushes",
+  "gap": "READ Reading/useReaderImpressions.ts:91 page_index: ctx.pageIndex sent through recordAdImpressions (api/books.ts:195 POST /books/{id}/ad-impressions; books.py:2088; ad_routes.py:201 page_index field). It exists only when slots show and belongs to the money ledger (\u00a79.0). It must not be repurposed as reading position, but it proves page_index already crosses the single-writer boundary."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS5",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Reader-in-window key conflict precedent",
+  "gap": "READ components/windows/WorkspaceWindow.tsx:199-200 ArrowLeft/ArrowRight move a focused window by STEP. BookReader mounts inside the 'reader' window kind (openWindow.ts:106-113; index.tsx:51 useInWindow). Any page-turn arrow binding (R2) must scope against this window-move handler, and the Library tablist roving keys (Library/index.tsx:636) are the in-repo roving-focus idiom to reuse."
+ },
+ {
+  "area": "reading-mothership",
+  "id": "MISS6",
+  "status": "BUILT_AND_WIRED+",
+  "name": "Shared sessionStorage position key across concurrent instances of the same document",
+  "gap": "READ usePosition.ts:14 one key per documentId. The routed reader and any DRW 'reader' window for the same doc (DeepResearchWorkspace/index.tsx:432-441) read and write the same key, so two tabs on the same book (one D6 child on a cited page, one parent) overwrite each other's page. This makes the citation-clobber risk worse and applies before any server sync exists."
+ }
+]

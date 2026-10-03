@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Antiek motherships — Master Spec</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page page--wide">
+
+  <header class="hero">
+    <p class="eyebrow">Master spec · ANTIEK-MOTHERSHIP</p>
+    <h1>The Antiek motherships</h1>
+    <p class="tagline">Research, Writing and Reading, each a herdr-grade shell over the same projects. Branch tabs form an infinitely nested logic tree. Reading is embedded everywhere. A highlight raises a subagent island, and every subagent's process and outcome is kept, addressable, mergeable and forkable.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Status: spec draft, wave 0 executing</span>
+      <span class="tag tag--yellow"><span class="dot"></span>Owners: lane A Antiek Nudge v2 (236c36bd) · lane B Antiek Sweep v2 (a59f7aa2)</span>
+      <span class="tag tag--grey">Lane A: 11 sprints · 4 waves</span>
+      <span class="tag tag--grey">Generated 2026-09-24</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p class="lede">What success looks like and how we measure it.</p>
+    <p>The operator runs his research the way he runs his agents in herdr: many projects open at once, hopped by keyboard, each holding many tabs, with state that survives a closed laptop. Today Antiek organises work by workflow and route, not by project. It has no workstation, no tab, and no way to hold two things open and hop between them (<a href="GAPS.md">GAPS.md</a> §1).</p>
+    <p>This spec builds three motherships, <strong>Research</strong>, <strong>Writing</strong> and <strong>Reading</strong>, over one shared set of projects (D1, D5). Inside them:</p>
+    <ul>
+      <li>tabs grow as an infinitely nested branch tree, the operator's logic tree (D6);</li>
+      <li>any document can be read in place;</li>
+      <li>a highlight raises an <em>island</em> where a deep-research subagent works on that passage;</li>
+      <li>every subagent run is a durable, addressable <em>thread</em> that can be asked again, merged with others, rendered into a human-facing companion (D3), merged into a document as a fork, and diligenced autonomously on consent (D4).</li>
+    </ul>
+
+    <h3>Success criteria</h3>
+    <ul>
+      <li><strong>Scale.</strong> The operator can hold his herdr-scale load and hop anywhere in two keystrokes: 20 workstations, a 174-tab branch tree, hierarchical numbers like <code>3.2.1</code>. This is proven by a rendered walkthrough on that fixture, in MS-11.</li>
+      <li><strong>No lost passages.</strong> From any passage in any mothership, one keystroke raises an island bound to that passage. Its question, process and outcome survive a reload, and a margin mark on the passage reopens it. No path navigates away and loses the passage.</li>
+      <li><strong>Ask a thread again.</strong> Any earlier subagent thread in a document or project can be picked and asked a follow-up that carries its held context. Two or more threads can be merged with their conflicts shown.</li>
+      <li><strong>Findings get a home.</strong> Every workstation has a Companion tab, and every evidence document a companion rail. Merging an insight into a writing document produces a fork with lineage and a per-hunk diff to accept; the original is never touched.</li>
+      <li><strong>Craft.</strong> An independent re-score of the frontend-craft rubric reaches at least 42/48 (87.5%) with no critical-failure veto; the baseline is 24/48. Every new surface ships every state in both themes at 1280 and 390, and the entry chunk stays under its 700 KB gz budget.</li>
+    </ul>
+
+    <h3>Failure mode to avoid</h3>
+    <p><strong>A fourth parallel substitute.</strong> This means building a new document model, a new thread store, a new layout system or a second keymap beside the ones already on main. Most of what the motherships need exists but is disconnected (GAPS §1). The work is to connect and to finish, under one chassis. It is not to invent. The CEO directive's P0 clause says the same: "avoid parallel substitutes for the reader, research artifact, or merge contracts". Every sprint's diligence card enforces it.</p>
+  </section>
+
+  <section class="block">
+    <h2>Context &amp; motivation</h2>
+    <p class="lede">Why this, why now.</p>
+    <p>The operator's own words (2026-09-24 <code>/goal</code>): Research and Writing should "feel like a central mothership like Herdr that includes workstations (i.e., projects) and tabs within each workstation that can be hopped between with hot keys". Reading is "embedded globally … to simply spin up a subagent connected to that piece of data". He wants to highlight a section and have "an island emerging where I engage with an LLM deep research subagent". He wants to ask threads that hold context, merge their contexts, record outcomes as "a human facing companion document to each project and each evidence document" beside a richer agent-facing base, merge insights into a document to "create a forked version", and have flagged concepts "autonomously diligenced".</p>
+    <p>A later message added a Reading mothership for two use cases, "a kindle or real book replacement" and reading as the entry into a project. It also asked for sub-branches that are "infinitely layered to represent the precision of the logic tree". His herdr session (research/) shows 20 workspaces, 252 tabs, and one workspace with 174 tabs. That is the scale these motherships must feel good at.</p>
+    <p>Grounding on main <code>15e78e276</code> found a shell with four defects that would poison any build on top of it (F1–F5, F9). It found no workstation, tab or project layer. It also found a large set of built-but-unreachable parts: the FloatMenu in-place Dialogue, the ChaseThread floating island, the reading-physics anchoring kit, reader windows, the ContextPicker, per-passage research records, spend preview and approval, <code>create_document_version</code>, the continuous-research daemon and <code>chase_mode</code>. The shape of the work follows: stabilise, add the chassis, connect.</p>
+  </section>
+
+  <section class="block">
+    <h2>Architecture overview</h2>
+    <p class="lede">Only what is load-bearing for the sprints. The full model is in <a href="DESIGN-MODEL.md">DESIGN-MODEL.md</a> and the lane contract in <a href="THREAD-CONTRACT.md">THREAD-CONTRACT.md</a>.</p>
+    <div class="dep-graph">account
+ ├─ attention inbox ................. thread done · needs you · flag consent · cap reached · merge suggestion (D4)
+ └─ workstations (= projects, shared by all three motherships; lane B registry, edges not copies)
+     └─ workstation W
+         ├─ Research mothership  ─┐
+         ├─ Writing  mothership  ─┼─ each keeps its own FOREST of branch tabs for W (D6)
+         └─ Reading  mothership  ─┘
+                tab 1  (root: a reader, research, document, companion, thread or flags surface)
+                 ├─ tab 1.1  (opened from a footnote / reference / citation / island / research in tab 1)
+                 │   └─ tab 1.1.1 … unbounded depth
+                 └─ tab 1.2
+                pane: main surface + at most ONE docked pane (reader beside a doc · companion rail · thread)
+
+thread  = an investigation (lane B). Branch edges live in the PARENT's event log (provenance).
+tab     = navigation state, server-side per account. Pruning a tab never deletes a branch.
+island  = a thread created on its first question, anchored by a text-quote locator; kept/promoted = presentation.
+keys    = ONE keymap table → dispatcher + key sheet (prefix+?) + aria-keyshortcuts. herdr prefix ctrl+b and ctrl+alt chords (D2); tree panel prefix+t / ctrl+alt+y.</div>
+
+    <h3>Key invariants</h3>
+    <ul>
+      <li><strong>One of everything.</strong> There is one keymap owner, one document door (<code>openDocument</code>), one Island primitive and one thread identity (the investigation). New surfaces extend existing stores (<code>WorkspaceStore</code>, <code>windowsStore</code>, <code>RegionStore</code>). They never sit beside them.</li>
+      <li><strong>Tab ≠ branch.</strong> Tabs are navigation state, and branches are provenance, written to the parent's log before the child starts. Closing or pruning UI never deletes evidence.</li>
+      <li><strong>No invented facts.</strong> An unknown is never drawn as a zero or an empty list; this is the rubric veto W7 closed on five pages. Every surface designs loading, empty, error, partial, refused and offline.</li>
+      <li><strong>No spend without sight and consent.</strong> Every island and autonomous run shows its model and estimate before it spends. Autonomous diligence needs per-flag consent and respects the user's daily cap, reserved before spend (D4).</li>
+      <li><strong>Budget.</strong> The entry chunk stays under 700 KB gz. New surfaces are lazy; the pattern is proven in W7.</li>
+      <li><strong>Merging.</strong> Merges go only through Antiek Nudge's train. Lane A never edits lane B's in-flight files (DECISIONS.md, lane split).</li>
+    </ul>
+  </section>
+
+  <section class="block">
+    <h2>Sprint roster — lane A (UX)</h2>
+    <p class="lede">Sprints in the same wave can run in parallel. Waves 1–3 build local-first against the contract's shapes and switch to lane B's endpoints as they land, so neither lane waits on the other. Lane B's roster is authored by Antiek Sweep v2 on its own pages.</p>
+
+    <div class="wave-band">Wave 0 — now, no lane-B dependency</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-01-shell-stabilisation-keymap.html"><span class="id">MS-01</span><span class="title">Shell stabilisation + one keymap</span><span class="goal">Fix F1–F5 and F9. One keymap table and dispatcher: herdr prefix plus ctrl+alt chords, with a key sheet.</span><span class="footer"><span class="tag tag--blue">Wave 0</span><span class="tag tag--grey">~7 milestones</span><span class="tag tag--yellow"><span class="dot"></span>ready</span></span></a>
+      <a class="sprint-card" href="sprint-02-craft-carry-over.html"><span class="id">MS-02</span><span class="title">Craft carry-over (W1–W7)</span><span class="goal">Land the design chain through the train. Finish W2 controls, W6 dark visual gates and W4 copy.</span><span class="footer"><span class="tag tag--blue">Wave 0</span><span class="tag tag--grey">workflow running</span><span class="tag tag--yellow"><span class="dot"></span>running</span></span></a>
+    </div>
+
+    <div class="wave-band">Wave 1 — the chassis (waits on MS-01)</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-03-motherships-workstations.html"><span class="id">MS-03</span><span class="title">Motherships + workstations chassis</span><span class="goal">Routes /w/:id/{research|writing|reading}, mothership switch, switcher, sidebar, attention inbox, session.</span><span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">~9 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-04-branch-tab-tree.html"><span class="id">MS-04</span><span class="title">Branch tab tree (the signature)</span><span class="goal">An infinitely nested tab tree: path header, sibling strip, tree panel, 3.2.1 numbers, keys. It holds up at 174+ tabs.</span><span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">~8 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-05-document-door-reader-pane.html"><span class="id">MS-05</span><span class="title">One document door + reader pane</span><span class="goal">openDocument/openEvidence for every door. The reader docks beside research and writing, and citations open in place.</span><span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">~7 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+    </div>
+
+    <div class="wave-band">Wave 2 — reading and islands (waits on Wave 1 + a signed contract)</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-06-reading-mothership.html"><span class="id">MS-06</span><span class="title">Reading mothership</span><span class="goal">A home with three doors, a Kindle-grade reader, and footnotes/references that open as child tabs.</span><span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">~8 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-07-islands-ask.html"><span class="id">MS-07</span><span class="title">Islands + ask</span><span class="goal">One Island primitive, anchored and persistent. Model, estimate and stream; kept or promoted; ask with attached context.</span><span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">~9 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+    </div>
+
+    <div class="wave-band">Wave 3 — threads, companion, autonomy, proof (waits on lane B endpoints)</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-08-threads-ux.html"><span class="id">MS-08</span><span class="title">Threads UX</span><span class="goal">Per-document and per-workstation thread lists, ask-this-thread, a merge flow with conflicts, and process views.</span><span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~7 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-09-companion-merge-fork.html"><span class="id">MS-09</span><span class="title">Companion + merge-into-document + fork</span><span class="goal">A Companion tab and rail, a "merge into…" flow, DiffReview, and a fork chip with lineage.</span><span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~7 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-10-flags-consent-autonomy.html"><span class="id">MS-10</span><span class="title">Flags, consent, autonomy, inbox</span><span class="goal">Read and diligence flags, a consent sheet, a daily cap, inbox items, and "Keep digging".</span><span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~7 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+      <a class="sprint-card" href="sprint-11-proof-rubric-states.html"><span class="id">MS-11</span><span class="title">Proof: rubric re-score + state matrices</span><span class="goal">An independent rubric re-score of at least 87.5% with no veto, and a rendered walkthrough at herdr scale.</span><span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~6 milestones</span><span class="tag tag--grey"><span class="dot"></span>specced</span></span></a>
+    </div>
+
+    <div class="callout callout--info"><strong>Lane B (data), authored by Antiek Sweep v2.</strong> B1 thread model · B2 context merge · B3 companion derivation · B4 fork and merge-into-document backend · B5 autonomous diligence. Each lane-A sprint page names the lane-B capabilities it needs (the "Lane B needs" column in <a href="ROSTER.md">ROSTER.md</a>). The shared contract is <a href="THREAD-CONTRACT.md">THREAD-CONTRACT.md</a>; no lane builds against it until both have signed it.</div>
+  </section>
+
+  <section class="block" id="harness-hint-run"
+           data-harness-default-pattern="inline"
+           data-harness-inline-only-sprints="MS-01,MS-05,MS-06,MS-10">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · run level · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not the human. <code>/caffenagent</code> reads the <code>data-harness-*</code> attributes here and on each sprint's <code>#harness-hint</code>.</p>
+    <table class="spec">
+      <thead><tr><th style="width:26%">Harness fact</th><th style="width:40%">Value</th><th style="width:34%">Why it's set this way</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Default pattern</strong></td><td><code>inline</code></td><td>Most sprints converge on shared shell files (AppShell, the keymap, stores). A barrier-free fan-out inside a sprint would collide. Verification is where independence buys something, so every sprint closes with a different-lineage critic (codex gpt-6-sol).</td></tr>
+        <tr><td><strong>Wave fan-out unit</strong></td><td>The sprints of one wave, each on its own <code>design/mothership-NN-*</code> branch</td><td>The sprints in a wave touch disjoint files, which is checked per sprint on its "Files touched" line.</td></tr>
+        <tr><td><strong>Inline-only sprints</strong></td><td><code>MS-01, MS-05, MS-06, MS-10</code></td><td>These each have one owning seam (the keymap, the document door, the reader, flags). A fan-out would cost more than it returns.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents may investigate, build in worktrees and verify. They must not deploy, push to main, merge, or land an operator-gated commit. Merging goes through Antiek Nudge's train.</div>
+  </section>
+
+  <section class="block">
+    <h2>Decision log</h2>
+    <p class="lede">Non-trivial calls, each recoverable months from now. The operator's rulings are D1–D6 (<a href="DECISIONS.md">DECISIONS.md</a>).</p>
+    <table class="spec">
+      <thead><tr><th style="width:28%">Decision</th><th style="width:40%">Why</th><th style="width:22%">What would change it</th><th style="width:10%">Date</th></tr></thead>
+      <tbody>
+        <tr><td><strong>D1+D5:</strong> three motherships (Research, Writing, Reading) over shared projects</td><td>Operator ruling. It keeps each mode's shell focused, which matches his standing "net-new, not merged" choice for the Write canvas (<code>spr-09-write-canvas-xray-rewrite.md:82-87</code>). Shared workstations keep the project in hand when he switches mode.</td><td>The operator asks for one combined shell.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td><strong>D2:</strong> herdr prefix (<code>ctrl+b</code>) plus <code>ctrl+alt</code> direct chords; this supersedes SPR-08's no-leader-key rule</td><td>Operator ruling, for herdr muscle memory. The <code>ctrl+alt</code> family rather than <code>alt</code>: macOS composes <code>alt+digit</code> into characters in every text field, and herdr's own keyboard doc recommends <code>ctrl+alt</code> (research/herdr-keyboard-v0.9.1.mdx). Every plain ⌘+letter is already taken (SW-04).</td><td>A browser or OS swallows a chosen chord. The keymap table then swaps it in one place.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td><strong>D3:</strong> companion as a project tab plus a per-document rail</td><td>Operator ruling. Two renderings of one derived companion (lane B B3), so there is never a second document model.</td><td>A field test shows the rail crowding the reader at 1280. It would then collapse to margin marks with a hover card.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td><strong>D4:</strong> opt-in per flag, a daily cap reserved before spend, and an attention inbox</td><td>Operator ruling. This matches the existing owner-bound spend-approval posture (<code>cascade_routes.py:1203-1235</code>).</td><td>The operator raises autonomy to auto-run within the cap.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td><strong>D6:</strong> tabs are an infinitely nested branch tree</td><td>Operator ruling: "to represent the precision of the logic tree". It is made legible by a path header, a sibling strip, a tree panel (six-level indent cap, depth badge, subtree focus) and hierarchical numbers used as addresses.</td><td>None. This is the design's signature.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td>At most two panes per tab (a main surface plus one docked pane)</td><td>A research surface is not a terminal. Reading legibility and focus return beat arbitrary splits. herdr's own data shows nearly every tab is a single pane.</td><td>The operator repeatedly needs three-up comparison. That would add a compare-mode tab, not free splits.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td>An island is a thread created on its first question; kept and promoted are presentation states</td><td>One thread identity (the investigation) means one lineage, one state source (the terminal reader) and one merge path. Agreed with lane B.</td><td>Lane B finds that investigations can't carry sub-minute Dialogue turns cheaply.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td>Rename ThreadBreadcrumb to Trail</td><td>"Thread" must mean exactly one thing, a subagent investigation. ThreadBreadcrumb is a cross-workflow entity hop (GET <code>/thread/{node_id}</code>).</td><td>Lane B finds that ThreadBreadcrumb's backend concept should become the thread index.</td><td class="mono">2026-09-24</td></tr>
+        <tr><td>Wave 1 builds local-first against the contract's shapes, with server sync when lane B lands</td><td>This way neither lane blocks the other. The contract fixes the shapes, so the swap is a data-source change, not a redesign.</td><td>Lane B lands its endpoints before wave 1 starts. Then wave 1 goes server-first.</td><td class="mono">2026-09-24</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Rejected alternatives</h2>
+    <p class="lede">What we chose against, and when we would reconsider.</p>
+    <table class="spec">
+      <thead><tr><th style="width:22%">Alternative</th><th style="width:38%">Why rejected</th><th style="width:40%">Reconsider if…</th></tr></thead>
+      <tbody>
+        <tr><td><strong>One workstation holding Research and Writing tabs side by side</strong></td><td>This was recommended in the interview and the operator chose otherwise (D1). It would also erode his standing "net-new, not merged" Write canvas choice.</td><td>The operator asks for a combined view. A "project overview" tab could then list all three forests.</td></tr>
+        <tr><td><strong>Flat tabs (herdr's own model)</strong></td><td>A rabbit hole is a tree. Flattening it loses "where did I come from", and the operator explicitly asked for infinite layering (D6).</td><td>Never, for Reading. For Writing, the tree stays but will usually be shallow.</td></tr>
+        <tr><td><strong>Free-form pane splits (herdr's arbitrary pane tree)</strong></td><td>It costs reading legibility and focus management for no research gain; herdr's own usage is one pane per tab.</td><td>A measured need for three-up comparison appears.</td></tr>
+        <tr><td><strong>Plain <code>alt+1..9</code> chords</strong></td><td>They type <code>¡™£</code> into text fields on macOS. <code>ctrl+alt</code> is herdr's recommended safe family.</td><td>Never on macOS. A Linux-only user could opt in through the keymap table.</td></tr>
+        <tr><td><strong>Reusing <code>windowsStore</code> (8 floating windows) as the tab system</strong></td><td>It is memory-only, capped at 8, cannot host dock-owning pages (Research, Wrestle), and would be a second layout model beside <code>WorkspaceStore</code>.</td><td>Never as the tab system. It remains the substrate for islands and the popover-sized reader window.</td></tr>
+        <tr><td><strong>A new "island" store separate from threads</strong></td><td>It would be a parallel thread store (the P0 clause). Kept, promoted and merged would each need their own lineage.</td><td>Lane B shows the investigation model cannot carry the island's turn cadence.</td></tr>
+        <tr><td><strong>Building the chassis on <code>main</code> beside the unmerged design chain</strong></td><td>W1, W3 and W7 rewrite the same shell files (AppShell, shell/*, PanelLayout, tokens), so a sibling build would have to be rewritten after they land.</td><td>The design chain stalls in the train for more than about 48 h. Then land MS-01 first and rebase the chain onto it.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Open questions</h2>
+    <p class="lede">What we don't yet know, the assumption we're working under, and who can resolve it.</p>
+    <table class="spec">
+      <thead><tr><th style="width:32%">Question</th><th style="width:38%">Current assumption</th><th style="width:30%">Who can resolve</th></tr></thead>
+      <tbody>
+        <tr><td>Q-A2: inbox updates by push (SSE) or by poll?</td><td>SSE over the existing event stream, with a visible poll as fallback.</td><td>Lane B (contract Part 1)</td></tr>
+        <tr><td>Q-A3: does "companion" already mean something in codex-primary's work?</td><td>No clash with the UI name. Lane B is checking.</td><td>Lane B / codex-primary</td></tr>
+        <tr><td>Q-A4: the island and margin-mark locator format</td><td>passage_id stays the coarse key, extended with a text-quote selector (exact, prefix, suffix plus a position hint).</td><td>Lane B</td></tr>
+        <tr><td>Q-A5: where a standalone book lives (D5 use case i)</td><td>One workstation registry. A standalone book is <code>kind: reading</code> with a primary doc_id, linkable into a project later.</td><td>Lane B grounding</td></tr>
+        <tr><td>Prefix key inside the Writing editor: does <code>ctrl+b</code> ever collide?</td><td>The prefix never fires while a text surface has focus and the key has an editing meaning there. On macOS bold is <code>cmd+B</code> and <code>ctrl+b</code> is "cursor back".</td><td>MS-01 (measured in the editor)</td></tr>
+        <tr><td>Glmf merged #3382 overnight against the ground evidence. Does it change BYOT on these surfaces?</td><td>Tokens are fixed on main; the tools half is being cut; prod needs <code>migrate_owner_namespace --apply</code>.</td><td>Operator</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Glossary</h2>
+    <p class="lede">Terms of art. If a sprint instance would have to guess one, it's here.</p>
+    <table class="spec">
+      <thead><tr><th style="width:22%">Term</th><th>Definition</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Mothership</strong></td><td>One of three shells: Research, Writing or Reading. It is a mode of work, not a container of data. Switching mothership keeps the workstation.</td></tr>
+        <tr><td><strong>Workstation</strong></td><td>A project, shared by all three motherships. Lane B owns the registry; membership is edges, not copies.</td></tr>
+        <tr><td><strong>Tab / branch tree</strong></td><td>A navigation node. Children are opened from a passage (footnote, reference, citation, island, research), at unbounded depth, addressed by hierarchical number (<code>3.2.1</code>).</td></tr>
+        <tr><td><strong>Branch (provenance)</strong></td><td>The parent → child investigation edge plus its origin. It is written to the parent's event log before the child starts, and is independent of tabs.</td></tr>
+        <tr><td><strong>Thread</strong></td><td>A subagent run. It is an investigation, identified by <code>thread_id</code> = the investigation id.</td></tr>
+        <tr><td><strong>Island</strong></td><td>A thread created on its first question and anchored to a passage. It can be kept (as a margin mark), promoted (to a tab) or merged.</td></tr>
+        <tr><td><strong>Companion</strong></td><td>The human-facing derived account of subagent findings, as a project tab and a per-document rail (D3). It is distinct from lane B's agent-facing evidence base.</td></tr>
+        <tr><td><strong>Fork</strong></td><td>A new version of a writing document created by a merge-into-document, with lineage and a per-hunk diff. The original is untouched.</td></tr>
+        <tr><td><strong>Flag</strong></td><td>One entity with intent <code>read</code> or <code>diligence</code> and an actor (user or agent). Diligence runs only after per-flag consent, within the daily cap.</td></tr>
+        <tr><td><strong>Prefix</strong></td><td>herdr's leader key, <code>ctrl+b</code> by default and configurable. <code>prefix+x</code> means press ctrl+b, release, then press x.</td></tr>
+        <tr><td><strong>Design chain</strong></td><td>The unmerged branches W1 (tokens), W3 (shell, states, prose), W5 (motion), W7 (crashes and vetoes), plus W2, W6 and W4 still in build. Lane A stacks on them.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="spec-footer">
+    Generated by <code>htmlspec</code> · Source brief: operator <code>/goal</code> 2026-09-24 plus follow-ups (DECISIONS.md D1–D6) · evidence: ground/ + verify/ on main <code>15e78e276</code> · 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

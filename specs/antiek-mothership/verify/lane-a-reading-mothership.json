@@ -1,0 +1,192 @@
+{
+  "area": "reading-mothership",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "R1",
+      "claimed": "PARTIAL: renderBlocks flattener, column flex-1, measure only from parent max-w-2xl; W3 prose layer unmerged; Unified Reader Reader.tsx off main",
+      "holds": true,
+      "evidence": "READ ground ReadingColumn.tsx:65 renderBlocks (#{1,3} -> one <h2>, everything else <p>), :110 className \"flex-1 font-serif text-base leading-[1.7]\"; Reading/index.tsx:404 \"max-w-2xl mx-auto\". RUN git show origin/design/w3-shell-states-prose-20260923:apps/reading/src/index.css shows .prose-antiek max-width:30em, font-size 1.1875rem; merge-base --is-ancestor origin/design/w3... origin/main -> no; b4e6c7653 notonmain. The ~80ch figure is NOT MEASURED by me (derived from 42rem)."
+    },
+    {
+      "id": "R2",
+      "claimed": "ABSENT: no page-turn keys",
+      "holds": true,
+      "evidence": "RUN grep -rn 'keydown|onKeyDown|addEventListener' modes/Reading components/reader: only TalkToBook.tsx:460 onKeyDown (chat input), plus visibilitychange/pagehide (useReaderImpressions.ts:131-132) and iframe load (ArxivFrame.tsx:92). READ index.tsx:538/549 pager onClick only. bindings.ts:281-288 BUILTIN_BINDINGS has no reader bindings. Arrow handlers exist only in Library filter tablist (Library/index.tsx:636) and WorkspaceWindow move (WorkspaceWindow.tsx:199)."
+    },
+    {
+      "id": "R3",
+      "claimed": "PARTIAL: plain 'Page N of M' text, TOC highlights current page",
+      "holds": true,
+      "evidence": "READ index.tsx:543 `Page ${page.pageNumber}` of {pages.length}; TocPanel.tsx:35 indent by entry.level. RUN grep -i 'progress|percent|remaining' modes/Reading components/reader: only ReadingCompanion in_progress (investigation status). Extra defect: the label mixes the 1-based book page number (paginate.ts:17-18,46) with the window count, so a book whose markers do not start at 1 prints e.g. 'Page 12 of 8'."
+    },
+    {
+      "id": "R4",
+      "claimed": "PARTIAL: position only in sessionStorage; no server position; citation openers overwrite position",
+      "holds": true,
+      "evidence": "READ usePosition.ts:14 KEY antiek.read.pos.<doc>, :18 sessionStorage.getItem, :53 sessionStorage.setItem. RUN git grep reading_position|read_position|last_page|reading_progress in interfaces substrate runtime apps -> 0 hits. READ MetaReading/index.tsx:98-104 and Library/index.tsx:555-561 write the cited page into the same key then navigate. events.py:3908 BlockPositionPayload precedent confirmed. Note: ad-impression flushes do send page_index server-side (useReaderImpressions.ts:91, ad_routes.py:201) but that is an ad ledger, not a position store."
+    },
+    {
+      "id": "R5",
+      "claimed": "ABSENT: no distraction-free mode",
+      "holds": true,
+      "evidence": "RUN git grep -i 'fullscreen|requestFullscreen|zen|distraction|immersive|focusMode|hideChrome|chromeless' apps/reading/src (non-test, non-story): only brand/mascot-brain/PROFILE.md:90 (an image asset description). No reader code."
+    },
+    {
+      "id": "R6",
+      "claimed": "PARTIAL: dark mode follows OS only; W1 in-app theme unmerged",
+      "holds": true,
+      "evidence": "READ tailwind.config.js:12 darkMode: \"media\"; Settings/index.tsx:360 Row label=\"OS theme\" read-only; git grep data-theme|setTheme|useTheme finds no theme switch (only ThemeRegion data-theme-region). RUN git show origin/design/w1-tokens-foundation-20260923:apps/reading/tailwind.config.js:33 darkMode: [\"selector\", '[data-theme=\"dark\"]'] (unmerged). No sepia/paper theme (grep 0)."
+    },
+    {
+      "id": "R7",
+      "claimed": "ABSENT: no text size / font controls",
+      "holds": true,
+      "evidence": "RUN git grep 'fontSize|textSize|zoom|setSize' on modes/Reading/index.tsx components/reader TocPanel.tsx -> 0 hits. Column font is fixed text-base (ReadingColumn.tsx:110)."
+    },
+    {
+      "id": "R8",
+      "claimed": "PARTIAL: whole-reader swap to 'Opening the book\u2026' while loading; raw error text",
+      "holds": true,
+      "evidence": "READ index.tsx:319-326: if (loading) return <CenterNote>Opening the book\u2026</CenterNote>; error branch renders `error` string directly. W3 fix unmerged (branch not ancestor of origin/main). Scroll reset NOT MEASURED."
+    },
+    {
+      "id": "R9",
+      "claimed": "PARTIAL: PdfViewer renders page 1 only; DocumentsIndex routes to /wrestle",
+      "holds": true,
+      "evidence": "READ components/PdfViewer.tsx:100 const page = await pdf.getPage(1); DocumentsIndex/index.tsx:168 navigate(`/wrestle/...`). RUN 1b8d637ef notonmain (W7 fix in flight)."
+    },
+    {
+      "id": "F1",
+      "claimed": "ABSENT: footnotes stripped at ingest / left literal; no frontend footnote code",
+      "holds": true,
+      "evidence": "READ acquisition/books/wikisource.py:93 _NAV_HEADER_RE (footnotes?|references), :106-107 _REF_RE/_SELFCLOSE_REF_RE sub(\" \"); reader_html.py:439 'reference links, footnotes ... left as literal escaped text'; standard_ebooks.py:90,123 renders the EPUB body to PDF/text at ingest (notes flattened). html_sanitizer.py:141 _GLOBAL_ATTRS includes id, :145 a:href; sup/section allowed (:105,:109). RUN git grep -i 'footnote|noteref|endnote|#fn' apps/reading/src -> only comments and NoteReferenceBlock false positives."
+    },
+    {
+      "id": "F2",
+      "claimed": "PARTIAL: links in sanitized body have no click handler",
+      "holds": false,
+      "evidence": "The facts hold but the status overstates. READ ReadingColumn.tsx:114 dangerouslySetInnerHTML with no onClick/onClickCapture; RUN git grep \"closest('a'|HTMLAnchorElement|tagName === 'A'\" apps/reading/src -> only the ReadingColumn line itself; index.tsx has onClick only at :500/:538/:549. The sanitizer allows only href on <a> (html_sanitizer.py:145), so there is no target and a click is a full document navigation (a relative EPUB href lands on an unknown SPA route). The cited ArxivFrame.tsx:133 is a LemonButton window.open outside the body, not body-link handling. Nothing designed for in-body links is built.",
+      "corrected_status": "ABSENT"
+    },
+    {
+      "id": "F3",
+      "claimed": "PARTIAL: MetaReading full navigate, TalkToBook in-book jump, DRW evidence opens reader window; openDocument resolver off main",
+      "holds": true,
+      "evidence": "READ MetaReading/index.tsx:95-104; index.tsx:108-117 jumpToPage; DeepResearchWorkspace/index.tsx:432-441 openWindow(\"reader\", ..., replaceOldestAtLimit). RUN ls apps/reading/src/lib/openDocument.ts -> No such file; git branch -r --contains 099cb6046 -> origin/snapshot/2026-09-21/detached/antiek-rebase-preflight only. Additional full-page /read navigators: LibraryView.tsx:71, Sources/index.tsx:332, Write/WriteHome.tsx:111, index.tsx:284 (house ad)."
+    },
+    {
+      "id": "F4",
+      "claimed": "PARTIAL: dedup identity precedence; /sources/ingest arXiv; no DOI lookup; S2 has no reference list",
+      "holds": true,
+      "evidence": "READ substrate/dedup.py:18 'DOI > ISBN-13 > arXiv-id > source-id'; app.py:3317 /sources/ingest. RUN git grep -i -w doi interfaces -> 0; git grep 'reference|citations' acquisition/papers/semantic_scholar.py -> 0. Correction to evidence: ingestSource is called from three places, not only StartResearch.tsx:310 (also PasteIngest.tsx:96 and Sources/index.tsx:197). The status is unaffected."
+    },
+    {
+      "id": "N1",
+      "claimed": "PARTIAL: windowsStore flat, no parent, MAX_WINDOWS 8, in-memory",
+      "holds": true,
+      "evidence": "READ windowsStore.ts:80-94 descriptor fields id/kind/mode/rect/z/title/payload, no parent; :150 MAX_WINDOWS = 8; :200-212 at-cap focus-oldest or replaceOldestAtLimit closes the oldest; :50-52 'There is NO persist middleware'. RUN grep persist|parent windowsStore.ts: docblock mentions only."
+    },
+    {
+      "id": "N2",
+      "claimed": "PARTIAL: highlight deep-research navigates to /inv; free-string spawn_context; chase handoffs in localStorage",
+      "holds": true,
+      "evidence": "READ index.tsx:249-250 spinResearch then navigate(`/inv/...`); ResearchThis.tsx:65-67 navigate after a receipt window; books.py:2186 spawn_context = f\"read: passage {document_id} p{req.page_index}\", with document_id on the envelope (:2195); chaseHandoffs.ts:83,98 localStorage; ReadingCompanion.tsx:593 links to /inv/. No parent_investigation_id is set on spin."
+    },
+    {
+      "id": "N3",
+      "claimed": "BUILT_AND_WIRED: InvestigationSidebar recursive unbounded tree; talk branches; TOC levels",
+      "holds": true,
+      "evidence": "READ InvestigationSidebar.tsx:62 depth={0}, :116 marginLeft: depth * 8, :151 depth={depth + 1}; useInvestigationTree.ts:18-44 parent_investigation_id plus a localStorage fallback. Wired: ResearchWorkstation/index.tsx:97-103 starter panel kind \"InvestigationSidebar\" via PanelRegistry.tsx:56. useTalkThread.ts:59-63 forked_from, sessionStorage :80/:92."
+    },
+    {
+      "id": "N4",
+      "claimed": "SPEC_ONLY: D6 tab tree only in THREAD-CONTRACT \u00a72.2, unsigned",
+      "holds": true,
+      "evidence": "READ THREAD-CONTRACT.md:54-80 Tab fields; :272-273 both signatures _unsigned_. RUN git grep 'parent_tab|parentTab|tabTree|hier_number|branchTab' apps/reading/src interfaces substrate -> 0; role=\"tablist\" only in LibraryView, Library, Settings, SpeakIndex. Nuance: the contract contradicts itself on Q-A1. :75 says tab state is 'server-side per account (answers Q-A1)', agreed with lane B, while :93 and :260 still list Q-A1 as open. The grounding cites only :93."
+    },
+    {
+      "id": "N5",
+      "claimed": "ABSENT: no parent/child/sibling tree keys",
+      "holds": true,
+      "evidence": "READ bindings.ts:281-288 BUILTIN_BINDINGS (palette, mod+b, mod+/, mod+[ / mod+], mod+w, ?) and :330-335 PRODUCT_BINDINGS (mod+j/e/y/u/o/i). The docblock at :276-278 says 'there is NO chord', so there is no prefix-key mechanism at all."
+    },
+    {
+      "id": "N6",
+      "claimed": "PARTIAL: Topbar crumbs lack read labels; ThreadBreadcrumb is workflow-level",
+      "holds": true,
+      "evidence": "Re-verified the PRIOR by reading (not rendering). The path is components/navigation/Topbar.tsx, not shell/Topbar.tsx: :33-65 `known` map has no read, library, readings or meta-reading entries, so :71 label = known[seg] ?? seg renders slugs and ids. ThreadBreadcrumb is mounted in SceneChrome.tsx:255 and ThreadJump.tsx:84 over workflow seams, not document lineage."
+    },
+    {
+      "id": "T1",
+      "claimed": "BUILT_AND_WIRED: /readings PersonalSpace from source.read, no position",
+      "holds": true,
+      "evidence": "READ App.tsx:205 /readings -> PersonalSpace; books.py:2875 @app.get(\"/meta-readings\"); personal_space.py:162-169 latest source.read per doc, :194 sorted newest first. The SourceReadPayload fields are only chunk_id, dwell_ms and page_count (events.py:4016-4052), and it is emitted once per session after 30s and 2 pages (sourceRead.ts:46-55), so emitted_at marks when the threshold tripped, not the last open."
+    },
+    {
+      "id": "T2",
+      "claimed": "ABSENT: no read flags / read-later / bookmarks",
+      "holds": true,
+      "evidence": "RUN git grep -i 'read_later|read later|to_read|reading_list|reading_queue|bookmark' (non-test): only the TalkToBook 'floating bookmark', curate_reading_list, bindings reserved mod+d, and BlockCard.tsx:9. Correction: BlockCard.tsx:9 is the prose phrase 'reusable in Write ... and Read later' (Read, at a later sprint), not a DRW 'Read later' product mode. Missed nearest primitive: passage-anchored FloatMenu notes and per-page voice notes are persisted (see missed capabilities), but neither is a flag or queue."
+    },
+    {
+      "id": "T3",
+      "claimed": "BUILT_UNREACHABLE: SeamResearchToReadPayload typed but never emitted",
+      "holds": false,
+      "evidence": "RUN git grep 'ResearchToReadSeam|SeamResearchToReadPayload|SEAM_RESEARCH_TO_READ|research_to_read' (non-test): only definitions and readers (events.py:364,3739,4344,4497; seams/contracts.py:130; seams/thread.py:58; api/thread.py:44; generated types; narrateEvent.ts:277 null). There are zero emitters, which confirms the facts. But the seam's entity_kind is Literal[\"insight_node\"] (events.py:3746). It surfaces a researched insight, not a document queued for reading, so even if emitted it would not provide 'an agent flags X to read'. No UI or endpoint for agent-suggested reading exists. The capability as named is ABSENT; only an adjacent, unemitted seam type exists.",
+      "corrected_status": "ABSENT"
+    },
+    {
+      "id": "T4",
+      "claimed": "BUILT_AND_WIRED: prompt-to-curate shelf, session-only",
+      "holds": true,
+      "evidence": "READ Library/index.tsx:210-220 onCurate -> curateBooks -> setCuratedOrder; :204-206 switching shelves clears curation; books.py:1285-1296 curate_reading_list. There is no persistence of curatedOrder."
+    },
+    {
+      "id": "H1",
+      "claimed": "PARTIAL: only the 'New' door (library/search/import); no Continue/To-read",
+      "holds": true,
+      "evidence": "READ bindings.ts:331 prod-read mod+e route /library; Library/index.tsx:40-58 docblock (shelf/Preview, wrestler demoted); ProjectTree.tsx:118-130 useReadDocuments -> listBooks(\"all\") as 'Recent'. Home.tsx:49 Read card is a link to the door only. SceneChrome.tsx:93 {id:\"wrestle\", label:\"Library\", to:\"/wrestle\"} confirms the PRIOR tab mislabel."
+    },
+    {
+      "id": "H2",
+      "claimed": "ABSENT: no continue-reading surface",
+      "holds": false,
+      "evidence": "The grounding's grep covered only Library/index.tsx. READ PersonalSpace/index.tsx:49 useState(\"recency\") default and :95-101 a 'Recently read & created' bucket, fed by personal_space.py:162-194 (latest source.read per doc, newest first). Each saved read has open_route /read/<doc> (personal_space.py:189), and ProjectTree.tsx:52 links it as 'Your readings'. That is a working, reachable recently-read list that reopens books. It is not a real Continue door: no position (reopening restores a page only from the same browser tab's sessionStorage, usePosition.ts:18), an entry appears only after 30s of dwell and 2 pages (sourceRead.ts:46-55), and it is mixed with created meta-docs.",
+      "corrected_status": "PARTIAL"
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "Per-book reading event thread `read-<documentId>`",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ apps/reading/src/modes/Reading/index.tsx:130 const readingThreadId = `read-${documentId}`, passed to FloatMenu (:397), the notes/voice UI (:510) and ReadingCompanion (:564). It is a de facto per-book event log keyed by document, and a ready candidate home for Q-A5 (standalone book workstation) and for reading.position or flag events. It is not owner-namespaced in the id itself; owner scoping NOT MEASURED."
+    },
+    {
+      "name": "Passage-anchored notes and per-page voice notes persisted server-side",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ modes/shared/FloatMenu/floatMenuActions.ts:86-106 saveFloatMenuNote sends investigation_id (the read-<doc> thread), chunk_id and document_id; FloatMenu.tsx:194 'Note' action; Reading/VoiceNote.tsx:36,89 saveVoiceNote(documentId, {pageIndex...}). These are the closest existing passage-anchor and 'I flagged this' primitives, and the grounding did not list them under T2 or the locator question Q-A4. There is no cross-book list of these notes as a to-read queue (NOT MEASURED beyond grep)."
+    },
+    {
+      "name": "Global single readingFocus bus (one current book/page)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ apps/reading/src/lib/readingFocus.ts:13-40: a module-level `current` ReadingFocus {documentId, pageIndex, pageText, servable} published by BookReader (index.tsx:26 imports set/clearReadingFocus) and merged into Thought Partner system_context. It is a singleton. With many reader tabs (D6), whichever tab mounted last owns the AI context. This is a tab-tree risk the grounding missed, alongside the ad-attribution risk."
+    },
+    {
+      "name": "Server-side per-page trace via ad-impression flushes",
+      "status": "PARTIAL",
+      "evidence": "READ Reading/useReaderImpressions.ts:91 page_index: ctx.pageIndex sent through recordAdImpressions (api/books.ts:195 POST /books/{id}/ad-impressions; books.py:2088; ad_routes.py:201 page_index field). It exists only when slots show and belongs to the money ledger (\u00a79.0). It must not be repurposed as reading position, but it proves page_index already crosses the single-writer boundary."
+    },
+    {
+      "name": "Reader-in-window key conflict precedent",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ components/windows/WorkspaceWindow.tsx:199-200 ArrowLeft/ArrowRight move a focused window by STEP. BookReader mounts inside the 'reader' window kind (openWindow.ts:106-113; index.tsx:51 useInWindow). Any page-turn arrow binding (R2) must scope against this window-move handler, and the Library tablist roving keys (Library/index.tsx:636) are the in-repo roving-focus idiom to reuse."
+    },
+    {
+      "name": "Shared sessionStorage position key across concurrent instances of the same document",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ usePosition.ts:14 one key per documentId. The routed reader and any DRW 'reader' window for the same doc (DeepResearchWorkspace/index.tsx:432-441) read and write the same key, so two tabs on the same book (one D6 child on a cited page, one parent) overwrite each other's page. This makes the citation-clobber risk worse and applies before any server sync exists."
+    }
+  ],
+  "summary": "I re-checked every capability on ground 15e78e276 (git rev-parse confirmed). 21 of 24 statuses hold. Three do not.\n\n- **F2 (in-body link clicks): should be ABSENT, not PARTIAL.** No handler exists anywhere, and the cited ArxivFrame button sits outside the body.\n- **T3 (agent flags something to read): should be ABSENT, not BUILT_UNREACHABLE.** SeamResearchToReadPayload is never emitted, and it carries an insight_node rather than a document to read (events.py:3746), so it would not be a to-read flag even if wired.\n- **H2 (continue reading): should be PARTIAL, not ABSENT.** The grounding's grep missed /readings. PersonalSpace defaults to a recency-ordered \"Recently read & created\" list built from source.read events, reachable from ProjectTree :52. It still falls short of a real Continue door: no saved position, entries appear only after 30s and 2 pages of reading, and it is mixed with created meta-docs.\n\nSmaller evidence errors, none of which change a status:\n- ingestSource has three callers, not one.\n- Topbar lives at components/navigation/Topbar.tsx.\n- The \"Read later\" grep hit (BlockCard.tsx:9) is a comment phrase, not a DRW mode.\n- FloatMenu explicitly does not consume reading-physics, contrary to the malleable-reading note.\n- THREAD-CONTRACT contradicts itself on Q-A1: :75 says it is answered (server-side per account), while :93 and :260 still list it as open.\n- The pager label mixes the book's page number with the window count.\n\nMissed capabilities that matter for the mothership design:\n- A per-book event thread `read-<doc>` (index.tsx:130), a natural home for Q-A5 and for position and flag events.\n- Server-persisted passage-anchored notes and per-page voice notes, the nearest existing flag and anchor primitives.\n- A singleton readingFocus bus and a shared per-document sessionStorage key. With many tabs, both clobber each other's AI context and page.\n- Ad impressions already send page_index server-side, but that is the money ledger and should not be reused for position.\n- WorkspaceWindow already binds arrow keys to move windows, which conflicts with page-turn keys when the reader is in a window.\n\nBranch reachability was confirmed with merge-base: W1, W3, W7 and the snapshot branch are all not on main. Scratch dir /tmp/mothership-ground/reading/ was created and not otherwise used."
+}
