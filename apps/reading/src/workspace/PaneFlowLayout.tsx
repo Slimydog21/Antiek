@@ -6,16 +6,19 @@ import { escOverlayOpen } from "./escapeOverlay";
 import { adjacentPane, PANE_GAP, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor } from "./paneFlowGeometry";
 import type { PaneGeometry } from "./paneFlowGeometry";
 import type { PaneArrangement, PaneTarget } from "./panel.types";
+import { installPaneHostLease } from "./paneHostLease";
+import type { PaneHostLease } from "./paneHostLease";
 import { useViewportTier } from "./useViewportTier";
 
 type Host = { target: PaneTarget; node: HTMLElement };
+type FrameAttachment = { node: HTMLElement; lease: PaneHostLease<Host> | null };
 type Flow = {
   desktop: boolean;
   arrangement: Exclude<PaneArrangement, "legacy"> | null;
   geometry: PaneGeometry;
   zoom: PaneTarget | null;
   focused: PaneTarget | null;
-  register: (target: PaneTarget, node: HTMLElement | null) => void;
+  register: (target: PaneTarget, node: HTMLElement) => PaneHostLease<Host>;
 };
 type Controller = {
   root: HTMLElement;
@@ -154,11 +157,27 @@ export function focusConnectedPaneHost(node: HTMLElement, target: PaneTarget): b
 export function usePaneFlowFrame(target: PaneTarget) {
   const flow = useContext(FlowContext);
   const nodeRef = useRef<HTMLElement | null>(null);
+  const attachmentRef = useRef<FrameAttachment | null>(null);
   const key = paneKey(target);
   const register = flow?.register;
-  const ref = useCallback((node: HTMLElement | null) => {
-    nodeRef.current = node;
-    register?.(target, node);
+  const ref = useMemo(() => {
+    let owned: FrameAttachment | null = null;
+    return (node: HTMLElement | null) => {
+      const previous = owned;
+      owned = null;
+      if (previous) {
+        previous.lease?.retire();
+        if (attachmentRef.current === previous) {
+          attachmentRef.current = null;
+          nodeRef.current = null;
+        }
+      }
+      if (node) {
+        owned = { node, lease: register?.(target, node) ?? null };
+        attachmentRef.current = owned;
+        nodeRef.current = owned.node;
+      }
+    };
     // Target identity is its kind/id key, not the caller's object allocation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, register]);
@@ -178,6 +197,8 @@ export function usePaneFlowFrame(target: PaneTarget) {
     width: placement.rect.width, height: placement.rect.height, borderRadius: 0,
   } : undefined;
   const restoreZoom = useCallback((event?: KeyboardEvent) => {
+    const attachment = attachmentRef.current;
+    if (!attachment?.lease?.isCurrent()) return false;
     const root = nodeRef.current?.closest("[data-pane-flow-root]");
     const controller = root ? controllers.get(root) : null;
     if (event && (event.defaultPrevented || event.repeat || event.isComposing
@@ -223,11 +244,8 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
     return () => observer.disconnect();
   }, []);
 
-  const register = useCallback((target: PaneTarget, node: HTMLElement | null) => {
-    const key = paneKey(target);
-    if (node) hosts.current.set(key, { target, node });
-    else hosts.current.delete(key);
-  }, []);
+  const register = useCallback((target: PaneTarget, node: HTMLElement) =>
+    installPaneHostLease(hosts.current, paneKey(target), { target, node }), []);
   const geometry = useMemo(() => effective ? paneGeometry({ ...bounds, arrangement: effective, order, tiles, zoom })
     : { kind: "unmeasured" } satisfies PaneGeometry, [bounds, effective, order, tiles, zoom]);
   const flow: Flow = useMemo(() => ({ desktop: tier !== "sm", arrangement: effective, geometry, zoom, focused, register }),
@@ -269,7 +287,8 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
       restoreFocus.current = hosts.current.get(paneKey(target)) ?? null;
       return useWorkspace.getState().restorePaneZoom();
     };
-    controllers.set(root, { root, flow, hosts: hosts.current, pointerActive, reveal, rememberScroll, restoreZoom });
+    const controllerLease = installPaneHostLease(controllers, root,
+      { root, flow, hosts: hosts.current, pointerActive, reveal, rememberScroll, restoreZoom });
     if (effective === "horizontal" && !zoom && geometry.kind === "measured"
         && (previousMode.current.arrangement !== effective || previousMode.current.zoom !== null)) {
       root.scrollLeft = Math.max(0, Math.min(horizontalScroll.current, geometry.width - root.clientWidth));
@@ -294,7 +313,7 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
       const host = hosts.current.get(paneKey(focused));
       if (host && visibleHost(host.node) && host.node.contains(document.activeElement)) reveal(focused);
     }
-    return () => { controllers.delete(root); };
+    return () => { controllerLease.retire(); };
   }, [effective, geometry, zoom, flow, focused]);
 
   return (
