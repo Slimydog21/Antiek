@@ -248,5 +248,13 @@ def test_health_does_not_call_unbound_user_provider_ready(monkeypatch, tmp_path)
         resp = client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["registered_providers"] == ["user-unbound"]
+    # `providers_ready` is the property this test exists for, and it is unchanged.
     assert body["providers_ready"] is False
+    # What DID change: /health no longer PUBLISHES user-derived provider names, and
+    # `user-unbound` is exactly that shape -- a registered id can be
+    # `user-<operator-user-id>-<their-configured-name>`, which the live endpoint was
+    # serving to anyone. The registration is untouched and still precedes dispatch; it is
+    # simply not the public surface's to report. This line used to assert
+    # `== ["user-unbound"]`, so it required the disclosure to be present and failed the
+    # moment it was closed.
+    assert body["registered_providers"] == []

@@ -176,6 +176,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.FeedbackThreadResolvedPayload,
     schema_module.AgentWorkTransitionedPayload,
     schema_module.ArtifactFeedbackRepliedPayload,
+    schema_module.ProjectTabsVersionBumpedPayload,
     schema_module.TierAssignedPayload,
     schema_module.TierOverriddenPayload,
     schema_module.TierRewriteBulkPayload,

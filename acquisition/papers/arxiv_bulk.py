@@ -4,11 +4,9 @@ Mass arXiv ingest reads SPR-03's bulk metadata snapshot — the local
 ``arxiv-metadata-oai-snapshot.json`` (JSON-Lines) — via
 ``acquisition.arxiv.bulk``. It NEVER touches the arXiv export API: that
 endpoint 429-banned the box's IP on the first run and is reserved for small
-incremental pulls. This module composes the SPR-03
-bulk reader (``iter_bulk_candidates`` / ``bulk_candidates_from_path``) and the
-SPR-03 per-PDF fetch (``fetch_bulk_pdf``, shared SourceThrottle key
-``arxiv_pdf`` + the shared assert_pdf check). It does NOT re-implement the bulk
-reader, the throttle, or PDF sniffing.
+incremental pulls. This module maps records from the SPR-03 bulk reader
+(``iter_bulk_candidates`` / ``bulk_candidates_from_path``) into PaperRecords.
+It does not fetch PDFs.
 
 Per-paper license is the snapshot's ``license`` field (the SAME rights anchor
 the export Atom ``<license>`` carries). It is PER-RECORD and author-chosen: arXiv
@@ -27,8 +25,7 @@ with the same paper from CORE/S2 on a shared DOI.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
-from typing import IO, Any
+from typing import IO
 
 from acquisition.arxiv.bulk import (
     bulk_candidates_from_path,
@@ -50,8 +47,8 @@ def paper_to_record(paper: ArxivPaper) -> PaperRecord:
 
     ``paper.license_uri`` is the snapshot's declared license — passed verbatim
     to classify(). ``metadata['doi']`` (when the snapshot carried one) drives
-    cross-source dedup precedence above the arXiv id. The PDF is fetched per-item
-    at ingest via the shared ``fetch_bulk_pdf`` (export-free)."""
+    cross-source dedup precedence above the arXiv id. This mapping does not
+    fetch the PDF."""
     doi = None
     md = paper.metadata or {}
     if isinstance(md, dict) and md.get("doi"):
@@ -105,45 +102,3 @@ def bulk_records_from_path(
     in-memory load beyond ``limit``."""
     papers = bulk_candidates_from_path(snapshot_path, category=category, limit=limit)
     return [paper_to_record(p) for p in papers]
-
-
-def fetch_record_pdf(record: PaperRecord, *, throttle: Any, client: Any = None) -> bytes:
-    """Fetch a bulk record's PDF via the SPR-03 ``fetch_bulk_pdf`` (shared
-    SourceThrottle key ``arxiv_pdf`` + shared assert_pdf). Reconstructs the
-    minimal ArxivPaper shape ``fetch_bulk_pdf`` needs from the record. NEVER
-    touches the export API — the PDF host is arxiv.org/pdf."""
-    from acquisition.arxiv.bulk import fetch_bulk_pdf
-
-    md = record.metadata or {}
-    # Round-trip fidelity: paper_to_record stamps the ISO dates into metadata;
-    # records built elsewhere (or legacy rows) fall back to the bulk reader's
-    # epoch convention (acquisition.arxiv.bulk._EPOCH) rather than fabricating
-    # "now". fetch_bulk_pdf itself only reads pdf_url.
-    _epoch = datetime(1970, 1, 1, tzinfo=UTC)
-    raw_published = md.get("published_at")
-    raw_updated = md.get("updated_at")
-    paper = ArxivPaper(
-        arxiv_id=record.arxiv_id or record.source_id,
-        version=str(md.get("version") or ""),
-        title=record.title,
-        authors=list(record.authors),
-        abstract=record.abstract or "",
-        categories=list(md.get("categories") or []),
-        primary_category=None,
-        published_at=(
-            datetime.fromisoformat(str(raw_published))
-            if isinstance(raw_published, str)
-            else _epoch
-        ),
-        updated_at=(
-            datetime.fromisoformat(str(raw_updated))
-            if isinstance(raw_updated, str)
-            else _epoch
-        ),
-        abs_url=f"https://arxiv.org/abs/{record.arxiv_id or record.source_id}",
-        pdf_url=record.pdf_url or f"https://arxiv.org/pdf/{record.arxiv_id or record.source_id}",
-        license_uri=record.license,
-        raw_id=record.arxiv_id or record.source_id,
-        metadata={},
-    )
-    return fetch_bulk_pdf(paper, throttle=throttle, client=client)

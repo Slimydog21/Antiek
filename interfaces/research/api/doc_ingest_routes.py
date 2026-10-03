@@ -13,11 +13,10 @@ from __future__ import annotations
 import contextlib
 import os
 import tempfile
-from typing import Literal
 
 import httpx
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
 
 from acquisition.doc_to_html.ssrf import _MAX_REDIRECTS, SsrfError, validate_public_http_url
 
@@ -73,20 +72,6 @@ def _owner(request: Request) -> str:
             detail="signed owner identity required",
         )
     return owner
-
-
-class AssetIngestRequest(BaseModel):
-    """POST body when ingesting by source_url (JSON mode)."""
-
-    source_url: str = Field(..., min_length=8, max_length=2048)
-    kind: str | None = Field(default=None, max_length=32)
-    fair_use_class: Literal["public", "licensed", "personal"] = "personal"
-    license_note: str | None = Field(default=None, max_length=1024)
-
-    @field_validator("source_url")
-    @classmethod
-    def _strip_url(cls, v: str) -> str:
-        return v.strip()
 
 
 class ProvenanceResponse(BaseModel):
