@@ -398,6 +398,13 @@ def _seed_generation(
                 derived_document_id=derived_document_id,
                 prompt="the 20-minute version",
                 model="fixture-model",
+                # R6 clause 4 (#3658) made ``provider`` a required field on
+                # GenerationRecordRow -- it records the RESPONDER that actually
+                # served the generation, not the requester, and NULL is the
+                # honest "no dispatch receipt" state. This fixture models a
+                # reformat that DID produce a derived document, so it carries a
+                # responder; the value is synthetic to match ``fixture-model``.
+                provider="fixture-provider",
                 params_json="{}",
                 mostly_generated=False,
                 created_at="2026-10-01T00:00:00Z",
