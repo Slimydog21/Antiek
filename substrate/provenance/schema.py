@@ -47,7 +47,13 @@ CREATE TABLE IF NOT EXISTS generation_records (
   source_document_id VARCHAR NOT NULL,
   derived_document_id VARCHAR NOT NULL,
   prompt VARCHAR NOT NULL,
+  -- The model that ANSWERED (dispatch's route receipt), not the requested
+  -- string; the request rides in params_json.requested_model. When no
+  -- dispatch receipt exists (the injectable generator seam), model is the
+  -- caller-declared label and provider is NULL — the honest "no receipt"
+  -- marker, never a fabricated identity.
   model VARCHAR NOT NULL,
+  provider VARCHAR,
   params_json VARCHAR NOT NULL,
   mostly_generated BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -86,8 +92,14 @@ CREATE INDEX IF NOT EXISTS idx_bite_provenance_generation
 
 def init_provenance_schema(con: LockedConnection) -> None:
     """Create the additive provenance schema on an existing writer
-    connection (idempotent)."""
+    connection (idempotent). The ALTER is the backfill path for databases
+    created before the provider column existed (CREATE IF NOT EXISTS never
+    widens an existing table); pre-existing rows keep provider NULL — the
+    honest "no receipt recorded" state, never backfilled with a guess."""
     con.execute(DDL)
+    con.execute(
+        "ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS provider VARCHAR"
+    )
 
 
 def provenance_tables_exist(con: object) -> bool:

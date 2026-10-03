@@ -340,6 +340,13 @@ export function clearCustomHotkeys(): void {
 
 const LAYOUT_PRESET_KEY = LS_PREFIX + "layout-preset";
 
+/** The preset a workspace starts on: no stored value, a parse error, a schema
+ *  mismatch or an unknown value all resolve here. ONE name, so anything that
+ *  describes the default in prose can be built from it rather than restating
+ *  it -- the key sheet did the latter and told the operator the opposite
+ *  (PR #3586). */
+export const LAYOUT_PRESET_DEFAULT: LayoutPreset = "docked";
+
 /** The versioned envelope written to localStorage. */
 export interface PersistedLayoutPreset {
   schemaVersion: 1;
@@ -349,10 +356,10 @@ export interface PersistedLayoutPreset {
 /** Read the persisted preset. "docked" on miss, parse error, version
  *  mismatch, or an unknown value — the default is the failure mode. */
 export function readLayoutPreset(): LayoutPreset {
-  if (typeof window === "undefined") return "docked";
+  if (typeof window === "undefined") return LAYOUT_PRESET_DEFAULT;
   try {
     const raw = window.localStorage.getItem(LAYOUT_PRESET_KEY);
-    if (!raw) return "docked";
+    if (!raw) return LAYOUT_PRESET_DEFAULT;
     const parsed = JSON.parse(raw) as PersistedLayoutPreset;
     if (typeof parsed !== "object" || parsed === null || parsed.schemaVersion !== 1) {
       if (typeof console !== "undefined") {
@@ -362,11 +369,11 @@ export function readLayoutPreset(): LayoutPreset {
           (parsed as PersistedLayoutPreset | null)?.schemaVersion,
         );
       }
-      return "docked";
+      return LAYOUT_PRESET_DEFAULT;
     }
     return parsed.preset === "omarchy-inset" ? "omarchy-inset" : "docked";
   } catch {
-    return "docked";
+    return LAYOUT_PRESET_DEFAULT;
   }
 }
 

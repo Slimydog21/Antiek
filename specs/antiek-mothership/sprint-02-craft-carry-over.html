@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-02 · Craft carry-over: land the design chain — The Antiek motherships</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 80px 28px;
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px 28px 24px 28px;
+  margin-bottom: 28px;
+}
+
+header.hero .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+header.hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 24px 20px 24px;
+  margin: 0 0 22px 0;
+}
+
+section.block > h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 18px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+section.block h3 {
+  margin: 22px 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 12px 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 12px 0;
+  padding-left: 22px;
+}
+
+section.block li { margin-bottom: 4px; }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+}
+
+table.spec th, table.spec td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 14px 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin: 10px 0 14px 0;
+  font-size: 14px;
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.rigor-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: 14px;
+}
+
+.milestone .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: 4px;
+}
+
+.milestone .desc {
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: 4px 0 0 0; padding-left: 18px; }
+.milestone .criteria li { margin-bottom: 3px; }
+
+.milestone .files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: var(--border-thin);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: 14px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: 24px 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: 20px 0 6px 0;
+  padding: 6px 10px;
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-02</p>
+    <h1>Craft carry-over: land the design chain</h1>
+    <p class="tagline">Land the design waves that turn the audit's 50% baseline into a trustworthy base. Finish the three still in build.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 0</span>
+      <span class="tag tag--yellow"><span class="dot"></span>running (design workflow)</span>
+      <span class="tag tag--grey">Budget: workflow + train</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The 2026-09-23 design audit scored the UI 24/48 (50%) against a floor of 42/48, and two critical-failure vetoes failed. The baseline is <code>/Users/slimydog/.claude/jobs/236c36bd/tmp/design-audit/SCORE-BASELINE-full.md</code>. The design spec ("Paper, ink, and one sun") was then built in waves. Their state on 2026-09-24:</p><ul><li><strong>W1 tokens:</strong> <code>design/w1-tokens-foundation-20260923</code> at <code>7144b8e6b</code>. Axe dark 727→44, light 52→4; fonts ship; theme toggle.</li><li><strong>W5 motion:</strong> <code>design/w5-motion-20260923</code> at <code>29fe3bde6</code>. Parallax 139→15.9 px; one rAF heartbeat.</li><li><strong>W3 shell, states and prose:</strong> <code>design/w3-shell-states-prose-20260923</code> at <code>0d68b6213</code>. tsc 0, vitest 2506/2506, but only 60 B of entry headroom.</li><li><strong>W7 crashes and vetoes:</strong> <code>design/w7-crashes-20260924</code> at <code>86a03898b</code>. Five false-zero pages fixed, the 768 px crash fixed, <code>/wrestle</code> deep links, story fixtures, and a lazy operator-pages split that frees about 2.2 KB.</li><li><strong>W2 controls, W6 visual gates and W4 copy:</strong> being built by the design workflow <code>wf_7a06ae88-9fb</code>.</li></ul>
+    
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 0, alongside MS-01. Every later sprint's craft bar assumes these waves have landed.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>W7 → W1 → W3 → W5 land through Antiek Nudge's train in that order (W7 first, because it frees the headroom W1 and W3 need). W2, W6 and W4 finish, pass their critics and are pushed.</strong></p>
+    <p>The order is set by the budget. W3 alone leaves 60 bytes of headroom, and W7's lazy operator pages free about 2.2 KB. When this sprint ends, main carries the tokens, the prose layer, the states primitives and the motion heartbeat that the mothership surfaces are built from.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Queue W7 first, then W1, W3, W5</div>
+        <p class="desc">Give Antiek Nudge the order and the reason (headroom numbers). At each slot: merge main into the branch, rerun its gate, send the head.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Each branch lands on main in that order (<code>git merge-base --is-ancestor</code>).</li></ul></div>
+        <div class="files"><span class="file">.lane/PR_BODY.md per branch</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">W2 controls, W6 visual gates, W4 copy: finish in the design workflow</div>
+        <p class="desc">The resumed workflow builds W2 and W6 on W1 and W4 on W3, with a critic loop and a ship step. W3's step verifies and completes the existing branch without rebuilding it.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Each wave's ship result is gate-green and pushed.</li><li>W6 adds the dark lostpixel axis and proves it catches a dark-only regression.</li></ul></div>
+        <div class="files"><span class="file">see each wave&#x27;s brief in the design workflow script</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Re-merge after each landing to keep headroom</div>
+        <p class="desc">After W7 lands, W1 and W3 merge main and must show at least 1 KB of entry headroom. Anything short of that lazy-loads more; the budget is never raised.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The <code>build:check</code> line is quoted for each re-merged head.</li></ul></div>
+        <div class="files"><span class="file">(per branch)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>W3 was finished by a standalone builder after its workflow step died on the session limit. Its gate (2506/2506) was re-run by the orchestrator, but its critic loop never ran. Say so in W3's PR body, and do not present it as "critic-accepted" until a critic has actually run on <code>0d68b6213</code> or later.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman landing W1+W3 first, since they are the foundation W7 builds on, and they merge cleanly with each other. It loses because W3 alone leaves 60 B of headroom. Any small change in between would redden the required tsc job, while W7 first frees about 2.2 KB. Record who pays for W7-first. W1 and W3 wait behind it in the train. W7 lands on a base without the tokens it was designed beside. Any conflict it creates is resolved on the W1/W3 re-merge, not on W7.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>The W7 → W1 → W3 → W5 order is a claim about bytes, so check it at each step. After each landing, rebase every remaining wave on the new main and record the entry headroom <code>build:check</code> prints. Expected: about +2.2 KB after W7, then W1's cost (~0.9 KB), then W3 falling toward its 60 B. Assert that W1+W3 together still fit after W7, and that W5 fits after W3. Any negative is a stop, never a budget raise. W2/W6/W4 are this sprint's other milestone: each needs its critic verdict and pushed SHA quoted, and W6 needs its injected dark-only regression shown caught.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Before queuing, read each wave's <code>.lane/PR_BODY.md</code> and its NOT MEASURED section. Check with <code>git merge-tree</code> that each still merges cleanly with current main, because main moved twice overnight.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>The order and the headroom arithmetic go into each PR body, so the train's owner, or anyone later, can see why W7 went first.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>None — <span class="muted">wave 0</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Antiek Nudge's merge train (it owns update-branch and merge).</li><li>The design workflow <code>wf_7a06ae88-9fb</code> for W2, W6 and W4.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>New design work beyond the waves' briefs. That is what the mothership sprints are for.</li><li>Raising the bundle budget.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Landed</strong></td><td><code>git merge-base --is-ancestor &lt;wave-head&gt; origin/main</code></td><td>true for W7, W1, W3 and W5</td></tr><tr><td><strong>Headroom</strong></td><td><code>npm run build:check on each re-merged head</code></td><td>≥ 1 KB after W7</td></tr><tr><td><strong>W6 dark axis</strong></td><td><code>lostpixel run with an injected dark-only regression</code></td><td>caught, then reverted</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-02 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Queue W7 first, then W1, W3, W5 — &lt;result&gt;
+- [ ] M2: W2 controls, W6 visual gates, W4 copy: finish in the design workflow — &lt;result&gt;
+- [ ] M3: Re-merge after each landing to keep headroom — &lt;result&gt;
+### Verification gate results
+- Landed: pass | fail | skipped (why)
+- Headroom: pass | fail | skipped (why)
+- W6 dark axis: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- W7 and W1 are on main (MS-03 needs the tokens) and W3 is on main (MS-05 and MS-06 need the prose layer and states).
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="inline"
+           data-harness-fanout-unit="None: sequencing through the train is serial by nature."
+           data-harness-verifier-lenses="headroom measured at each landing"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>inline</code></p><p class="muted">Merges are serial and train-owned; the wave builds run in their own workflow.</p></div>
+      <div><h3>Fan-out unit</h3><p>None: sequencing through the train is serial by nature.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Is the landing order justified by measured headroom at each step, or only asserted?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-02 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

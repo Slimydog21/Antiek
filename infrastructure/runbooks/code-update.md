@@ -27,9 +27,13 @@ asserts prod parity independently of the playbook's own assertion.
 
 **What it will NOT do**, by design:
 
-- deploy a commit whose required checks are not all `success` — it reads
-  each of main's 8 required contexts for that exact SHA, so a green `CI`
-  with a red mypy cannot ship;
+- deploy a commit whose required checks are not all `success` — it runs
+  `tools/deploy/require_green.sh`, which asserts every context main's ruleset requires, plus the
+  deploy-only `pytest` rollup, for that exact SHA, so a green `CI` with a red mypy cannot ship.
+  The LIST lives in that script and is deliberately not repeated here: this line used to say
+  "8 required contexts", which was wrong — the ruleset requires nine and the rollup makes ten —
+  and it could not have noticed, because a count written into a runbook has no mechanism that
+  fails when the ruleset grows;
 - deploy anything on a push, only after a gating workflow has *finished*;
 - restart a service that is already on the target SHA (it reads
   `/health.build_sha` first);

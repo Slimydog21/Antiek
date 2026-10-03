@@ -39,6 +39,21 @@ def _client() -> TestClient:
     return TestClient(create_app(register_wrestling=False))
 
 
+def _seed_investigation(investigation_id: str = "inv-dil-1") -> None:
+    """Make the fixture generator's research claim TRUE (a live insight node
+    for the cited investigation, promoted through the real research path) —
+    the pipeline reclassifies a claim whose investigation has no distilled
+    product, so the fixture must carry its evidence."""
+    from substrate.graph.insight_question import promote_insight
+
+    promote_insight(
+        text="The diligence found the pricing power note.",
+        investigation_id=investigation_id,
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+
+
 def _seed(db: str, document_id: str = "doc-1", content_class: str = "public_domain") -> None:
     with connect_write(db, purpose="test/seed-reformat-route") as con:
         insert_document(
@@ -105,6 +120,7 @@ def generator_override(monkeypatch):
 
 def test_post_reformat_runs_the_pipeline(api_env, generator_override) -> None:
     _seed(api_env["db"])
+    _seed_investigation()
     client = _client()
     resp = client.post(
         "/books/doc-1/reformats",
@@ -126,6 +142,7 @@ def test_post_reformat_runs_the_pipeline(api_env, generator_override) -> None:
 
 def test_provenance_get_carries_the_record_and_bites(api_env, generator_override) -> None:
     _seed(api_env["db"])
+    _seed_investigation()
     client = _client()
     created = client.post(
         "/books/doc-1/reformats", json={"prompt": "the 20-minute version"}
@@ -135,6 +152,10 @@ def test_provenance_get_carries_the_record_and_bites(api_env, generator_override
     body = resp.json()
     assert body["generation"]["prompt"] == "the 20-minute version"
     assert body["generation"]["source_document_id"] == "doc-1"
+    # The seam has no route receipt: provider is null (never fabricated) and
+    # the requested label rides in params.requested_model.
+    assert body["generation"]["provider"] is None
+    assert body["generation"]["params"]["requested_model"] == "operator-default"
     bites = body["bites"]
     assert [b["ordinal"] for b in bites] == [0, 1, 2, 3, 4]
     # Byte-verified flag recomputed server-side.

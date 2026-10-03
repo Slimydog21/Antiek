@@ -1,0 +1,17 @@
+# Executed probes behind the cockpit forensic findings
+
+These are the vitest probe files the forensic workflow's auditors and verifiers ran (report: `../FORENSIC-SWEEP-V2-KIMI-COCKPIT-2026-09-26.md`). They were written against the named heads, dropped into `apps/reading/src/` of a scratch worktree at that head and run with `npx vitest run <file>`; they are evidence, not suite members. To turn one into a red-first test, copy the named case, keep its setup, and assert the correct behaviour instead of recording the defect.
+
+| Finding | File | Case(s) | Head it ran on |
+|---|---|---|---|
+| F-02 section-tab switch drops the pending edit and the editor | `c5-write.probe.test.tsx` | "P5 an edit made just before switching to a section tab, and the editor after returning" (with "P5 control: an edit in the body tab persists after the debounce") | 0f4361e22 |
+| F-03 a child tab for another document becomes a duplicate root | `d6-rerooting-and-spawn.probe.test.tsx` | "child pointing at another document", with "control: child pointing at the SAME document stays" | 05eeb6223 |
+| F-04 the tree→route activation effect hijacks navigation | `d6-activation-hijack.probe.test.tsx` | "/inv/a -> /read/doc -> /inv/b", "/inv/a -> /read/doc -> / (research home)", "/read/doc -> /write/w1 -> /read/doc2", with the "/library" control | 05eeb6223 |
+| F-04 (research routes unreachable after a read) | `d6-mode-flip-reload.probe.test.tsx` | "each attempt to reach a research-mode route" | 05eeb6223 |
+| D6-F06 an agent open flips the mode to Reading | `d6-audit.probe.test.tsx` | "the research child tab stays the visible active tab of the research tree"; also `d6-mode-flip-reload` "reload at /inv/inv-1 with a persisted active reader child" | 05eeb6223 |
+| Two-device lost update (D6-F11) | `d6-audit.probe.test.tsx` | "a spawn made during an in-flight save that then 409s survives", "records when the close reaches the adapter"; also `d6-rerooting-and-spawn` "a spawn made after the first load completes survives the second load" | 05eeb6223 |
+| F-17 fullscreen/preset unmount destroys drafts; right fullscreen stays 320px | `c2c3-fullscreen-preset.probe.test.tsx` | "H1 right-pane fullscreen", "H2 preset toggle remounts"; `c2c3-docked-and-keys` "Q6 INSET xl: right-pane fullscreen geometry" | 76e2b4fbf; re-run at 410ff22e9 and train 0a5441372 |
+| F-18 stale focusedPane blanks the cockpit; 0px dock trap | `c2c3-fullscreen-preset.probe.test.tsx` | "H3 docked default: prefix+f with no docks, then mod+/ sidecar", "H4 stale focusedPane across a tier change", "H4b ... after closing the right panel (xl)"; `c2c3-docked-and-keys` "Q1", "Q2" | 76e2b4fbf and 0a5441372 |
+| F-19 destructive/preset chords fire while typing | `d6-chord-and-strip.probe.test.tsx` "does the chord close the active tab while typing?"; `c2c3-docked-and-keys` "Q3 ctrl+alt+i pressed while typing ..." | 05eeb6223 / 76e2b4fbf (4cee10474 later stops ctrl+alt chords in Mac text fields) |
+| Esc from body; ring and role; lg/md pane counts | `c2c3-fullscreen-preset.probe.test.tsx` | "H5", "H6", "H7"; `c2c3-docked-and-keys` "Q5" | 76e2b4fbf |
+| Tree order, compression, indent cap; fake Trail entity; current-page marking | `d6-audit.probe.test.tsx` | "lists rows depth-first", "the path header compresses ...", "does the fabricated thread claim one entity ...", "at / after /inv/x, the strip marks no tab as the current page" | 05eeb6223 |
