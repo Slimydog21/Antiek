@@ -1,6 +1,6 @@
 /**
- * keymap.ts — THE keymap. Every key the app answers to is a row in
- * {@link KEYMAP}; nothing else may define a binding.
+ * keymap.ts — THE global keymap. Every global binding is a row in
+ * {@link KEYMAP}; scoped widgets and editors own their local keys.
  *
  * One dispatcher (workspace/shortcuts.ts) reads this table and owns every
  * global key. The key sheet (KeySheet.tsx, `prefix+?`) renders it, and every
