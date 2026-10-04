@@ -118,7 +118,14 @@ function DocumentTabStripInner() {
     // so a section of another piece never leaves this piece on screen.
     const holder = routeTabFor(t, navIntent.tabId);
     if (!holder) return;
-    if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
+    // BrowserRouter can render the previous location while a navigation is
+    // pending. A second key must compare against history, like locationStamp,
+    // or a return to that previous location is mistaken for a no-op.
+    const current = window.location;
+    if (
+      navIntent.mothership === mothershipForPath(current.pathname, current.search) &&
+      tabShowsPath(holder, current.pathname)
+    ) return;
     const route = routeForTab(holder);
     if (route) navigate(route);
   }, [navIntent, mothership, location.pathname, location.search, navigate]);
