@@ -126,6 +126,14 @@ DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "runtime",
     "integrations",
     "infrastructure",
+    # Added with the wheel-package entry in the same change. `services/` was missing from
+    # pyproject's root list while 117 modules lived there and twelve packaged files imported
+    # them, so `pip wheel .` built cleanly and could not import. Adding it to the wheel is what
+    # put it here -- tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages failed
+    # until this line existed, which is the cross-check working exactly as this file's comment
+    # describes: "When you ship a new top-level PACKAGE, add it to the wheel-package list (the
+    # cross-check test then forces it in here) and re-capture declared_mypy.json."
+    "services",
 )
 
 
