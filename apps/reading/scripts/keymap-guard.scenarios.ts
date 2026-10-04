@@ -46,6 +46,7 @@ function mountContext(element: ReturnType<typeof createElement>) {
 }
 async function reset() {
   clearContext();
+  document.querySelectorAll<HTMLElement>("[data-guard-narrow]").forEach((el) => { el.style.removeProperty("max-width"); el.removeAttribute("data-guard-narrow"); });
   document.querySelectorAll("#guard-text").forEach((el) => el.remove());
   prefixState.disarm();
   for (const button of document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button[aria-label="Close"]')) button.click();
@@ -118,7 +119,15 @@ export const SCENARIOS = {
   "tab.reopen": { prepare: async () => { await tabs(); useTabTrees.getState().closeActiveTab("reading", "prune"); await settle(); }, effect: () => readerAt("b") },
   "tab.treeToggle": { prepare: () => tabs(), effect: () => see('[data-tab-tree-panel]') },
   "project.select": { effect: () => see('[data-keymap-owner="project.select"]') },
-  "reader.tocToggle": { effect: () => see('[aria-label="Contents"][data-open="true"]') },
+  "reader.tocToggle": {
+    prepare: async () => {
+      const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');
+      check(reader, "reader.tocToggle: real reader missing");
+      reader.setAttribute("data-guard-narrow", ""); reader.style.maxWidth = "600px";
+      await until(() => !visible("[data-reader-toc]"), "reader.tocToggle: fixture must start with folded contents");
+    },
+    effect: () => see('[aria-label="Contents"][data-open="true"]'),
+  },
   "inbox.toggle": { effect: () => see('[data-keymap-owner="inbox.toggle"]') },
   "door.research": door("/"),
   "door.read": door("/library"),

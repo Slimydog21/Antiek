@@ -46,7 +46,9 @@ function observe(event: KeyboardEvent): void {
   if (traces.length > 512) traces.shift();
 }
 
-/** The only native global registration seam. No suppression or handler substitution. */
+/** The only native global registration seam. Scoped callbacks receive only
+ * declared eligible events. Prefix bookkeeping also observes scope exits so
+ * an armed prefix can disarm without claiming a key from the new focus. */
 export function registerKeyboardOwner(
   target: Window | Document,
   declaration: KeyboardRegistration,
@@ -56,8 +58,9 @@ export function registerKeyboardOwner(
   const instance = ++serial;
   registrations.set(instance, declaration);
   const listener = (event: KeyboardEvent) => {
-    if (declaration.eligible(event)) eventTraces.get(event)?.delivered.push(`${declaration.id}#${instance}`);
-    handler(event);
+    const eligible = declaration.eligible(event);
+    if (eligible) eventTraces.get(event)?.delivered.push(`${declaration.id}#${instance}`);
+    if (eligible || declaration.scope === "global-prefix") handler(event);
   };
   target.addEventListener("keydown", listener as EventListener, declaration.capture);
   return () => {

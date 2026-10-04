@@ -24,7 +24,9 @@ from both the table and sheet changes the declared population; without an
 independent signed inventory, this gate cannot infer that such removal was wrong.
 
 Every top-window/document keyboard registration uses `registerKeyboardOwner`
-with owner ID, scope and event eligibility. Its trace is read-only and records
+with owner ID, scope and event eligibility. Scoped callbacks only receive eligible
+events; these declarations constrain registration rather than just describe it.
+The development-only trace redacts unowned keys. It is read-only and records
 instances, so duplicate mounts remain visible. Prefix capture precedes bubble
 owners. Passive observers do not compete. Exclusive modal instances can each
 register Escape; their `topModal()` predicates decide eligibility. The AST gate

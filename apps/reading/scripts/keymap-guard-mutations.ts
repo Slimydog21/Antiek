@@ -8,8 +8,8 @@ mkdirSync(out, { recursive: true });
 const shortcuts = "src/workspace/shortcuts.ts";
 const keymap = "src/components/hotkeys/keymap.ts";
 const strip = "src/workspace/DocumentTabStrip.tsx";
-const guardFiles = ["scripts/keymap-guard.py", "scripts/keymap-guard.scenarios.ts", "src/workspace/windowKeyListenerCensus.test.ts"];
-const hash = () => createHash("sha256").update(guardFiles.map((p) => readFileSync(p)).join("\n")).digest("hex");
+const guardFiles = ["scripts/keymap-guard.py", "scripts/keymap-guard.scenarios.ts", "src/workspace/windowKeyListenerCensus.test.ts", "src/workspace/keyboardOwnership.ts", "scripts/keymap-guard-mutations.ts"];
+const hash = () => createHash("sha256").update(guardFiles.map((p) => readFileSync(p)).join("\n") + readFileSync(keymap, "utf8").split("export function validateKeymap")[1]).digest("hex");
 const gateHash = hash();
 interface Mutant { name: string; file: string; from: string; to: string; row?: string; command?: string[]; names: string[]; extra?: { file: string; from: string; to: string }[]; }
 const mutants: Mutant[] = [
@@ -36,11 +36,15 @@ const mutants: Mutant[] = [
       { file: keymap, from: "export const ACTIONS = {", to: 'export const ACTIONS = {\n  "mutant.unexercised": { label: "Uncovered mutant" },' },
       { file: shortcuts, from: '    "palette.toggle": () => {', to: '    "mutant.unexercised": () => {},\n    "palette.toggle": () => {' },
     ] },
+  { name: "declared-gap-gains-handler", file: shortcuts,
+    from: '    "project.select": () => toggleProjectPicker(),',
+    to: '    "project.select": () => toggleProjectPicker(),\n    "inbox.toggle": () => toggleProjectPicker(),',
+    row: "chord-inbox", names: ["chord-inbox/inbox.toggle", "unimplemented action has a handler"] },
   { name: "stale-location-race", file: strip,
-    from: 'tabShowsPath(holder, window.location.pathname)',
-    to: 'tabShowsPath(holder, location.pathname)',
+    from: 'const current = window.location;',
+    to: 'const current = location;',
     command: ["npx", "vitest", "run", "src/workspace/documentTabs.rapidNavigation.test.tsx"],
-    names: ["previous then next", "next then previous"] },
+    names: ["tab.prev", "tab.next", "previous then next", "next then previous"] },
 ];
 let killed = 0;
 for (const mutant of mutants) {

@@ -107,7 +107,7 @@ export function LemonSelect<V>({
     document.addEventListener("mousedown", onDown);
     const removeKeyboardOwner = registerKeyboardOwner(document, {
       id: "select.keys", scope: "overlay",
-      eligible: (e) => ["Escape", "ArrowDown", "ArrowUp", "Enter"].includes(e.key) && !e.defaultPrevented,
+      eligible: (e) => (e.key === "Escape" && !e.defaultPrevented) || ["ArrowDown", "ArrowUp", "Enter"].includes(e.key),
     }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);

@@ -263,7 +263,7 @@ export function SlashMenu({ editor, query, onClose }: Props) {
     }
     const removeKeyboardOwner = registerKeyboardOwner(window, {
       id: "notebook.slash-menu", scope: "overlay",
-      eligible: (e) => ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key),
+      eligible: (e) => ["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx]),
     }, onKey);
     return () => removeKeyboardOwner();
   }, [filtered, hoverIdx, editor, onClose]);

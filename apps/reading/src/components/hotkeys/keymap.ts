@@ -525,14 +525,17 @@ export function validateKeymap(
   }
 
   if (opts.coverage) {
-    const { scenarios, exercisedRows, sheetRows } = opts.coverage;
+    const scenarios = new Set(opts.coverage.scenarios);
+    const exercisedRows = new Set(opts.coverage.exercisedRows);
+    const sheetRows = new Set(opts.coverage.sheetRows);
+    const rowIds = new Set(rows.map((row) => row.id));
     for (const row of rows) {
-      if (!scenarios.includes(row.action)) problems.push({ kind: "missing-scenario", row: row.id, detail: `action ${row.action}: no executable scenario` });
-      if (!exercisedRows.includes(row.id)) problems.push({ kind: "unexercised-row", row: row.id, detail: `action ${row.action}: alias was not pressed` });
-      if (!sheetRows.includes(row.id)) problems.push({ kind: "missing-sheet-row", row: row.id, detail: `action ${row.action}: absent from rendered key sheet` });
+      if (!scenarios.has(row.action)) problems.push({ kind: "missing-scenario", row: row.id, detail: `action ${row.action}: no executable scenario` });
+      if (!exercisedRows.has(row.id)) problems.push({ kind: "unexercised-row", row: row.id, detail: `action ${row.action}: alias was not pressed` });
+      if (!sheetRows.has(row.id)) problems.push({ kind: "missing-sheet-row", row: row.id, detail: `action ${row.action}: absent from rendered key sheet` });
     }
     for (const id of sheetRows) {
-      if (!rows.some((r) => r.id === id)) problems.push({ kind: "unexpected-sheet-row", row: id, detail: "rendered sheet advertises a row absent from KEYMAP" });
+      if (!rowIds.has(id)) problems.push({ kind: "unexpected-sheet-row", row: id, detail: "rendered sheet advertises a row absent from KEYMAP" });
     }
   }
 

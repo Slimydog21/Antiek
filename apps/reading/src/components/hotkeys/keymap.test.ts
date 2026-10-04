@@ -30,6 +30,10 @@ import { createActionHandlers } from "../../workspace/shortcuts";
 const handlerIds = Object.keys(createActionHandlers((() => {}) as never));
 
 describe("the real keymap is sound", () => {
+  it("every production row explicitly declares its status", () => {
+    for (const row of KEYMAP) expect(row.status, `${row.id}/${row.action}: missing status declaration`).toMatch(/^(implemented|unimplemented)$/);
+  });
+
   it("has no duplicate key, no handler-less action, no uncited D2 row, on either platform", () => {
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
   });

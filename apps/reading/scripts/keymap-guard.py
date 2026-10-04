@@ -56,12 +56,16 @@ for platform in PLATFORMS:
     target = new_tab("about:blank")
     activate_tab(target)  # Disposable headless tab: background timers otherwise throttle fixture waits.
     cdp("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
-    cdp("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(navigator, 'platform', {get: () => %s});localStorage.clear();localStorage.setItem('antiek.motion','reduce');" % json.dumps("MacIntel" if platform == "mac" else "Linux x86_64"))
+    init_script = cdp("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(navigator, 'platform', {get: () => %s});localStorage.clear();localStorage.setItem('antiek.motion','reduce');" % json.dumps("MacIntel" if platform == "mac" else "Linux x86_64"))
     try:
         goto_url(BASE + "/read/guard-a")
         wait_for_load()
+        cdp("Page.removeScriptToEvaluateOnNewDocument", identifier=init_script["identifier"])
+        cdp("Page.addScriptToEvaluateOnNewDocument", source="Object.defineProperty(navigator, 'platform', {get: () => %s});" % json.dumps("MacIntel" if platform == "mac" else "Linux x86_64"))
         call("(async()=>{window.d2Guard=await import('/scripts/keymap-guard.scenarios.ts');await d2Guard.until(()=>!!document.querySelector('[data-pane=left], [data-cockpit-content]'),'real AppShell did not mount',12000);})()")
         rows = call("d2Guard.manifest()")
+        if ONLY and not any(ONLY in (row["id"], row["action"]) for row in rows):
+            raise RuntimeError(f"POPULATION/COVERAGE requested row/action {ONLY} is absent from KEYMAP")
         exercised = []
         sheet_rows = []
         for row in rows:
@@ -126,6 +130,29 @@ for platform in PLATFORMS:
                 results.append({"platform":platform,"context":"custom-prefix",**call("d2Guard.verify('prefix-sidebar')")})
                 call("d2Guard.setPrefix(null)")
                 print("PASS FINITE CONTEXTS",platform,"stacked dialogs/editor observer/iframe/custom prefix",flush=True)
+                # Persist user data, then use the actual install-time hydration on reload.
+                custom = {"schemaVersion":1,"bindings":[
+                    {"id":"guard.custom","spec":"mod+shift+e","route":"/library","entityId":"guard-entity","entityKind":"document","label":"Guard custom"},
+                    {"id":"guard.conflict","spec":"mod+e","route":"/write","entityId":"guard-conflict","entityKind":"document","label":"Stale conflict"},
+                ]}
+                call("localStorage.setItem('antiek.workspace.custom-hotkeys',%s)" % json.dumps(json.dumps(custom)))
+                cdp("Page.reload")
+                wait_for_load()
+                call("import('/scripts/keymap-guard.scenarios.ts').then(m=>{window.d2Guard=m;})")
+                call("d2Guard.customStart()")
+                press("mod+shift+e", platform)
+                results.append({"platform":platform,"context":"custom-reload","traces":call("d2Guard.customEffect()")})
+                dismiss()
+                call("d2Guard.prepare('prod-read')")
+                press("mod+e", platform)
+                results.append({"platform":platform,"context":"custom-conflict-precedence",**call("d2Guard.verify('prod-read')")})
+                for context in ("text", "modal"):
+                    dismiss()
+                    call("d2Guard.prepare('prod-read',%s)" % json.dumps(context))
+                    press("mod+shift+e", platform)
+                    results.append({"platform":platform,"context":"custom-excluded-"+context,**call("d2Guard.verify('prod-read',false)")})
+                print("PASS CUSTOM",platform,"persisted reload / built-in precedence / text and modal exclusion",flush=True)
+
             except Exception as error:
                 failures.append(f"FINITE CONTEXTS {platform}: {error}")
                 print("FAIL FINITE CONTEXTS",platform,error,flush=True)

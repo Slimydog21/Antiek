@@ -58,7 +58,7 @@ import { mothershipForPath } from "./documentSpace";
 import { useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
 import { createActionHandlers, installShortcuts, SHORTCUT_EVENTS } from "./shortcuts";
-import { keyInit, pinPlatform, press, unpinPlatform } from "./keymapTestKit";
+import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
 vi.mock("./useViewportTier", () => ({
@@ -359,7 +359,7 @@ describe("the table after the decision", () => {
 
   it("passes the guard: no duplicate, no handler-less action, no reserved key taken", () => {
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
-    expect([...handlerIds].sort()).toEqual(Object.keys(ACTIONS).sort());
+    expect([...handlerIds].sort()).toEqual([...new Set(KEYMAP.filter((row) => row.status !== "unimplemented").map((row) => row.action))].sort());
   });
 
   it("n/p + ctrl+alt+]/[ are one focused-pane action pair; the ,/. companion pair is gone", () => {

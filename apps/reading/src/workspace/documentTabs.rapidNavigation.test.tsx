@@ -33,8 +33,8 @@ afterEach(() => {
 });
 
 it.each([
-  ["previous then next", "beta", "alpha", "ctrl+alt+[", "ctrl+alt+]"],
-  ["next then previous", "alpha", "beta", "ctrl+alt+]", "ctrl+alt+["],
+  ["tab.prev → tab.next (previous then next)", "beta", "alpha", "ctrl+alt+[", "ctrl+alt+]"],
+  ["tab.next → tab.prev (next then previous)", "alpha", "beta", "ctrl+alt+]", "ctrl+alt+["],
 ])("keeps %s when the second key follows history before React renders", async (_label, start, middle, first, second) => {
   const tabs = useTabTrees.getState();
   await tabs.ensureMothership("reading");
