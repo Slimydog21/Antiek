@@ -33,7 +33,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
-import { CornerDownRight, ListTree } from "lucide-react";
+import { CornerDownRight, ListTree, Plus } from "lucide-react";
 
 import { ErrorState, LoadingState } from "../components/states";
 import { branchIntentOf } from "./branchNavigation";
@@ -49,6 +49,7 @@ import { useForkLineage } from "./forkLineage";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
 import { pathTo, type TabNode, type TabTree } from "./tabTree";
+import { toggleNewTabPicker } from "./shortcuts";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
@@ -224,6 +225,7 @@ function DocumentTabStripInner() {
       onVisitChild={() => useTabTrees.getState().visitChildOfActive(mothership)}
       onRowsShown={requestRows}
       onCloseTab={(id, mode) => useTabTrees.getState().closeTabById(mothership, id, mode)}
+      onNewTab={toggleNewTabPicker}
     />
   );
 }
@@ -269,6 +271,8 @@ export interface DocumentTabStripViewProps {
   onRowsShown?: (tabIds: string[]) => void;
   /** The tree panel's Delete / Shift+Delete (prune / close only this). */
   onCloseTab?: (tabId: string, mode: "prune" | "lift_children") => void;
+  /** The + button: the new-tab picker (prefix+c), one path with the key. */
+  onNewTab: () => void;
 }
 
 /** The presentational strip: every state, no store, no router. */
@@ -289,6 +293,7 @@ export function DocumentTabStripView({
   onVisitChild,
   onRowsShown,
   onCloseTab,
+  onNewTab,
 }: DocumentTabStripViewProps) {
   const toggleRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -442,6 +447,20 @@ export function DocumentTabStripView({
             opens as window
           </span>
         ) : null}
+
+        {/* New tab (prefix+c): the picker's button half. It sits after the
+            tabs, where a browser puts it, and takes the SAME toggle as the
+            key, so a click and prefix+c can never drift apart. */}
+        <button
+          type="button"
+          data-new-tab
+          onClick={onNewTab}
+          aria-label="New tab (prefix c)"
+          title="New tab (prefix c)"
+          className="shrink-0 ml-auto flex items-center px-2 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+        >
+          <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </div>
 
       {treePanelOpen ? (

@@ -89,6 +89,7 @@ export const ACTIONS = {
   "tab.close": { label: "Tab: close the focused pane's active tab (on the left, with its branches)" },
   "tab.reopen": { label: "Tab: reopen the last closed tab in the focused pane" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
+  "project.select": { label: "Project: choose the account project" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "door.research": { label: "Research", productId: "research", route: "/" },
@@ -184,8 +185,8 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-tab-next", action: "tab.next", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-tab-prev", action: "tab.prev", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-tab-prev", action: "tab.prev", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
-  // c is "new tab" (the picker). Until the picker ships the key is held for
-  // it and does nothing; the key sheet says so (keymapView PENDING).
+  // c is "new tab": it opens the picker (a document or an investigation as
+  // a fresh root tab in its own mothership's tree; workspace/newTab.ts).
   { id: "prefix-tab-new", action: "tab.new", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-tab-new", action: "tab.new", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
   // Branch-tree keys (DESIGN-MODEL §2a). ctrl+alt+u collides with Konsole
@@ -213,6 +214,14 @@ export const KEYMAP: readonly KeymapRow[] = [
   // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
   { id: "prefix-inbox", action: "inbox.toggle", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-inbox", action: "inbox.toggle", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+
+  // ── The project level (the D2 keyboard's missing second level) ────────
+  // shift+p, beside p (previous tab): the tabs live IN the project, so the
+  // project's key is the tab key shifted. prefix+p itself is taken and
+  // ctrl+alt+p is free on every platform the D2 table maps. Proposed with
+  // the implementation, pending ratification into the decision record.
+  { id: "prefix-project-select", action: "project.select", prefixKey: "shift+p", scope: "outside-text", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
+  { id: "chord-project-select", action: "project.select", chord: "ctrl+alt+p", scope: "anywhere", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
 ];
 
 /**
@@ -220,8 +229,8 @@ export const KEYMAP: readonly KeymapRow[] = [
  * do not exist yet: numbered tabs, workstations, motherships, the companion
  * rail, islands. No row may take one of them for another meaning; the
  * sprint that builds the surface moves the key into KEYMAP and deletes it
- * here. (The new-tab picker and the attention inbox are rows already, whose
- * handlers do nothing yet, so the key sheet can say so; keymapView PENDING.)
+ * here. (The attention inbox is a row already, whose handler does nothing
+ * yet, so the key sheet can say so; keymapView PENDING.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
  * prefix+a always works and the operator's platforms do not grab it.
  */

@@ -73,6 +73,11 @@ export const SHORTCUT_EVENTS = {
   AISIDECAR_TOGGLE: "antiek:aisidecar:toggle",
   /** SPR-08: toggle the hotkey HUD/cheat-sheet (the "?" overlay). */
   HELP_TOGGLE: "antiek:help:toggle",
+  /** Toggle the new-tab picker (prefix+c / ctrl+alt+c; NewTabPicker). */
+  NEWTAB_TOGGLE: "antiek:newtab:toggle",
+  /** Toggle the account-project picker (prefix+shift+p / ctrl+alt+p;
+   *  ProjectPicker). */
+  PROJECT_SELECT_TOGGLE: "antiek:project-select:toggle",
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -385,6 +390,19 @@ function toggleReaderToc(): boolean {
   return !window.dispatchEvent(e);
 }
 
+/** Toggle the new-tab picker. Exported so every "new tab" affordance (the
+ *  document strip's + button, the prefix+c key) goes through the SAME
+ *  toggle. NewTabPicker (mounted once in AppShell) listens and opens. */
+export function toggleNewTabPicker(): void {
+  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.NEWTAB_TOGGLE));
+}
+
+/** Toggle the account-project picker. Exported so the sidebar's project row
+ *  and the prefix+shift+p key share one path. */
+export function toggleProjectPicker(): void {
+  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
+}
+
 /** A key held for a surface that has not shipped (keymapView PENDING): it
  *  does nothing and says "not mine", so the page keeps the key. */
 const notBuiltYet: KeyHandler = () => false;
@@ -430,7 +448,7 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
     "tab.next": () => cycleTab(1),
     "tab.prev": () => cycleTab(-1),
-    "tab.new": notBuiltYet,
+    "tab.new": () => toggleNewTabPicker(),
     "tab.parent": () => tabTreeKey((t, m) => t.getState().goToParent(m)),
     "tab.visitChild": () => tabTreeKey((t, m) => t.getState().visitChildOfActive(m)),
     // Close follows pane focus like n/p. On the left it is §2a's default
@@ -441,6 +459,7 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "tab.reopen": () => reopenTab(),
     "reader.tocToggle": () => toggleReaderToc(),
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
+    "project.select": () => toggleProjectPicker(),
     "inbox.toggle": notBuiltYet,
   };
 }
