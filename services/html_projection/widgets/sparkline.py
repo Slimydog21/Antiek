@@ -20,13 +20,14 @@ from __future__ import annotations
 import math
 
 from services.html_projection import tokens
+from services.html_projection.widgets._coerce import to_float, to_int
 
 MAX_POINTS = 160
 
 
 def _num(value: object) -> float | None:
     try:
-        parsed = float(value)
+        parsed = to_float(value)
     except (TypeError, ValueError):
         return None
     # Reject non-finite (nan/inf): a metrics pipeline can emit them, and a
@@ -37,7 +38,7 @@ def _num(value: object) -> float | None:
 
 def _int(value: object, default: int, low: int, high: int) -> int:
     try:
-        parsed = int(value)
+        parsed = to_int(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
@@ -73,7 +74,7 @@ def _sample(points: list[float]) -> list[float]:
     return [points[round(index * last / (MAX_POINTS - 1))] for index in range(MAX_POINTS)]
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_points = data.get("points")
     points: list[float] = []
     if isinstance(raw_points, list):

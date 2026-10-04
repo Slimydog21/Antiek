@@ -36,7 +36,7 @@ def _tone_color(tone: object) -> str:
     return tokens.LEMON_ACCENT
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_events = data.get("events")
     events = raw_events if isinstance(raw_events, list) else []
     title = data.get("title")
@@ -53,6 +53,8 @@ def render(data: dict) -> str:
             f'color:{tokens.LEMON_NEUTRALS[3]};">{heading}no events</div>'
         )
     rows: list[str] = []
+    label: object
+    at: object
     for item in events[:MAX_EVENTS]:
         if not isinstance(item, dict):
             label = at = "—"
