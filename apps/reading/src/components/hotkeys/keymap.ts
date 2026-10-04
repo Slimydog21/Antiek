@@ -1,6 +1,6 @@
 /**
- * keymap.ts — THE global keymap. Every global binding is a row in
- * {@link KEYMAP}; scoped widgets and editors own their local keys.
+ * keymap.ts — Every built-in global binding is a row in {@link KEYMAP}.
+ * Widgets and editors own local keys; user-defined bindings use the dispatcher.
  *
  * One dispatcher (workspace/shortcuts.ts) reads this table and owns every
  * global key. The key sheet (KeySheet.tsx, `prefix+?`) renders it, and every
