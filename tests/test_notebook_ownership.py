@@ -16,6 +16,7 @@ from substrate.notebooks import append_block, create_notebook
 PRIVATE = "BOB_PRIVATE_NOTEBOOK_86134"
 ROUTES = (
     "/notebooks/{notebook_id}",
+    "/notebooks/{notebook_id}/content",
     "/api/notebooks/{notebook_id}/artifact.html",
     "/api/notebooks/{notebook_id}/artifact?format=html",
 )
@@ -112,7 +113,9 @@ def test_absent_and_owned_empty_notebook_are_not_withheld(notebook_clients, rout
     assert empty.status_code == 200
     assert withheld.status_code == 403
     assert "withheld" in withheld.text.lower()
-    if route.startswith("/notebooks/"):
+    if route.endswith("/content"):
+        assert empty.json()["doc"] == {"type": "doc", "content": []}
+    elif route.startswith("/notebooks/"):
         assert empty.json()["blocks"] == []
 
 
@@ -148,7 +151,12 @@ def test_session_creator_can_read_but_cannot_choose_notebook_owner(notebook_clie
     for caller, creator, response in observed:
         assert response.status_code == (200 if caller == creator else 403)
         if caller == creator:
-            assert f"Created by {creator}" in response.text
+            if response.request.url.path.endswith("/content"):
+                assert response.json() == {
+                    "notebook_id": notebooks[creator], "doc": {"type": "doc", "content": []},
+                }
+            else:
+                assert f"Created by {creator}" in response.text
         else:
             assert f"Created by {creator}" not in response.text
     with connect_write(default_db_path()) as con:

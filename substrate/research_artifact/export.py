@@ -10,7 +10,7 @@ from services.html_projection.island import embed_island
 from substrate.event_log import emit_typed
 from substrate.schemas.events import ArtifactGeneratedPayload
 
-from .build_body import build_body
+from .build_body import build_body, build_body_for_export
 from .paths import artifact_path_for, artifact_source_path_for, research_artifacts_dir
 from .render import render_html
 from .schema import ResearchArtifactBody
@@ -38,7 +38,41 @@ def export_research_artifact(
     generating_role: str = "note_taker",
     owner_user_id: str = "__operator__",
 ) -> ExportResult:
+    """Export from the trusted local operator/CLI path, without HTTP grants."""
     body = build_body(investigation_id, db_path=db_path, events_dir=events_dir)
+    return _write_export(
+        body, db_path=db_path, events_dir=events_dir, emit_event=emit_event,
+        generating_role=generating_role, owner_user_id=owner_user_id,
+    )
+
+
+def export_research_artifact_for_owner(
+    investigation_id: str,
+    *,
+    owner_user_id: str,
+    db_path: str,
+    events_dir: str | None = None,
+) -> ExportResult:
+    """Authorize an HTTP caller before any artifact file, receipt or event write."""
+    body = build_body_for_export(
+        investigation_id, owner_user_id=owner_user_id, db_path=db_path, events_dir=events_dir,
+    )
+    return _write_export(
+        body, db_path=db_path, events_dir=events_dir, emit_event=True,
+        generating_role="note_taker", owner_user_id=owner_user_id,
+    )
+
+
+def _write_export(
+    body: ResearchArtifactBody,
+    *,
+    db_path: str | None,
+    events_dir: str | None,
+    emit_event: bool,
+    generating_role: str,
+    owner_user_id: str,
+) -> ExportResult:
+    investigation_id = body.investigation_id
     artifact_id = investigation_id
     # The legacy ResearchArtifact remains the human/editable source channel.
     # Add the projection engine's canonical, inert island so the same stored
