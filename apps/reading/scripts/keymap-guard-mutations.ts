@@ -26,7 +26,8 @@ const mutants: Mutant[] = [
     id: "workspace.duplicate", scope: "global-direct", eligible: (e) => directCandidate(e) !== null,
   }, onBubble);
   window.addEventListener("blur", onBlur);`,
-    row: "chord-sidebar", names: ["workspace.direct", "workspace.duplicate", "key=b context=default"] },
+    row: "chord-sidebar", names: ["workspace.direct", "workspace.duplicate", "key=b context=default"],
+    extra: [{ file: shortcuts, from: "    removeDirect();", to: "    removeDirect();\n    removeDuplicate();" }] },
   { name: "unexercised-row", file: keymap,
     from: 'export const KEYMAP: readonly KeymapRow[] = [',
     to: `export const KEYMAP: readonly KeymapRow[] = [
