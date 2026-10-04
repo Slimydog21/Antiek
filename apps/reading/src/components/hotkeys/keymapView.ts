@@ -91,8 +91,8 @@ export const NOTES: Partial<Record<ActionId, string>> = {
 };
 
 /** Actions whose key is held for a surface that has not shipped: the sheet
- *  marks the row, and the handler does nothing (it returns false, so the
- *  dispatcher leaves the key to the page). */
+ *  marks the row. These actions have no handler, and the dispatcher leaves
+ *  their direct chords to the page. */
 export const PENDING: ReadonlySet<ActionId> = new Set<ActionId>(KEYMAP.filter((row) => row.status === "unimplemented").map((row) => row.action));
 
 export const TASK_TITLES: Record<KeymapTask, string> = {

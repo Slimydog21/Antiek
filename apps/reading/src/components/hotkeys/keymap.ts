@@ -216,9 +216,9 @@ export const KEYMAP: readonly KeymapRow[] = [
   // pane. shift+c, beside c (new tab), for "contents".
   { id: "prefix-reader-toc", action: "reader.tocToggle", status: "implemented", prefixKey: "shift+c", scope: "outside-text", origin: "lane-A-proposed", decision: "lane A proposal 2026-09-27 (A1c), pending ratification" },
 
-  // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
-  { id: "prefix-inbox", action: "inbox.toggle", status: "implemented", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-inbox", action: "inbox.toggle", status: "implemented", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+  // ── D2 attention inbox (D4): declared unimplemented; no handler is installed ─
+  { id: "prefix-inbox", action: "inbox.toggle", status: "unimplemented", blockedBy: "MS-03 M7; THREAD-CONTRACT §1.5 inbox delivery after created-owner authority acceptance", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-inbox", action: "inbox.toggle", status: "unimplemented", blockedBy: "MS-03 M7; THREAD-CONTRACT §1.5 inbox delivery after created-owner authority acceptance", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
 
   // ── The project level (the D2 keyboard's missing second level) ────────
   // shift+p, beside p (previous tab): the tabs live IN the project, so the
@@ -234,8 +234,8 @@ export const KEYMAP: readonly KeymapRow[] = [
  * do not exist yet: numbered tabs, workstations, motherships, the companion
  * rail, islands. No row may take one of them for another meaning; the
  * sprint that builds the surface moves the key into KEYMAP and deletes it
- * here. (The attention inbox is a row already, whose handler does nothing
- * yet, so the key sheet can say so; keymapView PENDING.)
+ * here. (The attention inbox has explicitly unimplemented rows and no handler;
+ * the sheet derives that status from this table.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
  * prefix+a always works and the operator's platforms do not grab it.
  */

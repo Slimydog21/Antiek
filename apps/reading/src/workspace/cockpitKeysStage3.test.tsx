@@ -295,10 +295,9 @@ describe("the layout preset moves to prefix+shift+i (no chord); i is the attenti
     expect(KEYMAP.find((r) => r.chord === "ctrl+alt+i")?.action).toBe("inbox.toggle");
   });
 
-  it("the reserved inbox handler reports 'not mine', so the dispatcher never swallows the key", () => {
+  it("the declared-unimplemented inbox has no handler", () => {
     const handlers = createActionHandlers(vi.fn() as never);
-    const probe = new KeyboardEvent("keydown", keyInit("ctrl+alt+i", "mac"));
-    expect(handlers["inbox.toggle"](probe)).toBe(false);
+    expect(Object.hasOwn(handlers, "inbox.toggle")).toBe(false);
     // tab.new is no longer reserved: it fires the picker's toggle.
     const fired = vi.fn();
     window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);

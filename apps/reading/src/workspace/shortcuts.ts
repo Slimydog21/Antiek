@@ -404,10 +404,6 @@ export function toggleProjectPicker(): void {
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
 }
 
-/** A key held for a surface that has not shipped (keymapView PENDING): it
- *  does nothing and says "not mine", so the page keeps the key. */
-const notBuiltYet: KeyHandler = () => false;
-
 /**
  * One handler per keymap action. keymap.test.ts fails if a table row names
  * an action missing here; the Record type makes tsc fail first.
@@ -461,7 +457,6 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "reader.tocToggle": () => toggleReaderToc(),
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "project.select": () => toggleProjectPicker(),
-    "inbox.toggle": notBuiltYet,
   } satisfies Partial<Record<ActionId, KeyHandler>>;
 }
 
