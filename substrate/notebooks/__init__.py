@@ -385,8 +385,8 @@ def readable_notebook_for(
 ) -> Notebook | None:
     """Read an exact owner's notebook; unknown ownership withholds.
 
-    Public classification is not a grant: the promotion route does not yet
-    verify the actor owns the notebook. Missing and withheld stay distinct.
+    Public classification is not a share grant on these owner-only routes.
+    Missing and withheld stay distinct.
     Internal writers may use ``get_notebook``; caller-facing reads use this seam.
     """
     row = con.execute(
