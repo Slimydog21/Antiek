@@ -76,11 +76,18 @@ DIMENSIONS = [
     (4, "R4", "Pane semantics", 10, 80, "VERIFIED LIVE", "2026-10-03",
      "review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md",
      "Upheld; the agent-opens-into-left-document-space seam was driven live."),
-    (5, "R5", "Writing shape", 10, 60, "VERIFIED LIVE", "2026-10-03",
-     "review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md",
-     "Refuted from an inherited 80. Drag-and-drop of a real source into an outline block IS reproduced and "
-     "measured; the sentence-edit loop could not be reached because production answers 503 on the generate path."),
-        (6, "R6", "Execution", 14, 80, "VERIFIED LIVE", "2026-10-04",
+    (5, "R5", "Writing shape", 10, 40, "VERIFIED LIVE (LOCAL)", "2026-10-04",
+     "review/D5-WRITING-SHAPE-INVESTIGATION-20261004.md",
+     "Down from an inherited 60. Two of five checkpoints reproduce; three fail, and all "
+     "three have isolated mechanisms rather than symptoms. CP2 block tabs fail on a legacy-"
+     "table count - app.py:3831 counts section_blocks while writes land in outline_blocks - "
+     "plus an independent missing mutation dependency at WriteOutlinePane.tsx:97-137. CP4 "
+     "selected-span edit fails because focusing the instruction textarea clears the browser "
+     "selection and unmounts the panel before a request can be made (useFloatMenuSelection.ts:"
+     "113-116). CP5 loses block assignments on drop/reload. All four UIs exist; the composition "
+     "fails. Measured in a real local browser at 1440x900 against main 8683803f8 - production "
+     "was not observed."),
+    (6, "R6", "Execution", 14, 80, "VERIFIED LIVE", "2026-10-04",
      "review/ROUND-18-REGRADE-20261004.md",
      "Up from 60. D6.5 closes: a claim with no stored core span now downgrades through the existing "
      "llm_expanded fallback (#3675), with the positive-span case still retained - both directions "
