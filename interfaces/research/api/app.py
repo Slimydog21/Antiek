@@ -64,7 +64,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -86,6 +86,7 @@ from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
     DispatchCallPayload,
+    DocumentFiledIntoInvestigationPayload,
     Event,
     TypedPayload,
 )
@@ -109,6 +110,8 @@ class TypedEventEnvelope(BaseModel):
     """POST body for ``/events/typed``. The ``payload`` field uses the
     discriminated TypedPayload union — the ``action_type`` field on the
     payload tells Pydantic which variant to validate against."""
+
+    model_config = ConfigDict(extra="forbid")
 
     investigation_id: str = Field(..., min_length=1)
     payload: TypedPayload
@@ -2507,7 +2510,9 @@ def create_app(
     # ── POST typed event ────────────────────────────────────────
 
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request,
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -2515,6 +2520,45 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if action_value == "investigation.start_requested":
+            raise HTTPException(
+                status_code=403,
+                detail="investigation.start_requested is server-owned; use POST /investigations.",
+            )
+        if any(
+            field == "owner_id" or field.startswith("owner_")
+            for field in envelope.payload.model_fields_set
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Ownership and launch authority are server-owned.",
+            )
+        if isinstance(envelope.payload, DocumentFiledIntoInvestigationPayload):
+            from runtime.db_lock import connect_read
+
+            from .books import _reader_owner_id
+
+            filed_document_id = envelope.payload.filed_document_id
+            if (
+                envelope.document_id not in (None, filed_document_id)
+                or envelope.investigation_id != envelope.payload.target_investigation_id
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Filing selectors must match the event envelope.",
+                )
+            owner = _reader_owner_id(request)
+
+            def _owns_filed_document() -> bool:
+                with connect_read(default_db_path()) as con:
+                    row = con.execute(
+                        "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                        [filed_document_id],
+                    ).fetchone()
+                return row is not None and row[0] == owner
+
+            if not await asyncio.to_thread(_owns_filed_document):
+                raise HTTPException(status_code=404, detail="document_not_found")
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -2606,7 +2650,6 @@ def create_app(
             # divergence between the log and the documents table).
             if action_value == "document.filed_into_investigation":
                 from runtime.db_lock import connect_write
-                from substrate.graph import default_db_path
 
                 payload = matching.get("payload") or {}
                 filed_doc = payload.get("filed_document_id")
