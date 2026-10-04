@@ -5571,6 +5571,21 @@ def create_app(
             ],
         )
 
+    def _notebook_for_owner(con: Any, notebook_id: str, request: Request) -> Notebook:
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
+
+        try:
+            notebook = readable_notebook_for(
+                con, notebook_id, owner_user_id=_reader_owner_id(request),
+            )
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+        if notebook is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return notebook
+
     @app.post(
         "/notebooks",
         response_model=NotebookResponse,
@@ -5673,6 +5688,7 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
+        request: Request,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
@@ -5683,6 +5699,7 @@ def create_app(
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:append_notebook_block") as con:
+                _notebook_for_owner(con, notebook_id, request)
                 append_block(
                     con, notebook_id,
                     block_type=req.block_type,
@@ -5706,6 +5723,7 @@ def create_app(
     )
     async def patch_notebook_block(
         notebook_id: str,
+        request: Request,
         block_id: str,
         req: NotebookUpdateBlockRequest = Body(...),
     ) -> NotebookResponse:
@@ -5723,6 +5741,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:patch_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 updated = update_block(
                     con, notebook_id, block_id,
                     content=req.content,
@@ -5747,7 +5766,7 @@ def create_app(
         response_model=NotebookResponse,
     )
     async def delete_notebook_block(
-        notebook_id: str, block_id: str,
+        notebook_id: str, block_id: str, request: Request,
     ) -> NotebookResponse:
         """Delete one block from a notebook. Per master-spec §13.2
         substrate-is-source-of-truth: this deletes the row, not just
@@ -5763,6 +5782,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:delete_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 deleted = delete_block(con, notebook_id, block_id)
                 if not deleted:
                     raise HTTPException(
@@ -5783,6 +5803,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
+        request: Request,
         req: NotebookReorderBlocksRequest = Body(...),
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
@@ -5798,14 +5819,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:reorder_notebook_blocks",
             ) as con:
-                # Confirm the notebook exists before reordering so the
-                # error path returns 404 for missing notebooks rather
-                # than the more confusing "permutation mismatch" 422.
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                _notebook_for_owner(con, notebook_id, request)
                 reorder_blocks(
                     con, notebook_id,
                     ordered_block_ids=req.ordered_block_ids,
@@ -5827,6 +5841,7 @@ def create_app(
     )
     async def put_notebook_content(
         notebook_id: str,
+        request: Request,
         req: NotebookPutContentRequest = Body(...),
     ) -> NotebookResponse:
         """Atomic-replace a notebook's content from a TipTap document.
@@ -5865,11 +5880,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:put_notebook_content",
             ) as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
                 # ── SPR-01 empty-doc floor ──────────────────────────────────
                 # A fresh/unhydrated editor seeds ``<p></p>`` and its first
                 # autosave PUTs that near-empty doc; the atomic replace below
@@ -5980,6 +5991,7 @@ def create_app(
     )
     async def promote_notebook_to_public(
         notebook_id: str,
+        request: Request,
         rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
         force: bool = Query(default=False),
     ) -> NotebookResponse:
@@ -6006,11 +6018,7 @@ def create_app(
 
         def _sync() -> tuple[Any, Any, Any]:
             with connect_write(db_path, purpose="api:promote_notebook_public") as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
 
                 # Compute the quality-gate verdict from the current
                 # notebook state. Always run the gate so the event log
