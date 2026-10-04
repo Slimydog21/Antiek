@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * DocumentTabStrip — the cockpit's left document tabs (D6, DESIGN-MODEL §2a).
  *
@@ -325,10 +326,13 @@ export function DocumentTabStripView({
       onToggleTree();
     };
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "tabs.tree.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      removeKeyboardOwner();
     };
   }, [treePanelOpen, onToggleTree]);
 

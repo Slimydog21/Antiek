@@ -1,3 +1,4 @@
+import { registerKeyboardOwner, traceKeyboardAction } from "./keyboardOwnership";
 /**
  * The keymap dispatcher: the ONE window-level owner of every global key.
  *
@@ -411,11 +412,11 @@ const notBuiltYet: KeyHandler = () => false;
  * One handler per keymap action. keymap.test.ts fails if a table row names
  * an action missing here; the Record type makes tsc fail first.
  */
-export function createActionHandlers(navigate: NavigateFunction): Record<ActionId, KeyHandler> {
+export function createActionHandlers(navigate: NavigateFunction) {
   // A product door: navigate (when it has a route) AND emit the activation a
   // click emits, so the mascot cannot tell a key from a click. Every action
   // whose metadata names a product is a door.
-  const doors = {} as Record<ActionId, KeyHandler>;
+  const doors: Partial<Record<ActionId, KeyHandler>> = {};
   for (const id of Object.keys(ACTIONS) as ActionId[]) {
     const meta: ActionMeta = ACTIONS[id];
     if (!meta.productId) continue;
@@ -461,7 +462,7 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "project.select": () => toggleProjectPicker(),
     "inbox.toggle": notBuiltYet,
-  };
+  } satisfies Partial<Record<ActionId, KeyHandler>>;
 }
 
 function consume(e: KeyboardEvent): void {
@@ -494,7 +495,7 @@ export function installShortcuts(
     if (e.key === null || e.key.endsWith("custom-hotkeys")) hydrateCustomFromStorage();
   };
 
-  const handlers: Record<ActionId, KeyHandler> = {
+  const handlers: Partial<Record<ActionId, KeyHandler>> = {
     ...createActionHandlers(navigate),
     ...opts.handlers,
   };
@@ -503,8 +504,12 @@ export function installShortcuts(
   const prefixRows = rows.filter((r) => r.prefixKey);
   const directRows = rows.filter((r) => r.chord);
 
-  function run(action: ActionId, e: KeyboardEvent): boolean {
-    return handlers[action](e) !== false;
+  function run(row: KeymapRow, e: KeyboardEvent): boolean {
+    const handler = handlers[row.action];
+    if (!handler) throw new Error(`keymap row ${row.id}: missing handler ${row.action}`);
+    const handled = handler(e) !== false;
+    traceKeyboardAction(e, row.id, row.action, handled);
+    return handled;
   }
 
   function onCapture(e: KeyboardEvent) {
@@ -523,7 +528,7 @@ export function installShortcuts(
       prefixState.disarm();
       if (e.key === "Escape" || isPrefix) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
-      if (row) run(row.action, e);
+      if (row && row.status !== "unimplemented") run(row, e);
       return;
     }
     // Never steal the prefix from text (ctrl+b moves the caret on macOS) or
@@ -535,49 +540,59 @@ export function installShortcuts(
     if (!e.repeat) prefixState.arm();
   }
 
-  function onBubble(e: KeyboardEvent) {
-    if (e.defaultPrevented || e.isComposing) return;
+  function directCandidate(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return null;
     const ctx = focusContext(e.target);
     const row = directRows.find((r) => eventMatchesCombo(e, r.chord!));
     if (row) {
-      if (!scopeAllows(row, ctx)) return;
-      // A ctrl+alt chord that would type a character stays the field's.
-      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e)) return;
-      // In a Mac text field ctrl+letter is an editing key (ctrl+k deletes to
-      // the end of the line), so there "mod" means ⌘ only.
-      if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return;
-      if (run(row.action, e)) {
+      if (row.status === "unimplemented") return null;
+      if (!scopeAllows(row, ctx)) return null;
+      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e)) return null;
+      if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return null;
+      return { row };
+    }
+    if (ctx.kind !== "default" || !hasAnyModifier(e)) return null;
+    const spec = comboSpecFor(e);
+    const custom = spec ? customBindings.find((b) => b.spec === spec) : undefined;
+    return custom ? { custom } : null;
+  }
+
+  function onBubble(e: KeyboardEvent) {
+    const candidate = directCandidate(e);
+    if (!candidate) return;
+    if (candidate.row) {
+      if (run(candidate.row, e)) {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
       return;
     }
-    // A custom per-entity binding (always a modifier combo; a table row
-    // always wins, because rows were checked first).
-    if (ctx.kind !== "default" || !hasAnyModifier(e)) return;
-    const spec = comboSpecFor(e);
-    const custom = spec ? customBindings.find((b) => b.spec === spec) : undefined;
-    if (!custom) return;
+    const { custom } = candidate;
     e.preventDefault();
     navigate(custom.route);
+    traceKeyboardAction(e, custom.id, `custom:${custom.id}`, true);
     emitProductActivate({
-      productId: "custom",
-      route: custom.route,
-      entityId: custom.entityId,
-      source: "hotkey",
+      productId: "custom", route: custom.route, entityId: custom.entityId, source: "hotkey",
     });
   }
 
   const onBlur = () => prefixState.disarm();
 
   window.addEventListener("storage", onStorage);
-  window.addEventListener("keydown", onCapture, true);
-  window.addEventListener("keydown", onBubble);
+  const removePrefix = registerKeyboardOwner(window, {
+    id: "workspace.prefix", scope: "global-prefix", capture: true,
+    eligible: (e) => !e.isComposing && !isLoneModifier(e) && focusContext(e.target).kind === "default"
+      && (prefixState.isArmed() || eventMatchesCombo(e, readPrefix())),
+  }, onCapture);
+  const removeDirect = registerKeyboardOwner(window, {
+    id: "workspace.direct", scope: "global-direct",
+    eligible: (e) => directCandidate(e) !== null,
+  }, onBubble);
   window.addEventListener("blur", onBlur);
   return () => {
     window.removeEventListener("storage", onStorage);
-    window.removeEventListener("keydown", onCapture, true);
-    window.removeEventListener("keydown", onBubble);
+    removePrefix();
+    removeDirect();
     window.removeEventListener("blur", onBlur);
     prefixState.disarm();
   };

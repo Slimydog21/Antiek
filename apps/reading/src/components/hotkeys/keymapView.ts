@@ -5,6 +5,7 @@
  */
 import {
   MODIFIER_TOKENS,
+  KEYMAP,
   currentPlatform,
   parseCombo,
   type ActionId,
@@ -92,7 +93,7 @@ export const NOTES: Partial<Record<ActionId, string>> = {
 /** Actions whose key is held for a surface that has not shipped: the sheet
  *  marks the row, and the handler does nothing (it returns false, so the
  *  dispatcher leaves the key to the page). */
-export const PENDING: ReadonlySet<ActionId> = new Set<ActionId>(["inbox.toggle"]);
+export const PENDING: ReadonlySet<ActionId> = new Set<ActionId>(KEYMAP.filter((row) => row.status === "unimplemented").map((row) => row.action));
 
 export const TASK_TITLES: Record<KeymapTask, string> = {
   find: "Find and switch",

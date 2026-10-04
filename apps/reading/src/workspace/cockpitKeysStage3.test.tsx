@@ -302,7 +302,7 @@ describe("the layout preset moves to prefix+shift+i (no chord); i is the attenti
     // tab.new is no longer reserved: it fires the picker's toggle.
     const fired = vi.fn();
     window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
-    expect(handlers["tab.new"](probe)).not.toBe(false);
+    expect(handlers["tab.new"]()).not.toBe(false);
     window.removeEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     expect(fired).toHaveBeenCalledTimes(1);
   });

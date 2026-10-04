@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 
@@ -260,8 +261,11 @@ export function SlashMenu({ editor, query, onClose }: Props) {
         onClose();
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "notebook.slash-menu", scope: "overlay",
+      eligible: (e) => ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key),
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, [filtered, hoverIdx, editor, onClose]);
 
   if (filtered.length === 0) return null;

@@ -34,8 +34,8 @@ describe("the real keymap is sound", () => {
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
   });
 
-  it("every action in ACTIONS has a handler, and every handler an action", () => {
-    expect([...handlerIds].sort()).toEqual(Object.keys(ACTIONS).sort());
+  it("exactly the implemented actions have handlers", () => {
+    expect([...handlerIds].sort()).toEqual([...new Set(KEYMAP.filter((r) => r.status !== "unimplemented").map((r) => r.action))].sort());
   });
 
   it("every action the table binds is reachable by at least one key", () => {
@@ -46,12 +46,30 @@ describe("the real keymap is sound", () => {
 });
 
 describe("the guard fails when the table is wrong (negative controls)", () => {
-  const row = (over: Partial<KeymapRow>): KeymapRow => ({
+  const row = (over: Partial<Omit<KeymapRow, "status" | "blockedBy">>): KeymapRow => ({
     id: "probe",
     action: "palette.toggle",
     scope: "outside-text",
     origin: "legacy-SPR-08",
     ...over,
+  });
+
+
+  it("rejects a handler behind an unimplemented declaration and mismatched alias status", () => {
+    const pending: KeymapRow = { id: "declared-gap", action: "palette.toggle", chord: "ctrl+alt+z", scope: "anywhere", origin: "legacy-SPR-08", status: "unimplemented", blockedBy: "named authority acceptance" };
+    expect(validateKeymap([pending], handlerIds)).toContainEqual(expect.objectContaining({ kind: "unexpected-handler", row: "declared-gap", detail: expect.stringContaining("palette.toggle") }));
+    expect(validateKeymap([...KEYMAP, pending], handlerIds)).toContainEqual(expect.objectContaining({ kind: "inconsistent-status", row: "declared-gap" }));
+    expect(validateKeymap([pending], handlerIds.filter((id) => id !== "palette.toggle"))).toEqual([]);
+  });
+
+  it("names a missing scenario, unpressed alias, and removed sheet row", () => {
+    const action = "palette.toggle";
+    const rows = KEYMAP.filter((r) => r.action === action);
+    const ids = rows.map((r) => r.id);
+    const problems = validateKeymap(rows, handlerIds, { coverage: { scenarios: [], exercisedRows: ids.slice(1), sheetRows: ids.slice(1) } });
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "missing-scenario", row: ids[0], detail: expect.stringContaining(action) }));
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "unexercised-row", row: ids[0] }));
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "missing-sheet-row", row: ids[0] }));
   });
 
   it("fails on a duplicate combo", () => {
