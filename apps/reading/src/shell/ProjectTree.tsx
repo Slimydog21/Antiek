@@ -1,6 +1,8 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 
+import { toggleProjectPicker } from "../workspace/shortcuts";
+import { useTabTrees } from "../workspace/tabTreeStore";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { LemonTag } from "../components/lemon/LemonTag";
@@ -159,6 +161,9 @@ export function ProjectTree({
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
+  // The account project the tab trees file under (the D2 project level):
+  // named here, and switched through the same picker the key opens.
+  const tabProject = useTabTrees((s) => s.projectId);
   const research = useInvestigationList();
   const read = useReadDocuments();
 
@@ -204,6 +209,29 @@ export function ProjectTree({
           {meta.nouns.join(" · ")}
         </p>
       </div>
+
+      {/* The account project (D2). One row, one path with the prefix+shift+p
+          key: both open the registry picker, and a pick re-files the tab
+          trees under the chosen project. */}
+      <button
+        type="button"
+        onClick={toggleProjectPicker}
+        aria-label="Choose the account project (prefix shift p)"
+        title="Choose the account project (prefix shift p)"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 border-b border-rule dark:border-charcoal-1 text-left hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+      >
+        <span className="min-w-0">
+          <span className="block font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            Project
+          </span>
+          <span className="block truncate text-xs text-ink dark:text-bright" data-current-project>
+            {tabProject}
+          </span>
+        </span>
+        <span className="shrink-0 font-mono text-xxs uppercase tracking-wider text-sun-ink">
+          Switch
+        </span>
+      </button>
 
       {/* Pinned */}
       <Section

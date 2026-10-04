@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * WriteOutlinePane — the C5 right pane for Write mode: ONE TAB PER OUTLINE
  * BUILDING-BLOCK, each a drag-and-drop target for source documents.
@@ -388,10 +389,13 @@ function BlockOverflowMenu({
       triggerRef.current?.focus();
     };
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "write.outline.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !ref.current?.closest("[hidden]"),
+    }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
     };
   }, [open]);
 
