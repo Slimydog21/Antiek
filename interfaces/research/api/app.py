@@ -64,7 +64,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -109,6 +109,8 @@ class TypedEventEnvelope(BaseModel):
     """POST body for ``/events/typed``. The ``payload`` field uses the
     discriminated TypedPayload union — the ``action_type`` field on the
     payload tells Pydantic which variant to validate against."""
+
+    model_config = ConfigDict(extra="forbid")
 
     investigation_id: str = Field(..., min_length=1)
     payload: TypedPayload
@@ -2515,6 +2517,19 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if action_value == "investigation.start_requested":
+            raise HTTPException(
+                status_code=403,
+                detail="investigation.start_requested is server-owned; use POST /investigations.",
+            )
+        if any(
+            field == "owner_id" or field.startswith("owner_")
+            for field in envelope.payload.model_fields_set
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Ownership and launch authority are server-owned.",
+            )
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
