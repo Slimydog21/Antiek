@@ -58,7 +58,7 @@ import { mothershipForPath } from "./documentSpace";
 import { useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
 import { createActionHandlers, installShortcuts, SHORTCUT_EVENTS } from "./shortcuts";
-import { keyInit, pinPlatform, press, unpinPlatform } from "./keymapTestKit";
+import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
 vi.mock("./useViewportTier", () => ({
@@ -295,14 +295,13 @@ describe("the layout preset moves to prefix+shift+i (no chord); i is the attenti
     expect(KEYMAP.find((r) => r.chord === "ctrl+alt+i")?.action).toBe("inbox.toggle");
   });
 
-  it("the reserved inbox handler reports 'not mine', so the dispatcher never swallows the key", () => {
+  it("the declared-unimplemented inbox has no handler", () => {
     const handlers = createActionHandlers(vi.fn() as never);
-    const probe = new KeyboardEvent("keydown", keyInit("ctrl+alt+i", "mac"));
-    expect(handlers["inbox.toggle"](probe)).toBe(false);
+    expect(Object.hasOwn(handlers, "inbox.toggle")).toBe(false);
     // tab.new is no longer reserved: it fires the picker's toggle.
     const fired = vi.fn();
     window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
-    expect(handlers["tab.new"](probe)).not.toBe(false);
+    expect(handlers["tab.new"]()).not.toBe(false);
     window.removeEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     expect(fired).toHaveBeenCalledTimes(1);
   });
@@ -360,7 +359,7 @@ describe("the table after the decision", () => {
 
   it("passes the guard: no duplicate, no handler-less action, no reserved key taken", () => {
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
-    expect([...handlerIds].sort()).toEqual(Object.keys(ACTIONS).sort());
+    expect([...handlerIds].sort()).toEqual([...new Set(KEYMAP.filter((row) => row.status !== "unimplemented").map((row) => row.action))].sort());
   });
 
   it("n/p + ctrl+alt+]/[ are one focused-pane action pair; the ,/. companion pair is gone", () => {

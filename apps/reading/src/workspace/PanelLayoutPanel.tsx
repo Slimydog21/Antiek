@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 import { motion } from "framer-motion";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
@@ -103,8 +104,11 @@ export function PanelLayoutPanel({ id }: Props) {
       e.preventDefault();
       useWorkspace.getState().close(id);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "panel.floating.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]") && !escOverlayOpen(document, rootRef.current) && !(e.target instanceof HTMLElement && (e.target.matches("input,textarea,select") || e.target.isContentEditable)),
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, [panel, isFocused, id]);
 
   // S11 acceptance: in-panel focus trap. Tab inside a panel cycles

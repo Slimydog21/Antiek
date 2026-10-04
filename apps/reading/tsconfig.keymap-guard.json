@@ -1,0 +1,1 @@
+{ "extends": "./tsconfig.app.json", "compilerOptions": { "composite": false }, "include": ["src/vite-env.d.ts", "scripts/keymap-guard.scenarios.ts"] }
