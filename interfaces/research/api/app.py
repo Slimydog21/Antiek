@@ -86,6 +86,7 @@ from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
     DispatchCallPayload,
+    DocumentFiledIntoInvestigationPayload,
     Event,
     TypedPayload,
 )
@@ -2509,7 +2510,9 @@ def create_app(
     # ── POST typed event ────────────────────────────────────────
 
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request,
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -2530,6 +2533,32 @@ def create_app(
                 status_code=403,
                 detail="Ownership and launch authority are server-owned.",
             )
+        if isinstance(envelope.payload, DocumentFiledIntoInvestigationPayload):
+            from runtime.db_lock import connect_read
+
+            from .books import _reader_owner_id
+
+            filed_document_id = envelope.payload.filed_document_id
+            if (
+                envelope.document_id not in (None, filed_document_id)
+                or envelope.investigation_id != envelope.payload.target_investigation_id
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Filing selectors must match the event envelope.",
+                )
+            owner = _reader_owner_id(request)
+
+            def _owns_filed_document() -> bool:
+                with connect_read(default_db_path()) as con:
+                    row = con.execute(
+                        "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                        [filed_document_id],
+                    ).fetchone()
+                return row is not None and row[0] == owner
+
+            if not await asyncio.to_thread(_owns_filed_document):
+                raise HTTPException(status_code=404, detail="document_not_found")
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -2621,7 +2650,6 @@ def create_app(
             # divergence between the log and the documents table).
             if action_value == "document.filed_into_investigation":
                 from runtime.db_lock import connect_write
-                from substrate.graph import default_db_path
 
                 payload = matching.get("payload") or {}
                 filed_doc = payload.get("filed_document_id")

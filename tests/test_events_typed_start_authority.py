@@ -146,6 +146,9 @@ def test_filing_refuses_authority_assertions_before_any_side_effect(
     target[field] = value
     response = client.post("/events/typed", json=body)
     assert response.status_code == 422, response.text
+    error = response.json()["detail"][0]
+    assert error["type"] == "extra_forbidden"
+    assert error["loc"][-1] == field
     assert trajectory("filing-target") == []
     assert _document_home("alice-doc") is None
     client.app.state.broadcaster.broadcast.assert_not_called()
@@ -164,4 +167,48 @@ def test_generic_writer_refuses_schema_recognized_ownership_assertions(client):
     assert response.status_code == 403, response.text
     assert response.json() == {"detail": "Ownership and launch authority are server-owned."}
     assert trajectory("forged-edge") == []
+    client.app.state.broadcaster.broadcast.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "owner", ["alice", "bob", "__operator__"], ids=["owned", "foreign", "legacy-operator"],
+)
+def test_filing_client_control_requires_document_owner_before_append(client, owner):
+    _seed_document("selected-doc", owner)
+    response = client.post("/events/typed", json=_filing_body("selected-doc"))
+    if owner == "alice":
+        assert response.status_code == 201, response.text
+        assert response.json()["action_type"] == "document.filed_into_investigation"
+        rows = trajectory("filing-target")
+        assert len(rows) == 1
+        assert rows[0]["event_id"] == response.json()["event_id"]
+        assert _document_home("selected-doc") == "filing-target"
+        client.app.state.broadcaster.broadcast.assert_awaited_once()
+    else:
+        assert response.status_code == 404, response.text
+        assert response.json() == {"detail": "document_not_found"}
+        assert trajectory("filing-target") == []
+        assert _document_home("selected-doc") is None
+        client.app.state.broadcaster.broadcast.assert_not_called()
+
+
+@pytest.mark.parametrize("selector", ["document_id", "investigation_id"])
+def test_filing_rejects_contradictory_envelope_before_append(client, selector):
+    _seed_document("alice-doc", "alice")
+    body = _filing_body()
+    body[selector] = "foreign-selector"
+    response = client.post("/events/typed", json=body)
+    assert response.status_code == 422, response.text
+    assert response.json() == {"detail": "Filing selectors must match the event envelope."}
+    assert trajectory("foreign-selector") == []
+    assert trajectory("filing-target") == []
+    assert _document_home("alice-doc") is None
+    client.app.state.broadcaster.broadcast.assert_not_called()
+
+
+def test_filing_missing_document_refuses_before_append(client):
+    response = client.post("/events/typed", json=_filing_body("missing-doc"))
+    assert response.status_code == 404, response.text
+    assert response.json() == {"detail": "document_not_found"}
+    assert trajectory("filing-target") == []
     client.app.state.broadcaster.broadcast.assert_not_called()
