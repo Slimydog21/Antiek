@@ -118,7 +118,7 @@ def test_absent_and_owned_empty_notebook_are_not_withheld(notebook_clients, rout
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_public_class_is_not_a_share_grant(notebook_clients, route):
-    # Promotion currently has no owner-bound grant. These are private read routes.
+    # A public class alone does not grant access to these owner-only routes.
     notebook_id = seed_notebook(content_class="user_public_contribution")
     path = route.format(notebook_id=notebook_id)
     assert notebook_clients["alice"].get(path).status_code == 403
@@ -157,3 +157,94 @@ def test_session_creator_can_read_but_cannot_choose_notebook_owner(notebook_clie
         "alice": "alice", "bob": "bob",
     }
     assert notebook_clients["anonymous"].post("/notebooks", json={"title": "no owner"}).status_code == 401
+
+
+MUTATIONS = ("append", "patch", "patch-noop", "delete", "reorder", "replace", "promote")
+
+
+def mutation_request(operation, notebook_id, blocks):
+    first, second = [block.block_id for block in blocks]
+    if operation == "append":
+        return "POST", f"/notebooks/{notebook_id}/blocks", {
+            "block_type": "prose", "content": {"text": "OWNER_APPEND"},
+        }
+    if operation in ("patch", "patch-noop"):
+        payload = {} if operation == "patch-noop" else {
+            "content": {"text": "OWNER_PATCH"}, "ref_id": "owner-chosen-ref",
+        }
+        return "PATCH", f"/notebooks/{notebook_id}/blocks/{first}", payload
+    if operation == "delete":
+        return "DELETE", f"/notebooks/{notebook_id}/blocks/{first}", None
+    if operation == "reorder":
+        return "POST", f"/notebooks/{notebook_id}/blocks/reorder", {
+            "ordered_block_ids": [second, first],
+        }
+    if operation == "replace":
+        return "PUT", f"/notebooks/{notebook_id}/content", {
+            "doc": {"type": "doc", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "OWNER_REPLACE"}]},
+            ]},
+        }
+    assert operation == "promote"
+    return "POST", f"/notebooks/{notebook_id}/promote-public?force=true", None
+
+
+@pytest.mark.parametrize("operation", MUTATIONS)
+def test_mutations_preserve_foreign_notebook_and_serve_owning_bob(notebook_clients, operation):
+    from substrate.notebooks import get_notebook
+
+    observed = []
+    for caller, client in notebook_clients.items():
+        notebook_id = seed_notebook()
+        with connect_write(default_db_path()) as con:
+            append_block(con, notebook_id, block_type="prose", content={"text": "SECOND_BLOCK"})
+            before = get_notebook(con, notebook_id)
+        method, path, payload = mutation_request(operation, notebook_id, before.blocks)
+        response = client.request(method, path, json=payload)
+        with connect_write(default_db_path()) as con:
+            after = get_notebook(con, notebook_id)
+        print("NOTEBOOK_MUTATION", json.dumps({
+            "caller": caller, "operation": operation, "method": method, "path": path,
+            "status": response.status_code, "contains_private_marker": PRIVATE in response.text,
+            "persisted_unchanged": before == after, "blocks_before": len(before.blocks),
+            "blocks_after": len(after.blocks), "owner_after": after.owner_user_id,
+            "class_after": after.content_class, "body_excerpt": response.text[:600],
+        }, sort_keys=True))
+        observed.append((caller, response, before, after))
+    # Bob runs even when Alice's assertion would fail on the original routes.
+    for caller, response, before, after in observed:
+        if caller != "bob":
+            assert response.status_code == (401 if caller == "anonymous" else 403)
+            assert PRIVATE not in response.text
+            assert after == before
+            continue
+        assert response.status_code == (201 if operation == "append" else 200)
+        assert after.owner_user_id == "bob"
+        assert response.json()["notebook_id"] == after.notebook_id
+        assert [b["content_json"] for b in response.json()["blocks"]] == [
+            b.content_json for b in after.blocks
+        ]
+        if operation == "append":
+            assert after.blocks[:2] == before.blocks
+            assert after.blocks[2].content_json == {"text": "OWNER_APPEND"}
+        elif operation == "patch":
+            assert after.blocks[0].content_json == {"text": "OWNER_PATCH"}
+            assert after.blocks[0].ref_id == "owner-chosen-ref"
+            assert after.blocks[1] == before.blocks[1]
+        elif operation == "patch-noop":
+            assert after == before
+            assert PRIVATE in response.text
+        elif operation == "delete":
+            assert len(after.blocks) == 1
+            assert after.blocks[0].block_id == before.blocks[1].block_id
+            assert after.blocks[0].block_index == 0
+        elif operation == "reorder":
+            assert [b.block_id for b in after.blocks] == [b.block_id for b in reversed(before.blocks)]
+        elif operation == "replace":
+            assert len(after.blocks) == 1
+            assert after.blocks[0].content_json["content"][0]["text"] == "OWNER_REPLACE"
+        elif operation == "promote":
+            assert before.content_class == "user_owned"
+            assert after.content_class == "user_public_contribution"
+            assert after.blocks == before.blocks
+            assert PRIVATE in response.text
