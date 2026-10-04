@@ -76,6 +76,7 @@ function DocumentTabStripInner() {
   const navigate = useNavigate();
   const mothership = mothershipForPath(location.pathname, location.search);
 
+  const contextEpoch = useTabTrees((s) => s.contextEpoch);
   const tree = useTabTrees((s) => s.trees[mothership]);
   const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
@@ -83,13 +84,14 @@ function DocumentTabStripInner() {
   const entries = useTabTitles((s) => s.entries);
 
   // Keyed by the history entry, so a branch navigation to a surface already
-  // on screen elsewhere still files under its parent.
+  // on screen elsewhere still files under its parent. A project or adapter
+  // change clears the trees without navigating; reload that context too.
   const intent = branchIntentOf(location.state);
   useEffect(() => {
     void syncRouteToTree(mothership, location.pathname, intent);
     // `intent` is derived from the entry `location.key` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.key, mothership]);
+  }, [location.pathname, location.key, mothership, contextEpoch]);
 
   // tree → route: a USER activation's intent, taken once. An intent left
   // behind by a newer activation, or by a tab the route sync has since moved
