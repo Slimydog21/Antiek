@@ -1,11 +1,11 @@
 # Completion map
 
-**Generated 2026-10-04 15:25 UTC from live state.** Regenerate with `python scripts/completion_map.py` - do not hand-edit.
+**Generated 2026-10-04 20:09 UTC from live state.** Regenerate with `python scripts/completion_map.py` - do not hand-edit.
 
-- `origin/main` = `87996e9aeaf6ba62ced05fe19eefa2bb1bb7d5c6` - *fix(packaging): the wheel built cleanly and could not import*
-- production API `build_sha` = `c8a6710b6122` - **5 commits behind main** - the backend deploys automatically once a gating workflow finishes, so this gap is merge latency, not a missing deploy step
+- `origin/main` = `3e759f2ddd0555b1306f926b60691e07c5ebb299` - *Merge pull request #3691 from Slimydog21/fix/d2-project-roundtrip*
+- production API `build_sha` = `4105083b0829` - **2 commits behind main** - the backend deploys automatically once a gating workflow finishes, so this gap is merge latency, not a missing deploy step
 - open pull requests: **69**
-- measured grade against the frozen rubric: **65.6 / 100**
+- measured grade against the frozen rubric: **68.0 / 100**
 
 This file answers one question: **what is actually done, as of the sha above?** It exists because nothing in this repository previously said so, and a returning agent could not tell measured work from intended work.
 
@@ -22,7 +22,7 @@ Weights sum to 100: R1 and R2 carry 12 each; R6 carries 14 (the heaviest, becaus
 | # | Ref | Dimension | Weight | Score | Weighted | Evidence class | Measured |
 |---|---|---|---:|---:|---:|---|---|
 | 1 | R1 | One cockpit, one core asset | 12 | 80 | 9.6 | VERIFIED LIVE | 2026-10-04 |
-| 2 | R2 | Keyboard-first operation | 12 | 40 | 4.8 | VERIFIED LIVE | 2026-10-03 |
+| 2 | R2 | Keyboard-first operation | 12 | 60 | 7.2 | VERIFIED LIVE | 2026-10-04 |
 | 3 | R3 | Omarchy insets | 10 | 80 | 8.0 | VERIFIED LIVE | 2026-10-03 |
 | 4 | R4 | Pane semantics | 10 | 80 | 8.0 | VERIFIED LIVE | 2026-10-03 |
 | 5 | R5 | Writing shape | 10 | 60 | 6.0 | VERIFIED LIVE | 2026-10-03 |
@@ -31,13 +31,13 @@ Weights sum to 100: R1 and R2 carry 12 each; R6 carries 14 (the heaviest, becaus
 | 8 | D8 | Delivery | 10 | 40 | 4.0 | DEPLOYED | 2026-10-03 |
 | 9 | D9 | Evidence | 6 | 40 | 2.4 | REPORTED | 2026-10-02 |
 | 10 | D10 | Spec quality and re-entry value | 6 | 60 | 3.6 | VERIFIED LIVE | 2026-10-03 |
-| | | **Total** | **100** | | **65.6** | | |
+| | | **Total** | **100** | | **68.0** | | |
 
 ## What moves each dimension
 
 **R1 - One cockpit, one core asset (80/100, weight 12)** - Up from 60. D1.4 closes: the cockpit is the default layout, confirmed in a fresh standalone profile AFTER A LOCAL SESSION LOGIN rather than only in Storybook - the question round 16 left open. #3668 changed LAYOUT_PRESET_DEFAULT to omarchy-inset and persists it on startup, so a fresh profile writes an explicit preset instead of null. An explicit stored choice, including docked, still wins. *(locators: `~/research/antiek-v1-forensics-20260930/review/ROUND-18-REGRADE-20261004.md`, outside this repository)*
 
-**R2 - Keyboard-first operation (40/100, weight 12)** - Refuted from an inherited 60. An advertised binding (prefix+c) disarms without a picker; account-project selection exists in neither the table nor the UI. Fix blocked by the islands flake. *(locators: `~/research/antiek-v1-forensics-20260930/review/D1-D2-INDEPENDENT-VERIFICATION-20261003.md`, outside this repository)*
+**R2 - Keyboard-first operation (60/100, weight 12)** - Up from 40. D2.1 closes: both project round trips (Alpha->Beta->Alpha and the reverse), the Cmd+E recovery control, and a normal route resync all reproduce in a real browser with TRUSTED key events after #3691 added the project-context resync trigger. VERIFIED LIVE (LOCAL) - production was not observed, and the measurement says so. TWO CHECKPOINTS STILL FAIL and are scored zero: the inbox (inbox.toggle still maps to notBuiltYet) and literal single ownership. A NEW DEFECT WAS FOUND: trusted rapid previous/next loses the second navigation in 3/3 trials while settled retries work, which is a race rather than a missing binding. *(locators: `~/research/antiek-v1-forensics-20260930/review/ROUND-20-REGRADE-20261004.md`, outside this repository)*
 
 **R3 - Omarchy insets (80/100, weight 10)** - Upheld with measured pane rectangles at a stated viewport. *(locators: `~/research/antiek-v1-forensics-20260930/review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md`, outside this repository)*
 

@@ -61,10 +61,15 @@ DIMENSIONS = [
      "AFTER A LOCAL SESSION LOGIN rather than only in Storybook - the question round 16 left open. #3668 "
      "changed LAYOUT_PRESET_DEFAULT to omarchy-inset and persists it on startup, so a fresh profile writes "
      "an explicit preset instead of null. An explicit stored choice, including docked, still wins."),
-    (2, "R2", "Keyboard-first operation", 12, 40, "VERIFIED LIVE", "2026-10-03",
-     "review/D1-D2-INDEPENDENT-VERIFICATION-20261003.md",
-     "Refuted from an inherited 60. An advertised binding (prefix+c) disarms without a picker; "
-     "account-project selection exists in neither the table nor the UI. Fix blocked by the islands flake."),
+    (2, "R2", "Keyboard-first operation", 12, 60, "VERIFIED LIVE", "2026-10-04",
+     "review/ROUND-20-REGRADE-20261004.md",
+     "Up from 40. D2.1 closes: both project round trips (Alpha->Beta->Alpha and the reverse), the "
+     "Cmd+E recovery control, and a normal route resync all reproduce in a real browser with TRUSTED "
+     "key events after #3691 added the project-context resync trigger. VERIFIED LIVE (LOCAL) - "
+     "production was not observed, and the measurement says so. TWO CHECKPOINTS STILL FAIL and are "
+     "scored zero: the inbox (inbox.toggle still maps to notBuiltYet) and literal single ownership. "
+     "A NEW DEFECT WAS FOUND: trusted rapid previous/next loses the second navigation in 3/3 trials "
+     "while settled retries work, which is a race rather than a missing binding."),
     (3, "R3", "Omarchy insets", 10, 80, "VERIFIED LIVE", "2026-10-03",
      "review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md",
      "Upheld with measured pane rectangles at a stated viewport."),
