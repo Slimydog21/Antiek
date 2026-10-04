@@ -55,9 +55,12 @@ SCORING_RULE = (
 # (id, rubric ref, name, weight, score, evidence class, measured on, source report, note)
 # ---------------------------------------------------------------------------------------
 DIMENSIONS = [
-    (1, "R1", "One cockpit, one core asset", 12, 60, "VERIFIED LIVE", "2026-10-03",
-     "review/D1-D2-INDEPENDENT-VERIFICATION-20261003.md",
-     "Upheld. Docked two-pane default confirmed in a fresh browser; the live key sheet still claims the opposite."),
+        (1, "R1", "One cockpit, one core asset", 12, 80, "VERIFIED LIVE", "2026-10-04",
+     "review/ROUND-18-REGRADE-20261004.md",
+     "Up from 60. D1.4 closes: the cockpit is the default layout, confirmed in a fresh standalone profile "
+     "AFTER A LOCAL SESSION LOGIN rather than only in Storybook - the question round 16 left open. #3668 "
+     "changed LAYOUT_PRESET_DEFAULT to omarchy-inset and persists it on startup, so a fresh profile writes "
+     "an explicit preset instead of null. An explicit stored choice, including docked, still wins."),
     (2, "R2", "Keyboard-first operation", 12, 40, "VERIFIED LIVE", "2026-10-03",
      "review/D1-D2-INDEPENDENT-VERIFICATION-20261003.md",
      "Refuted from an inherited 60. An advertised binding (prefix+c) disarms without a picker; "
@@ -72,11 +75,14 @@ DIMENSIONS = [
      "review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md",
      "Refuted from an inherited 80. Drag-and-drop of a real source into an outline block IS reproduced and "
      "measured; the sentence-edit loop could not be reached because production answers 503 on the generate path."),
-    (6, "R6", "Execution", 14, 60, "VERIFIED LIVE", "2026-10-03",
-     "review/D6-R6-REMEASUREMENT-20261003.md",
-     "Up from 20. Re-measured after clauses 1 (#3641) and 2 (#3646) merged: real default prompt generation "
-     "and opening the generated asset in the reader now reproduce. The fork/merge journey and "
-     "research-provenance validation still fail."),
+        (6, "R6", "Execution", 14, 80, "VERIFIED LIVE", "2026-10-04",
+     "review/ROUND-18-REGRADE-20261004.md",
+     "Up from 60. D6.5 closes: a claim with no stored core span now downgrades through the existing "
+     "llm_expanded fallback (#3675), with the positive-span case still retained - both directions "
+     "reproduced. The fork-merge authorization chain (#3674) is merged and DEPLOYED. D6.4 still fails: the "
+     "reader's merge client is PRESENT-AND-WRONG - ReformatReview.tsx:82 sends generation_id as forkId and "
+     "reformat.ts:173-190 posts to /forks/{id}/merge (404), while the registered routes want fork_id plus "
+     "selected node items."),
     (7, "D7", "Craft standard", 10, 80, "VERIFIED LIVE", "2026-10-03",
      "review/D7-D10-INDEPENDENT-VERIFICATION-20261003.md",
      "Upheld on re-measurement, with the known gate holes tested against current main rather than restated."),
