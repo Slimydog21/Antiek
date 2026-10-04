@@ -74,6 +74,13 @@ for platform in PLATFORMS:
                 result = call("d2Guard.verify(%s)" % json.dumps(row["id"]))
                 results.append({"platform":platform, "context":"default", **result})
                 print("PASS", platform, row["id"], row["action"], flush=True)
+                if row["action"] == "door.more":
+                    dismiss()
+                    call("d2Guard.prepare('prod-more')")
+                    point = call("(()=>{const r=document.querySelector('[data-product-id=more]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+                    click_at_xy(point["x"], point["y"])
+                    call("d2Guard.verifyMoreClick()")
+                    print("PASS",platform,"trusted click More launcher visible",flush=True)
                 if row["action"] == "keysheet.toggle":
                     sheet_rows = call("[...document.querySelectorAll('[data-keymap-row]')].map(e=>e.dataset.keymapRow)")
                 # Every alias is also pressed from text. Any advertised anywhere

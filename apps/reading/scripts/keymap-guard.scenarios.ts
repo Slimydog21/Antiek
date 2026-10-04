@@ -85,8 +85,14 @@ function focusedPanelB() {
   return until(() => !!document.querySelector('[role="region"][aria-label="Guard panel B"]:not(.opacity-95)') && !!document.querySelector('[role="region"][aria-label="Guard panel A"].opacity-95'), "panel.focus: visible focus did not move from A to B");
 }
 interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | Promise<void>; }
+function launcherVisible(): boolean {
+  return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
+}
 function door(path: string): Scenario {
-  return { effect: () => until(() => location.pathname === path && !!document.querySelector(`[data-product-id="${path === "/" ? "research" : path === "/library" ? "read" : path.slice(1)}"]`), `door failed to show ${path}`) };
+  return { effect: async () => {
+    await until(() => location.pathname === path && !!document.querySelector(`[data-product-id="${path === "/" ? "research" : path === "/library" ? "read" : path.slice(1)}"]`), `door failed to show ${path}`);
+    check(!launcherVisible(), `unrelated activation for ${path} opened the More launcher`);
+  } };
 }
 export const SCENARIOS = {
   "palette.toggle": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
@@ -119,7 +125,7 @@ export const SCENARIOS = {
   "door.write": door("/write"),
   "door.speak": door("/speak"),
   "door.home": door("/home"),
-  "door.more": { effect: () => see('[role="dialog"]') },
+  "door.more": { effect: () => until(launcherVisible, "visible effect missing: More launcher") },
   "door.researchHome": door("/"),
   "door.readLibrary": door("/library"),
 } satisfies Record<ActionId, Scenario>;
@@ -246,3 +252,5 @@ export async function customEffect() {
   return traces;
 }
 export { setPrefix } from "../src/components/hotkeys/keymap";
+
+export function verifyMoreClick() { return until(launcherVisible, "More click did not open the visible launcher"); }
