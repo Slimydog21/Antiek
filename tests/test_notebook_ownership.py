@@ -157,3 +157,103 @@ def test_session_creator_can_read_but_cannot_choose_notebook_owner(notebook_clie
         "alice": "alice", "bob": "bob",
     }
     assert notebook_clients["anonymous"].post("/notebooks", json={"title": "no owner"}).status_code == 401
+
+
+def test_notebook_list_keeps_bobs_notebook_out_of_alices_list(notebook_clients):
+    notebook_id = seed_notebook()
+    replies = {caller: observe(client, caller, "/notebooks")
+               for caller, client in notebook_clients.items()}
+    detail = observe(notebook_clients["alice"], "alice", f"/notebooks/{notebook_id}")
+    assert replies["anonymous"].status_code == 401
+    assert replies["bob"].status_code == 200
+    assert [nb["notebook_id"] for nb in replies["bob"].json()["notebooks"]] == [notebook_id]
+    assert detail.status_code == 403
+    assert replies["alice"].status_code == 200
+    assert replies["alice"].json() == {"count": 0, "notebooks": []}
+    assert PRIVATE not in replies["alice"].text
+    assert PRIVATE not in replies["bob"].text
+    assert "blocks" not in replies["bob"].json()["notebooks"][0]
+    owner_detail = notebook_clients["bob"].get(f"/notebooks/{notebook_id}")
+    assert owner_detail.status_code == 200
+    assert PRIVATE in owner_detail.text
+
+
+@pytest.mark.parametrize("owner", ["", "   ", "__operator__", "shared", "bob"])
+@pytest.mark.parametrize("content_class", ["user_owned", "user_public_contribution"])
+def test_notebook_list_excludes_unknown_shared_and_foreign_rows(
+    notebook_clients, owner, content_class,
+):
+    hidden = seed_notebook(owner=owner, content_class=content_class)
+    own = seed_notebook(owner="alice", empty=True)
+    response = observe(notebook_clients["alice"], "alice", "/notebooks")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert [nb["notebook_id"] for nb in body["notebooks"]] == [own]
+    assert hidden not in response.text
+    assert PRIVATE not in response.text
+    assert set(body["notebooks"][0]) == {
+        "notebook_id", "title", "investigation_id", "document_id",
+        "content_class", "created_at", "updated_at",
+    }
+
+
+@pytest.mark.parametrize("caller,foreign", [("alice", "bob"), ("bob", "alice")])
+@pytest.mark.parametrize("surface", ["body", "query", "header"])
+def test_notebook_list_ignores_spoofed_owner(notebook_clients, caller, foreign, surface):
+    own = seed_notebook(owner=caller)
+    hidden = seed_notebook(owner=foreign)
+    spoof = {"owner_user_id": foreign, "user_id": foreign, "owner": "true"}
+    kwargs = {
+        "body": {"json": spoof},
+        "query": {"params": spoof},
+        "header": {"headers": {"X-User-Id": foreign, "X-Owner-User-Id": foreign}},
+    }[surface]
+    response = notebook_clients[caller].request("GET", "/notebooks", **kwargs)
+    print("NOTEBOOK_LIST_SPOOF", json.dumps({
+        "caller": caller, "surface": surface, "status": response.status_code,
+        "body": response.json(),
+    }, sort_keys=True))
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert [nb["notebook_id"] for nb in response.json()["notebooks"]] == [own]
+    assert hidden not in response.text
+    assert PRIVATE not in response.text
+
+
+@pytest.mark.parametrize("filters", [
+    {"investigation_id": "inv-shared"},
+    {"document_id": "doc-shared"},
+    {"investigation_id": "inv-shared", "document_id": "doc-shared"},
+])
+def test_notebook_list_scopes_before_filters_and_limit(notebook_clients, filters):
+    with connect_write(default_db_path(), purpose="test/notebook-list-filter") as con:
+        ids = {}
+        for caller in ("alice", "bob"):
+            ids[caller] = create_notebook(
+                con, title=caller, owner_user_id=caller,
+                investigation_id="inv-shared", document_id="doc-shared",
+            )
+        create_notebook(con, title="Other binding", owner_user_id="alice",
+                        investigation_id="inv-other", document_id="doc-other")
+        con.execute("UPDATE notebooks SET updated_at = '2100-01-01' WHERE notebook_id = ?",
+                    [ids["bob"]])
+    for caller in ("alice", "bob"):
+        response = notebook_clients[caller].get("/notebooks", params={**filters, "limit": 1})
+        assert response.status_code == 200
+        assert response.json()["count"] == 1
+        assert [nb["notebook_id"] for nb in response.json()["notebooks"]] == [ids[caller]]
+    missing = notebook_clients["alice"].get("/notebooks", params={"document_id": "missing"})
+    assert missing.json() == {"count": 0, "notebooks": []}
+
+
+def test_notebook_list_owned_empty_and_public_notebooks_remain_visible(notebook_clients):
+    empty = seed_notebook(empty=True)
+    public = seed_notebook(content_class="user_public_contribution")
+    response = observe(notebook_clients["bob"], "bob", "/notebooks")
+    assert response.status_code == 200
+    assert response.json()["count"] == 2
+    assert {nb["notebook_id"] for nb in response.json()["notebooks"]} == {empty, public}
+    assert all("blocks" not in nb for nb in response.json()["notebooks"])
+    assert PRIVATE not in response.text
+    assert notebook_clients["alice"].get("/notebooks").json() == {"count": 0, "notebooks": []}

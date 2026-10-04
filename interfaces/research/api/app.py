@@ -5533,7 +5533,7 @@ def create_app(
         content_json: dict[str, Any]
         created_at: str
 
-    class NotebookResponse(BaseModel):
+    class NotebookSummaryResponse(BaseModel):
         notebook_id: str
         title: str
         investigation_id: str | None
@@ -5541,11 +5541,13 @@ def create_app(
         content_class: str
         created_at: str
         updated_at: str
+
+    class NotebookResponse(NotebookSummaryResponse):
         blocks: list[NotebookBlockResponse]
 
     class NotebookListResponse(BaseModel):
         count: int
-        notebooks: list[NotebookResponse]
+        notebooks: list[NotebookSummaryResponse]
 
     def _notebook_to_response(nb: Notebook) -> NotebookResponse:
         return NotebookResponse(
@@ -5610,6 +5612,7 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
+        request: Request,
         investigation_id: Annotated[str | None, Query()] = None,
         document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
@@ -5618,12 +5621,16 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import list_notebooks
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:list_notebooks") as con:
                 return list_notebooks(
                     con,
+                    owner_user_id=owner_user_id,
                     investigation_id=investigation_id,
                     document_id=document_id,
                     limit=limit,
@@ -5633,7 +5640,7 @@ def create_app(
         nbs = await asyncio.to_thread(_sync)
         return NotebookListResponse(
             count=len(nbs),
-            notebooks=[_notebook_to_response(nb) for nb in nbs],
+            notebooks=[NotebookSummaryResponse.model_validate(nb, from_attributes=True) for nb in nbs],
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
