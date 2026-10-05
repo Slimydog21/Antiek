@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -186,6 +187,44 @@ def test_call_vendor_options_do_not_mutate_later_requests():
         {"model": "selected-model", "messages": [{"role": "user", "content": "second"}],
          "max_tokens": 32, "temperature": 0.1, "thinking": {"type": "disabled"}},
     ]
+
+
+def test_extra_body_is_snapshotted_before_validation_and_send():
+    import json
+
+    class ChangingOptions(Mapping):
+        def __init__(self):
+            self.reads = 0
+
+        def __iter__(self):
+            self.reads += 1
+            return iter(["thinking"] if self.reads == 1 else ["model"])
+
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, key):
+            return {"type": "disabled"} if key == "thinking" else "other-model"
+
+    sent = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(req.content))
+        return httpx.Response(200, json=_ok_response_payload())
+
+    options = ChangingOptions()
+    provider = OpenAICompatProvider(
+        name="owner-selected", base_url="https://api.example.com",
+        api_key="test-key", client=_make_client(handler),
+    )
+    provider.call(
+        model="selected-model", prompt="permitted-context", max_tokens=64,
+        temperature=0.2, extra_body=options,
+    )
+
+    assert sent[0]["model"] == "selected-model"
+    assert sent[0]["thinking"] == {"type": "disabled"}
+    assert options.reads == 1
 
 
 def test_openai_compat_custom_chat_completions_path():

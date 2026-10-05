@@ -222,9 +222,10 @@ class OpenAICompatProvider:
         Call-specific options override constructor vendor options without
         mutating the shared adapter. Core-field collisions refuse before I/O.
         """
-        if _CORE_REQUEST_FIELDS.intersection(self._extra_body) or (
-            extra_body is not None and _CORE_REQUEST_FIELDS.intersection(extra_body)
-        ):
+        vendor_fields = dict(self._extra_body)
+        if extra_body is not None:
+            vendor_fields.update(extra_body)
+        if _CORE_REQUEST_FIELDS.intersection(vendor_fields):
             raise ProviderError(
                 f"{self.name}: extra_body cannot override core request fields",
                 provider=self.name, model=model, latency_ms=0,
@@ -243,10 +244,7 @@ class OpenAICompatProvider:
         }
         # Vendor-specific fields (e.g. z.ai's reasoning toggle) merge on
         # top, never overriding the core request shape.
-        if self._extra_body:
-            body.update(self._extra_body)
-        if extra_body:
-            body.update(extra_body)
+        body.update(vendor_fields)
 
         client = self._ensure_client()
         t_start = time.monotonic()
