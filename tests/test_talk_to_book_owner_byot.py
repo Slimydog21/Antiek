@@ -792,3 +792,59 @@ def test_legacy_operation_routes_refuse_action_attempts(
     assert all(reply.status_code == 409 for reply in replies)
     assert all(reply.json() == {"detail": "model_operation_belongs_to_action"} for reply in replies)
     assert ledger.operation("owner-a", "action-canonical") == before
+
+
+@pytest.mark.parametrize("selected", [True, False])
+def test_book_route_forwards_selected_authenticated_retrieval_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, selected: bool,
+) -> None:
+    from importlib import import_module
+
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.books import register_book_routes
+    from runtime.db_lock import connect_write
+    from substrate.books import book_qa
+    from substrate.books.ingest import register_book
+    from substrate.graph.ops import insert_document
+    from substrate.graph.schema import init_database
+
+    app, record, _, provider, house = _authority_fixture(monkeypatch)
+    db_path = tmp_path / "route-owner.duckdb"
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
+    with connect_write(str(db_path), purpose="route-owner-fixture") as writer:
+        init_database(writer)
+        insert_document(
+            writer, document_id="route-book", document_type="book",
+            source_tier=2, owner_user_id="owner-a", raw_text="Unit fixture",
+        )
+        register_book(writer, document_id="route-book", content_class="personal_reading")
+
+    observed: list[str | None] = []
+
+    def observe_reader(con: Any, **kwargs: Any) -> book_qa.BookAnswer:
+        observed.append(kwargs.get("owner_user_id"))
+        return book_qa.BookAnswer(
+            answer="No fixture passages", citations=[], grounded=False,
+            context_chunk_count=0,
+        )
+
+    monkeypatch.setattr(book_qa, "answer_book_question", observe_reader)
+    monkeypatch.setattr(
+        import_module("substrate.graph.search"), "SentenceTransformerEmbedding", lambda: object(),
+    )
+    register_book_routes(app)
+    payload: dict[str, Any] = {"question": "A fixture question"}
+    if selected:
+        payload.update({
+            "model_choice": {
+                "authority": "user_model", "provider_id": record.id,
+                "model_id": record.model_id,
+            },
+            "operation_id": "route-turn",
+        })
+    with TestClient(app) as client:
+        response = client.post("/books/route-book/ask", json=payload)
+    assert response.status_code == 200, response.text
+    assert observed == ["owner-a" if selected else None]
+    assert provider.calls == [] and house.calls == []
