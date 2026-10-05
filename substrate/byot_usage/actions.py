@@ -11,16 +11,17 @@ import hashlib
 import json
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 if TYPE_CHECKING:
     from substrate.byot_usage.ledger import OperationRow
 
 MAX_MONEY = (1 << 63) - 1
+_Published = TypeVar("_Published")
 ACTIVE_STATES = "('allocated','prepared','sent','settlement_pending','unknown')"
 RlmWorkflow = Literal[
     "long_document_wrestling", "long_corpus_synthesis", "investigation",
@@ -354,7 +355,56 @@ ACTION_SCHEMA = (
     " WHERE action_id IS NOT NULL AND dispatch_event_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS byot_outbox_pending ON"
     " byot_action_outbox(acknowledged_at,sequence)",
+    "CREATE TABLE IF NOT EXISTS byot_owned_wrestling_job ("
+    " owner_user_id TEXT NOT NULL, action_id TEXT NOT NULL,"
+    " investigation_id TEXT NOT NULL UNIQUE, document_id TEXT NOT NULL,"
+    " source_reference TEXT NOT NULL, source_digest TEXT NOT NULL,"
+    " request_event_id TEXT NOT NULL UNIQUE, delivered_event_id TEXT NOT NULL UNIQUE,"
+    " request_payload_digest TEXT NOT NULL, state TEXT NOT NULL"
+    " CHECK(state IN ('queued','running','ready','delivered','unresolved','refused')),"
+    " canonical_input_reference TEXT, canonical_input_digest TEXT,"
+    " result_reference TEXT, result_digest TEXT, execution_token TEXT,"
+    " updated_at TEXT NOT NULL,"
+    " PRIMARY KEY(owner_user_id,action_id),"
+    " FOREIGN KEY(owner_user_id,action_id) REFERENCES byot_action_journal(owner_user_id,action_id))",
+    "CREATE TABLE IF NOT EXISTS byot_owned_wrestling_outbox ("
+    " owner_user_id TEXT NOT NULL, action_id TEXT NOT NULL,"
+    " event_kind TEXT NOT NULL CHECK(event_kind IN ('requested','delivered')) ,"
+    " event_id TEXT NOT NULL UNIQUE, payload_digest TEXT NOT NULL,"
+    " published_at TEXT, PRIMARY KEY(owner_user_id,action_id,event_kind),"
+    " FOREIGN KEY(owner_user_id,action_id) REFERENCES byot_owned_wrestling_job(owner_user_id,action_id))",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class OwnedWrestlingJob:
+    owner_user_id: str
+    action_id: str
+    investigation_id: str
+    document_id: str
+    source_reference: str
+    source_digest: str
+    request_event_id: str
+    delivered_event_id: str
+    request_payload_digest: str
+    state: str
+    canonical_input_reference: str | None
+    canonical_input_digest: str | None
+    result_reference: str | None
+    result_digest: str | None
+    execution_token: str | None
+
+
+def _owned_job(con: sqlite3.Connection, owner: str, action_id: str) -> OwnedWrestlingJob | None:
+    row = con.execute(
+        "SELECT owner_user_id,action_id,investigation_id,document_id,source_reference,"
+        "source_digest,request_event_id,delivered_event_id,request_payload_digest,state,"
+        "canonical_input_reference,canonical_input_digest,result_reference,result_digest,"
+        "execution_token"
+        " FROM byot_owned_wrestling_job"
+        " WHERE owner_user_id=? AND action_id=?", (owner, action_id),
+    ).fetchone()
+    return OwnedWrestlingJob(*row) if row else None
 
 
 def record_exposure(con: sqlite3.Connection, owner: str, record: str) -> int:
@@ -516,22 +566,245 @@ class _OwnerActionAccounting:
                 if existing.decision != decision:
                     raise OperationConflict("action decision cannot be rebound")
                 return existing
-            self._admit_owner(con, owner, decision.budget_cents)
-            now = datetime.now(UTC).isoformat()
-            con.execute(
-                "INSERT INTO byot_action_journal(owner_user_id,action_id,action_kind,budget_cents,"
-                " body_authority_digest,owner_decision_digest,epoch,state,created_at,updated_at)"
-                " VALUES(?,?,?,?,?,?,0,'open',?,?)",
-                (owner, action_id, decision.action_kind, decision.budget_cents,
-                 decision.body_authority_digest, decision.owner_decision_digest, now, now),
-            )
-            con.executemany(
-                "INSERT INTO byot_action_routes(owner_user_id,action_id,ordinal,user_model_id,"
-                " provider_id,model_id,route_digest) VALUES(?,?,?,?,?,?,?)",
-                [(owner, action_id, i, route.user_model_id, route.provider_id, route.model_id,
-                  route.route_digest) for i, route in enumerate(decision.approved_routes)],
-            )
+            self._insert_action(con, decision)
             return self._require_action(con, owner, action_id)
+
+    def _insert_action(self, con: sqlite3.Connection, decision: OwnerActionDecision) -> None:
+        self._admit_owner(con, decision.owner_user_id, decision.budget_cents)
+        now = datetime.now(UTC).isoformat()
+        con.execute(
+            "INSERT INTO byot_action_journal(owner_user_id,action_id,action_kind,budget_cents,"
+            " body_authority_digest,owner_decision_digest,epoch,state,created_at,updated_at)"
+            " VALUES(?,?,?,?,?,?,0,'open',?,?)",
+            (decision.owner_user_id, decision.action_id, decision.action_kind,
+             decision.budget_cents, decision.body_authority_digest,
+             decision.owner_decision_digest, now, now),
+        )
+        con.executemany(
+            "INSERT INTO byot_action_routes(owner_user_id,action_id,ordinal,user_model_id,"
+            " provider_id,model_id,route_digest) VALUES(?,?,?,?,?,?,?)",
+            [(decision.owner_user_id, decision.action_id, i, route.user_model_id,
+              route.provider_id, route.model_id, route.route_digest)
+             for i, route in enumerate(decision.approved_routes)],
+        )
+
+    def admit_owned_wrestling(
+        self, decision: OwnerActionDecision, *, investigation_id: str,
+        document_id: str, source_reference: str, source_digest: str,
+        request_event_id: str, delivered_event_id: str,
+        request_payload_digest: str,
+    ) -> OwnedWrestlingJob:
+        """One money-DB transaction binds the decision, source and request outbox."""
+        from substrate.byot_usage.ledger import OperationConflict
+
+        if decision.action_kind != "long_document_wrestling":
+            raise ValueError("wrong action kind")
+        for value in (investigation_id, document_id, source_reference,
+                      request_event_id, delivered_event_id):
+            _identity(value)
+        _digest(source_digest)
+        _digest(request_payload_digest)
+        owner, action_id = decision.owner_user_id, decision.action_id
+        with self._action_transaction() as con:
+            existing = _owned_job(con, owner, action_id)
+            if existing is not None:
+                if (self._require_action(con, owner, action_id).decision != decision
+                    or (existing.investigation_id, existing.document_id,
+                        existing.source_reference, existing.source_digest,
+                        existing.request_event_id, existing.delivered_event_id,
+                        existing.request_payload_digest) !=
+                       (investigation_id, document_id, source_reference, source_digest,
+                        request_event_id, delivered_event_id, request_payload_digest)):
+                    raise OperationConflict("owned wrestling decision cannot be rebound")
+                return existing
+            if self._action_snapshot(con, owner, action_id) is not None:
+                raise OperationConflict("action id already belongs to another workflow")
+            self._insert_action(con, decision)
+            con.execute(
+                "INSERT INTO byot_owned_wrestling_job("
+                "owner_user_id,action_id,investigation_id,document_id,source_reference,"
+                "source_digest,request_event_id,delivered_event_id,request_payload_digest,"
+                "state,canonical_input_reference,canonical_input_digest,result_reference,"
+                "result_digest,execution_token,updated_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,'queued',NULL,NULL,NULL,NULL,NULL,?)",
+                (owner, action_id, investigation_id, document_id, source_reference,
+                 source_digest, request_event_id, delivered_event_id,
+                 request_payload_digest, datetime.now(UTC).isoformat()),
+            )
+            con.execute(
+                "INSERT INTO byot_owned_wrestling_outbox VALUES(?,?, 'requested', ?, ?, NULL)",
+                (owner, action_id, request_event_id, request_payload_digest),
+            )
+            return _owned_job(con, owner, action_id)  # type: ignore[return-value]
+
+    def owned_wrestling_job(self, owner: str, action_id: str) -> OwnedWrestlingJob | None:
+        _identity(owner)
+        _identity(action_id)
+        with self._action_transaction(write=False) as con:
+            return _owned_job(con, owner, action_id)
+
+    def owned_wrestling_for_request(self, request_event_id: str) -> OwnedWrestlingJob | None:
+        _identity(request_event_id)
+        with self._action_transaction(write=False) as con:
+            row = con.execute(
+                "SELECT owner_user_id,action_id FROM byot_owned_wrestling_job"
+                " WHERE request_event_id=?", (request_event_id,),
+            ).fetchone()
+            return _owned_job(con, *row) if row else None
+
+    def owned_wrestling_for_investigation(self, investigation_id: str) -> OwnedWrestlingJob | None:
+        _identity(investigation_id)
+        with self._action_transaction(write=False) as con:
+            row = con.execute(
+                "SELECT owner_user_id,action_id FROM byot_owned_wrestling_job"
+                " WHERE investigation_id=?", (investigation_id,),
+            ).fetchone()
+            return _owned_job(con, *row) if row else None
+
+    def claim_owned_wrestling_execution(
+        self, owner: str, action_id: str, *, token: str, operation_id: str,
+    ) -> OwnedWrestlingJob | None:
+        """Elect one worker; settled output alone permits safe reconstruction."""
+        _identity(token)
+        _identity(operation_id)
+        with self._action_transaction() as con:
+            job = _owned_job(con, owner, action_id)
+            if job is None:
+                return None
+            if job.state == "queued":
+                pass
+            elif job.state == "running":
+                attempt = con.execute(
+                    "SELECT state FROM byot_operation_journal"
+                    " WHERE owner_user_id=? AND operation_id=? AND action_id=?",
+                    (owner, operation_id, action_id),
+                ).fetchone()
+                if attempt != ("settled",):
+                    return None
+            else:
+                return None
+            con.execute(
+                "UPDATE byot_owned_wrestling_job SET state='running',execution_token=?,"
+                "updated_at=? WHERE owner_user_id=? AND action_id=?",
+                (token, datetime.now(UTC).isoformat(), owner, action_id),
+            )
+            return _owned_job(con, owner, action_id)
+
+    def bind_owned_wrestling_input(
+        self, owner: str, action_id: str, *, reference: str, digest: str,
+        execution_token: str | None = None,
+    ) -> OwnedWrestlingJob:
+        from substrate.byot_usage.ledger import OperationConflict
+
+        _identity(reference)
+        _digest(digest)
+        with self._action_transaction() as con:
+            job = _owned_job(con, owner, action_id)
+            if (job is None or job.state != "running"
+                or (job.execution_token is not None and job.execution_token != execution_token)):
+                raise OperationConflict("owned wrestling is not running")
+            if job.canonical_input_reference is not None:
+                if (job.canonical_input_reference, job.canonical_input_digest) != (reference, digest):
+                    raise OperationConflict("canonical input cannot be rebound")
+                return job
+            con.execute(
+                "UPDATE byot_owned_wrestling_job SET canonical_input_reference=?,"
+                "canonical_input_digest=?,updated_at=? WHERE owner_user_id=? AND action_id=?",
+                (reference, digest, datetime.now(UTC).isoformat(), owner, action_id),
+            )
+            return _owned_job(con, owner, action_id)  # type: ignore[return-value]
+
+    def transition_owned_wrestling(
+        self, owner: str, action_id: str, *, expected: str, state: str,
+        result_reference: str | None = None, result_digest: str | None = None,
+        publication_payload_digest: str | None = None,
+        execution_token: str | None = None,
+    ) -> OwnedWrestlingJob:
+        from substrate.byot_usage.ledger import OperationConflict
+
+        if state not in {"running", "ready", "delivered", "unresolved", "refused"}:
+            raise ValueError("invalid wrestling state")
+        if (result_reference is None) != (result_digest is None):
+            raise ValueError("result reference and digest must be paired")
+        if result_reference is not None:
+            _identity(result_reference)
+            _digest(result_digest)
+        if state == "ready":
+            _digest(publication_payload_digest)
+        with self._action_transaction() as con:
+            job = _owned_job(con, owner, action_id)
+            if (job is None or job.state != expected
+                or (expected == "running" and job.execution_token is not None
+                    and job.execution_token != execution_token)):
+                raise OperationConflict("owned wrestling state changed")
+            con.execute(
+                "UPDATE byot_owned_wrestling_job SET state=?,result_reference=COALESCE(?,result_reference),"
+                "result_digest=COALESCE(?,result_digest),updated_at=?"
+                " WHERE owner_user_id=? AND action_id=?",
+                (state, result_reference, result_digest, datetime.now(UTC).isoformat(),
+                 owner, action_id),
+            )
+            if state == "ready":
+                con.execute(
+                    "INSERT INTO byot_owned_wrestling_outbox VALUES(?,?, 'delivered', ?, ?, NULL)",
+                    (owner, action_id, job.delivered_event_id, publication_payload_digest),
+                )
+            return _owned_job(con, owner, action_id)  # type: ignore[return-value]
+
+    def mark_owned_event_published(
+        self, owner: str, action_id: str, kind: str, event_id: str,
+        payload_digest: str,
+    ) -> None:
+        from substrate.byot_usage.ledger import OperationConflict
+
+        if kind not in {"requested", "delivered"}:
+            raise ValueError("invalid owned event kind")
+        with self._action_transaction() as con:
+            row = con.execute(
+                "SELECT event_id,payload_digest FROM byot_owned_wrestling_outbox"
+                " WHERE owner_user_id=? AND action_id=? AND event_kind=?",
+                (owner, action_id, kind),
+            ).fetchone()
+            if row != (event_id, payload_digest):
+                raise OperationConflict("owned event binding differs")
+            con.execute(
+                "UPDATE byot_owned_wrestling_outbox SET published_at=COALESCE(published_at,?)"
+                " WHERE owner_user_id=? AND action_id=? AND event_kind=?",
+                (datetime.now(UTC).isoformat(), owner, action_id, kind),
+            )
+
+    def publish_owned_wrestling_delivery(
+        self, owner: str, action_id: str, event_id: str, payload_digest: str,
+        *, already_present: bool, append: Callable[[], _Published],
+    ) -> _Published | None:
+        """Order the first durable append against cancellation in one money write."""
+        from substrate.byot_usage.ledger import OperationConflict
+
+        _identity(owner)
+        _identity(action_id)
+        _identity(event_id)
+        _digest(payload_digest)
+        with self._action_transaction() as con:
+            job = _owned_job(con, owner, action_id)
+            row = con.execute(
+                "SELECT event_id,payload_digest,published_at"
+                " FROM byot_owned_wrestling_outbox"
+                " WHERE owner_user_id=? AND action_id=? AND event_kind='delivered'",
+                (owner, action_id),
+            ).fetchone()
+            if (job is None or job.state not in {"ready", "delivered"}
+                or row is None or row[:2] != (event_id, payload_digest)):
+                raise OperationConflict("owned delivery binding differs")
+            action = self._require_action(con, owner, action_id)
+            if action.state != "open" and not already_present:
+                return None
+            published = append()
+            con.execute(
+                "UPDATE byot_owned_wrestling_outbox SET published_at=COALESCE(published_at,?)"
+                " WHERE owner_user_id=? AND action_id=? AND event_kind='delivered'",
+                (datetime.now(UTC).isoformat(), owner, action_id),
+            )
+            return published
 
     def _attempt(
         self, con: sqlite3.Connection, owner: str, attempt_id: str,

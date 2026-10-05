@@ -37,7 +37,7 @@ __all__ = [
     "SettlementEvidenceError",
 ]
 
-_SCHEMA_VERSION: Final = 4
+_SCHEMA_VERSION: Final = 5
 _BUSY_TIMEOUT_MS: Final = 30_000
 
 
@@ -162,7 +162,7 @@ class ByotUsageLedger(_OwnerActionAccounting):
             row = con.execute(
                 "SELECT value FROM byot_usage_meta WHERE key = 'schema_version'"
             ).fetchone()
-            if row is not None and row[0] not in ("1", "2", "3", "4"):
+            if row is not None and row[0] not in ("1", "2", "3", "4", "5"):
                 raise ValueError("unsupported BYOT usage schema version")
             con.execute(
                 "CREATE TABLE IF NOT EXISTS byot_key_usage ("
@@ -199,6 +199,13 @@ class ByotUsageLedger(_OwnerActionAccounting):
                     )
             for statement in ACTION_SCHEMA:
                 con.execute(statement)
+            owned_columns = {column[1] for column in con.execute(
+                "PRAGMA table_info(byot_owned_wrestling_job)"
+            ).fetchall()}
+            if "execution_token" not in owned_columns:
+                con.execute(
+                    "ALTER TABLE byot_owned_wrestling_job ADD COLUMN execution_token TEXT"
+                )
             con.execute(
                 "INSERT INTO byot_usage_meta(key,value) VALUES('journal_id',?)"
                 " ON CONFLICT(key) DO NOTHING", (uuid.uuid4().hex,),

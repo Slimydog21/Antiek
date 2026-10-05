@@ -111,7 +111,7 @@ def test_v3_migration_preserves_every_legacy_state_and_result(tmp_path: Path) ->
         migrated = con.execute("SELECT * FROM byot_operation_journal ORDER BY operation_id").fetchall()
         assert [row[:14] for row in migrated] == operations
         assert all(row[14] is None for row in migrated)
-        assert con.execute("SELECT value FROM byot_usage_meta WHERE key='schema_version'").fetchone() == ("4",)
+        assert con.execute("SELECT value FROM byot_usage_meta WHERE key='schema_version'").fetchone() == ("5",)
         journal_id = con.execute("SELECT value FROM byot_usage_meta WHERE key='journal_id'").fetchone()
     assert ledger.key_usage("legacy", "owner").held_cents == 28  # type: ignore[union-attr]
     ByotUsageLedger(path)

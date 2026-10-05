@@ -137,6 +137,8 @@ def dispatch_talk_to_book_byot(
     role: str = "thought_partner",
     action: str = _ACTION,
     owner_action: OwnerActionRef | None = None,
+    context_pack_event_id: str | None = None,
+    parent_event_id: str | None = None,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung.
 
@@ -276,6 +278,8 @@ def dispatch_talk_to_book_byot(
                 prompt,
                 role=role,
                 investigation_id=investigation_id,
+                context_pack_event_id=context_pack_event_id,
+                parent_event_id=parent_event_id,
                 config=exact_config,
                 # BYOT_ONLY: the payer decides the provider. ``exact_config``
                 # already makes the owner's rung the tier's primary with no
@@ -287,6 +291,7 @@ def dispatch_talk_to_book_byot(
                 # the owner's key. Opting out keeps the receipt honest too:
                 # no override was applied, so none is recorded.
                 operator_lineup=False,
+                notdiamond_shadow=False,
             )
         except Exception:
             if owner_action is None:

@@ -911,6 +911,7 @@ def dispatch(
     provider_override: str | None = None,
     model_override: str | None = None,
     operator_lineup: bool = True,
+    notdiamond_shadow: bool = True,
 ) -> DispatchResult:
     """Evaluate optional ND shadow evidence, then run authoritative dispatch unchanged."""
     if config is None:
@@ -922,7 +923,7 @@ def dispatch(
     nd_scope = object()
     tier_name = config.role_tiers.get(role)
     tier = config.tiers.get(tier_name) if tier_name is not None else None
-    if tier is not None:
+    if tier is not None and notdiamond_shadow:
         try:
             attribution_module = importlib.import_module(".nd_attribution", package=__package__)
             shadow_module = importlib.import_module(".notdiamond_shadow", package=__package__)

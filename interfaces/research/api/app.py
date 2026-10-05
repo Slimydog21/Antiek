@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from substrate.attribution.compute import AttributionResult
     from substrate.auth import SessionClaims
     from substrate.billing.aggregator import BillingAggregate
+    from substrate.byot_usage.actions import OwnedWrestlingJob
     from substrate.ip_holders import IpHolder
     from substrate.notebooks import Notebook
 
@@ -2264,6 +2265,8 @@ def create_app(
     app.state.knowledge_reuse_count = 0
 
     if register_wrestling:
+        from .owned_wrestling import register_owned_wrestling_routes
+        register_owned_wrestling_routes(app, bus, db_path=wrestling_db_path)
         # Imported lazily so tests that don't touch wrestling don't pay
         # the dispatch / context_pack import cost.
         from .cross_doc import register_handlers as _register_cross_doc
@@ -2520,6 +2523,13 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if ((envelope.policy_id or "").startswith("owned-wrestling/")
+            or _owned_investigation_job(envelope.investigation_id) is not None
+            or envelope.investigation_id.startswith("ownw-")):
+            raise HTTPException(
+                status_code=403,
+                detail="Owned wrestling events are server-owned; use POST /books/{document_id}/wrestle.",
+            )
         if action_value == "investigation.start_requested":
             raise HTTPException(
                 status_code=403,
@@ -2784,11 +2794,45 @@ def create_app(
 
         return render_well_known_manifest(CANONICAL_TOOLS)
 
+    def _owned_investigation_job(investigation_id: str) -> OwnedWrestlingJob | None:
+        # This issuer alone creates owned jobs, always under the reserved
+        # stable namespace. Keep ordinary event reads off the money journal.
+        if not investigation_id.startswith("ownw-"):
+            return None
+        from substrate.byot_usage.ledger import ByotUsageLedger
+
+        try:
+            return ByotUsageLedger().owned_wrestling_for_investigation(investigation_id)
+        except ValueError:
+            if investigation_id.startswith("ownw-"):
+                raise HTTPException(status_code=404, detail="investigation_not_found") from None
+            return None
+
+    def _require_owned_trajectory_reader(request: Request, investigation_id: str) -> None:
+        job = _owned_investigation_job(investigation_id)
+        if job is None:
+            if investigation_id.startswith("ownw-"):
+                raise HTTPException(status_code=404, detail="investigation_not_found")
+            return
+        from .owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            authenticated_distinct_owner,
+        )
+
+        try:
+            owner = authenticated_distinct_owner(request)
+        except OwnerByotDispatchUnavailable:
+            owner = None
+        if owner != job.owner_user_id:
+            raise HTTPException(status_code=404, detail="investigation_not_found")
+
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(
         investigation_id: str,
+        request: Request,
         limit: Annotated[int | None, Query(ge=1, le=10_000)] = None,
     ) -> dict[str, Any]:
+        _require_owned_trajectory_reader(request, investigation_id)
         rows = trajectory(investigation_id)
         if limit is not None:
             rows = rows[-limit:]
@@ -2833,10 +2877,17 @@ def create_app(
 
     @app.get("/trajectory")
     async def get_trajectory_collection(
+        request: Request,
         limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
     ) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
         for investigation_id in _iter_event_log_investigation_ids():
+            try:
+                _require_owned_trajectory_reader(request, investigation_id)
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
             for row in trajectory(investigation_id):
                 if "investigation_id" not in row:
                     row = {**row, "investigation_id": investigation_id}
@@ -2935,6 +2986,20 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # This issuer is ordinary Loop One work. The owned book issuer has
+        # already reserved its stream and approval in the money journal.
+        if investigation_id.startswith("ownw-"):
+            raise HTTPException(status_code=409, detail="owned_investigation_reserved")
+        from substrate.byot_usage.ledger import ByotUsageLedger
+
+        try:
+            bound_owned_job = ByotUsageLedger().owned_wrestling_for_investigation(
+                investigation_id
+            )
+        except ValueError:
+            bound_owned_job = None
+        if bound_owned_job is not None:
+            raise HTTPException(status_code=409, detail="owned_investigation_reserved")
         # Meter 1 ACU for this start (gated, idempotent on investigation_id)
         # BEFORE anything is claimed, appended or broadcast. A failed charge
         # (503/429) must mean no run, never an unmetered run behind a 503.
@@ -3086,6 +3151,7 @@ def create_app(
     )
     async def get_investigation_status(
         investigation_id: str,
+        request: Request,
     ) -> InvestigationStatusResponse:
         """Phase-progression + terminal-verdict summary for one
         investigation. Distinguishes ``not_found`` (no events at all)
@@ -3093,6 +3159,7 @@ def create_app(
         from terminal states ``completed`` / ``failed``."""
         from substrate.schemas import ActionType
 
+        _require_owned_trajectory_reader(request, investigation_id)
         rows = trajectory(investigation_id)
         if not rows:
             return InvestigationStatusResponse(
@@ -5181,8 +5248,35 @@ def create_app(
             # the event bus, and never sees 101.
             await ws.close(code=1008)
             return
+        owner_user_id: str | None = None
+        session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+        if session_value:
+            try:
+                from substrate.auth import verify_session_cookie
+
+                from .owner_byot_dispatch import authenticated_distinct_owner
+
+                claims = verify_session_cookie(session_value)
+                if claims is not None:
+                    owner_user_id = authenticated_distinct_owner(Request({
+                        "type": "http",
+                        "state": {
+                            "auth_method": "antiek_session_cookie",
+                            "user_id": claims.user_id,
+                            "user_email": claims.email,
+                        },
+                    }))
+            except Exception:
+                owner_user_id = None
+        if investigation_id is not None:
+            job = _owned_investigation_job(investigation_id)
+            if ((job is not None and job.owner_user_id != owner_user_id)
+                or (job is None and investigation_id.startswith("ownw-"))):
+                await ws.close(code=1008)
+                return
         await ws.accept()
-        sub = await bus.subscribe(ws, investigation_id=investigation_id)
+        sub = await bus.subscribe(ws, investigation_id=investigation_id,
+                                  owner_user_id=owner_user_id)
         try:
             while True:
                 try:
