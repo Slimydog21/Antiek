@@ -358,7 +358,7 @@ def _snapshot_native_bundle(
             and magic[:2] != b"MZ"
         ):
             return None, ()
-        pending = [(root_identity,)]
+        pending: list[tuple[_NativeDirectory, ...]] = [(root_identity,)]
         directories = []
         visited = total = 0
         while pending:
