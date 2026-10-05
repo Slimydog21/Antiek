@@ -11,9 +11,10 @@ import os
 import sqlite3
 import stat
 import time
-from dataclasses import fields
+from dataclasses import dataclass, fields
+from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from .prime_authority import (
     PRIME_SESSION_CAP_MICRO_USD,
@@ -27,7 +28,11 @@ from .prime_authority import (
     PrimeUsage,
 )
 
-_SCHEMA_VERSION = 2
+if TYPE_CHECKING:
+    from substrate.byot_usage.actions import OwnerAttemptEvent
+
+
+_SCHEMA_VERSION = 3
 _IMMUTABLE = tuple(field.name for field in fields(PrimeAuthorizationRequest))
 _TERMINAL = {
     PrimeCallState.SUCCEEDED,
@@ -35,6 +40,21 @@ _TERMINAL = {
     PrimeCallState.CANCELLED,
     PrimeCallState.UNKNOWN,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionReceipt:
+    """An audit copy of one BYOT settlement, never a Prime send authority."""
+
+    journal_id: str
+    sequence: int
+    owner_user_id: str
+    action_id: str
+    operation_id: str
+    digest: str
+    cost_micro_usd: int
+    actual_cents: int
+    projected_at_ms: int
 
 
 class PrimeLedger:
@@ -94,19 +114,40 @@ class PrimeLedger:
                 descriptor = os.open(self.path, flags, 0o600)
                 os.close(descriptor)
             connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-            # A private single file is easier to permission-audit than WAL/SHM
-            # sidecars, while BEGIN IMMEDIATE still serializes reservations.
-            connection.execute("PRAGMA journal_mode=DELETE")
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
-            tables = connection.execute(
-                "SELECT count(*) FROM sqlite_master WHERE type='table'"
-            ).fetchone()[0]
-            if version == 0 and tables == 0:
-                connection.executescript(_SCHEMA)
-                connection.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
-            elif version != _SCHEMA_VERSION:
-                raise PrimeLedgerCorrupt(f"unsupported Prime ledger schema version: {version}")
-            connection.close()
+            try:
+                connection.execute("PRAGMA busy_timeout=30000")
+                # Refuse an unknown version before changing even its journal mode.
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                if version not in (0, 2, _SCHEMA_VERSION):
+                    raise PrimeLedgerCorrupt(f"unsupported Prime ledger schema version: {version}")
+                # A private single file is easier to permission-audit than WAL/SHM
+                # sidecars. BEGIN IMMEDIATE serializes two concurrent migrators.
+                connection.execute("PRAGMA journal_mode=DELETE")
+                connection.execute("BEGIN IMMEDIATE")
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                tables = connection.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table'"
+                ).fetchone()[0]
+                if version == 0 and tables == 0:
+                    _execute_schema(connection, _SCHEMA)
+                    _execute_schema(connection, _PROJECTION_SCHEMA)
+                    connection.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+                elif version == 2:
+                    # Validate the v2 foundation before adding an independent table.
+                    connection.execute("SELECT 1 FROM authorizations LIMIT 1")
+                    connection.execute("SELECT 1 FROM events LIMIT 1")
+                    _execute_schema(connection, _PROJECTION_SCHEMA)
+                    connection.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+                elif version != _SCHEMA_VERSION:
+                    raise PrimeLedgerCorrupt(f"unsupported Prime ledger schema version: {version}")
+                connection.execute("SELECT 1 FROM owner_attempt_projection LIMIT 1")
+                connection.execute("COMMIT")
+            except BaseException:
+                if connection.in_transaction:
+                    connection.execute("ROLLBACK")
+                raise
+            finally:
+                connection.close()
             metadata = self.path.lstat()
             if stat.S_IMODE(metadata.st_mode) != 0o600:
                 raise PrimeLedgerCorrupt("Prime ledger permissions are not private")
@@ -403,6 +444,91 @@ class PrimeLedger:
             for row in rows
         )
 
+    def project_owner_attempt(
+        self, event: OwnerAttemptEvent, *, now_ms: int | None = None
+    ) -> ProjectionReceipt:
+        """Import one exact BYOT outbox event without reserving or charging money."""
+        from substrate.byot_usage.actions import OwnerAttemptEvent as EventType
+
+        if type(event) is not EventType:
+            raise PrimeAuthorizationRefused("owner attempt event is invalid")
+        if event.event_kind != "settled":
+            raise PrimeAuthorizationRefused("only settled owner attempts can be projected")
+        payload = event.canonical_payload()
+        if sha256(payload.encode("utf-8")).hexdigest() != event.digest:
+            raise PrimeReplayMismatch("owner attempt event digest mismatch")
+        now = _now_ms() if now_ms is None else now_ms
+        _validate_now(now)
+        with self._transaction() as connection:
+            prior_sequence = connection.execute(
+                "SELECT * FROM owner_attempt_projection WHERE journal_id=? AND outbox_sequence=?",
+                (event.journal_id, event.sequence),
+            ).fetchone()
+            if prior_sequence is not None:
+                if (
+                    prior_sequence["payload_json"] != payload
+                    or prior_sequence["event_digest"] != event.digest
+                    or prior_sequence["owner_user_id"] != event.owner_user_id
+                    or prior_sequence["action_id"] != event.action_id
+                    or prior_sequence["operation_id"] != event.operation_id
+                ):
+                    raise PrimeReplayMismatch("owner attempt sequence replay mismatch")
+                return _projection_receipt(prior_sequence)
+            prior_operation = connection.execute(
+                "SELECT * FROM owner_attempt_projection WHERE owner_user_id=? AND operation_id=?",
+                (event.owner_user_id, event.operation_id),
+            ).fetchone()
+            if prior_operation is not None:
+                raise PrimeReplayMismatch("owner attempt operation replay mismatch")
+            connection.execute(
+                "INSERT INTO owner_attempt_projection "
+                "(journal_id,outbox_sequence,owner_user_id,action_id,operation_id,event_digest,"
+                "payload_json,cost_micro_usd,actual_cents,projected_at_ms) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    event.journal_id,
+                    event.sequence,
+                    event.owner_user_id,
+                    event.action_id,
+                    event.operation_id,
+                    event.digest,
+                    payload,
+                    event.cost_micro_usd,
+                    event.actual_cents,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM owner_attempt_projection WHERE journal_id=? AND outbox_sequence=?",
+                (event.journal_id, event.sequence),
+            ).fetchone()
+            assert row is not None
+            return _projection_receipt(row)
+
+    def owner_attempt_projection(
+        self, journal_id: str, sequence: int
+    ) -> ProjectionReceipt | None:
+        """Read a projected attempt by its BYOT journal identity."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM owner_attempt_projection WHERE journal_id=? AND outbox_sequence=?",
+                (journal_id, sequence),
+            ).fetchone()
+        return None if row is None else _projection_receipt(row)
+
+    def owner_action_projections(
+        self, owner_user_id: str, action_id: str, *, limit: int = 1000
+    ) -> tuple[ProjectionReceipt, ...]:
+        """Bounded audit view; these rows do not enter legacy cap calculations."""
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("limit must be an integer from 1 to 1000")
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM owner_attempt_projection WHERE owner_user_id=? AND action_id=? "
+                "ORDER BY journal_id,outbox_sequence LIMIT ?",
+                (owner_user_id, action_id, limit),
+            ).fetchall()
+        return tuple(_projection_receipt(row) for row in rows)
+
     def _transaction(self) -> _ImmediateTransaction:
         return _ImmediateTransaction(self._connect())
 
@@ -543,6 +669,27 @@ def _receipt(row: sqlite3.Row) -> PrimeReceipt:
     )
 
 
+def _projection_receipt(row: sqlite3.Row) -> ProjectionReceipt:
+    return ProjectionReceipt(
+        journal_id=row["journal_id"],
+        sequence=row["outbox_sequence"],
+        owner_user_id=row["owner_user_id"],
+        action_id=row["action_id"],
+        operation_id=row["operation_id"],
+        digest=row["event_digest"],
+        cost_micro_usd=row["cost_micro_usd"],
+        actual_cents=row["actual_cents"],
+        projected_at_ms=row["projected_at_ms"],
+    )
+
+
+def _execute_schema(connection: sqlite3.Connection, schema: str) -> None:
+    # sqlite3.executescript commits an open transaction; keep migration atomic.
+    for statement in schema.split(";"):
+        if statement.strip():
+            connection.execute(statement)
+
+
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
 
@@ -584,6 +731,22 @@ CREATE TABLE events (
  state TEXT NOT NULL, occurred_at_ms INTEGER NOT NULL, fact TEXT NOT NULL,
  FOREIGN KEY(request_id) REFERENCES authorizations(request_id)
 );
+"""
+
+
+_PROJECTION_SCHEMA = """
+CREATE TABLE owner_attempt_projection (
+ journal_id TEXT NOT NULL, outbox_sequence INTEGER NOT NULL CHECK(outbox_sequence > 0),
+ owner_user_id TEXT NOT NULL, action_id TEXT NOT NULL, operation_id TEXT NOT NULL,
+ event_digest TEXT NOT NULL, payload_json TEXT NOT NULL,
+ cost_micro_usd INTEGER NOT NULL CHECK(cost_micro_usd >= 0),
+ actual_cents INTEGER NOT NULL CHECK(actual_cents >= 0),
+ projected_at_ms INTEGER NOT NULL,
+ PRIMARY KEY(journal_id,outbox_sequence),
+ UNIQUE(owner_user_id,operation_id)
+);
+CREATE INDEX owner_action_projection_lookup
+ ON owner_attempt_projection(owner_user_id,action_id,journal_id,outbox_sequence);
 """
 
 

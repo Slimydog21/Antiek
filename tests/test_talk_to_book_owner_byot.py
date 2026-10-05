@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -528,3 +529,266 @@ def test_operator_lineup_never_reroutes_an_owner_paid_call(
     assert operation is not None and operation.state == "settled"
     assert operation.provider_id == record.id
 
+
+def _action_dispatch_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from interfaces.research.api.owner_byot_dispatch import approved_owner_action_route
+    from substrate.byot_usage.actions import OwnerActionDecision
+
+    app, record, _, provider, house = _authority_fixture(monkeypatch)
+    ledger = ByotUsageLedger(tmp_path / "action-usage.sqlite3")
+    choice = models_admin.UserModelChoice(
+        authority="user_model", provider_id=record.id, model_id=record.model_id,
+    )
+    action = ledger.begin_action(OwnerActionDecision(
+        owner_user_id="owner-a", action_id="book-action", action_kind="long_document_wrestling",
+        budget_cents=100, body_authority_digest="a" * 64,
+        owner_decision_digest="b" * 64,
+        approved_routes=(approved_owner_action_route(app, choice, owner_user_id="owner-a"),),
+    ))
+    kwargs = dict(
+        app=app, request_owner_user_id="owner-a", resource_owner_user_id="owner-a",
+        document_id="doc-a", choice=choice, prompt="private book prompt",
+        investigation_id="read-doc-a", logical_operation_id="action-canonical",
+        resource_authority_digest="a" * 64,
+        resource_authority_revalidator=lambda: "a" * 64,
+        config=_config(), usage_ledger=ledger, owner_action=action.ref,
+    )
+    return ledger, action, provider, house, kwargs
+
+
+def test_canonical_action_uses_one_journal_charge_and_no_legacy_reservation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(ledger, "prepare_operation", lambda *args: pytest.fail("legacy reservation"))
+    monkeypatch.setattr(ledger, "mark_operation_sent", lambda *args: pytest.fail("legacy claim"))
+    monkeypatch.setattr(ledger, "settle_operation", lambda *args: pytest.fail("legacy settlement"))
+    result, _ = dispatch_talk_to_book_byot(**kwargs)
+    current = ledger.action("owner-a", action.ref.action_id)
+    assert result.text == "owner answer"
+    assert len(provider.calls) == 1 and house.calls == []
+    assert current is not None
+    assert current.settled_cents == 1 and current.owner_held_cents == 99
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 1
+    assert ledger.operation("owner-a", "action-canonical").action_id == action.ref.action_id
+
+
+def test_settled_action_replay_never_sends_and_binds_prompt_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, _, provider, _, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    first, _ = dispatch_talk_to_book_byot(**kwargs)
+    replay, _ = dispatch_talk_to_book_byot(**kwargs)
+    assert replay.text == first.text and replay.finish_reason == "replayed"
+    assert len(provider.calls) == 1
+    changed = dict(kwargs, prompt="PRIVATE BOOK PROMPT")
+    assert len(changed["prompt"].encode()) == len(kwargs["prompt"].encode())
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**changed)
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**dict(kwargs, owner_action=None))
+    assert len(provider.calls) == 1
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 1
+
+
+@pytest.mark.parametrize("guarded", [False, True])
+@pytest.mark.parametrize("revoked", [False, True])
+def test_settled_action_replay_requires_current_body_admission(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, guarded: bool, revoked: bool,
+) -> None:
+    ledger, _, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    dispatch_talk_to_book_byot(**kwargs)
+    before = ledger.operation("owner-a", "action-canonical")
+    checked = []
+
+    def current_body() -> str:
+        checked.append(True)
+        if revoked:
+            raise PermissionError("body access revoked")
+        return "c" * 64
+
+    @contextmanager
+    def body_guard():
+        yield current_body()
+
+    current = dict(kwargs, resource_authority_revalidator=current_body)
+    if guarded:
+        current.update(resource_authority_guard=body_guard)
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**current)
+    assert checked == [True]
+    assert ledger.operation("owner-a", "action-canonical") == before
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 1
+    assert len(provider.calls) == 1 and house.calls == []
+
+
+def test_action_resource_change_cancels_only_unsent_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=lambda: "c" * 64))
+    row = ledger.operation("owner-a", "action-canonical")
+    assert row is not None and row.state == "cancelled"
+    assert provider.calls == [] and house.calls == []
+    assert ledger.key_usage(provider.name, "owner-a").held_cents == 0
+    current = ledger.action("owner-a", action.ref.action_id)
+    assert current is not None and current.owner_held_cents == 100
+
+
+def test_action_provider_failure_retains_unknown_and_refuses_resend(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, action, provider, _, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(provider, "call", lambda **kw: (_ for _ in ()).throw(RuntimeError("secret")))
+    with pytest.raises(OwnerByotOutcomeUnknown, match="^owner_byot_outcome_unknown$"):
+        dispatch_talk_to_book_byot(**kwargs)
+    row = ledger.operation("owner-a", "action-canonical")
+    assert row is not None and row.state == "unknown"
+    current = ledger.action("owner-a", action.ref.action_id)
+    assert current is not None and current.reserved_cents == row.reserved_cents
+    monkeypatch.setattr(provider, "call", lambda **kw: pytest.fail("blind resend"))
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**kwargs)
+
+
+@pytest.mark.parametrize("reported", [False, True])
+def test_action_distinguishes_unknown_usage_from_reported_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reported: bool,
+) -> None:
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        provider, "normalize_usage", lambda raw: NormalizedUsage(0, 0, reported=reported),
+    )
+    if reported:
+        dispatch_talk_to_book_byot(**kwargs)
+        row = ledger.operation("owner-a", "action-canonical")
+        assert row is not None and row.state == "settled" and row.actual_cents == 0
+        assert len(ledger.pending_projection_events()) == 1
+    else:
+        with pytest.raises(OwnerByotOutcomeUnknown):
+            dispatch_talk_to_book_byot(**kwargs)
+        row = ledger.operation("owner-a", "action-canonical")
+        assert row is not None and row.state == "unknown" and row.actual_cents is None
+        current = ledger.action("owner-a", action.action_id)
+        assert current is not None and current.reserved_cents == row.reserved_cents
+        assert ledger.pending_projection_events() == ()
+        with pytest.raises(OwnerByotDispatchUnavailable):
+            dispatch_talk_to_book_byot(**kwargs)
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 0
+    assert len(provider.calls) == 1 and house.calls == []
+
+
+def test_action_with_unknown_cache_pricing_retains_liability_without_settlement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        provider, "normalize_usage", lambda raw: NormalizedUsage(2, 3, cache_unknown=True),
+    )
+    with pytest.raises(OwnerByotOutcomeUnknown):
+        dispatch_talk_to_book_byot(**kwargs)
+    row = ledger.operation("owner-a", "action-canonical")
+    assert row is not None and row.state == "unknown" and row.actual_cents is None
+    current = ledger.action("owner-a", action.action_id)
+    assert current is not None and current.reserved_cents == row.reserved_cents
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 0
+    assert ledger.pending_projection_events() == ()
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**kwargs)
+    assert len(provider.calls) == 1 and house.calls == []
+
+
+def test_action_foreign_reference_refuses_before_allocation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    foreign = replace(action.ref, owner_user_id="owner-b")
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**dict(kwargs, owner_action=foreign))
+    assert ledger.operation("owner-a", "action-canonical") is None
+    assert provider.calls == [] and house.calls == []
+
+
+def test_action_without_current_resource_check_refuses_before_allocation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, _, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=None))
+    assert ledger.operation("owner-a", "action-canonical") is None
+    assert provider.calls == [] and house.calls == []
+
+
+def test_action_record_limit_change_before_claim_refuses_provider_io(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, _, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+
+    def lower_limit() -> str:
+        ledger.set_limit(provider.name, "owner-a", 0)
+        return "a" * 64
+
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=lower_limit))
+    assert provider.calls == [] and house.calls == []
+    row = ledger.operation("owner-a", "action-canonical")
+    assert row is not None and row.state == "cancelled"
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 0
+    assert ledger.key_usage(provider.name, "owner-a").held_cents == 0
+
+
+def test_closed_action_refuses_new_canonical_attempt_without_provider_io(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    ledger.close_action("owner-a", action.ref.action_id, expected_epoch=action.ref.epoch)
+    with pytest.raises(OwnerByotDispatchUnavailable):
+        dispatch_talk_to_book_byot(**kwargs)
+    assert ledger.operation("owner-a", "action-canonical") is None
+    assert provider.calls == [] and house.calls == []
+
+
+def test_action_recovers_unclaimed_allocation_after_caller_crash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    class CallerCrash(BaseException):
+        pass
+
+    ledger, _, provider, _, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    claim = ledger.claim_action_attempt
+    monkeypatch.setattr(ledger, "claim_action_attempt", lambda *args: (_ for _ in ()).throw(CallerCrash()))
+    with pytest.raises(CallerCrash):
+        dispatch_talk_to_book_byot(**kwargs)
+    allocated = ledger.operation("owner-a", "action-canonical")
+    assert allocated is not None and allocated.state == "allocated"
+    assert provider.calls == []
+    monkeypatch.setattr(ledger, "claim_action_attempt", claim)
+    result, _ = dispatch_talk_to_book_byot(**kwargs)
+    assert result.text == "owner answer" and len(provider.calls) == 1
+    assert ledger.key_usage(provider.name, "owner-a").used_cents == 1
+
+
+def test_legacy_operation_routes_refuse_action_attempts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.books import register_book_routes
+
+    ledger, _, _, _, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    dispatch_talk_to_book_byot(**kwargs)
+    before = ledger.operation("owner-a", "action-canonical")
+    monkeypatch.setattr("substrate.byot_usage.ledger.ByotUsageLedger", lambda: ledger)
+    app = kwargs["app"]
+    register_book_routes(app)
+    with TestClient(app) as client:
+        replies = [
+            client.get("/books/model-operations/action-canonical"),
+            client.post("/books/model-operations/action-canonical/reconcile"),
+            client.post("/books/model-operations/action-canonical/cancel"),
+        ]
+    assert all(reply.status_code == 409 for reply in replies)
+    assert all(reply.json() == {"detail": "model_operation_belongs_to_action"} for reply in replies)
+    assert ledger.operation("owner-a", "action-canonical") == before

@@ -10,6 +10,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 
@@ -24,6 +25,13 @@ from runtime.research_runner.byot_provider_catalog import (
     get_provider_preset,
 )
 from runtime.research_runner.provider_route_authority import canonical_provider_endpoint
+from substrate.byot_usage.actions import (
+    ApprovedOwnerRoute,
+    AttemptProposal,
+    FinalSendFacts,
+    OwnerActionRef,
+    VerifiedAttemptFacts,
+)
 from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
 from substrate.dispatch.base import NormalizedUsage
 from substrate.dispatch.request_authority import (
@@ -128,6 +136,7 @@ def dispatch_talk_to_book_byot(
     usage_ledger: ByotUsageLedger | None = None,
     role: str = "thought_partner",
     action: str = _ACTION,
+    owner_action: OwnerActionRef | None = None,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung.
 
@@ -154,23 +163,69 @@ def dispatch_talk_to_book_byot(
         if not isinstance(rung.credential, OwnerCredentialBinding):
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         ledger = usage_ledger or ByotUsageLedger()
+        route = _approved_action_route(frozen_route)
+        request_digest = _canonical_request_digest(authority, exact_config, prompt, role)
+        if owner_action is not None and (
+            owner_action.owner_user_id != request_owner_user_id
+            or resource_authority_digest is None
+            or (resource_authority_guard is None and resource_authority_revalidator is None)
+        ):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         existing = ledger.operation(request_owner_user_id, logical_operation_id)
         if existing is not None:
+            if existing.action_id != (owner_action.action_id if owner_action else None):
+                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+            if owner_action is not None:
+                recorded = ledger.action_attempt(request_owner_user_id, logical_operation_id)
+                if recorded is None or (
+                    existing.state != "allocated" and recorded.request_digest != request_digest
+                ):
+                    raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
             if existing.state == "settled" and existing.authority_digest == authority.digest():
-                return DispatchResult(
+                replay = DispatchResult(
                     text=existing.result_text or "", usage=NormalizedUsage(0, 0),
                     cost_usd=float(existing.actual_cents or 0) / 100.0,
                     latency_ms=0, provider=existing.provider_id or rung.provider_id,
                     model=existing.model_id or rung.model_id, tier="owner-replay",
                     finish_reason="replayed", fallback_chain_index=0,
                     event_id=existing.dispatch_event_id or "owner-replay",
-                ), authority
-            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                )
+                if owner_action is not None:
+                    if resource_authority_guard is not None:
+                        with resource_authority_guard() as current_resource_digest:
+                            if current_resource_digest != resource_authority_digest:
+                                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                            return replay, authority
+                    if (
+                        resource_authority_revalidator is None
+                        or resource_authority_revalidator() != resource_authority_digest
+                    ):
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                return replay, authority
+            if owner_action is None or existing.state != "allocated":
+                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         try:
-            ledger.prepare_operation(
-                rung.credential.user_model_id, request_owner_user_id,
-                logical_operation_id, rung.projected_max_cents, authority.digest(),
-            )
+            if owner_action is None:
+                ledger.prepare_operation(
+                    rung.credential.user_model_id, request_owner_user_id,
+                    logical_operation_id, rung.projected_max_cents, authority.digest(),
+                )
+            else:
+                if not isinstance(rung.payer, OwnerByotPayer):
+                    raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                ledger.allocate_action_attempt(
+                    request_owner_user_id, owner_action.action_id,
+                    AttemptProposal(
+                        operation_id=logical_operation_id,
+                        user_model_id=rung.credential.user_model_id,
+                        provider_id=rung.provider_id, model_id=rung.model_id,
+                        route_digest=route.route_digest,
+                        authority_digest=authority.digest(),
+                        rate_limit_digest=rung.payer.budget_envelope_digest,
+                        reserved_cents=rung.projected_max_cents,
+                        action_epoch=owner_action.epoch,
+                    ),
+                )
         except OperationConflict:
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
         # Re-read registry, credential metadata, endpoint and live adapter at
@@ -188,19 +243,32 @@ def dispatch_talk_to_book_byot(
                 with resource_authority_guard() as current_resource_digest:
                     if current_resource_digest != resource_authority_digest:
                         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
-                    ledger.mark_operation_sent(request_owner_user_id, logical_operation_id)
+                    _claim_canonical_attempt(
+                        ledger, request_owner_user_id, logical_operation_id,
+                        owner_action, authority, route, request_digest,
+                        current_resource_digest,
+                    )
             else:
                 if (
                     resource_authority_revalidator is not None
                     and resource_authority_revalidator() != resource_authority_digest
                 ):
                     raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
-                ledger.mark_operation_sent(request_owner_user_id, logical_operation_id)
+                _claim_canonical_attempt(
+                    ledger, request_owner_user_id, logical_operation_id,
+                    owner_action, authority, route, request_digest,
+                    resource_authority_digest,
+                )
         except Exception:
             row = ledger.operation(request_owner_user_id, logical_operation_id)
             if row is not None and row.state == "prepared":
                 ledger.cancel_prepared_operation(
                     request_owner_user_id, logical_operation_id,
+                )
+            elif row is not None and row.state == "allocated" and owner_action is not None:
+                ledger.cancel_action_attempt(
+                    request_owner_user_id, logical_operation_id,
+                    expected_epoch=owner_action.epoch,
                 )
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
         try:
@@ -221,11 +289,22 @@ def dispatch_talk_to_book_byot(
                 operator_lineup=False,
             )
         except Exception:
-            ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)
+            if owner_action is None:
+                ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)
+            else:
+                ledger.mark_action_attempt_unknown(request_owner_user_id, logical_operation_id)
             raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
         try:
+            if owner_action is not None and (
+                not result.usage.reported or result.usage.cache_unknown
+            ):
+                ledger.mark_action_attempt_unknown(request_owner_user_id, logical_operation_id)
+                raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown")
             if (result.provider, result.model) != (rung.provider_id, rung.model_id):
-                ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)
+                if owner_action is None:
+                    ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)
+                else:
+                    ledger.mark_action_attempt_unknown(request_owner_user_id, logical_operation_id)
                 raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown")
             actual_cents = int(
                 (Decimal(str(result.cost_usd)) * 100).to_integral_value(
@@ -246,15 +325,29 @@ def dispatch_talk_to_book_byot(
             ).hexdigest()
             if result.event_id is None:
                 raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown")
-            ledger.record_operation_result(
-                request_owner_user_id, logical_operation_id,
-                actual_cents=actual_cents, evidence_sha256=evidence,
-                dispatch_event_id=result.event_id, provider_id=result.provider,
-                model_id=result.model, result_text=result.text,
-            )
-            ledger.settle_operation(
-                request_owner_user_id, logical_operation_id, actual_cents, evidence,
-            )
+            if owner_action is None:
+                ledger.record_operation_result(
+                    request_owner_user_id, logical_operation_id,
+                    actual_cents=actual_cents, evidence_sha256=evidence,
+                    dispatch_event_id=result.event_id, provider_id=result.provider,
+                    model_id=result.model, result_text=result.text,
+                )
+                ledger.settle_operation(
+                    request_owner_user_id, logical_operation_id, actual_cents, evidence,
+                )
+            else:
+                ledger.record_action_attempt_result(
+                    request_owner_user_id, logical_operation_id,
+                    VerifiedAttemptFacts(
+                        provider_id=result.provider, model_id=result.model,
+                        provider_attempt_event_id=result.event_id,
+                        evidence_sha256=evidence, request_digest=request_digest,
+                        cost_micro_usd=int((Decimal(str(result.cost_usd)) * 1_000_000)
+                                           .to_integral_value(rounding=ROUND_CEILING)),
+                        result_text=result.text,
+                    ),
+                )
+                ledger.settle_action_attempt(request_owner_user_id, logical_operation_id)
         except OwnerByotOutcomeUnknown:
             raise
         except Exception:
@@ -268,6 +361,64 @@ def dispatch_talk_to_book_byot(
         # Provider, registry, credential, and authority exceptions can retain
         # secrets or private prompts. Collapse them at this boundary.
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+
+
+def approved_owner_action_route(
+    app: FastAPI, choice: models_admin.UserModelChoice, *, owner_user_id: str,
+) -> ApprovedOwnerRoute:
+    """Resolve non-secret route facts for a server-approved action decision."""
+    try:
+        return _approved_action_route(models_admin.resolve_owner_model_authority(
+            app, choice, owner_user_id=owner_user_id,
+        ))
+    except Exception:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+
+
+def _approved_action_route(resolved: models_admin.OwnerModelAuthority) -> ApprovedOwnerRoute:
+    record = resolved.record
+    digest = hashlib.sha256(json.dumps({
+        "owner_user_id": record.owner_user_id, "user_model_id": record.id,
+        "provider_kind": record.provider_kind, "base_url": record.base_url,
+        "model_id": resolved.model_id, "credential_id": resolved.credential_id,
+        "credential_fingerprint": resolved.credential_fingerprint,
+        "registration_fingerprint": resolved.registration_fingerprint,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return ApprovedOwnerRoute(record.id, record.id, resolved.model_id, digest)
+
+
+def _canonical_request_digest(
+    authority: DispatchAuthority, config: DispatchConfig, prompt: str, role: str,
+) -> str:
+    """Bind the canonical dispatcher input, not a native SDK wire request."""
+    tier = config.tiers[config.role_tiers[role]]
+    return hashlib.sha256(json.dumps({
+        "authority": authority.digest(), "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+        "role": role, "model": tier.model, "max_tokens": tier.max_tokens,
+        "temperature": tier.temperature,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _claim_canonical_attempt(
+    ledger: ByotUsageLedger, owner: str, operation: str,
+    action: OwnerActionRef | None, authority: DispatchAuthority,
+    route: ApprovedOwnerRoute, request_digest: str, body_digest: str | None,
+) -> None:
+    if action is None:
+        ledger.mark_operation_sent(owner, operation)
+        return
+    payer = authority.fallback_manifest[0].payer
+    if not isinstance(payer, OwnerByotPayer) or body_digest is None:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    claim = ledger.claim_action_attempt(owner, operation, FinalSendFacts(
+        request_digest=request_digest, authority_digest=authority.digest(),
+        route_digest=route.route_digest, rate_limit_digest=payer.budget_envelope_digest,
+        body_authority_digest=body_digest,
+        claim_nonce_digest=hashlib.sha256(uuid4().bytes).hexdigest(),
+        action_epoch=action.epoch,
+    ))
+    if not claim.won:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
 
 
 def _freeze_current_authority(
@@ -408,5 +559,6 @@ __all__ = [
     "OwnerByotDispatchUnavailable",
     "OwnerByotOutcomeUnknown",
     "authenticated_distinct_owner",
+    "approved_owner_action_route",
     "dispatch_talk_to_book_byot",
 ]

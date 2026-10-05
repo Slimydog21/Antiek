@@ -2658,6 +2658,8 @@ def register_book_routes(app: FastAPI) -> None:
         row = ledger.operation(owner, operation_id)
         if row is None:
             raise HTTPException(status_code=404, detail="model_operation_not_found")
+        if row.action_id is not None:
+            raise HTTPException(status_code=409, detail="model_operation_belongs_to_action")
         return owner, ledger, row
 
     def _model_operation_status(request: Request, operation_id: str) -> ModelOperationStatus:
