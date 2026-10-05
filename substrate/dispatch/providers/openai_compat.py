@@ -70,6 +70,7 @@ except ImportError:  # pragma: no cover
 # 4xx other than 429 are configuration / quota / malformed-request
 # errors and should not retry.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_CORE_REQUEST_FIELDS = frozenset({"model", "max_tokens", "temperature", "messages"})
 
 # Default request timeout (seconds). Long enough for a slow synthesis
 # call; short enough that a hung connection doesn't deadlock the
@@ -216,8 +217,18 @@ class OpenAICompatProvider:
         temperature: float,
         extra_body: Mapping[str, Any] | None = None,
     ) -> RawProviderResponse:
-        """``extra_body`` adds fields for this call only, after the
-        constructor's; a shared adapter instance is never mutated per call."""
+        """Add vendor fields without replacing the selected request.
+
+        Call-specific options override constructor vendor options without
+        mutating the shared adapter. Core-field collisions refuse before I/O.
+        """
+        if _CORE_REQUEST_FIELDS.intersection(self._extra_body) or (
+            extra_body is not None and _CORE_REQUEST_FIELDS.intersection(extra_body)
+        ):
+            raise ProviderError(
+                f"{self.name}: extra_body cannot override core request fields",
+                provider=self.name, model=model, latency_ms=0,
+            )
         api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {

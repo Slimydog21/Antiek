@@ -132,6 +132,62 @@ def test_openai_compat_no_extra_body_leaves_standard_shape():
     assert set(body.keys()) == {"model", "max_tokens", "temperature", "messages"}
 
 
+@pytest.mark.parametrize("source", ["constructor", "call"])
+@pytest.mark.parametrize("field", ["model", "max_tokens", "temperature", "messages"])
+def test_extra_body_cannot_replace_selected_request(source, field):
+    sent = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(req)
+        return httpx.Response(200, json=_ok_response_payload())
+
+    conflicting = {field: "must-not-enter-provider-request"}
+    provider = OpenAICompatProvider(
+        name="owner-selected", base_url="https://api.example.com",
+        api_key="test-key", client=_make_client(handler),
+        extra_body=conflicting if source == "constructor" else None,
+    )
+    with pytest.raises(ProviderError, match="extra_body cannot override core request fields") as error:
+        provider.call(
+            model="selected-model", prompt="permitted-context", max_tokens=64,
+            temperature=0.2,
+            extra_body=conflicting if source == "call" else None,
+        )
+
+    assert sent == []
+    assert error.value.retryable is False
+    assert error.value.model == "selected-model"
+    assert "must-not-enter-provider-request" not in str(error.value)
+
+
+def test_call_vendor_options_do_not_mutate_later_requests():
+    import json
+
+    sent = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(req.content))
+        return httpx.Response(200, json=_ok_response_payload())
+
+    provider = OpenAICompatProvider(
+        name="owner-selected", base_url="https://api.example.com",
+        api_key="test-key", client=_make_client(handler),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    provider.call(
+        model="selected-model", prompt="first", max_tokens=64, temperature=0.2,
+        extra_body={"thinking": {"type": "enabled"}},
+    )
+    provider.call(model="selected-model", prompt="second", max_tokens=32, temperature=0.1)
+
+    assert sent == [
+        {"model": "selected-model", "messages": [{"role": "user", "content": "first"}],
+         "max_tokens": 64, "temperature": 0.2, "thinking": {"type": "enabled"}},
+        {"model": "selected-model", "messages": [{"role": "user", "content": "second"}],
+         "max_tokens": 32, "temperature": 0.1, "thinking": {"type": "disabled"}},
+    ]
+
+
 def test_openai_compat_custom_chat_completions_path():
     """Some providers omit /v1; configure via ``chat_completions_path``."""
     captured: dict[str, Any] = {}
