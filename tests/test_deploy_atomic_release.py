@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -18,8 +18,8 @@ DEPENDENCY_TASK_NAMES = {
 }
 
 
-def _load() -> dict[str, Any]:
-    return yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))
+def _load() -> list[dict[str, Any]]:
+    return cast(list[dict[str, Any]], yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8")))
 
 
 def _walk(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -88,6 +88,52 @@ def test_dependency_contract_survives_the_release_build() -> None:
     text = PLAYBOOK.read_text(encoding="utf-8")
     assert "pip install -r" not in text
     assert "uv export" not in text
+
+
+def test_prime_installation_completes_before_receipt_and_freeze() -> None:
+    tasks = _walk(_load()[1]["tasks"])
+    names = _names(tasks)
+    install = names.index("install the complete Prime bundle as readonly release data")
+    cleanup = names.index("remove the validated Prime transport archive")
+    receipt = names.index("record the dependency and artifact release receipt")
+    freeze = names.index("freeze release permissions after all writes")
+    assert install < cleanup < receipt < freeze
+    content = tasks[receipt]["ansible.builtin.copy"]["content"]
+    assert "prime_agent_archive_sha256={{ prime_artifact.archive_sha256 }}" in content
+    assert "prime_agent_manifest_sha256={{ prime_artifact.manifest_sha256 }}" in content
+
+
+def test_prime_receipt_reuse_is_verified_before_live_mutation() -> None:
+    top_level = _load()[1]["tasks"]
+    names = _names(top_level)
+    verify_name = "verify the frozen Prime bundle and receipt before any live mutation"
+    verify = top_level[names.index(verify_name)]
+    guard = top_level[names.index(verify_name) - 1]
+    assert guard["ansible.builtin.assert"]["that"] == [
+        "antiek_gate_cleared_ref is defined",
+        "antiek_gate_cleared_ref == antiek_target_sha",
+    ]
+    assert guard["tags"] == verify["tags"] == ["code"]
+    assert names.index(verify_name) < names.index("quiesce, migrate, cut over, and verify")
+    assert "when" not in verify
+    assert verify["changed_when"] is False
+    argv = verify["ansible.builtin.command"]["argv"]
+    assert argv[:7] == ["/usr/bin/env", "-i", "PATH=/usr/bin:/bin", "LANG=C", "/usr/bin/python3", "-I", "-S"]
+    assert argv[8:] == ["verify", "--release", "{{ antiek_release_dir }}", "--public", "{{ antiek_public_dir }}"]
+
+
+def test_prime_transport_has_streaming_bound_without_redirect_or_retry() -> None:
+    tasks = _walk(_load()[1]["tasks"])
+    names = _names(tasks)
+    gate = names.index("require curl 8.4 or newer for unknown-length download bounds")
+    download = names.index("download the exact Prime archive into the unpublished release")
+    assert gate < download
+    assert "version('8.4.0', '>=')" in str(tasks[gate]["ansible.builtin.assert"]["that"])
+    argv = tasks[download]["ansible.builtin.command"]["argv"]
+    assert argv[:6] == ["/usr/bin/env", "-i", "PATH=/usr/bin:/bin", "LANG=C", "/usr/bin/curl", "-q"]
+    assert "--location" not in argv and "-L" not in argv
+    for option, value in (("--retry", "0"), ("--max-time", "120"), ("--max-filesize", "{{ prime_artifact.archive_bytes | string }}"), ("--noproxy", "*")):
+        assert argv[argv.index(option) + 1] == value
 
 
 def test_build_validation_precedes_the_single_public_cutover() -> None:
