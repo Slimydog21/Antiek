@@ -72,7 +72,7 @@ class OperationConflict(RuntimeError):
 
 
 class SettlementEvidenceError(RuntimeError):
-    """A settlement-pending operation lacks its persisted result evidence."""
+    """A settlement lacks or conflicts with its persisted result evidence."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,7 +492,7 @@ class ByotUsageLedger:
         self, owner_user_id: str, operation_id: str, actual_cents: int,
         evidence_sha256: str,
     ) -> None:
-        """Atomically settle a sent operation and increment usage exactly once."""
+        """Settle the recorded result and increment usage exactly once."""
         if actual_cents < 0:
             raise ValueError("actual_cents must be non-negative")
         con = self._connect()
@@ -500,25 +500,33 @@ class ByotUsageLedger:
         try:
             con.execute("BEGIN IMMEDIATE")
             row = con.execute(
-                "SELECT api_key_id, state FROM byot_operation_journal"
+                "SELECT api_key_id, state, actual_cents, evidence_sha256"
+                " FROM byot_operation_journal"
                 " WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
             if row is None or row[1] != "settlement_pending":
                 raise OperationConflict("operation is not settleable")
+            recorded_cents, recorded_evidence = row[2], row[3]
+            if (
+                recorded_cents is None or recorded_evidence is None
+                or recorded_cents != actual_cents
+                or recorded_evidence != evidence_sha256
+            ):
+                raise SettlementEvidenceError("settlement differs from recorded result")
             con.execute(
                 "INSERT INTO byot_key_usage"
                 " (api_key_id, owner_user_id, used_cents, last_settled_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?) ON CONFLICT(api_key_id, owner_user_id)"
                 " DO UPDATE SET used_cents = used_cents + excluded.used_cents,"
                 " last_settled_at = excluded.last_settled_at, updated_at = excluded.updated_at",
-                (row[0], owner_user_id, actual_cents, now, now),
+                (row[0], owner_user_id, recorded_cents, now, now),
             )
             con.execute(
                 "UPDATE byot_operation_journal SET state = 'settled', actual_cents = ?,"
                 " evidence_sha256 = ?, updated_at = ? WHERE owner_user_id = ?"
                 " AND operation_id = ?",
-                (actual_cents, evidence_sha256, now, owner_user_id, operation_id),
+                (recorded_cents, recorded_evidence, now, owner_user_id, operation_id),
             )
             con.commit()
         except Exception:
