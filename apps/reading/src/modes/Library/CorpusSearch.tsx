@@ -27,6 +27,8 @@ import type { CorpusSearchHit } from "../../api/corpusSearch";
 // Bound the dropped-file text used as the query signal — enough to characterize
 // "books like these", not the whole file.
 const MAX_FILE_QUERY_CHARS = 2000;
+// Enough UTF8 bytes for the query prefix without decoding an unbounded file.
+const MAX_FILE_QUERY_BYTES = 8 * 1024;
 
 export interface CorpusSearchProps {
   /** Open a result's book in the reader (optionally at a page). */
@@ -90,7 +92,8 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
   const biasFromFile = useCallback(
     async (file: File) => {
       try {
-        const text = (await file.text()).slice(0, MAX_FILE_QUERY_CHARS);
+        const prefix = file.size <= MAX_FILE_QUERY_BYTES ? file : file.slice(0, MAX_FILE_QUERY_BYTES);
+        const text = (await prefix.text()).slice(0, MAX_FILE_QUERY_CHARS);
         if (!text.trim()) {
           setError("That file has no readable text to search by.");
           return;
