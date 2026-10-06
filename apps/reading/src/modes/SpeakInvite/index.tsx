@@ -85,7 +85,8 @@ export default function SpeakInvite() {
       }
       const data: Landing = await r.json();
       setLanding(data);
-      setActiveQ((cur) => cur ?? data.pending_questions[0]?.id ?? null);
+      setActiveQ((cur) => data.pending_questions.some((question) => question.id === cur)
+        ? cur : data.pending_questions[0]?.id ?? null);
       setPhase("ready");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -131,6 +132,8 @@ export default function SpeakInvite() {
         return;
       }
       await load();
+    } catch {
+      setError("Couldn't start sharing — please try again.");
     } finally {
       setBusy(false);
     }
@@ -140,14 +143,19 @@ export default function SpeakInvite() {
     if (!token) return;
     setBusy(true);
     try {
-      // Best-effort: record the decline. Either way we land on a clean
-      // thank-you — never a dead end, never pushed into recording.
-      await apiFetch(`/speak/invite/${encodeURIComponent(token)}/decline`, {
+      setError(null);
+      const response = await apiFetch(`/speak/invite/${encodeURIComponent(token)}/decline`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
-      }).catch(() => {/* a failed decline still resolves to thank-you */});
+      });
+      if (!response.ok) {
+        setError("Couldn't save your choice. You can close this page or try again.");
+        return;
+      }
       setDeclined(true);
+    } catch {
+      setError("Couldn't save your choice. You can close this page or try again.");
     } finally {
       setBusy(false);
     }
@@ -170,6 +178,8 @@ export default function SpeakInvite() {
       setAnswer("");
       setActiveQ(null);
       await load();
+    } catch {
+      setError("Couldn't send your answer — your words are still here. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -358,6 +368,7 @@ export default function SpeakInvite() {
             {mode === "voice" && !micDenied ? (
               <div className="mt-5">
                 <PhoneVoiceCapture
+                  key={active?.id}
                   token={token!}
                   questionId={active?.id ?? ""}
                   onShared={() => {
@@ -372,7 +383,7 @@ export default function SpeakInvite() {
                 />
                 {voiceError && (
                   <p className="mt-3 text-center font-serif text-sm text-ink-mute dark:text-moonlight">
-                    We couldn't turn that recording into words just now. You can
+                    That recording wasn't shared: {voiceError}. You can
                     try again, or{" "}
                     <button
                       type="button"

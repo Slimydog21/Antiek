@@ -102,7 +102,11 @@ def test_invitee_voice_bridges_to_an_answer(client, monkeypatch):
 
 
 def test_invitee_voice_requires_consent(client, monkeypatch):
-    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", StubTranscriber())
+    from unittest.mock import Mock
+
+    transcriber = StubTranscriber()
+    transcriber.transcribe = Mock(wraps=transcriber.transcribe)
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", transcriber)
     token = _invited_token(client)
     # Record before consent → 403 (the same gate the typed answer enforces).
     r = client.post(
@@ -111,6 +115,9 @@ def test_invitee_voice_requires_consent(client, monkeypatch):
         headers={"Content-Type": "audio/webm"},
     )
     assert r.status_code == 403
+    # Consent is required before any audio leaves for transcription, rather
+    # than only when the already-transcribed answer is about to be stored.
+    transcriber.transcribe.assert_not_called()
 
 
 def test_invitee_voice_bad_token_404(client, monkeypatch):
