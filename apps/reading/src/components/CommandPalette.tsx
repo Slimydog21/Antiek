@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../workspace/keyboardOwnership";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -534,14 +535,17 @@ export default function CommandPalette() {
         setOpen(false);
       }
     };
-    window.addEventListener("keydown", handler);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "palette.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && open,
+    }, handler);
 
     return () => {
       window.removeEventListener(
         "antiek:palette:toggle" as keyof WindowEventMap,
         onToggle as EventListener,
       );
-      window.removeEventListener("keydown", handler);
+      removeKeyboardOwner();
     };
   }, [open]);
 

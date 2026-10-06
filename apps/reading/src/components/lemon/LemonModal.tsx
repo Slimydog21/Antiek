@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
@@ -80,8 +81,11 @@ export function LemonModal({
         onClose();
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "modal.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && topModal() === dialogRef.current,
+    }, handler);
+    return () => removeKeyboardOwner();
   }, [open, onClose, forceUserAction]);
 
   // Focus trap: keep focus inside dialog while open

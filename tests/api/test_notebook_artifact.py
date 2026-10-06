@@ -41,6 +41,12 @@ def _source():
 
 def _client() -> TestClient:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def authenticated_owner(request, call_next):
+        request.state.user_id = "u"
+        return await call_next(request)
+
     mod.register_notebook_artifact_routes(app)
     return TestClient(app)
 

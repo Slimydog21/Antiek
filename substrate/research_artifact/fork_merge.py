@@ -36,10 +36,9 @@ no partial write, the body hash unchanged. Commit is idempotent on its
 canonical commit id (merge intent + resolutions): a replay returns the
 recorded receipt with ``writes_performed=False``.
 
-Gate discipline: an item merges ONLY its own text — what the operator
-lawfully sees in the artifact (the distilled node's text). Source bodies
-are never read here, so a withheld source's item cannot launder body bytes
-into the fork (asserted in the proofs).
+Gate discipline: an item merges ONLY its own text after the shared distill
+reader checks node ownership and source readability. Source body bytes are
+used only by that read gate, never copied into the fork.
 """
 
 from __future__ import annotations
@@ -271,64 +270,44 @@ def _resolve_items(
     con: Any,
     items: list[tuple[str, str]],
     *,
+    owner_user_id: str,
     events_dir: str | None,
 ) -> list[MergeItem]:
-    """Resolve selected (investigation, node) refs against the distill read.
+    """Resolve only caller-readable outcomes on the caller's connection.
 
-    The trajectory walk (which nodes a thread distilled) is file-based; the
-    node rows read through the CALLER'S connection — never a second
-    connection, so this is lawful inside the commit's write scope. An
-    unknown ref raises ForkMergeItemError (the route's 422): a merge never
-    carries text the operator did not select."""
+    Unknown and unreadable refs have the same refusal. The shared distill
+    reader applies node ownership and the source body gate before any text
+    enters a preview or a commit.
+    """
+    from roles.note_taker.distill_query import DistilledNode, readable_distillation_for
+
     resolved: list[MergeItem] = []
     seen: set[tuple[str, str]] = set()
-    by_investigation: dict[str, list[str]] = {}
+    by_investigation: dict[str, dict[str, DistilledNode]] = {}
     for iid, nid in items:
         if (iid, nid) in seen:
             continue
         seen.add((iid, nid))
         if iid not in by_investigation:
-            from roles.note_taker.distill_query import _node_ids_from_trajectory
-
-            node_ids, _ = _node_ids_from_trajectory(iid, events_dir=events_dir)
-            by_investigation[iid] = node_ids
-        if nid not in by_investigation[iid]:
-            raise ForkMergeItemError(
-                f"fork_merge_item_unknown: {nid} is not a distilled outcome "
-                f"of {iid} — only a thread's own insight/question nodes merge"
+            view = readable_distillation_for(
+                iid, owner_user_id=owner_user_id, events_dir=events_dir, con=con
             )
-        row = con.execute(
-            "SELECT node_type, canonical_label, metadata FROM nodes "
-            "WHERE node_id = ? LIMIT 1",
-            [nid],
-        ).fetchone()
-        if row is None:
+            by_investigation[iid] = {
+                node.node_id: node for node in [*view.insights, *view.questions]
+            }
+        node = by_investigation[iid].get(nid)
+        if node is None:
             raise ForkMergeItemError(
-                f"fork_merge_item_unknown: {nid} has no live node row — the "
-                "log is history, the row is truth"
+                f"fork_merge_item_unknown: {nid} is not a readable distilled outcome of {iid}"
             )
-        node_type, label, meta_raw = row
-        meta: dict[str, Any] = {}
-        if meta_raw:
-            try:
-                parsed = json.loads(str(meta_raw))
-                if isinstance(parsed, dict):
-                    meta = parsed
-            except (TypeError, ValueError):
-                meta = {}
-        text = str(label)
         resolved.append(
             MergeItem(
                 investigation_id=iid,
                 node_id=nid,
-                kind=str(node_type),
-                text=text,
-                text_sha256=_item_hash(text),
-                source_document_id=(
-                    None
-                    if meta.get("source_document_id") is None
-                    else str(meta["source_document_id"])
-                ),
+                kind=node.kind,
+                text=node.text,
+                text_sha256=_item_hash(node.text),
+                source_document_id=node.source_document_id,
             )
         )
     return resolved
@@ -549,7 +528,9 @@ def _preview(
         fork_document_id=fork.fork_document_id,
         owner_user_id=owner_user_id,
     )
-    items = _resolve_items(con, item_refs, events_dir=events_dir)
+    items = _resolve_items(
+        con, item_refs, owner_user_id=owner_user_id, events_dir=events_dir
+    )
     conflicts = _detect_conflicts(
         con,
         owner_user_id=owner_user_id,
@@ -633,8 +614,8 @@ def commit_fork_merge(
         "resolutions_json, "
         "before_fork_hash, after_fork_hash, fork_bytes_before, "
         "fork_bytes_after, event_id FROM fork_merge_commits "
-        "WHERE commit_id = ? LIMIT 1",
-        [cid],
+        "WHERE commit_id = ? AND owner_user_id = ? AND fork_id = ? LIMIT 1",
+        [cid, owner_user_id, fork_id],
     ).fetchone()
     if existing is not None:
         # Idempotent replay — checked BEFORE the binding/staleness gates:

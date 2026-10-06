@@ -2,7 +2,7 @@
   "name": "antiek-reading",
   "private": true,
   "version": "0.1.0",
-  "description": "Antiek reading surface — Loop 2 wrestling UI. The TS side of the polyglot seam (architecture_notes §11).",
+  "description": "Antiek reading surface \u2014 Loop 2 wrestling UI. The TS side of the polyglot seam (architecture_notes \u00a711).",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -32,7 +32,10 @@
     "visualtest": "npm run build-storybook && lost-pixel",
     "visualtest:update": "npm run build-storybook && lost-pixel update",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "guard:keymap:serve": "vite --config vite.keymap-guard.config.ts",
+    "guard:keymap": "node -e \"require('node:fs').accessSync('src/workspace/documentTabs.rapidNavigation.test.tsx')\" && tsc -b --noEmit && tsc --noEmit -p tsconfig.keymap-guard.json && vitest run src/components/hotkeys/keymap.test.ts src/workspace/windowKeyListenerCensus.test.ts src/workspace/documentTabs.rapidNavigation.test.tsx && browser-harness < scripts/keymap-guard.py",
+    "guard:keymap:sensitivity": "tsx scripts/keymap-guard-mutations.ts"
   },
   "dependencies": {
     "@posthog/react": "^1.10.0",

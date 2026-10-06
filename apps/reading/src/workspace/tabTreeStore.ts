@@ -27,6 +27,7 @@
 import { create } from "zustand";
 
 import { toast, UNDO_TTL_MS } from "../components/lemon/LemonToast";
+import { clearTabProject, readTabProject, writeTabProject } from "./persistence";
 import { labelForTab } from "./tabLabels";
 import { resetTabTitles, titleKey, useTabTitles } from "./tabTitles";
 import { tabTreeHandle } from "./tabTreeHandle";
@@ -55,9 +56,12 @@ import {
   type UndoToken,
 } from "./tabTree";
 
-/** The project the trees are filed under. Single-project until the
- *  workstation layer (lane B) owns real project ids — a named constant, not
- *  a secret default. */
+/** The project the trees are filed under when the operator has not chosen
+ *  one. The account projects come from the registry (lib/api/projects.ts,
+ *  THREAD-CONTRACT §1.5); the selection lives in the store's `projectId`
+ *  (persisted via persistence.readTabProject) and every load/save files
+ *  under it. This constant is the fallback id, a named constant, not a
+ *  secret default. */
 export const TAB_PROJECT_ID = "default";
 
 /** CR-F3: how many rebase-and-save attempts follow the first 409 before the
@@ -117,6 +121,10 @@ export interface SpawnTabResult {
 interface TabTreeState {
   /** Invalidates in-flight work even when the same adapter is selected again. */
   contextEpoch: number;
+  /** The account project every load/save files under (the adapter's first
+   *  argument). TAB_PROJECT_ID until the operator picks one of the
+   *  registry's projects (the project picker, prefix+shift+p). */
+  projectId: string;
   trees: Record<Mothership, TabTree | null>;
   /** Motherships whose initial adapter load has completed. */
   loaded: Record<Mothership, boolean>;
@@ -136,6 +144,11 @@ interface TabTreeState {
   adapter: TabTreeAdapter;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
+  /** Switch the account project the trees file under (the D2 project
+   *  level). Persisted; the trees reset exactly as on an adapter swap and
+   *  load again under the new id, so each project's tabs are its own. A
+   *  re-select of the current project is a no-op. */
+  selectProject: (projectId: string) => void;
   /** Load a mothership's tree once. Never rejects: a failure lands in
    *  loadError and retryLoad tries again. */
   ensureMothership: (mothership: Mothership) => Promise<void>;
@@ -221,6 +234,36 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     return next;
   }
 
+  /** Drop every in-flight and held piece of tree context: an adapter swap
+   *  and a project switch both start from nothing. */
+  function clearTreeContext(): void {
+    loads.clear();
+    acceptedTrees.clear();
+    saveQueues.clear();
+    deferredSaves.clear();
+    recentCloses.clear();
+    for (const id of undoToasts.values()) toast.dismiss(id);
+    undoToasts.clear();
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+
+  /** The blank per-context state slice (fresh objects, as emptyLoaded and
+   *  noErrors return). */
+  function freshTrees(): Pick<
+    TabTreeState,
+    "heldClose" | "navIntent" | "trees" | "loaded" | "loadError" | "pendingOps"
+  > {
+    return {
+      heldClose: null,
+      navIntent: null,
+      trees: { research: null, writing: null, reading: null },
+      loaded: emptyLoaded(),
+      loadError: noErrors(),
+      pendingOps: { research: [], writing: [], reading: [] },
+    };
+  }
+
   /** Apply a pure-model op to a mothership's tree, keep the pending log,
    *  and queue the snapshot save. */
   function apply(
@@ -286,13 +329,13 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       deferredSaves.add(mothership);
       return;
     }
-    const { adapter, trees, pendingOps, contextEpoch } = get();
+    const { adapter, trees, pendingOps, contextEpoch, projectId } = get();
     const currentTree = trees[mothership];
     if (!currentTree) return;
     const tree = prepareRestores(mothership, currentTree);
     if (tree !== currentTree) set((s) => ({ trees: { ...s.trees, [mothership]: tree } }));
     const sentOps = (pendingOps[mothership] ?? []).length;
-    const result = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(tree));
+    const result = await adapter.save(projectId, mothership, toSnapshot(tree));
     if (get().contextEpoch !== contextEpoch) return;
     if (result.status === "saved") {
       markSaved(mothership, result.version, sentOps, tree);
@@ -367,7 +410,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           trees: { ...s.trees, [mothership]: shown },
           pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
         }));
-        const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
+        const retry = await adapter.save(projectId, mothership, toSnapshot(rebased));
         if (get().contextEpoch !== contextEpoch) return;
         if (retry.status === "saved") {
           markSaved(mothership, retry.version, remainingOps.length, rebased);
@@ -456,26 +499,29 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     heldClose: null,
     navIntent: null,
     adapter: createInMemoryTabTreeAdapter(),
+    projectId: readTabProject() ?? TAB_PROJECT_ID,
 
     setTabTreeAdapter: (adapter) => {
-      loads.clear();
-      acceptedTrees.clear();
-      saveQueues.clear();
-      deferredSaves.clear();
-      recentCloses.clear();
-      for (const id of undoToasts.values()) toast.dismiss(id);
-      undoToasts.clear();
-      if (holdTimer !== null) clearTimeout(holdTimer);
-      holdTimer = null;
+      clearTreeContext();
       set({
-        heldClose: null,
-        navIntent: null,
+        ...freshTrees(),
         contextEpoch: get().contextEpoch + 1,
         adapter,
-        trees: { research: null, writing: null, reading: null },
-        loaded: emptyLoaded(),
-        loadError: noErrors(),
-        pendingOps: { research: [], writing: [], reading: [] },
+      });
+    },
+
+    selectProject: (projectId) => {
+      if (get().projectId === projectId) return;
+      // The full context swap, exactly as on an adapter change: trees filed
+      // under one project are not another project's, so nothing carries
+      // over. The default project is the absent selection (persistence).
+      clearTreeContext();
+      if (projectId === TAB_PROJECT_ID) clearTabProject();
+      else writeTabProject(projectId);
+      set({
+        ...freshTrees(),
+        contextEpoch: get().contextEpoch + 1,
+        projectId,
       });
     },
 
@@ -483,11 +529,11 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       if (get().loaded[mothership]) return Promise.resolve();
       const inflight = loads.get(mothership);
       if (inflight) return inflight;
-      const { adapter, contextEpoch } = get();
+      const { adapter, contextEpoch, projectId } = get();
       let run: Promise<void> | null = null;
       run = (async () => {
         try {
-          const snapshot = await adapter.load(TAB_PROJECT_ID, mothership);
+          const snapshot = await adapter.load(projectId, mothership);
           if (get().contextEpoch !== contextEpoch) return; // swapped mid-flight
           const parsed = fromSnapshot(snapshot);
           if (parsed.ok) acceptedTrees.set(mothership, parsed.tree);

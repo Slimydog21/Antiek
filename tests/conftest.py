@@ -122,6 +122,32 @@ def _isolate_default_breaker():
     default_breaker.reset()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_speak_throttle():
+    """The SPEAK contribution throttle is process-global and never reset.
+
+    ``interfaces/research/api/auth.py:192`` holds ``_throttle`` as a module-level
+    dict keyed by client IP, and every ``TestClient`` presents the same IP — so
+    hits accumulate ACROSS tests rather than within one. Measured:
+    ``tests/test_speak_g7_open_contribute.py`` spends more than the 5-per-IP
+    budget at ``auth.py:641``, and a later test in the same process that opens a
+    contribution receives 429 "too many open contribution requests; retry
+    shortly" instead of a token. Running g7 first and then
+    ``test_speak_takedown_revokes_issued_tokens.py`` fails 2 of its cases; that
+    file passes alone.
+
+    Same shape and same reason as ``_isolate_default_breaker`` above: reset the
+    process-global before and after each test so one test's hits cannot decide
+    another's outcome. Without this, which shard a file lands in changes whether
+    it passes, which is not a property a test should have.
+    """
+    from interfaces.research.api import auth as _auth
+
+    _auth._throttle.clear()
+    yield
+    _auth._throttle.clear()
+
+
 # Every env var `substrate/dispatch/providers/bootstrap.py` consults via
 # `resolve_provider_key(handle, env_var)`. tests/test_provider_key_isolation.py
 # re-derives this set FROM THAT SOURCE and fails if the two drift, so adding a
