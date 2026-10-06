@@ -94,6 +94,7 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .frame_write_health import frame_write_health_for  # noqa: E402
+from .health_status import compute_health_status  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
@@ -132,7 +133,23 @@ class EmittedEventResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    # COMPUTED (interfaces/research/api/health_status.py), not a literal:
+    # "degraded" when any measured sub-check is red (today: the
+    # frame-telemetry write path, whose refusal for 84.6% of writes over
+    # 28h went invisible behind the old unconditional "ok" — prod
+    # incident 2026-10-02/03), and "ok" when every measured check is
+    # green OR nothing is measured (the liveness fallback). The HTTP
+    # code stays 200 either way — the transport claim and the health
+    # claim are different axes, and uptime monitors consume the
+    # transport one. Read status_checks to tell "ok: measured and
+    # green" from "ok: nothing measured".
     status: str
+    # Per-contributing-check verdict: "ok" / "degraded" /
+    # "not_measured" / "error" (sensor unreadable, which also degrades
+    # status — fail closed, same rule as /ops/provider-ratio).
+    status_checks: dict[str, str] = Field(default_factory=dict)
+    # Human-readable reason when status is "degraded"; None when "ok".
+    status_detail: str | None = None
     param_version: str
     schema_version: int
     subscriber_count: int
@@ -2437,9 +2454,17 @@ def create_app(
         # Resolve-only (which + identity snapshot of a small file); never a
         # spawn, never raises — see _probe_prime_lane.
         prime_lane = _probe_prime_lane()
+        # The one value that used to be an unconditional literal: computed
+        # from live sub-checks (today the frame-telemetry write path), so a
+        # sustained write-refusal storm reds this field instead of reporting
+        # "ok" for 28 hours. See health_status.py for the contributor
+        # mapping and why startup-frozen snapshots are excluded.
+        status_report = compute_health_status(app)
         return HealthResponse(
             drw_gather_mode=_resolved_gather_mode(),
-            status="ok",
+            status=status_report.status,
+            status_checks=status_report.checks,
+            status_detail=status_report.detail,
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,

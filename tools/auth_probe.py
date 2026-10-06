@@ -115,11 +115,19 @@ def stage_health(base_url: str) -> StageResult:
             f"GET /health failed: {exc}",
         )
     payload = _json_body(body)
-    ok = code == 200 and isinstance(payload, dict) and payload.get("status") == "ok"
+    # Layer A's documented claim is "API reachable (transport baseline)":
+    # a 200 with a JSON object body proves exactly that. The ``status``
+    # FIELD is a computed health verdict since
+    # fix/health-status-computed-20261003 (previously an unconditional
+    # "ok" literal — invisible to the 84.6% frame-telemetry write-refusal
+    # storm of 2026-10-02/03). A degraded write path must NOT fail this
+    # transport stage, so the verdict is reported, not asserted.
+    status_value = payload.get("status") if isinstance(payload, dict) else None
+    ok = code == 200 and isinstance(payload, dict) and isinstance(status_value, str)
     detail = (
-        "status ok"
+        f"reachable, status={status_value!r}"
         if ok
-        else f"expected 200 with status=ok, got http={code} body={payload!r}"
+        else f"expected 200 with a JSON body carrying status, got http={code} body={payload!r}"
     )
     return StageResult("health", "A", ok, code, detail)
 
