@@ -372,6 +372,7 @@ function mountContext(ctx: Ctx): HTMLElement {
 
 /** What the scope rules say a row does from each context. */
 function expectedFires(row: KeymapRow, ctx: Ctx, platform: "mac" | "other"): boolean {
+  if (row.status === "unimplemented") return false;
   if (row.prefixKey) return ctx === "body";
   if (ctx === "body") return true;
   if (ctx === "input" || ctx === "contenteditable") {

@@ -1,6 +1,6 @@
 /**
- * keymap.ts — THE keymap. Every key the app answers to is a row in
- * {@link KEYMAP}; nothing else may define a binding.
+ * keymap.ts — Every built-in global binding is a row in {@link KEYMAP}.
+ * Widgets and editors own local keys; user-defined bindings use the dispatcher.
  *
  * One dispatcher (workspace/shortcuts.ts) reads this table and owns every
  * global key. The key sheet (KeySheet.tsx, `prefix+?`) renders it, and every
@@ -89,6 +89,7 @@ export const ACTIONS = {
   "tab.close": { label: "Tab: close the focused pane's active tab (on the left, with its branches)" },
   "tab.reopen": { label: "Tab: reopen the last closed tab in the focused pane" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
+  "project.select": { label: "Project: choose the account project" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "door.research": { label: "Research", productId: "research", route: "/" },
@@ -116,7 +117,7 @@ export type ActionId = keyof typeof ACTIONS;
 /** Which SPR-08 table bindings.ts republishes a legacy row in. */
 export type Spr08Kind = "builtin" | "product" | "subaction";
 
-export interface KeymapRow {
+interface KeymapBinding {
   id: string;
   action: ActionId;
   prefixKey?: string;
@@ -128,51 +129,56 @@ export interface KeymapRow {
   spr08?: Spr08Kind;
 }
 
+export type KeymapRow = KeymapBinding & (
+  | { status?: "implemented" }
+  | { status: "unimplemented"; blockedBy: string }
+);
+
 const D = KEYMAP_DECISION;
 
 export const KEYMAP: readonly KeymapRow[] = [
   // ── legacy-SPR-08: the ⌘ scheme, unchanged keys ─────────────────────
-  { id: "palette", action: "palette.toggle", chord: "mod+k", scope: "anywhere", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "palette-alt", action: "palette.toggle", chord: "mod+shift+p", scope: "anywhere", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "palette", action: "palette.toggle", status: "implemented", chord: "mod+k", scope: "anywhere", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "palette-alt", action: "palette.toggle", status: "implemented", chord: "mod+shift+p", scope: "anywhere", origin: "legacy-SPR-08", spr08: "builtin" },
   // Mac only: elsewhere "mod" is Ctrl, and ctrl+b is the prefix. There the
   // same action is prefix+b or ctrl+alt+b (rows below).
-  { id: "projecttree", action: "projecttree.toggle", chord: "mod+b", scope: "outside-text", origin: "legacy-SPR-08", platforms: ["mac"], spr08: "builtin" },
-  { id: "aisidecar", action: "aisidecar.toggle", chord: "mod+/", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "cycle-prev", action: "panel.focusPrev", chord: "mod+[", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "cycle-next", action: "panel.focusNext", chord: "mod+]", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "close-float", action: "panel.closeFloating", chord: "mod+w", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "help", action: "keysheet.toggle", chord: "?", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
-  { id: "prod-research", action: "door.research", chord: "mod+j", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "prod-read", action: "door.read", chord: "mod+e", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "prod-write", action: "door.write", chord: "mod+y", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "prod-speak", action: "door.speak", chord: "mod+u", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "prod-home", action: "door.home", chord: "mod+o", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "prod-more", action: "door.more", chord: "mod+i", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
-  { id: "sub-research-new", action: "door.researchHome", chord: "mod+g", scope: "outside-text", origin: "legacy-SPR-08", spr08: "subaction" },
-  { id: "sub-read-library", action: "door.readLibrary", chord: "mod+;", scope: "outside-text", origin: "legacy-SPR-08", spr08: "subaction" },
+  { id: "projecttree", action: "projecttree.toggle", status: "implemented", chord: "mod+b", scope: "outside-text", origin: "legacy-SPR-08", platforms: ["mac"], spr08: "builtin" },
+  { id: "aisidecar", action: "aisidecar.toggle", status: "implemented", chord: "mod+/", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "cycle-prev", action: "panel.focusPrev", status: "implemented", chord: "mod+[", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "cycle-next", action: "panel.focusNext", status: "implemented", chord: "mod+]", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "close-float", action: "panel.closeFloating", status: "implemented", chord: "mod+w", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "help", action: "keysheet.toggle", status: "implemented", chord: "?", scope: "outside-text", origin: "legacy-SPR-08", spr08: "builtin" },
+  { id: "prod-research", action: "door.research", status: "implemented", chord: "mod+j", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "prod-read", action: "door.read", status: "implemented", chord: "mod+e", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "prod-write", action: "door.write", status: "implemented", chord: "mod+y", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "prod-speak", action: "door.speak", status: "implemented", chord: "mod+u", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "prod-home", action: "door.home", status: "implemented", chord: "mod+o", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "prod-more", action: "door.more", status: "implemented", chord: "mod+i", scope: "outside-text", origin: "legacy-SPR-08", spr08: "product" },
+  { id: "sub-research-new", action: "door.researchHome", status: "implemented", chord: "mod+g", scope: "outside-text", origin: "legacy-SPR-08", spr08: "subaction" },
+  { id: "sub-read-library", action: "door.readLibrary", status: "implemented", chord: "mod+;", scope: "outside-text", origin: "legacy-SPR-08", spr08: "subaction" },
 
   // ── the prefix (herdr's defaults for the same meanings, adopted by D2) ──
-  { id: "prefix-goto", action: "palette.toggle", prefixKey: "g", scope: "outside-text", origin: "herdr-default", decision: D },
-  { id: "prefix-help", action: "keysheet.toggle", prefixKey: "?", scope: "outside-text", origin: "herdr-default", decision: D },
-  { id: "prefix-sidebar", action: "projecttree.toggle", prefixKey: "b", scope: "outside-text", origin: "herdr-default", decision: D },
+  { id: "prefix-goto", action: "palette.toggle", status: "implemented", prefixKey: "g", scope: "outside-text", origin: "herdr-default", decision: D },
+  { id: "prefix-help", action: "keysheet.toggle", status: "implemented", prefixKey: "?", scope: "outside-text", origin: "herdr-default", decision: D },
+  { id: "prefix-sidebar", action: "projecttree.toggle", status: "implemented", prefixKey: "b", scope: "outside-text", origin: "herdr-default", decision: D },
 
   // ── D2 direct chords: every prefix action also has a one-step key ──────
-  { id: "chord-sidebar", action: "projecttree.toggle", chord: "ctrl+alt+b", scope: "anywhere", origin: "D2", decision: D },
+  { id: "chord-sidebar", action: "projecttree.toggle", status: "implemented", chord: "ctrl+alt+b", scope: "anywhere", origin: "D2", decision: D },
 
   // ── D2 cockpit pane keys (C3, 2026-09-24): prefix twin + chord twin ────
   // h/l are herdr's pane-focus keys; f is fullscreen (Omarchy's gesture).
   // Never Cmd+Left/Right/F: the browser owns those (history, find).
-  { id: "prefix-pane-left", action: "pane.focusLeft", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-left", action: "pane.focusLeft", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-pane-right", action: "pane.focusRight", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-right", action: "pane.focusRight", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-pane-full", action: "pane.fullscreen", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-full", action: "pane.fullscreen", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-right", action: "pane.focusRight", status: "implemented", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-full", action: "pane.fullscreen", status: "implemented", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-full", action: "pane.fullscreen", status: "implemented", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
   // The stored preset defaults to DOCKED -- "a stored preset never surprises an
   // operator who never chose one" (workspace/persistence.ts) -- so this is not a
   // rarely-needed toggle but the key that brings the cockpit in. It sits behind
   // prefix+shift+i with no chord, and i stays the inbox's.
-  { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
 
   // ── D2 tab keys (lane-A cockpit decision, 2026-09-26) ─────────────────
   // n/p + ctrl+alt+]/[ are herdr's next/previous tab, and herdr's tabs
@@ -180,39 +186,47 @@ export const KEYMAP: readonly KeymapRow[] = [
   // document tabs' siblings; right: the agent tabs, or the outline's block
   // tabs in writing). With neither pane focused they act on the left, where
   // the core material lives. One muscle memory, so no second pair exists.
-  { id: "prefix-tab-next", action: "tab.next", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-next", action: "tab.next", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-prev", action: "tab.prev", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-prev", action: "tab.prev", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
-  // c is "new tab" (the picker). Until the picker ships the key is held for
-  // it and does nothing; the key sheet says so (keymapView PENDING).
-  { id: "prefix-tab-new", action: "tab.new", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-new", action: "tab.new", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-next", action: "tab.next", status: "implemented", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-next", action: "tab.next", status: "implemented", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-prev", action: "tab.prev", status: "implemented", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-prev", action: "tab.prev", status: "implemented", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
+  // c is "new tab": it opens the picker (a document or an investigation as
+  // a fresh root tab in its own mothership's tree; workspace/newTab.ts).
+  { id: "prefix-tab-new", action: "tab.new", status: "implemented", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-new", action: "tab.new", status: "implemented", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
   // Branch-tree keys (DESIGN-MODEL §2a). ctrl+alt+u collides with Konsole
   // only inside Konsole's own window, so it never reaches a browser.
-  { id: "prefix-tab-parent", action: "tab.parent", prefixKey: "u", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-parent", action: "tab.parent", chord: "ctrl+alt+u", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-child", action: "tab.visitChild", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-child", action: "tab.visitChild", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-tree", action: "tab.treeToggle", prefixKey: "t", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-tree", action: "tab.treeToggle", chord: "ctrl+alt+y", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-parent", action: "tab.parent", status: "implemented", prefixKey: "u", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-parent", action: "tab.parent", status: "implemented", chord: "ctrl+alt+u", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-child", action: "tab.visitChild", status: "implemented", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-child", action: "tab.visitChild", status: "implemented", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-tree", action: "tab.treeToggle", status: "implemented", prefixKey: "t", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-tree", action: "tab.treeToggle", status: "implemented", chord: "ctrl+alt+y", scope: "anywhere", origin: "D2", decision: D },
   // Close is destructive, so it stays behind the prefix with no chord. It
   // closes the tab and its branches (§2a's default), held 10 s behind the
   // toast's Undo.
-  { id: "prefix-tab-close", action: "tab.close", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
+  { id: "prefix-tab-close", action: "tab.close", status: "implemented", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
   // The keyboard's undo for a close (browser muscle memory: ⌘⇧T). Inside the
   // 10 s hold it undoes the close; after it, it restores the focused pane's
   // most recently closed tab. No chord, like close.
-  { id: "prefix-tab-reopen", action: "tab.reopen", prefixKey: "shift+t", scope: "outside-text", origin: "D2", decision: D },
+  { id: "prefix-tab-reopen", action: "tab.reopen", status: "implemented", prefixKey: "shift+t", scope: "outside-text", origin: "D2", decision: D },
 
   // ── The reader's contents (lane A B2): in a narrow cockpit pane the TOC
   // column folds away (a container query), and this brings it back in the
   // pane. shift+c, beside c (new tab), for "contents".
-  { id: "prefix-reader-toc", action: "reader.tocToggle", prefixKey: "shift+c", scope: "outside-text", origin: "lane-A-proposed", decision: "lane A proposal 2026-09-27 (A1c), pending ratification" },
+  { id: "prefix-reader-toc", action: "reader.tocToggle", status: "implemented", prefixKey: "shift+c", scope: "outside-text", origin: "lane-A-proposed", decision: "lane A proposal 2026-09-27 (A1c), pending ratification" },
 
-  // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
-  { id: "prefix-inbox", action: "inbox.toggle", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-inbox", action: "inbox.toggle", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+  // ── D2 attention inbox (D4): declared unimplemented; no handler is installed ─
+  { id: "prefix-inbox", action: "inbox.toggle", status: "unimplemented", blockedBy: "MS-03 M7; THREAD-CONTRACT §1.5 inbox delivery after created-owner authority acceptance", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-inbox", action: "inbox.toggle", status: "unimplemented", blockedBy: "MS-03 M7; THREAD-CONTRACT §1.5 inbox delivery after created-owner authority acceptance", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+
+  // ── The project level (the D2 keyboard's missing second level) ────────
+  // shift+p, beside p (previous tab): the tabs live IN the project, so the
+  // project's key is the tab key shifted. prefix+p itself is taken and
+  // ctrl+alt+p is free on every platform the D2 table maps. Proposed with
+  // the implementation, pending ratification into the decision record.
+  { id: "prefix-project-select", action: "project.select", status: "implemented", prefixKey: "shift+p", scope: "outside-text", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
+  { id: "chord-project-select", action: "project.select", status: "implemented", chord: "ctrl+alt+p", scope: "anywhere", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
 ];
 
 /**
@@ -220,8 +234,8 @@ export const KEYMAP: readonly KeymapRow[] = [
  * do not exist yet: numbered tabs, workstations, motherships, the companion
  * rail, islands. No row may take one of them for another meaning; the
  * sprint that builds the surface moves the key into KEYMAP and deletes it
- * here. (The new-tab picker and the attention inbox are rows already, whose
- * handlers do nothing yet, so the key sheet can say so; keymapView PENDING.)
+ * here. (The attention inbox has explicitly unimplemented rows and no handler;
+ * the sheet derives that status from this table.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
  * prefix+a always works and the operator's platforms do not grab it.
  */
@@ -436,6 +450,12 @@ export interface KeymapProblem {
   kind:
     | "duplicate"
     | "missing-handler"
+    | "unexpected-handler"
+    | "inconsistent-status"
+    | "missing-scenario"
+    | "unexercised-row"
+    | "missing-sheet-row"
+    | "unexpected-sheet-row"
     | "missing-decision"
     | "plain-alt-chord"
     | "prefix-scope"
@@ -456,7 +476,15 @@ export interface KeymapProblem {
 export function validateKeymap(
   rows: readonly KeymapRow[],
   handlerIds: readonly string[],
-  opts: { prefix?: string; platforms?: readonly Platform[] } = {},
+  opts: {
+    prefix?: string;
+    platforms?: readonly Platform[];
+    coverage?: {
+      scenarios: readonly string[];
+      exercisedRows: readonly string[];
+      sheetRows: readonly string[];
+    };
+  } = {},
 ): KeymapProblem[] {
   const problems: KeymapProblem[] = [];
   const prefix = opts.prefix ?? DEFAULT_PREFIX;
@@ -465,8 +493,14 @@ export function validateKeymap(
   const reservedChord = new Set<string>(RESERVED_FOR_LATER.chords.map(normalizeCombo));
 
   for (const r of rows) {
-    if (!handlers.has(r.action)) {
+    if (r.status === "unimplemented") {
+      if (handlers.has(r.action)) problems.push({ kind: "unexpected-handler", row: r.id, detail: `action ${r.action} declares unimplemented but has a handler` });
+      if (!r.blockedBy.trim()) problems.push({ kind: "inconsistent-status", row: r.id, detail: `action ${r.action} declares unimplemented without a blocker` });
+    } else if (!handlers.has(r.action)) {
       problems.push({ kind: "missing-handler", row: r.id, detail: `no handler for "${r.action}"` });
+    }
+    if (rows.some((alias) => alias.action === r.action && (alias.status ?? "implemented") !== (r.status ?? "implemented"))) {
+      problems.push({ kind: "inconsistent-status", row: r.id, detail: `aliases disagree on status of ${r.action}` });
     }
     if ((r.origin === "D2" || r.origin === "herdr-default") && !r.decision?.includes("mothership-keys-herdr-prefix.md")) {
       problems.push({ kind: "missing-decision", row: r.id, detail: `${r.origin} row must cite the D2 decision record` });
@@ -487,6 +521,21 @@ export function validateKeymap(
       if (reservedPrefix.has(normalizeCombo(r.prefixKey))) {
         problems.push({ kind: "reserved-key", row: r.id, detail: `prefix+${r.prefixKey} is reserved for a later sprint` });
       }
+    }
+  }
+
+  if (opts.coverage) {
+    const scenarios = new Set(opts.coverage.scenarios);
+    const exercisedRows = new Set(opts.coverage.exercisedRows);
+    const sheetRows = new Set(opts.coverage.sheetRows);
+    const rowIds = new Set(rows.map((row) => row.id));
+    for (const row of rows) {
+      if (!scenarios.has(row.action)) problems.push({ kind: "missing-scenario", row: row.id, detail: `action ${row.action}: no executable scenario` });
+      if (!exercisedRows.has(row.id)) problems.push({ kind: "unexercised-row", row: row.id, detail: `action ${row.action}: alias was not pressed` });
+      if (!sheetRows.has(row.id)) problems.push({ kind: "missing-sheet-row", row: row.id, detail: `action ${row.action}: absent from rendered key sheet` });
+    }
+    for (const id of sheetRows) {
+      if (!rowIds.has(id)) problems.push({ kind: "unexpected-sheet-row", row: id, detail: "rendered sheet advertises a row absent from KEYMAP" });
     }
   }
 

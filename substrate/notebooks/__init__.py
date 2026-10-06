@@ -385,8 +385,8 @@ def readable_notebook_for(
 ) -> Notebook | None:
     """Read an exact owner's notebook; unknown ownership withholds.
 
-    Public classification is not a grant: the promotion route does not yet
-    verify the actor owns the notebook. Missing and withheld stay distinct.
+    Public classification is not a share grant on these owner-only routes.
+    Missing and withheld stay distinct.
     Internal writers may use ``get_notebook``; caller-facing reads use this seam.
     """
     row = con.execute(
@@ -402,21 +402,18 @@ def readable_notebook_for(
 def list_notebooks(
     con: Any,
     *,
-    owner_user_id: str | None = None,
+    owner_user_id: str,
     investigation_id: str | None = None,
     document_id: str | None = None,
     limit: int = 100,
 ) -> list[Notebook]:
-    """List notebooks. Pass owner_user_id to scope to a single user
-    (multi-user Sprint 22+); pass investigation_id or document_id to
-    scope to a binding. Without filters: returns all notebooks the
-    caller is privileged to see (substrate-level — the API layer
-    enforces auth)."""
-    where_clauses = []
-    params: list[Any] = []
-    if owner_user_id is not None:
-        where_clauses.append("owner_user_id = ?")
-        params.append(owner_user_id)
+    """List only the authenticated owner's readable notebooks.
+
+    Scope before applying the limit; the detail-read seam remains the
+    authority on ownership. Public classification is not a share grant.
+    """
+    where_clauses = ["owner_user_id = ?"]
+    params: list[Any] = [owner_user_id]
     if investigation_id is not None:
         where_clauses.append("investigation_id = ?")
         params.append(investigation_id)
@@ -426,15 +423,20 @@ def list_notebooks(
     sql = """
         SELECT notebook_id FROM notebooks
     """
-    if where_clauses:
-        sql += " WHERE " + " AND ".join(where_clauses)
+    sql += " WHERE " + " AND ".join(where_clauses)
     sql += " ORDER BY updated_at DESC LIMIT ?"
     params.append(int(limit))
 
     ids = [r[0] for r in con.execute(sql, params).fetchall()]
-    # Resolve each (with blocks) — N+1 but at Sprint 18 scale this is
-    # fine; bulk fetch lands when notebook count gets meaningful.
-    return [nb for nb_id in ids if (nb := get_notebook(con, nb_id))]
+    notebooks = []
+    for notebook_id in ids:
+        try:
+            notebook = readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
+        except NotebookReadWithheld:
+            continue
+        if notebook is not None:
+            notebooks.append(notebook)
+    return notebooks
 
 
 @dataclass(frozen=True)

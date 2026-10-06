@@ -57,8 +57,8 @@ import { COMPANION_PANEL_ID, useCompanion } from "./companionStore";
 import { mothershipForPath } from "./documentSpace";
 import { useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
-import { createActionHandlers, installShortcuts } from "./shortcuts";
-import { keyInit, pinPlatform, press, unpinPlatform } from "./keymapTestKit";
+import { createActionHandlers, installShortcuts, SHORTCUT_EVENTS } from "./shortcuts";
+import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
 vi.mock("./useViewportTier", () => ({
@@ -231,20 +231,28 @@ describe("n/p and ctrl+alt+]/[ cycle the tabs of the FOCUSED pane", () => {
 
 // ─── c, i, x: what was taken back ─────────────────────────────────────────
 
-describe("close is prefix+shift+x alone; ctrl+alt+c and prefix c no longer close", () => {
-  it("ctrl+alt+c closes nothing and is left to the page (not consumed)", async () => {
+describe("close is prefix+shift+x alone; ctrl+alt+c and prefix c open the new-tab picker and close nothing", () => {
+  it("ctrl+alt+c closes nothing: it fires tab.new (the picker), so the key is consumed", async () => {
     const { m } = await seedCockpit();
+    const fired = vi.fn();
+    window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     const e = key(document.body, "ctrl+alt+c");
+    window.removeEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     expect(tabs().trees[m]!.nodes["c1"]).toBeTruthy();
     expect(tabs().heldClose).toBeNull();
-    expect(e.defaultPrevented).toBe(false);
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
   });
 
-  it("prefix c closes nothing either: c is 'new tab', reserved until the picker ships", async () => {
+  it("prefix c closes nothing either: c is 'new tab' and opens the picker", async () => {
     const { m } = await seedCockpit();
+    const fired = vi.fn();
+    window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     prefixed("c");
+    window.removeEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
     expect(tabs().trees[m]!.nodes["c1"]).toBeTruthy();
     expect(tabs().heldClose).toBeNull();
+    expect(fired).toHaveBeenCalledTimes(1);
     expect(prefixState.isArmed()).toBe(false);
   });
 
@@ -287,11 +295,15 @@ describe("the layout preset moves to prefix+shift+i (no chord); i is the attenti
     expect(KEYMAP.find((r) => r.chord === "ctrl+alt+i")?.action).toBe("inbox.toggle");
   });
 
-  it("the reserved handlers report 'not mine', so the dispatcher never swallows the key", () => {
+  it("the declared-unimplemented inbox has no handler", () => {
     const handlers = createActionHandlers(vi.fn() as never);
-    const probe = new KeyboardEvent("keydown", keyInit("ctrl+alt+i", "mac"));
-    expect(handlers["inbox.toggle"](probe)).toBe(false);
-    expect(handlers["tab.new"](probe)).toBe(false);
+    expect(Object.hasOwn(handlers, "inbox.toggle")).toBe(false);
+    // tab.new is no longer reserved: it fires the picker's toggle.
+    const fired = vi.fn();
+    window.addEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
+    expect(handlers["tab.new"]()).not.toBe(false);
+    window.removeEventListener(SHORTCUT_EVENTS.NEWTAB_TOGGLE, fired);
+    expect(fired).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -310,12 +322,21 @@ describe("the key sheet tells the truth about reserved keys", () => {
     expect(row.textContent).toMatch(/not built yet/i);
   });
 
-  it("the new-tab row shows prefix c and ctrl+alt+c and says it is not built yet", () => {
+  it("the new-tab row shows prefix c and ctrl+alt+c and describes the picker (no longer pending)", () => {
     const row = sheetRow("tab.new");
     expect(row.querySelector('[data-keymap-row="prefix-tab-new"]')).toBeTruthy();
     expect(row.querySelector('[data-keymap-row="chord-tab-new"]')).toBeTruthy();
-    expect(row.getAttribute("data-keymap-pending")).toBe("true");
-    expect(row.textContent).toMatch(/not built yet/i);
+    expect(row.getAttribute("data-keymap-pending")).toBeNull();
+    expect(row.textContent).toMatch(/new-tab picker/i);
+    expect(row.textContent).not.toMatch(/not built yet/i);
+  });
+
+  it("the project row shows prefix shift+p and ctrl+alt+p and describes the registry pick", () => {
+    const row = sheetRow("project.select");
+    expect(row.querySelector('[data-keymap-row="prefix-project-select"]')).toBeTruthy();
+    expect(row.querySelector('[data-keymap-row="chord-project-select"]')).toBeTruthy();
+    expect(row.getAttribute("data-keymap-pending")).toBeNull();
+    expect(row.textContent).toMatch(/account projects/i);
   });
 
   it("the n/p row names the focused-pane rule; the close row names the toast's Undo", () => {
@@ -338,7 +359,7 @@ describe("the table after the decision", () => {
 
   it("passes the guard: no duplicate, no handler-less action, no reserved key taken", () => {
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
-    expect([...handlerIds].sort()).toEqual(Object.keys(ACTIONS).sort());
+    expect([...handlerIds].sort()).toEqual([...new Set(KEYMAP.filter((row) => row.status !== "unimplemented").map((row) => row.action))].sort());
   });
 
   it("n/p + ctrl+alt+]/[ are one focused-pane action pair; the ,/. companion pair is gone", () => {

@@ -55,7 +55,7 @@ const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }))
 vi.mock("./useViewportTier", () => ({ useViewportTier: () => tierRef.current }));
 
 import KeySheet from "../components/hotkeys/KeySheet";
-import { ACTIONS, KEYMAP, validateKeymap } from "../components/hotkeys/keymap";
+import { KEYMAP, validateKeymap } from "../components/hotkeys/keymap";
 import { NOTES } from "../components/hotkeys/keymapView";
 import { prefixState } from "../components/hotkeys/prefixState";
 import { LemonDropdown } from "../components/lemon/LemonDropdown";
@@ -446,7 +446,7 @@ describe("B2-6 prefix+shift+t reopens the focused pane's last closed tab", () =>
     expect(rows.map((r) => r.prefixKey ?? `chord:${r.chord}`)).toEqual(["shift+t"]);
     const handlerIds = Object.keys(createActionHandlers((() => {}) as never));
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
-    expect([...handlerIds].sort()).toEqual(Object.keys(ACTIONS).sort());
+    expect([...handlerIds].sort()).toEqual([...new Set(KEYMAP.filter((row) => row.status !== "unimplemented").map((row) => row.action))].sort());
   });
 
   it("the key sheet lists it, with the hold-then-retired rule", () => {

@@ -61,7 +61,7 @@ def _safe_url(value: object) -> str | None:
     return url
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     title = data.get("title")
     title_text = "—" if title is None else str(title)
     url = _safe_url(data.get("url"))
