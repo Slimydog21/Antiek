@@ -17,6 +17,7 @@ import { EMPTY_SNAPSHOT } from "./panel.types";
 
 const SAMPLE: PersistedSnapshot = {
   schemaVersion: 1,
+  ownerSubject: "unit-test-owner",
   panels: {
     "demo:one": {
       id: "demo:one",

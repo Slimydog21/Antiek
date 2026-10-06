@@ -11,6 +11,7 @@
  * that is already loaded.
  */
 import { useEffect } from "react";
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 import type { DeliverableDetailResponse } from "../lib/api";
 import { childTabId, freshTabId, rootTabId } from "./documentSpace";
@@ -52,12 +53,13 @@ function openBodyTab(tree: TabTree, bodyRef: string): string | null {
 
 export function useWriteTreeSync(detail: DeliverableDetailResponse | null) {
   useEffect(() => {
+    const owner = workspaceOwnerSession();
     if (!detail) return;
     let cancelled = false;
     void (async () => {
       const store = useTabTrees.getState();
       await store.ensureMothership("writing");
-      if (cancelled) return;
+      if (cancelled || !isWorkspaceOwnerSession(owner)) return;
       const bodyRef = `/write/${detail.deliverable_id}`;
       registerDeliverableTitles(detail);
       let tree = useTabTrees.getState().trees.writing;

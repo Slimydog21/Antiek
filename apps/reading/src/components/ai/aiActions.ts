@@ -1,3 +1,5 @@
+import { isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+import { readNotebookDraft, writeNotebookDraft } from "../../lib/notebookDraftStorage";
 /**
  * AI tool-call protocol.
  *
@@ -259,10 +261,12 @@ async function sha256Hex(s: string): Promise<string> {
 async function recordAiActionApplied(
   ctx: AiActionContext,
   desc: AiEventDescriptor,
+  owner: WorkspaceOwnerSession,
 ): Promise<string | null> {
   try {
     const prevJson = JSON.stringify(desc.prev_state);
     const hash = await sha256Hex(desc.target_kind + ":" + desc.target_id + ":" + prevJson);
+    if (!isWorkspaceOwnerSession(owner)) return null;
     const payload: AIActionAppliedPayload = {
       action_type: "ai.action.applied",
       target_kind: desc.target_kind,
@@ -319,6 +323,7 @@ export function dispatchAiAction(
   action: AiAction,
   context?: AiActionContext,
 ): DispatchedAction {
+  const owner = workspaceOwnerSession();
   const ws = useWorkspace.getState();
   const at = Date.now();
 
@@ -328,16 +333,22 @@ export function dispatchAiAction(
     d: DispatchedAction,
     descriptor: AiEventDescriptor | null,
   ): DispatchedAction => {
-    if (!context || !descriptor) return d;
-    const eventIdPromise = recordAiActionApplied(context, descriptor);
+    if (!context || !descriptor) {
+      const originalUndo = d.undo;
+      return originalUndo === null ? d : { ...d, undo: () => {
+        if (isWorkspaceOwnerSession(owner)) originalUndo();
+      } };
+    }
+    const eventIdPromise = recordAiActionApplied(context, descriptor, owner);
     if (d.undo === null) return d;
     const originalUndo = d.undo;
     return {
       ...d,
       undo: () => {
+        if (!isWorkspaceOwnerSession(owner)) return;
         originalUndo();
         void eventIdPromise.then((eventId) => {
-          if (eventId) {
+          if (eventId && isWorkspaceOwnerSession(owner)) {
             void recordAiActionUndone(context, eventId, descriptor);
           }
         });
@@ -471,21 +482,16 @@ export function dispatchAiAction(
       // browser `storage` event; same-tab consumers need this custom
       // signal because `storage` only fires across tabs.
       const html = aiBlockToHtml(action.block);
-      const lsKey = "antiek.notebook." + action.notebook_id;
-      const etagKey = lsKey + ".etag";
       let prevEtag = 0;
       let nextEtag = 0;
       try {
-        const existing = window.localStorage.getItem(lsKey) ?? "<p></p>";
-        const current = window.localStorage.getItem(etagKey);
-        prevEtag = current === null ? 0 : parseInt(current, 10) || 0;
-        nextEtag = prevEtag + 1;
-        const appended = existing.replace(
-          /<\/body>\s*$/,
-          "",
-        ) + "\n" + html;
-        window.localStorage.setItem(lsKey, appended);
-        window.localStorage.setItem(etagKey, String(nextEtag));
+        const draft = readNotebookDraft(action.notebook_id, owner);
+        const existing = draft?.html ?? "<p></p>";
+        prevEtag = draft?.etag ?? 0;
+        const appended = existing.replace(/<\/body>\s*$/, "") + "\n" + html;
+        const written = writeNotebookDraft(action.notebook_id, appended, prevEtag, owner);
+        if (written === null) return { action, label: "Notebook draft was not saved", undo: null, at };
+        nextEtag = written;
         // Same-tab signal: editors keyed by `notebook_id` reload.
         window.dispatchEvent(
           new CustomEvent("antiek:notebook:appended", {

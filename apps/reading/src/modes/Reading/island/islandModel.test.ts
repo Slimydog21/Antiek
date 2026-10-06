@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../../testAccountOwner";
 /**
  * islandModel.test.ts — the pure model proofs (island SPR-01).
  *
@@ -211,7 +212,7 @@ function summary(id: string, parent: string | null, status = "in_progress"): Inv
 
 describe("selectIslandFamily", () => {
   afterEach(() => {
-    window.localStorage.removeItem("antiek:investigation_tree");
+    window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
   });
 
   it("a root with two chases and one grand-chase extracts exactly that subtree", () => {
@@ -232,7 +233,7 @@ describe("selectIslandFamily", () => {
   it("substrate parent ids WIN over a forged localStorage map (the merge rule, exercised)", () => {
     // Forge: localStorage claims grand-1's parent is "other" — a wrong parent.
     window.localStorage.setItem(
-      "antiek:investigation_tree",
+      unitAccountKey("antiek:investigation_tree"),
       JSON.stringify({ "grand-1": "other" }),
     );
     const investigations = [

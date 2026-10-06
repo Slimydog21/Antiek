@@ -25,12 +25,14 @@
 
 import type { WorkspaceSnapshot } from "./panel.types";
 import type { LayoutPreset } from "./panel.types";
+import { accountStorageKey, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 const LS_PREFIX = "antiek.workspace.";
 
 /** What gets serialised to disk. Strict subset of WorkspaceSnapshot. */
 export type PersistedSnapshot = {
   schemaVersion: 1;
+  ownerSubject?: string;
   panels: WorkspaceSnapshot["panels"];
   dockLeftIds: string[];
   dockRightIds: string[];
@@ -43,16 +45,18 @@ export type PersistScope =
   | { kind: "route"; route: string }
   | { kind: "investigation"; id: string };
 
-function lsKey(scope: PersistScope): string {
-  if (scope.kind === "global") return LS_PREFIX + "global";
-  if (scope.kind === "route") return LS_PREFIX + "route." + scope.route;
-  return LS_PREFIX + "inv." + scope.id;
+function lsKey(scope: PersistScope): string | null {
+  const suffix = scope.kind === "global" ? "global"
+    : scope.kind === "route" ? "route." + scope.route : "inv." + scope.id;
+  return accountStorageKey(LS_PREFIX + suffix);
 }
 
 /** Strip transient fields. */
 export function project(snapshot: WorkspaceSnapshot): PersistedSnapshot {
+  const subject = workspaceOwnerSession().subject;
   return {
     schemaVersion: 1,
+    ...(subject === null ? {} : { ownerSubject: subject }),
     panels: snapshot.panels,
     dockLeftIds: snapshot.dockLeftIds,
     dockRightIds: snapshot.dockRightIds,
@@ -114,11 +118,14 @@ export function applyOver(
 /** Read a snapshot from localStorage. Returns null on miss / parse error. */
 export function readScope(scope: PersistScope): PersistedSnapshot | null {
   if (typeof window === "undefined") return null;
+  const key = lsKey(scope);
+  if (key === null) return null;
   try {
-    const raw = window.localStorage.getItem(lsKey(scope));
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedSnapshot;
     if (typeof parsed !== "object" || parsed === null) return null;
+    if (parsed.ownerSubject !== workspaceOwnerSession().subject) return null;
     return parsed;
   } catch {
     return null;
@@ -128,8 +135,11 @@ export function readScope(scope: PersistScope): PersistedSnapshot | null {
 /** Write a snapshot to localStorage. Silent on quota errors. */
 export function writeScope(scope: PersistScope, snapshot: PersistedSnapshot): void {
   if (typeof window === "undefined") return;
+  const key = lsKey(scope);
+  if (key === null) return;
+  if (snapshot.ownerSubject !== workspaceOwnerSession().subject) return;
   try {
-    window.localStorage.setItem(lsKey(scope), JSON.stringify(snapshot));
+    window.localStorage.setItem(key, JSON.stringify(snapshot));
   } catch {
     // Quota exceeded or storage disabled — silent fail; the workspace
     // continues to function in-memory.
@@ -139,8 +149,10 @@ export function writeScope(scope: PersistScope, snapshot: PersistedSnapshot): vo
 /** Delete a scope's stored snapshot. */
 export function clearScope(scope: PersistScope): void {
   if (typeof window === "undefined") return;
+  const key = lsKey(scope);
+  if (key === null) return;
   try {
-    window.localStorage.removeItem(lsKey(scope));
+    window.localStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -150,12 +162,14 @@ export function clearScope(scope: PersistScope): void {
  *  palette command. Returns the count of keys removed. */
 export function clearAll(): number {
   if (typeof window === "undefined") return 0;
+  const ownerSuffix = accountStorageKey("");
+  if (ownerSuffix === null) return 0;
   let count = 0;
   try {
     const keys: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
-      if (k && k.startsWith(LS_PREFIX)) keys.push(k);
+      if (k && k.startsWith(LS_PREFIX) && k.endsWith(ownerSuffix)) keys.push(k);
     }
     for (const k of keys) {
       window.localStorage.removeItem(k);
@@ -197,7 +211,9 @@ export function readWsFromUrl(): PersistedSnapshot | null {
   const usp = new URLSearchParams(window.location.search);
   const raw = usp.get("ws");
   if (!raw) return null;
-  return decodeWsParam(raw);
+  const snapshot = decodeWsParam(raw);
+  const owner = workspaceOwnerSession().subject;
+  return owner !== null && snapshot?.ownerSubject === owner ? snapshot : null;
 }
 
 /** Strip the `ws=` query param from the current URL without a reload. */
@@ -278,8 +294,10 @@ const EMPTY_CUSTOM_HOTKEYS: PersistedCustomHotkeys = {
  *  parse error, or schema-version mismatch (forward-compat: ignore + log). */
 export function readCustomHotkeys(): PersistedCustomHotkeys {
   if (typeof window === "undefined") return { ...EMPTY_CUSTOM_HOTKEYS };
+  const key = accountStorageKey(CUSTOM_HOTKEYS_KEY);
+  if (key === null) return { ...EMPTY_CUSTOM_HOTKEYS };
   try {
-    const raw = window.localStorage.getItem(CUSTOM_HOTKEYS_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return { ...EMPTY_CUSTOM_HOTKEYS };
     const parsed = JSON.parse(raw) as PersistedCustomHotkeys;
     if (typeof parsed !== "object" || parsed === null) {
@@ -305,9 +323,11 @@ export function readCustomHotkeys(): PersistedCustomHotkeys {
 /** Write the custom-hotkeys blob. Silent on quota errors. */
 export function writeCustomHotkeys(blob: PersistedCustomHotkeys): void {
   if (typeof window === "undefined") return;
+  const key = accountStorageKey(CUSTOM_HOTKEYS_KEY);
+  if (key === null) return;
   try {
     window.localStorage.setItem(
-      CUSTOM_HOTKEYS_KEY,
+      key,
       JSON.stringify({ schemaVersion: 1, bindings: blob.bindings }),
     );
   } catch {
@@ -318,8 +338,10 @@ export function writeCustomHotkeys(blob: PersistedCustomHotkeys): void {
 /** Delete the custom-hotkeys blob (reset-to-defaults). */
 export function clearCustomHotkeys(): void {
   if (typeof window === "undefined") return;
+  const key = accountStorageKey(CUSTOM_HOTKEYS_KEY);
+  if (key === null) return;
   try {
-    window.localStorage.removeItem(CUSTOM_HOTKEYS_KEY);
+    window.localStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -430,8 +452,10 @@ export interface PersistedTabProject {
  *  mismatch, or an empty value — the default project is the failure mode. */
 export function readTabProject(): string | null {
   if (typeof window === "undefined") return null;
+  const key = accountStorageKey(TAB_PROJECT_KEY);
+  if (key === null) return null;
   try {
-    const raw = window.localStorage.getItem(TAB_PROJECT_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedTabProject;
     if (typeof parsed !== "object" || parsed === null || parsed.schemaVersion !== 1) {
@@ -455,9 +479,11 @@ export function readTabProject(): string | null {
 /** Write the selection blob. Silent on quota errors. */
 export function writeTabProject(projectId: string): void {
   if (typeof window === "undefined") return;
+  const key = accountStorageKey(TAB_PROJECT_KEY);
+  if (key === null) return;
   try {
     window.localStorage.setItem(
-      TAB_PROJECT_KEY,
+      key,
       JSON.stringify({ schemaVersion: 1, projectId } satisfies PersistedTabProject),
     );
   } catch {
@@ -468,8 +494,10 @@ export function writeTabProject(projectId: string): void {
 /** Delete the selection blob (back to the default project on next load). */
 export function clearTabProject(): void {
   if (typeof window === "undefined") return;
+  const key = accountStorageKey(TAB_PROJECT_KEY);
+  if (key === null) return;
   try {
-    window.localStorage.removeItem(TAB_PROJECT_KEY);
+    window.localStorage.removeItem(key);
   } catch {
     // ignore
   }

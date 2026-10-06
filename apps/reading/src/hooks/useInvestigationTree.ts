@@ -1,3 +1,4 @@
+import { accountStorageKey } from "../lib/accountWorkspaceOwner";
 import { useEffect, useMemo, useState } from "react";
 
 import type { InvestigationSummary } from "../lib/api";
@@ -90,10 +91,12 @@ export function recordSpawnRelationship(
   childId: string,
   parentId: string,
 ): void {
+  const key = accountStorageKey(STORAGE_KEY);
+  if (key === null) return;
   const current = readLocalTree();
   current[childId] = parentId;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    window.localStorage.setItem(key, JSON.stringify(current));
   } catch {
     // localStorage unavailable (private mode); the substrate's own
     // INVESTIGATION_SPAWNED_FROM event still carries the relationship.
@@ -101,8 +104,10 @@ export function recordSpawnRelationship(
 }
 
 function readLocalTree(): TreeMap {
+  const key = accountStorageKey(STORAGE_KEY);
+  if (key === null) return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return {};

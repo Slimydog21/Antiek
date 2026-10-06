@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../testAccountOwner";
 /**
  * ResearchWorkstation.shell.test.tsx — MS-01 F2, F3 and F5 on the real
  * Research route.
@@ -154,10 +155,10 @@ describe("F3 — the per-investigation layout key is written and reset", () => {
     });
     const keys = lsKeys();
     expect(keys, `the layout must be saved under this investigation's key (keys: ${keys.join(", ")})`).toContain(
-      "antiek.workspace.inv.abc",
+      unitAccountKey("antiek.workspace.inv.abc"),
     );
     expect(keys, "no investigation may write the shared route key").not.toContain(
-      "antiek.workspace.route./inv/:id",
+      unitAccountKey("antiek.workspace.route./inv/:id"),
     );
 
     // Run the palette command the way the operator does.
@@ -174,7 +175,7 @@ describe("F3 — the per-investigation layout key is written and reset", () => {
     act(() => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
-    expect(lsKeys()).not.toContain("antiek.workspace.inv.abc");
+    expect(lsKeys()).not.toContain(unitAccountKey("antiek.workspace.inv.abc"));
   });
 });
 

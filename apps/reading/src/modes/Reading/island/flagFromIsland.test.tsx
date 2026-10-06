@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../../testAccountOwner";
 /**
  * flagFromIsland.test.tsx — the diligence flag affordance on the unit-2
  * island outcome card (autonomous-diligence SPR-01, on the island stack):
@@ -215,7 +216,7 @@ async function renderReader() {
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.removeItem("antiek.island.hidden");
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
   vi.stubGlobal("fetch", apiFetchMock);
   apiFetchMock.mockReset();
   getBookMock.mockReset().mockResolvedValue(makeDetail());

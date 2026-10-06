@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../testAccountOwner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dispatchAiAction, parseAssistantReply } from "./aiActions";
@@ -177,12 +178,12 @@ describe("AI tool-call · full dispatch round-trip", () => {
     );
     dispatchAiAction(actions[0]);
 
-    const stored = window.localStorage.getItem("antiek.notebook." + nbId);
+    const stored = window.localStorage.getItem(unitAccountKey("antiek.notebook." + nbId));
     expect(stored).toContain("antiek-note");
     expect(stored).toContain("hi from AI");
 
     const etag = window.localStorage.getItem(
-      "antiek.notebook." + nbId + ".etag",
+      unitAccountKey("antiek.notebook." + nbId) + ".etag",
     );
     expect(parseInt(etag ?? "0", 10)).toBeGreaterThan(0);
 
@@ -190,8 +191,8 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(events[0].notebookId).toBe(nbId);
 
     window.removeEventListener("antiek:notebook:appended", listener);
-    window.localStorage.removeItem("antiek.notebook." + nbId);
-    window.localStorage.removeItem("antiek.notebook." + nbId + ".etag");
+    window.localStorage.removeItem(unitAccountKey("antiek.notebook." + nbId));
+    window.localStorage.removeItem(unitAccountKey("antiek.notebook." + nbId) + ".etag");
   });
 
   it("toast dispatches the lemon toast queue before returning", () => {

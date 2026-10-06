@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    setupFiles: ["./src/testAccountOwner.ts"],
     // e2e/ holds Playwright specs (*.spec.ts, see playwright.config.ts
     // testMatch) AND pure-function unit calibrations named *.test.ts. The
     // latter matched NEITHER runner: outside this include glob, and excluded
