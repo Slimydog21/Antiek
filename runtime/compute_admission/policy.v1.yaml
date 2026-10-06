@@ -1,0 +1,26 @@
+schema_version: antiek.compute_policy.v1
+policy_version: 1.0.0
+backends:
+  local:
+    kind: in_process
+    price_usd_per_unit: null
+pools:
+  local:
+    slots: 1
+classes:
+  dev.test_suite:
+    enabled: true
+    backend: local
+    pool: local
+    slot_cost: 1
+    acu_units: 1
+  research.batch_gpu:
+    enabled: false
+    backend: local
+    pool: local
+    slot_cost: 1
+    acu_units: 1
+tenants: {}
+leases:
+  heartbeat_interval_s: 10
+  stale_after_s: 30
