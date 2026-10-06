@@ -457,7 +457,9 @@ def execute_owned_http(
         headers={"Accept": "application/json", "Accept-Encoding": "identity",
                  "User-Agent": "Antiek-OwnedCanonical/1"},
     ) as client:
-        response = client.post(built.url, headers=built.headers, json=built.body)
+        response = client.post(
+            built.url, headers=built.headers, json=built.body, timeout=_TIMEOUT_SECONDS,
+        )
         input_tokens, output_tokens, response_id = _response_facts(snapshot_policy, response, secret)
         latency = int((time.monotonic() - started) * 1000)
         # Use the shared parser implementation, not an instance override that
