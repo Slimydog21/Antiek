@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonModal } from "../../components/lemon/LemonModal";
@@ -467,21 +467,41 @@ function AppendProseAffordance({
   const [dialog, setDialog] = useState<AppendKind | null>(null);
   const [primary, setPrimary] = useState<string>("");
   const [secondary, setSecondary] = useState<string>("");
+  const [appendState, setAppendState] = useState<
+    { kind: "idle" } | { kind: "saving" } | { kind: "failed"; message: string }
+  >({ kind: "idle" });
+  const inFlight = useRef(false);
+  const saving = appendState.kind === "saving";
 
   const openDialog = (kind: AppendKind) => {
+    if (inFlight.current) return;
     setPrimary("");
     setSecondary("");
+    setAppendState({ kind: "idle" });
     setDialog(kind);
     setPickerOpen(false);
   };
 
-  const submit = () => {
-    if (!dialog) return;
+  const closeDialog = () => {
+    if (!inFlight.current) setDialog(null);
+  };
+
+  const submit = async () => {
+    if (!dialog || inFlight.current) return;
     const form = APPEND_FORMS[dialog];
     const value = primary.trim();
     if (!value) return; // primary field is required for every kind
-    void onAppendBlock(form.build(value, secondary.trim()));
-    setDialog(null);
+    inFlight.current = true;
+    setAppendState({ kind: "saving" });
+    try {
+      await onAppendBlock(form.build(value, secondary.trim()));
+      setAppendState({ kind: "idle" });
+      setDialog(null);
+    } catch (e: unknown) {
+      setAppendState({ kind: "failed", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      inFlight.current = false;
+    }
   };
 
   const form = dialog ? APPEND_FORMS[dialog] : null;
@@ -506,23 +526,24 @@ function AppendProseAffordance({
       )}
 
       {/* Append dialog — the house modal, not window.prompt. Submit on
-          Enter (single-line fields) or the button; Esc/outside-click cancels. */}
+          Enter (single-line fields) or the button; Esc/outside-click cancels
+          unless a submitted request is still pending. */}
       <LemonModal
         open={dialog !== null}
-        onClose={() => setDialog(null)}
+        onClose={closeDialog}
         title={form?.title ?? "Add block"}
         size="sm"
         footer={
           <div className="flex items-center justify-end gap-2">
-            <LemonButton variant="secondary" onClick={() => setDialog(null)}>
+            <LemonButton variant="secondary" disabled={saving} onClick={closeDialog}>
               Cancel
             </LemonButton>
             <LemonButton
               variant="primary"
-              disabled={!primary.trim()}
-              onClick={submit}
+              disabled={saving || !primary.trim()}
+              onClick={() => { void submit(); }}
             >
-              {form?.submitLabel ?? "Add"}
+              {saving ? "Adding…" : form?.submitLabel ?? "Add"}
             </LemonButton>
           </div>
         }
@@ -532,7 +553,7 @@ function AppendProseAffordance({
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
-              submit();
+              void submit();
             }}
           >
             <label className="block space-y-1">
@@ -541,6 +562,7 @@ function AppendProseAffordance({
               </span>
               {form.primaryMultiline ? (
                 <textarea
+                  disabled={saving}
                   value={primary}
                   onChange={(e) => setPrimary(e.target.value)}
                   rows={4}
@@ -549,6 +571,7 @@ function AppendProseAffordance({
               ) : (
                 <input
                   type="text"
+                  disabled={saving}
                   value={primary}
                   onChange={(e) => setPrimary(e.target.value)}
                   className="w-full text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
@@ -562,11 +585,15 @@ function AppendProseAffordance({
                 </span>
                 <input
                   type="text"
+                  disabled={saving}
                   value={secondary}
                   onChange={(e) => setSecondary(e.target.value)}
                   className="w-full text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
                 />
               </label>
+            )}
+            {appendState.kind === "failed" && (
+              <p role="alert" className="text-sm text-emperor">{appendState.message}</p>
             )}
           </form>
         )}
