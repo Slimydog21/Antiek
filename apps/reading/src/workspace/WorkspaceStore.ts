@@ -140,12 +140,14 @@ function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
   return s.fullscreenPane === "left" ? mode === "docked-right" : mode !== "docked-right";
 }
 
+const initialLayoutPreset = readLayoutPreset();
+writeLayoutPreset(initialLayoutPreset);
+
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
-  // Cockpit chrome (C2): the persisted preset (default "docked" — nothing
-  // changes until the operator chooses the inset); the pane states are
-  // transient, never written to disk.
-  layoutPreset: readLayoutPreset(),
+  // Persist the resolved preset on startup, including a fresh workspace's
+  // default. Pane focus and fullscreen remain transient.
+  layoutPreset: initialLayoutPreset,
   fullscreenPane: null,
   focusedPane: null,
 

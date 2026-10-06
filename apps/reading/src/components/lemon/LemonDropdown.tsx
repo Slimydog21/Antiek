@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
@@ -54,10 +55,13 @@ export function LemonDropdown({
       }
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "dropdown.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
     };
   }, [open, close]);
 

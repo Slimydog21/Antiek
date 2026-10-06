@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
@@ -165,8 +166,11 @@ export default function FloatMenu({
         setView({ kind: "menu" });
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "reader.float-menu.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]") && (!topModal() || !!topModal()?.contains(rootRef.current)),
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, [selection]);
 
   // Rigor #3: empty / collapsed / out-of-scope selection → no window. The host

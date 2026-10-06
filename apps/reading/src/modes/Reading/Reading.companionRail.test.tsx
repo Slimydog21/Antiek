@@ -347,6 +347,8 @@ beforeEach(() => {
     reconnects: 0,
   });
   useWorkspace.getState().reset();
+  // This suite exercises the reader's own rail, not the cockpit companion.
+  useWorkspace.getState().setLayoutPreset("docked");
   resetReadingStateBus();
 });
 
