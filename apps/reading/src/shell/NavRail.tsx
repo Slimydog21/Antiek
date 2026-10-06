@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -23,6 +23,7 @@ import {
   ariaKeyshortcutsFor,
   bindingForProduct,
   emitProductActivate,
+  PRODUCT_ACTIVATE_EVENT,
   formatBinding,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
@@ -275,6 +276,17 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
+  useEffect(() => {
+    const onProductActivate = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail: unknown = event.detail;
+      if (detail && typeof detail === "object" && "productId" in detail && "source" in detail
+        && detail.productId === "more" && detail.source === "hotkey") setLauncherOpen(true);
+    };
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
+    return () => window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
+  }, []);
+
   // The left rail is the phone overlay (absolute, behind a toggle) only at
   // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
   // panes (C2; R3-M4). The bottom dock never collapses, so this only

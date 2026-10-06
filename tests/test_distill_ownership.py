@@ -216,3 +216,38 @@ def test_html_artifact_graph_and_opaque_fields_are_owner_scoped(
             assert record[field] is opaque_allowed
         assert record["passage_status"] == (200 if record["caller"] == "bob" else 404)
         assert record["passage_body"] == (BODY if record["caller"] == "bob" else None)
+
+
+def test_readable_distillation_uses_open_writer_transaction(boundary_env):
+    from roles.note_taker.distill_query import readable_distillation_for
+
+    db, events = boundary_env
+    seed_document(db, "transaction-source", "alice", "personal_reading")
+    node = seed_product("transaction-research", "alice", "transaction-source")
+    with connect_write(db, purpose="test/distill-caller-transaction") as con, con.transaction():
+        con.execute(
+            "UPDATE nodes SET canonical_label = 'Uncommitted refined insight.' "
+            "WHERE node_id = ?", [node],
+        )
+        view = readable_distillation_for(
+            "transaction-research", owner_user_id="alice", events_dir=events, con=con,
+        )
+        assert [n.text for n in view.insights] == ["Uncommitted refined insight."]
+        con.execute(
+            "UPDATE documents SET owner_user_id = 'bob' "
+            "WHERE document_id = 'transaction-source'"
+        )
+        denied = readable_distillation_for(
+            "transaction-research", owner_user_id="alice", events_dir=events, con=con,
+        )
+        assert denied.empty
+        assert denied.unavailable_count == 1
+        # The reader neither closes nor commits the caller's transaction.
+        con.execute(
+            "UPDATE documents SET owner_user_id = 'alice' "
+            "WHERE document_id = 'transaction-source'"
+        )
+    reopened = readable_distillation_for(
+        "transaction-research", owner_user_id="alice", db_path=db, events_dir=events,
+    )
+    assert [n.text for n in reopened.insights] == ["Uncommitted refined insight."]

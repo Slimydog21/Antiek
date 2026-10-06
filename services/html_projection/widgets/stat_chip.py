@@ -62,7 +62,7 @@ def _delta_tone(delta: object) -> str:
     return tokens.LEMON_NEUTRALS[2]
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     label = escape_text(_text(data.get("label")))
     value = escape_text(_text(data.get("value")))
     accent = _tone_color(data.get("tone"))

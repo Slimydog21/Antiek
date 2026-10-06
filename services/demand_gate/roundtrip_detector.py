@@ -33,7 +33,7 @@ from services.antiek_format.signature import canonical_json_bytes
 ROUNDTRIP_EVENT_TYPE: str = "demand_gate.roundtrip_detected"
 
 
-def content_hash(content_tiptap: dict) -> str:
+def content_hash(content_tiptap: dict[str, object]) -> str:
     """SHA-256 of the CANONICAL content bytes — the identity that survives the
     zip envelope and matches what the signature covers. Canonicalises first
     (the same `_canonical_tiptap_node` the writer applies) so a raw dict
@@ -49,7 +49,7 @@ class RoundTripResult:
     document_id: str
     is_roundtrip: bool
     content_hash: str
-    event: dict | None  # the typed detection event, or None when novel
+    event: dict[str, str | list[str] | None] | None  # the typed detection event, or None when novel
 
 
 class ExportRegistry:
@@ -66,7 +66,7 @@ class ExportRegistry:
         self._by_doc: dict[str, set[str]] = {}
         self._exporters: dict[tuple[str, str], set[str]] = {}
 
-    def record_export(self, document_id: str, content_tiptap: dict, *, exporter_id: str) -> str:
+    def record_export(self, document_id: str, content_tiptap: dict[str, object], *, exporter_id: str) -> str:
         """Record an export by ``exporter_id``; returns the content hash recorded.
         An export with no exporter cannot be attributed, so it is refused."""
         if not isinstance(exporter_id, str) or not exporter_id.strip():
@@ -95,7 +95,7 @@ class ExportRegistry:
 
 def classify_roundtrip(
     document_id: str,
-    content_tiptap: dict,
+    content_tiptap: dict[str, object],
     registry: ExportRegistry,
     *,
     user_id: str | None = None,
@@ -126,7 +126,7 @@ def classify_roundtrip(
         exported_by = []
 
     is_roundtrip = classification != "novel"
-    event: dict | None = None
+    event: dict[str, str | list[str] | None] | None = None
     if is_roundtrip:
         event = {
             "action_type": ROUNDTRIP_EVENT_TYPE,
