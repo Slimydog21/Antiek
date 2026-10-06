@@ -67,6 +67,7 @@ class SessionClaims:
     user_id: str
     email: str
     issued_at: int  # unix seconds
+    expires_at: int | None = None  # only the verified signed exp claim
 
 
 # ── Internals ────────────────────────────────────────────────────────
@@ -230,13 +231,17 @@ def verify_session_cookie(
         expired_exc=InvalidSessionCookie,
         invalid_exc=InvalidSessionCookie,
     )
+    verified_expiry: int | None = None
     if "exp" in payload:
         expiry = payload["exp"]
         if type(expiry) is not int or int(time.time()) >= expiry:
             raise InvalidSessionCookie("session expired or expiry malformed")
+        verified_expiry = expiry
     user_id = payload.get("user_id")
     email = payload.get("email")
     iat = payload.get("iat")
     if not isinstance(user_id, str) or not isinstance(email, str) or not isinstance(iat, int):
         raise InvalidSessionCookie("session claims malformed")
-    return SessionClaims(user_id=user_id, email=email, issued_at=iat)
+    return SessionClaims(
+        user_id=user_id, email=email, issued_at=iat, expires_at=verified_expiry,
+    )

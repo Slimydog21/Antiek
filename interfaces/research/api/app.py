@@ -1827,8 +1827,8 @@ def create_app(
         from substrate.auth.accounts import (
             AccountStoreError,
             account_for_session,
+            account_for_verified_legacy_session,
             account_registry_active,
-            legacy_account_for_session,
         )
 
         account_mode = account_registry_active()
@@ -1952,7 +1952,11 @@ def create_app(
                     if account_mode:
                         try:
                             if cookie_claims.user_id == "__operator__" and cookie_email in operator_emails:
-                                account = await asyncio.to_thread(legacy_account_for_session, cookie_email)
+                                account = await asyncio.to_thread(
+                                    account_for_verified_legacy_session,
+                                    cookie_claims,
+                                    operator_emails=operator_emails,
+                                )
                             else:
                                 account = await asyncio.to_thread(
                                     account_for_session, cookie_claims.user_id, cookie_email,
