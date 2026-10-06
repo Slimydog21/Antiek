@@ -28,7 +28,7 @@ import {
 import { posthog, posthogEnabled } from "./posthogClient";
 import { setReadingStateOwner } from "../hooks/useReadingState";
 import { setSectionProseOwner, suspendSectionProseDispatch } from "../modes/Write/sectionProseOwner";
-import { setWorkspaceOwner, useWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import { beforeWorkspaceOwnerChange, setWorkspaceOwner, useWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import "../workspace/WorkspaceStore";
 import "../workspace/tabTreeStore";
 import { useWindows } from "../workspace/windowsStore";
@@ -36,16 +36,43 @@ import { useCompanion } from "../workspace/companionStore";
 import { useWriteOutline } from "../workspace/writeOutlineStore";
 import { clearReadingFocus } from "./readingFocus";
 
+beforeWorkspaceOwnerChange(clearReadingFocus);
+
 function replaceWorkspaceOwner(subject: string | null): void {
   if (workspaceOwnerSession().subject === subject) return;
   setWorkspaceOwner(subject);
   useWindows.getState().reset();
   useCompanion.getState().reset();
   useWriteOutline.getState().reset();
-  clearReadingFocus();
 }
 
 export const AUTH_SESSION_CHANGE_KEY = "antiek.auth.session-change.v1";
+const LOGOUT_RETIREMENT_KEY = "antiek.auth.logout-retirement.v1";
+
+function persistedLogoutRetirement(): string | null | undefined {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(LOGOUT_RETIREMENT_KEY);
+  } catch {
+    return undefined;
+  }
+  if (raw === null) return undefined;
+  if (raw.length > 512) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLogoutRetirement(subject: string | null | undefined): void {
+  try {
+    if (subject === undefined) window.localStorage.removeItem(LOGOUT_RETIREMENT_KEY);
+    else window.localStorage.setItem(LOGOUT_RETIREMENT_KEY, JSON.stringify(subject));
+  } catch { /* The current document still refuses its retired cookie. */ }
+}
+
 function notifyAuthSessionChange(): void {
   try {
     window.localStorage.setItem(AUTH_SESSION_CHANGE_KEY, `${Date.now()}:${Math.random()}`);
@@ -96,7 +123,7 @@ export type AuthState =
 export interface AuthContextValue {
   state: AuthState;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
-  refresh: () => Promise<void>;
+  refresh: (options?: { afterSignIn: true }) => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
   signOut: () => Promise<void>;
 }
@@ -264,8 +291,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
   const refreshEpochRef = useRef(0);
   const validatedSubjectRef = useRef<string | null>(null);
+  const logoutPendingRef = useRef(false);
+  const retiredSubjectRef = useRef<string | null | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { afterSignIn: true }) => {
+    if (logoutPendingRef.current) return;
     const epoch = ++refreshEpochRef.current;
     let answer: IdentityAnswer;
     try {
@@ -287,6 +317,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
+    const persistedRetirement = persistedLogoutRetirement();
+    if (persistedRetirement !== undefined) retiredSubjectRef.current = persistedRetirement;
+    if (identity && retiredSubjectRef.current !== undefined
+      && (retiredSubjectRef.current === null || identity.user_id === retiredSubjectRef.current)
+      && options?.afterSignIn !== true) {
+      // A newer request is still using the retired cookie. An automatic
+      // refresh cannot undo logout, including a failed logout transport.
+      setState({ status: "unauthenticated" });
+      return;
+    }
+    if (identity) {
+      retiredSubjectRef.current = undefined;
+      persistLogoutRetirement(undefined);
+    }
     // An inferred (CORS-masked) 401 is not proof of a null user: leave the
     // reading-state owner as it was, the pre-F-03 behaviour for transport
     // failures, so pending work survives a blip that /health happened to
@@ -315,14 +359,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // A logout invalidates every identity answer already in flight; it must
     // never be reversed by an older /auth/me response.
     refreshEpochRef.current += 1;
+    const logoutEpoch = refreshEpochRef.current;
+    logoutPendingRef.current = true;
+    retiredSubjectRef.current = validatedSubjectRef.current;
+    persistLogoutRetirement(retiredSubjectRef.current);
     validatedSubjectRef.current = null;
     replaceWorkspaceOwner(null);
     setReadingStateOwner(null);
     setSectionProseOwner(null);
     setState({ status: "unauthenticated" });
     notifyAuthSessionChange();
-    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
-    notifyAuthSessionChange();
+    try {
+      const response = await apiFetch(authUrl("/auth/logout"), { method: "POST" });
+      if (!response.ok) throw new Error("Antiek could not finish signing out. Try again.");
+      notifyAuthSessionChange();
+    } finally {
+      if (refreshEpochRef.current === logoutEpoch) logoutPendingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -332,6 +385,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let lastFocusRefresh = 0;
     const invalidate = () => {
+      if (logoutPendingRef.current) return;
       // The signal proves no identity. Hide and retire old rendered work,
       // preserve its stored partition, then verify the shared cookie.
       suspendSectionProseDispatch();

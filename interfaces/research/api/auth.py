@@ -569,17 +569,10 @@ def register_auth_routes(
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
         attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if await _email_allowed(email):
-            # Guard token creation, link construction and delivery together.
-            # Eligible accounts must have the same response as ineligible addresses,
-            # including when any delivery step fails -- otherwise membership
-            # oracle this block was fixed once already to remove, through a different
-            # exception. `get_email_provider()` raises on a misconfigured provider, which
-            # is the ordinary state of a dev or freshly-provisioned box, and
-            # `mint_magic_link_token` can raise on a token/key problem.
-            #
-            # The rule: everything reachable only by an allowlisted address must fail the
-            # same way an unlisted address succeeds. Whatever breaks, the caller gets the
-            # same 200 every other caller gets, and the operator gets the type in the log.
+            # Token creation, link construction and delivery can each fail.
+            # Keep their response identical to an ineligible address so a
+            # provider or key failure cannot reveal account membership.
+            # Log only the failure type, never the address or login proof.
             try:
                 token = (
                     mint_magic_link_token(email, attempt_id=attempt_id)
@@ -814,11 +807,18 @@ def register_auth_routes(
         tags=["auth"],
     )
     async def auth_passkey_status(request: Request) -> PasskeyStatusResponse:
-        credentials = list_credentials()
         # A logged-out browser only needs the branch bit to choose its primary
         # action.  Credential counts are account metadata, so return them only
         # to an established session.
         authenticated = bool(getattr(request.state, "user_id", None))
+        account_mode = account_registry_active()
+        if account_mode and not authenticated:
+            # Advertise the sign-in capability, not another account's inventory.
+            return PasskeyStatusResponse(available=True, count=None)
+        credentials = list_credentials()
+        if account_mode:
+            subject = getattr(request.state, "user_id", None)
+            credentials = [item for item in credentials if item.user_id == subject]
         return PasskeyStatusResponse(
             available=bool(credentials),
             count=len(credentials) if authenticated else None,

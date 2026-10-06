@@ -1,8 +1,8 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_SESSION_CHANGE_KEY, AuthProvider, useAuth, type AuthContextValue } from "./auth";
+import { AUTH_SESSION_CHANGE_KEY, AuthProvider, claimLogin, useAuth, type AuthContextValue } from "./auth";
 import { setWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { useWorkspaceHydration } from "../workspace/useWorkspaceHydration";
@@ -55,6 +55,7 @@ beforeEach(() => {
     const path = new URL(String(input), "http://localhost").pathname;
     if (path === "/auth/me") return authReply();
     if (path === "/auth/logout") return logoutReply();
+    if (path === "/auth/claim") return response(200, { setup_passkey: false, next: "/inv/shared" });
     if (path === "/health") return response(200);
     throw new Error(`Unexpected source-control request: ${path}`);
   }));
@@ -141,5 +142,102 @@ describe("AuthProvider retires private workspace bodies", () => {
     await act(async () => { finish(identity("account-a")); await pending; });
     expect(screen.getByTestId("identity").textContent).toBe("unauthenticated");
     expect(useWorkspace.getState().panels).toEqual({});
+  }, 15000);
+
+  it("pending logout refuses automatic refresh, focus and cross-tab re-admission", async () => {
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    let finish: (answer: Response) => void = () => { throw new Error("logout not sent"); };
+    logoutReply = () => new Promise((done) => { finish = done; });
+    const fetches = vi.mocked(fetch);
+    const identityCalls = () => fetches.mock.calls.filter(([input]) => String(input).endsWith("/auth/me")).length;
+    const before = identityCalls();
+    let pending: Promise<void> | null = null;
+    act(() => { pending = auth().signOut(); });
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: AUTH_SESSION_CHANGE_KEY, oldValue: "before", newValue: "old-cookie-still-valid",
+      }));
+      await auth().refresh();
+    });
+    expect(identityCalls()).toBe(before);
+    expect(workspaceOwnerSession().subject).toBeNull();
+    expect(screen.getByTestId("identity").textContent).toBe("unauthenticated");
+    expect(screen.queryByTestId("private-panels")).toBeNull();
+    await act(async () => { finish(new Response(null, { status: 204 })); await pending; });
+  }, 15000);
+
+  it.each([
+    { name: "network rejection", reply: async (): Promise<Response> => { throw new TypeError("controlled logout rejection"); } },
+    { name: "non-2xx response", reply: async () => response(503) },
+  ])("$name cannot automatically restore the retired A cookie", async ({ reply }) => {
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    logoutReply = reply;
+    await act(async () => { await expect(auth().signOut()).rejects.toThrow(); });
+    // The external boundary still answers with the old A session.
+    await refresh(async () => identity("account-a"));
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await waitFor(() => expect(screen.getByTestId("identity").textContent).toBe("unauthenticated"), { timeout: 10000 });
+    expect(workspaceOwnerSession().subject).toBeNull();
+    expect(useWorkspace.getState().panels).toEqual({});
+    expect(screen.queryByTestId("private-panels")).toBeNull();
+  }, 15000);
+
+  it("a successful interactive claim still requires verified /auth/me to recover A", async () => {
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    await act(async () => { await auth().signOut(); });
+    await refresh(async () => identity("account-a"));
+    expect(workspaceOwnerSession().subject).toBeNull();
+    let finish: (answer: Response) => void = () => { throw new Error("proof refresh not sent"); };
+    authReply = () => new Promise((done) => { finish = done; });
+    let pending: Promise<void> | null = null;
+    await act(async () => {
+      // Real claim helper, synthetic transport proof; no real email/account.
+      const proof = await claimLogin("unit-attempt", "unit-claim-secret", "1234");
+      expect(proof.status).toBe("authenticated");
+      pending = auth().refresh({ afterSignIn: true });
+    });
+    expect(workspaceOwnerSession().subject).toBeNull();
+    expect(screen.queryByTestId("private-panels")).toBeNull();
+    await act(async () => { finish(identity("account-a")); await pending; });
+    expect(workspaceOwnerSession().subject).toBe("account-a");
+    await waitFor(() => expect(screen.getByTestId("private-panels").textContent).toContain("A private notebook"), { timeout: 10000 });
+    expect(screen.getByTestId("private-panels").textContent).toContain("A private provider");
+  }, 15000);
+
+  it("reload after failed logout denies the old A cookie until interactive proof and /auth/me recover A", async () => {
+    const mounted = mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    logoutReply = async () => response(503);
+    await act(async () => { await expect(auth().signOut()).rejects.toThrow(); });
+    mounted.unmount();
+    controller = null;
+    // Keep the browser's storage and old-cookie transport answer intact.
+    mount();
+    await screen.findByText("unauthenticated", {}, { timeout: 10000 });
+    expect(workspaceOwnerSession().subject).toBeNull();
+    expect(screen.queryByTestId("private-panels")).toBeNull();
+    await refresh(async () => identity("account-a"));
+    expect(workspaceOwnerSession().subject).toBeNull();
+    let finish: (answer: Response) => void = () => { throw new Error("recovery proof refresh not sent"); };
+    authReply = () => new Promise((done) => { finish = done; });
+    let pending: Promise<void> | null = null;
+    await act(async () => {
+      const proof = await claimLogin("unit-returning-attempt", "unit-returning-claim-secret", "1234");
+      expect(proof.status).toBe("authenticated");
+      pending = auth().refresh({ afterSignIn: true });
+    });
+    expect(workspaceOwnerSession().subject).toBeNull();
+    await act(async () => { finish(identity("account-a")); await pending; });
+    await waitFor(() => expect(screen.getByTestId("private-panels").textContent).toContain("A private notebook"), { timeout: 10000 });
+    expect(screen.getByTestId("private-panels").textContent).toContain("A private provider");
+    expect(workspaceOwnerSession().subject).toBe("account-a");
   }, 15000);
 });

@@ -453,3 +453,86 @@ def test_unsupported_unicode_address_cannot_alias_an_ascii_operator(account_api,
     assert response.status_code == 422
     assert not sender.sent
     assert not (root / "accounts.json").exists()
+
+
+def test_public_passkey_status_never_counts_an_operators_credentials(account_api, monkeypatch):
+    from types import SimpleNamespace
+
+    app, sender, _root = account_api
+    alice, _payload, _code = sign_in(app, sender, ALICE)
+    operator, _payload, _code = sign_in(app, sender, OPERATOR)
+    operator_id = operator.get("/auth/me").json()["user_id"]
+    monkeypatch.setattr(
+        "interfaces.research.api.auth.list_credentials",
+        lambda: [SimpleNamespace(user_id=operator_id)],
+    )
+    assert alice.get("/auth/passkey/status").json() == {"available": False, "count": 0}
+    assert operator.get("/auth/passkey/status").json() == {"available": True, "count": 1}
+
+
+@pytest.mark.parametrize("email,legacy", [(ALICE, False), (OPERATOR, True)])
+def test_account_export_and_status_use_only_the_proven_owner(account_api, monkeypatch, email, legacy):
+    from runtime.db_lock import connect_write
+    from substrate.event_log import log_event, trajectory
+    from substrate.graph import default_db_path
+    from substrate.graph.insight_question import promote_insight
+    from substrate.graph.ops import insert_document
+    from substrate.research_artifact.store import ResearchArtifactStore
+
+    app, sender, root = account_api
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(root / "artifacts"))
+    monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    owner, _payload, _code = sign_in(app, sender, email)
+    foreign, _payload, _code = sign_in(app, sender, BOB)
+    owner_id = owner.get("/auth/me").json()["user_id"]
+    stored_owner = "__operator__" if legacy else owner_id
+    investigation = "account-export"
+    with connect_write(default_db_path(), purpose="test/account-export-source") as con:
+        insert_document(
+            con, document_id="account-export-source", document_type="web", source_tier=2,
+            raw_text="OWNED_EXPORT_SOURCE_CONTROL", content_class="personal_reading",
+            owner_user_id=stored_owner,
+        )
+    promote_insight(
+        text="OWNED_EXPORT_FINDING_CONTROL", investigation_id=investigation,
+        source_document_id="account-export-source", owner_user_id=stored_owner,
+    )
+    log_event(investigation, "investigation.start_requested", payload={
+        "question": "Owned account export control", "owner_user_id": stored_owner,
+    })
+
+    def files():
+        return {str(path): path.read_bytes() for path in (root / "artifacts").rglob("*") if path.is_file()}
+
+    before_files, before_events = files(), trajectory(investigation)
+    denied = foreign.post(f"/research/{investigation}/artifact/export", json={"owner_user_id": stored_owner})
+    assert denied.status_code == 403
+    assert files() == before_files and trajectory(investigation) == before_events
+    assert ResearchArtifactStore(default_db_path()).get(investigation) is None
+    assert TestClient(app).post(f"/research/{investigation}/artifact/export").status_code == 401
+
+    exported = owner.post(f"/research/{investigation}/artifact/export")
+    assert exported.status_code == 200, exported.text
+    record = ResearchArtifactStore(default_db_path()).get(investigation)
+    assert record is not None and record.owner_user_id == stored_owner
+    assert b"OWNED_EXPORT_FINDING_CONTROL" in record.source_path.read_bytes()
+    status = owner.get(f"/research/{investigation}/artifact")
+    assert status.status_code == 200
+    assert status.json()["artifact_id"] == exported.json()["artifact_id"]
+    assert foreign.get(f"/research/{investigation}/artifact").status_code == 404
+    before_files, before_events = files(), trajectory(investigation)
+    assert foreign.post(f"/research/{investigation}/artifact/export").status_code == 403
+    assert files() == before_files and trajectory(investigation) == before_events
+    assert owner.post(f"/research/{investigation}/artifact/export").status_code == 200
+
+
+@pytest.mark.parametrize("path", [
+    "/research/account-export/artifact/import-notes",
+    "/research/artifacts/compose",
+    "/research/artifacts/source-merge/restore",
+])
+def test_account_export_admission_does_not_open_unscoped_siblings(account_api, path):
+    app, sender, _root = account_api
+    alice, _payload, _code = sign_in(app, sender, ALICE)
+    assert alice.post(path, json={}).status_code == 403
+    assert alice.get("/research/account-export/artifact/blocks").status_code == 403

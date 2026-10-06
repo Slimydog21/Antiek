@@ -38,6 +38,11 @@ import { useReadingState } from "../../hooks/useReadingState";
 import { fetchDocumentForks } from "../../workspace/forkLineage";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
+  isWorkspaceOwnerSession,
+  useWorkspaceOwner,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
+import {
   createAnchor,
   getAnchorMap,
   linkAnchorInvestigation,
@@ -110,7 +115,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-type BookResource = { documentId: string; ownerEpoch: number };
+type BookResource = { documentId: string; ownerEpoch: number; owner: WorkspaceOwnerSession };
 type LoadedBook = { book: BookDetail; body: FullTextResponse; housePool: BookSummary[] };
 type BookLoad = BookResource & (
   | { kind: "loading"; data: LoadedBook | null }
@@ -128,12 +133,14 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const openTalkOnLoad = searchParams.get("talk") === "1";
 
   const ownerEpoch = usePositionOwnerEpoch();
-  const resource = useMemo(() => ({ documentId, ownerEpoch }), [documentId, ownerEpoch]);
+  const owner = useWorkspaceOwner();
+  const resource = useMemo(() => ({ documentId, ownerEpoch, owner }), [documentId, ownerEpoch, owner]);
   const resourceRef = useRef(resource);
   resourceRef.current = resource;
   const lifetimeRef = useRef<BookLoadLifetime | null>(null);
   const [loadState, setLoadState] = useState<BookLoad>(() => ({ ...resource, kind: "loading", data: null }));
-  const load = loadState.documentId === documentId && loadState.ownerEpoch === ownerEpoch ? loadState : null;
+  const load = loadState.documentId === documentId && loadState.ownerEpoch === ownerEpoch
+    && loadState.owner === owner && owner.subject !== null ? loadState : null;
   const book = load?.data?.book ?? null;
   const body = load?.data?.body ?? null;
   const housePool = load?.data?.housePool ?? [];
@@ -142,7 +149,9 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
 
   const loadBook = useCallback(async (lifetime: BookLoadLifetime) => {
     const attempt = {};
-    const admitted = () => lifetime.active && lifetimeRef.current === lifetime
+    const admitted = () => lifetime.resource.owner.subject !== null
+      && isWorkspaceOwnerSession(lifetime.resource.owner)
+      && lifetime.active && lifetimeRef.current === lifetime
       && lifetime.resource === resource
       && resourceRef.current === lifetime.resource
       && readingPositionOwnerEpoch() === lifetime.resource.ownerEpoch;
@@ -487,7 +496,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
   // Gated books never publish page body (dual structure / issue-3135 class).
   useEffect(() => {
-    if (!documentId) {
+    if (!documentId || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
       clearReadingFocus();
       return;
     }
@@ -505,7 +514,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
     return () => {
       clearReadingFocus();
     };
-  }, [documentId, pageIndex, book?.title, ownerReadable, pages]);
+  }, [documentId, pageIndex, book?.title, ownerReadable, pages, owner]);
 
 
   const selection = useFloatMenuSelection({

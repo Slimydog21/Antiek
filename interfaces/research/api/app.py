@@ -1875,7 +1875,10 @@ def create_app(
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
+        if request.url.path in _OPERATOR_AUTH_OPEN_PATHS and not (
+            account_mode and request.url.path == "/auth/passkey/status"
+            and request.cookies.get(_SESSION_COOKIE_NAME)
+        ):
             return await call_next(request)
         # The outbound Herdr bridge has a narrower credential namespace and
         # scope model than operator auth. Let only its explicit scheme reach
@@ -1979,7 +1982,7 @@ def create_app(
                                 # New routes default to refusal, including tools and paid AI.
                                 path, method = request.url.path, request.method
                                 admitted = (
-                                    path in {"/auth/me", "/auth/whoami", "/auth/logout", "/auth/approve", "/auth/passkeys"}
+                                    path in {"/auth/me", "/auth/whoami", "/auth/logout", "/auth/approve", "/auth/passkeys", "/auth/passkey/status"}
                                     or path in {"/auth/passkey/register/options", "/auth/passkey/register/verify"}
                                     or re.fullmatch(r"/auth/passkeys/[^/]+", path) is not None
                                     or (path == "/notebooks" and method in {"GET", "POST"})
@@ -1996,6 +1999,8 @@ def create_app(
                                     or (re.fullmatch(r"/books/[^/]+/ask", path) is not None and method == "POST")
                                     or (re.fullmatch(r"/books/[^/]+/reading-state", path) is not None and method in {"GET", "PUT"})
                                     or (path == "/corpus/search" and method == "GET")
+                                    or (re.fullmatch(r"/research/[^/]+/artifact/export", path) is not None and method == "POST")
+                                    or (re.fullmatch(r"/research/[^/]+/artifact", path) is not None and method == "GET")
                                     or (path == "/settings/models/catalog" and method == "GET")
                                     or path == "/settings/models/user"
                                     or re.fullmatch(r"/settings/models/user/[^/]+(?:/resolve)?", path) is not None

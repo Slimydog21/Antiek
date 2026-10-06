@@ -7,6 +7,11 @@ import {
   ApiError,
   type BookAnchor,
 } from "../lib/api";
+import {
+  isWorkspaceOwnerSession,
+  useWorkspaceOwner,
+  type WorkspaceOwnerSession,
+} from "../lib/accountWorkspaceOwner";
 
 export interface UseAnchorsState {
   anchors: BookAnchor[];
@@ -34,41 +39,48 @@ export interface UseAnchorsState {
  * a server-side re-resolution the next load reports.
  */
 export function useAnchors(documentId: string | null): UseAnchorsState {
-  const [anchors, setAnchors] = useState<BookAnchor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const owner = useWorkspaceOwner();
+  const [frame, setFrame] = useState<{
+    owner: WorkspaceOwnerSession;
+    documentId: string | null;
+    anchors: BookAnchor[];
+    loading: boolean;
+    error: string | null;
+  }>(() => ({ owner, documentId, anchors: [], loading: true, error: null }));
   const [tick, setTick] = useState(0);
 
-  const refetch = useCallback(() => setTick((t) => t + 1), []);
+  const refetch = useCallback(() => {
+    if (owner.subject !== null && isWorkspaceOwnerSession(owner)) setTick((t) => t + 1);
+  }, [owner]);
 
   useEffect(() => {
-    if (!documentId) {
-      setAnchors([]);
-      setLoading(false);
+    if (!documentId || owner.subject === null) {
+      setFrame({ owner, documentId, anchors: [], loading: false, error: null });
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    const current = () => !cancelled && isWorkspaceOwnerSession(owner);
+    setFrame((previous) => ({
+      owner, documentId, loading: true, error: null,
+      anchors: previous.owner === owner && previous.documentId === documentId ? previous.anchors : [],
+    }));
     void (async () => {
       try {
         const resp = await listAnchors(documentId);
-        if (!cancelled) {
-          setAnchors(resp.anchors);
-          setError(null);
-        }
+        if (current()) setFrame({ owner, documentId, anchors: resp.anchors, loading: false, error: null });
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
-          setAnchors([]);
+        if (current()) {
+          setFrame({
+            owner, documentId, anchors: [], loading: false,
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [documentId, tick]);
+  }, [documentId, tick, owner]);
 
   const pin = useCallback(
     async (body: {
@@ -79,21 +91,35 @@ export function useAnchors(documentId: string | null): UseAnchorsState {
       source?: string;
     }): Promise<BookAnchor> => {
       if (!documentId) throw new ApiError("useAnchors.pin without a document", 0, "");
+      if (owner.subject === null || !isWorkspaceOwnerSession(owner)) {
+        throw new ApiError("Account changed before the passage could be saved.", 409, "");
+      }
       const anchor = await createAnchor(documentId, body);
+      if (!isWorkspaceOwnerSession(owner)) {
+        throw new ApiError("Account changed before the passage could be saved.", 409, "");
+      }
       refetch();
       return anchor;
     },
-    [documentId, refetch],
+    [documentId, refetch, owner],
   );
 
   const remove = useCallback(
     async (anchorId: string): Promise<void> => {
       if (!documentId) return;
+      if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
       await deleteAnchor(documentId, anchorId);
+      if (!isWorkspaceOwnerSession(owner)) return;
       refetch();
     },
-    [documentId, refetch],
+    [documentId, refetch, owner],
   );
 
-  return { anchors, loading, error, refetch, pin, remove };
+  const current = frame.owner === owner && frame.documentId === documentId && owner.subject !== null;
+  return {
+    anchors: current ? frame.anchors : [],
+    loading: current ? frame.loading : documentId !== null && owner.subject !== null,
+    error: current ? frame.error : null,
+    refetch, pin, remove,
+  };
 }
