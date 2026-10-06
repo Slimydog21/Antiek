@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-05 · One document door + reader pane — The Antiek motherships</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-05</p>
+    <h1>One document door + reader pane</h1>
+    <p class="tagline">Any evidence opens in place: in a child tab or in the docked pane beside what you are writing or researching. Never a navigation away.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 1</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 7 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> Every door into a document opens it differently today (RE-02..RE-10). Most do a full-page navigate that loses your place. The reader opens only documents with a <code>book_assets</code> row, so web and URL ingests 404 (F8). There is no reader pane in Research (<code>/inv/:id</code>) or in Writing.</p><p>The Unified Reader spec (<code>/Users/slimydog/Antiek/specs/antiek-reader</code>) planned one resolver, <code>openDocument(id, opts)</code>. It never reached main: it exists only on <code>origin/snapshot/2026-09-21/detached/antiek-rebase-preflight</code>, together with a rich-block <code>Reader.tsx</code>. <strong>Salvage it, don't rewrite it.</strong></p><p>Reader windows (#3384) and <code>WINDOW_PAGES.reader</code> exist and should be reused. A tab may carry at most one docked pane beside its main surface (master spec decision).</p><p><strong>Base:</strong> MS-04 (it calls <code>spawnChild</code>). <strong>Branch:</strong> <code>design/mothership-05-doc-door</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>Non-book documents (F8) are served to the reader in lane B's W1 (§1.18). Until then, the honest "not stored yet" state stands.</li><li>Reading position is <code>reading.position</code> on <code>read-&lt;documentId&gt;</code>, read by <code>GET /documents/{id}/position</code> and written by <code>PUT /documents/{id}/position {anchor, percent}</code> (§1.14). The log is authoritative, so write sparingly: after 10 s of settled scrolling, on leaving the document (<code>pagehide</code> with <code>keepalive</code>), never when unchanged. Opening at a citation must never write it.</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 1, after MS-04. MS-06 (the Reading mothership) and MS-07 (islands) open documents through this door.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>One function, openDocument(id,{where: child_tab|pane|window, at: locator}), is the only way anything in the app opens a document, and it never navigates away from the workstation.</strong></p>
+    <p>Every door routes through it: citations, claims, source cards, notebook blocks, DocumentsIndex, Library, ⌘K and DRW evidence. In Research and Writing the reader docks as the pane beside the main surface, so the operator reads while he writes. Opening at a citation lands on that passage without moving the book's saved position.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Salvage openDocument + Reader.tsx from the snapshot branch</div>
+        <p class="desc"><code>git show origin/snapshot/2026-09-21/detached/antiek-rebase-preflight:&lt;path&gt;</code> for the resolver and the rich Reader. Port them onto current main's APIs. List every divergence and why.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>The port compiles and its original tests (if any) pass, or are adapted with the reason recorded.</li><li>The handoff lists which snapshot files were ported, which were dropped, and why.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/lib/openDocument.ts (new/ported)</span><span class="file">apps/reading/src/components/reader/Reader.tsx (ported)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">openDocument / openEvidence as the only door</div>
+        <p class="desc">Route every door through it: ChunkModal, MasterMdViewer named sources, Write citation chips, AutoNotebook, ProjectTree, ⌘K, DocumentsIndex rows, Library cards and DRW evidence. <code>where</code> defaults to <code>child_tab</code> from inside a tab, and to <code>pane</code> from Writing.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>git grep</code> finds no remaining <code>navigate('/read/</code> or <code>navigate(`/read/</code> outside openDocument (listed in the handoff).</li><li>A test per door shows the right <code>where</code>.</li></ul></div>
+        <div class="files"><span class="file">call sites across apps/reading/src</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Reader as the docked pane (Research + Writing)</div>
+        <p class="desc">Register a Reader PanelKind for the docked pane. From Writing, a citation chip opens the source beside the draft at the cited chunk. From Research (<code>/inv/:id</code>), evidence opens beside the canvas.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories and tests for both motherships. The pane never covers the main surface; at 390 px it becomes a sheet.</li><li>Focus returns to the citation on close.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/PanelRegistry.tsx</span><span class="file">apps/reading/src/modes/Write/*</span><span class="file">apps/reading/src/modes/ResearchWorkstation/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Open at a passage without clobbering position</div>
+        <p class="desc">Opening at a citation passes <code>at: locator</code>. The reader scrolls there and highlights the passage, and the book's saved position is untouched (this fixes R4's clobbering and MISS6's shared key). Per-pane reading focus replaces reliance on the global <code>readingFocus</code> bus (MISS3).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: open book X at page 40 from a citation, close it, open X normally, and it resumes the original saved page.</li><li>Two readers open at once each keep their own focus (test).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/Reading/usePosition.ts</span><span class="file">apps/reading/src/lib/readingFocus.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Non-book documents: honest state until lane B serves them</div>
+        <p class="desc">Web and URL ingests, <code>/ingest/asset</code> conversions and DRW web evidence 404 in the reader today (F8). Until lane B serves them, openDocument shows a designed state: the title, the source URL, and "Antiek hasn't stored a readable copy yet", offering the original link. It never shows a blank or a raw 404.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A story and a test for that state.</li><li>The state lists what lane B must serve, as contract fields.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/reader/NotStoredYet.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Retire the dead doors</div>
+        <p class="desc">DocumentsIndex rows go to the reader, not <code>/wrestle</code> (RE-05). The Read tab 'Library' pointing at <code>/wrestle</code> (MISS9) is fixed. <code>/wrestle</code> stays only as the bring-your-own-PDF tool.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Route and tab tests.</li><li>No view tab points at the wrong route (tested against workflowTaxonomy).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/DocumentsIndex/index.tsx</span><span class="file">apps/reading/src/shell/SceneChrome.tsx</span><span class="file">apps/reading/src/shell/workflowTaxonomy.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Bundle + critic</div>
+        <p class="desc">The ported Reader and the pane are lazy.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p><code>origin/snapshot/2026-09-21/detached/antiek-rebase-preflight</code> was stranded by a rebase. Its <code>openDocument</code> resolver and rich <code>Reader.tsx</code> may depend on APIs that have since changed on main. Every ported file gets a ledger line in the handoff: ported as is, adapted (how), or dropped (why), each citing the main SHA it was diffed against. Do not present a salvage as new work, or new work as a salvage.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman writing a fresh <code>openDocument</code>. The code would be smaller and would fit the new tab model, without archaeology. It loses to the P0 clause ("avoid parallel substitutes for the reader") and to the Unified Reader spec's already-reviewed design. Who pays: this sprint's builder pays the porting time once. MS-06 to MS-09, which all call <code>openDocument(id,{where,at})</code>, inherit any quirks of the adapted API. The operator gets no new reading capability this sprint beyond the door itself.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>The door inventory is mechanical. Use <code>git grep -E</code> (no <code>\b</code>: POSIX ERE silently ignores it) for <code>navigate(`/read/</code>, <code>navigate('/read/</code>, <code>&lt;Link to=…/read/</code>, <code>href="/read/</code>, every <code>openWindow('reader'</code>, every <code>window.open</code> of a document, and every route to <code>/wrestle</code> from DocumentsIndex or the Read tab (RE-05, MISS9). Record the origin/main counts as the "before" number and the after list in the handoff. A door the grep missed still navigates away.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Before porting, run <code>git diff origin/main...origin/snapshot/2026-09-21/detached/antiek-rebase-preflight</code> on the Reader and openDocument files. Read <code>antiek-reader</code>'s planned resolver contract, and <code>openWindow.ts</code> (the window policy and out-of-contract pages). Also read <code>usePosition.ts:14,18,53</code> (the shared sessionStorage key behind MISS6 and the R4 clobber that M4 fixes) and <code>readingFocus.ts</code> (the MISS3 global bus).</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>openDocument's options (<code>where</code>, <code>at</code>) are the contract every later sprint calls. Document each option's default and the reason at the definition. A guard test enforces "never navigate away". It matches the same patterns as the inventory, allows zero occurrences outside openDocument, and is proven live by adding one mutant call and watching it fail. Record the <code>where</code>/<code>at</code> defaults in DECISIONS.md so later sprints can rely on them.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-04 — <span class="muted">spawnChild and tabs</span></li><li>MS-03 — <span class="muted">the workstation and mothership context</span></li><li>MS-02 (W3 on main) — <span class="muted">the prose layer and states primitives</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: serve non-book documents (F8) and durable reading position (R4). An honest state stands in until then.</li><li>The snapshot branch <code>origin/snapshot/2026-09-21/detached/antiek-rebase-preflight</code>.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Kindle-grade reading comfort (page keys, Aa, focus mode). That is MS-06.</li><li>Islands on the reader. That is MS-07.</li><li>Serving non-book documents from the backend. That is lane B.</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>No navigate-away</strong></td><td><code>a vitest lint test over apps/reading/src</code></td><td>0 direct reader-route navigations outside openDocument</td></tr><tr><td><strong>Position integrity</strong></td><td><code>vitest open-at-citation then resume</code></td><td>the saved page is untouched</td></tr><tr><td><strong>Pane</strong></td><td><code>stories + tests in Research and Writing, at 1280 and 390</code></td><td>never covers the main surface; focus returns</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-05 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Salvage openDocument + Reader.tsx from the snapshot branch — &lt;result&gt;
+- [ ] M2: openDocument / openEvidence as the only door — &lt;result&gt;
+- [ ] M3: Reader as the docked pane (Research + Writing) — &lt;result&gt;
+- [ ] M4: Open at a passage without clobbering position — &lt;result&gt;
+- [ ] M5: Non-book documents: honest state until lane B serves them — &lt;result&gt;
+- [ ] M6: Retire the dead doors — &lt;result&gt;
+- [ ] M7: Bundle + critic — &lt;result&gt;
+### Verification gate results
+- No navigate-away: pass | fail | skipped (why)
+- Position integrity: pass | fail | skipped (why)
+- Pane: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- openDocument is the only door, so MS-06 and MS-07 build on it.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="inline"
+           data-harness-fanout-unit="None: the door inventory touches many files but is one change (the resolver) threaded through them."
+           data-harness-verifier-lenses="no navigate-away; no position clobber"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>inline</code></p><p class="muted">The resolver is the single owning seam. Parallel builders would collide on shared call-site files.</p></div>
+      <div><h3>Fan-out unit</h3><p>None: the door inventory touches many files but is one change (the resolver) threaded through them.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Is there any remaining path that opens a document by navigating away, or that moves a book's saved position on a citation open?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-05 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

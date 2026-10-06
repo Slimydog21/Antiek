@@ -21,6 +21,17 @@ from substrate.provenance.schema import (
     provenance_tables_exist,
 )
 
+__all__ = [
+    "BiteRow",
+    "GenerationRecordRow",
+    "ProvenanceStore",
+    "init_provenance_schema",
+    "make_bite_id",
+    "mint_generation_id",
+    "provenance_tables_exist",
+    "text_sha256",
+]
+
 
 def mint_generation_id() -> str:
     return f"gen-{secrets.token_hex(8)}"
@@ -57,6 +68,10 @@ class GenerationRecordRow:
     derived_document_id: str
     prompt: str
     model: str
+    #: The provider that ANSWERED, from dispatch's route receipt. NULL when
+    #: no dispatch receipt exists (the injectable generator seam) — never a
+    #: fabricated identity.
+    provider: str | None
     params_json: str
     mostly_generated: bool
     created_at: str
@@ -84,9 +99,10 @@ def _to_generation(r: Any) -> GenerationRecordRow:
         derived_document_id=str(r[3]),
         prompt=str(r[4]),
         model=str(r[5]),
-        params_json=str(r[6]),
-        mostly_generated=bool(r[7]),
-        created_at=str(r[8]),
+        provider=None if r[6] is None else str(r[6]),
+        params_json=str(r[7]),
+        mostly_generated=bool(r[8]),
+        created_at=str(r[9]),
     )
 
 
@@ -121,8 +137,8 @@ class ProvenanceStore:
         init_provenance_schema(con)
         con.execute(
             "INSERT INTO generation_records (generation_id, owner_user_id, "
-            "source_document_id, derived_document_id, prompt, model, "
-            "params_json, mostly_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "source_document_id, derived_document_id, prompt, model, provider, "
+            "params_json, mostly_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 record.generation_id,
                 record.owner_user_id,
@@ -130,6 +146,7 @@ class ProvenanceStore:
                 record.derived_document_id,
                 record.prompt,
                 record.model,
+                record.provider,
                 record.params_json,
                 record.mostly_generated,
             ],
@@ -162,10 +179,20 @@ class ProvenanceStore:
     ) -> GenerationRecordRow | None:
         if not provenance_tables_exist(con):
             return None
+        # A database written before the provider column existed reads
+        # honestly too: NULL AS provider — the same "no receipt recorded"
+        # state the column's own NULLs carry (the ALTER lands on the next
+        # write; a read never runs DDL).
+        has_provider = any(
+            str(r[1]) == "provider"
+            for r in con.execute("PRAGMA table_info('generation_records')").fetchall()
+        )
+        provider_expr = "provider" if has_provider else "NULL AS provider"
         row = con.execute(
             "SELECT generation_id, owner_user_id, source_document_id, "
-            "derived_document_id, prompt, model, params_json, mostly_generated, "
-            "created_at FROM generation_records WHERE generation_id = ? LIMIT 1",
+            "derived_document_id, prompt, model, " + provider_expr + ", "
+            "params_json, mostly_generated, created_at "
+            "FROM generation_records WHERE generation_id = ? LIMIT 1",
             [generation_id],
         ).fetchone()
         return None if row is None else _to_generation(row)

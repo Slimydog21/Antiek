@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Link } from "react-router-dom";
+import type { Editor } from "@tiptap/react";
 
 import ModelPicker from "../../components/ModelPicker";
 import {
@@ -8,9 +10,7 @@ import {
 } from "../../api/composerProjection";
 
 import {
-  ApiError,
   createSection,
-  updateSectionProse,
   type SectionResponse,
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -25,15 +25,14 @@ import { parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
 import SubAgentProposal from "./SubAgentProposal";
+import { sectionProse } from "./sectionProse";
 import VoiceToDraft from "./VoiceToDraft";
 import Xray from "./Xray";
 import {
   blockDisplayText,
-  generateSection,
   getSectionBlocks,
   moveBlock,
   placeBlock,
-  type GenerationResult,
   type OutlineBlockView,
   type RepositoryHit,
 } from "./writeApi";
@@ -62,18 +61,6 @@ import {
  * blocks); this surface composes it, it does not invent a parallel shape.
  */
 
-/** Debounce for autosaving a manual prose edit. Long enough to coalesce a
- * burst of keystrokes into one PATCH, short enough that a pause persists. */
-const PROSE_SAVE_DEBOUNCE_MS = 800;
-
-/** Honest save state for a section's prose. The "saved as you write" promise is
- * backed by this — it is never rendered "saved" while a save is pending/failed. */
-type ProseSaveState =
-  | { status: "idle" }
-  | { status: "pending" }
-  | { status: "saved" }
-  | { status: "error"; message: string };
-
 export interface OutlineProps {
   deliverableId: string;
   /** The deliverable's sections (from getDeliverable). */
@@ -86,6 +73,11 @@ export interface OutlineProps {
    * SPR-09 M1). It buckets the voice-to-draft VOICE_CAPTURED event (M4) and is
    * the parent of a spun sub-agent (M4). Falls back to the operator bucket. */
   investigationId?: string | null;
+  /** The cockpit's section tab (1.n): show this section alone. Every
+   * section stays MOUNTED underneath (hidden, never unmounted), so a tab
+   * switch keeps each editor, its draft and its pending save (F-02:
+   * "never losing an edit on a tab switch"). null = the whole piece. */
+  scopeSectionId?: string | null;
 }
 
 export default function Outline({
@@ -94,11 +86,19 @@ export default function Outline({
   onChanged,
   registerAddHandler,
   investigationId,
+  scopeSectionId = null,
 }: OutlineProps) {
-  // The section a tapped repository block lands in (the last section, by
-  // default — the writer is composing top-down). A null active section means
-  // "no section yet"; the tap then nudges the writer to add one.
-  const activeSectionId = sections.length ? sections[sections.length - 1].section_id : null;
+  // A scope naming no section of this piece shows the whole piece.
+  const scoped = scopeSectionId !== null && sections.some((s) => s.section_id === scopeSectionId);
+  // The section a tapped repository block lands in: the scoped section, else
+  // the last one (the writer is composing top-down). A null active section
+  // means "no section yet"; the tap then nudges the writer to add one.
+  const activeSection = scoped
+    ? sections.find((s) => s.section_id === scopeSectionId)!
+    : sections.length
+      ? sections[sections.length - 1]
+      : null;
+  const activeSectionId = activeSection?.section_id ?? null;
 
   const addTappedBlock = useCallback(
     async (hit: RepositoryHit, sectionId: string | null, blockCount: number) => {
@@ -119,8 +119,7 @@ export default function Outline({
   // Expose a tap handler bound to the active (last) section so the sibling
   // repository can place into the outline. The handler is re-registered when
   // the active section or its block count changes.
-  const activeBlockCount =
-    sections.length ? sections[sections.length - 1].block_count : 0;
+  const activeBlockCount = activeSection?.block_count ?? 0;
   useEffect(() => {
     registerAddHandler?.((hit) =>
       void addTappedBlock(hit, activeSectionId, activeBlockCount),
@@ -138,10 +137,11 @@ export default function Outline({
         ) : (
           sections.map((s, i) => (
             <SectionCard
-              key={s.section_id}
+              key={`${deliverableId}:${s.section_id}`}
               deliverableId={deliverableId}
               section={s}
               sectionNumber={i + 1}
+              hidden={scoped && s.section_id !== scopeSectionId}
               onChanged={onChanged}
               investigationId={investigationId ?? "__operator__"}
             />
@@ -162,12 +162,15 @@ function SectionCard({
   deliverableId,
   section,
   sectionNumber,
+  hidden = false,
   onChanged,
   investigationId,
 }: {
   deliverableId: string;
   section: SectionResponse;
   sectionNumber: number;
+  /** Out of the cockpit's section scope: kept mounted, not shown. */
+  hidden?: boolean;
   onChanged: () => Promise<void> | void;
   investigationId: string;
 }) {
@@ -175,97 +178,34 @@ function SectionCard({
   const [dropHover, setDropHover] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Generation state (M3).
-  const [generating, setGenerating] = useState(false);
+  const [proseSession] = useState(() =>
+    sectionProse(deliverableId, section.section_id, section.prose_text, section.prose_provenance ?? {}),
+  );
+  const prose = useSyncExternalStore(proseSession.subscribe, proseSession.getSnapshot);
+  const generating = prose.generation.status === "generating";
+  const genResult = prose.generation.status === "result" ? prose.generation.result : null;
+  const genError = prose.generation.status === "error" ? prose.generation : null;
+  const saveState = prose.save;
+  const draftContent = prose.draft === null ? null : proseToEditorHtml(prose.draft);
+  const draftRevision = prose.revision;
+  const proseText = prose.saved;
+  const proseProvenance = prose.provenance;
   const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
-  const [genResult, setGenResult] = useState<GenerationResult | null>(null);
-  const [genError, setGenError] = useState<{ reason: string | null } | null>(null);
-  // The prose loaded into the real editor (M4). null = not yet generated.
-  const [draftContent, setDraftContent] = useState<string | null>(null);
-  // M3: draft ↔ X-ray toggle. The X-ray reads the PERSISTED prose_provenance.
+  const editorRef = useRef<Editor | null>(null);
+  const handleContentChange = useCallback((text: string) => {
+    proseSession.edit(text, editorRef.current?.getJSON() ?? null);
+  }, [proseSession]);
   const [view, setView] = useState<"draft" | "xray">("draft");
-  // The persisted prose + provenance for the X-ray. Seeds from the section
-  // (read back from GET /deliverables/{id}) so a reload still X-rays; updates
-  // on each generation.
-  const [proseText, setProseText] = useState<string | null>(section.prose_text);
-  const [proseProvenance, setProseProvenance] = useState<Record<string, string[]>>(
-    section.prose_provenance ?? {},
-  );
-  // M4: the spin-a-sub-agent proposal over a highlighted claim (null = closed).
   const [proposal, setProposal] = useState<{ text: string } | null>(null);
-
-  // SPR-02: manual prose edits persist to prose_text — the SAME column export
-  // (app.py:2890) and reload (app.py:2573) read. Mirrors CreationStudio's
-  // updateSectionProse call shape, but debounced (onContentChange fires per
-  // keystroke) and with an HONEST indicator: the persistence error is surfaced,
-  // never swallowed the way the edit.captured telemetry is (Editor.tsx ~86).
-  const [saveState, setSaveState] = useState<ProseSaveState>({ status: "idle" });
-  // The value we know the server holds (seed = the section's persisted prose;
-  // updated on generate, on a confirmed save, and on a parent re-fetch).
-  const savedProseRef = useRef<string | null>(section.prose_text);
-  // The most recent editor text, so a retry re-sends the current draft.
-  const latestProseRef = useRef<string>(section.prose_text ?? "");
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const persistProse = useCallback(
-    async (plainText: string) => {
-      const original = savedProseRef.current;
-      // Empty prose is rejected by the API (min_length=1) and would blank a
-      // draft — mirror CreationStudio's non-empty guard.
-      if (!plainText.trim()) return;
-      // Unchanged since the last confirmed save — nothing to persist.
-      if (plainText === original) {
-        setSaveState({ status: "saved" });
-        return;
-      }
-      setSaveState({ status: "pending" });
-      try {
-        await updateSectionProse(section.section_id, {
-          prose_text: plainText,
-          original_text: original ?? undefined,
-          promote_to_graph: false,
-        });
-        savedProseRef.current = plainText;
-        setProseText(plainText); // keep the X-ray / reload view in sync
-        setSaveState({ status: "saved" });
-      } catch (e) {
-        // Do NOT swallow (contrast Editor.tsx's edit.captured .catch(()=>{})):
-        // a lost save must be visible so the "saved" promise is never a lie.
-        const message =
-          e instanceof ApiError
-            ? `HTTP ${e.status}`
-            : e instanceof Error
-              ? e.message
-              : String(e);
-        setSaveState({ status: "error", message });
-      }
-    },
-    [section.section_id],
-  );
-
-  const handleContentChange = useCallback(
-    (plainText: string) => {
-      latestProseRef.current = plainText;
-      // A keystroke means unsaved work is in flight — reflect it at once so a
-      // stale "Saved" never sits over an edit mid-debounce.
-      setSaveState({ status: "pending" });
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        void persistProse(plainText);
-      }, PROSE_SAVE_DEBOUNCE_MS);
-    },
-    [persistProse],
-  );
-
-  // Clear a pending debounce on unmount (never fire a save after teardown).
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    },
-    [],
-  );
+  // F7: the child investigation a sub-agent accept actually spawned. The
+  // proposal PRODUCES this id (SubAgentProposal.tsx calls
+  // `onAccept(child.investigation_id)`); it used to be discarded here, so the
+  // writer paid for a spawn and had no way back to it. Retained and linked
+  // below, mirroring the Reading companion's child-investigation row
+  // (modes/Reading/ReadingCompanion.tsx:259).
+  const [spawnedChild, setSpawnedChild] = useState<string | null>(null);
 
   // M4: the FloatMenu host over the rendered editor. The page region is the
   // selection SCOPE; highlighting prose opens the SHARED FloatMenu with the
@@ -285,14 +225,9 @@ function SectionCard({
     void refreshBlocks();
   }, [refreshBlocks, section.block_count]);
 
-  // Keep the persisted prose/provenance in sync if the section reloads.
   useEffect(() => {
-    setProseText(section.prose_text);
-    setProseProvenance(section.prose_provenance ?? {});
-    // The re-fetched value is server truth — reset the autosave baseline so the
-    // next edit diffs against it (not a stale local snapshot).
-    savedProseRef.current = section.prose_text;
-  }, [section.prose_text, section.prose_provenance]);
+    proseSession.seed(section.prose_text, section.prose_provenance ?? {});
+  }, [proseSession, section.prose_text, section.prose_provenance]);
 
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -335,41 +270,25 @@ function SectionCard({
     }
   }
 
-  async function handleGenerate() {
-    setGenerating(true);
-    setGenResult(null);
-    setGenError(null);
-    try {
-      const r = await generateSection(section.section_id);
-      setGenResult(r);
-      if (r.status === "generated" && r.prose_text) {
-        // Load the real prose into the editor (M4). Plain prose becomes
-        // editable paragraphs; the editor mounts in place of the textarea.
-        setDraftContent(proseToEditorHtml(r.prose_text));
-        // M3: capture the PERSISTED provenance so the X-ray can read it back
-        // (the server persisted it via SECTION_DRAFT_GENERATED — the link
-        // exists in the graph, this is just the immediate echo).
-        setProseText(r.prose_text);
-        setProseProvenance(r.prose_provenance ?? {});
-        // The server persisted this prose (SECTION_DRAFT_GENERATED) — it is the
-        // autosave baseline the first manual edit diffs against.
-        savedProseRef.current = r.prose_text;
-        setSaveState({ status: "idle" });
-      }
-    } catch (e) {
-      // Honest no-key / no-result: a 503 (provider not configured) or any
-      // backend abort surfaces AIActionFailure — never a fabricated draft.
-      const reason = e instanceof ApiError && e.status === 503 ? null : String(e);
-      setGenError({ reason: reason === "null" ? null : reason });
-    } finally {
-      setGenerating(false);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor && prose.document && JSON.stringify(editor.getJSON()) !== JSON.stringify(prose.document)) {
+      editor.commands.setContent(prose.document, { emitUpdate: false });
     }
+    editor?.setEditable(prose.available && !generating, false);
+  }, [prose.available, prose.document, generating, draftRevision, draftContent]);
+
+  async function handleGenerate() {
+    editorRef.current?.setEditable(false, false);
+    await proseSession.generate();
   }
 
   // M3 + M4: regenerate the section (the drag-in-X-ray gesture, and the
   // rewrite / make-stronger actions, both regenerate this section from its
   // blocks via the SHIPPED generate path — never a new model path). The
   // creative_writer re-anchors per-block, so the regenerated prose stays cited.
+  const handleGenerateRef = useRef(handleGenerate);
+  handleGenerateRef.current = handleGenerate;
   const handleRegenerate = useCallback(
     async (_paragraphIndex?: number) => {
       // This sprint's generate endpoint is section-granular (creative_writer
@@ -377,10 +296,8 @@ function SectionCard({
       // regenerate that re-anchors all paragraphs; the affected paragraph is
       // necessarily refreshed. (A true single-paragraph endpoint is a named
       // follow-up — see handoff Open questions.)
-      await handleGenerate();
+      await handleGenerateRef.current();
     },
-    // handleGenerate is stable enough for this sprint's surface.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -409,21 +326,33 @@ function SectionCard({
     [handleRegenerate],
   );
 
-  // CK-5: apply the model's edited span. Splice it into the section prose,
-  // replacing the first occurrence of the current selection's text; the
-  // existing prose-autosave then persists it (the same path a manual
-  // keystroke takes), so provenance + single-writer discipline are unchanged.
+  // CK-5: apply the model's edited span AS AN EDITOR TRANSACTION over the
+  // selected text (the editor's own selection when it still holds that text,
+  // else the text's first place in a paragraph). The editor's onUpdate then
+  // captures and autosaves it exactly as it would a keystroke, so the editor,
+  // the X-ray and the server agree (R3-M5: splicing the X-ray's copy alone
+  // left the edit nowhere a reload or the next keystroke could keep it).
   const handleApplyEdit = useCallback(
     (editedText: string) => {
+      if (proseSession.getSnapshot().generation.status === "generating") {
+        toast.warn("Wait for the draft to finish before applying this edit.");
+        return;
+      }
       const sel = selection;
       if (!sel || !sel.text) return;
-      setProseText((prev) => (prev == null ? prev : prev.replace(sel.text, editedText)));
+      const ed = editorRef.current;
+      const range = ed ? locateText(ed, sel.text) : null;
+      if (!ed || !range) {
+        toast.warn("That passage changed before the edit came back, so the edit was not applied.");
+        return;
+      }
+      ed.view.dispatch(ed.state.tr.insertText(editedText, range.from, range.to));
       window.getSelection()?.removeAllRanges();
     },
-    [selection],
+    [selection, proseSession],
   );
 
-  const canGenerate = blocks.length > 0 && !generating;
+  const canGenerate = prose.dispatchAllowed && blocks.length > 0 && !generating;
 
   // Advisory model-driver projection for the writing surface (BYOT directive).
   // The picker choice is recorded locally and shown honestly as advisory: the
@@ -458,6 +387,8 @@ function SectionCard({
 
   return (
     <section
+      hidden={hidden}
+      data-section-card={section.section_id}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("application/x-antiek-block")) {
           e.preventDefault();
@@ -602,15 +533,46 @@ function SectionCard({
           <SubAgentProposal
             claimText={proposal.text}
             parentInvestigationId={investigationId}
-            onAccept={() => setProposal(null)}
+            onAccept={(childInvestigationId) => {
+              setProposal(null);
+              setSpawnedChild(childInvestigationId);
+            }}
             onReject={() => setProposal(null)}
           />
         </div>
       )}
 
+      {/* F7: the accepted child investigation returns to its writer. The spawn
+          already happened; without this the id lived only in the callback. */}
+      {spawnedChild && (
+        <div
+          data-testid="write-sub-agent-spawned"
+          className="mt-3 flex items-center justify-between gap-2 rounded-md border border-rule bg-ice-0 px-3 py-2 text-sm dark:bg-charcoal-2"
+        >
+          <span className="text-shadow-1 dark:text-moonlight">
+            Sub-agent research started.
+          </span>
+          <span className="flex items-center gap-3">
+            <Link
+              to={`/inv/${encodeURIComponent(spawnedChild)}`}
+              className="font-mono text-xs text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+            >
+              open research
+            </Link>
+            <button
+              type="button"
+              onClick={() => setSpawnedChild(null)}
+              className="font-mono text-xs text-shadow-1 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+            >
+              dismiss
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* M3 X-ray view — paragraph ↔ blocks over the PERSISTED provenance.
-          Toggled with the draft; no edit loss (the editor stays mounted in the
-          draft view, the X-ray reads the persisted map). */}
+          Toggled with the draft; no edit loss (the editor stays mounted,
+          hidden, while the X-ray reads the persisted map). */}
       {view === "xray" && proseText && (
         <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
           <Xray
@@ -631,8 +593,19 @@ function SectionCard({
           The bare textarea is retired; this is the editing surface. The editor
           region is the FloatMenu selection SCOPE: highlighting prose opens the
           SHARED FloatMenu with Write's rewrite actions (imported, D-3). */}
-      {draftContent != null && view === "draft" && (
-        <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
+      {draftContent != null && (
+        <div
+          data-write-editor-host=""
+          // Hidden, never unmounted, during the X-ray: the editor keeps its
+          // document and its undo history across the toggle (R3-H2).
+          hidden={view === "xray"}
+          className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1"
+        >
+          {generating && (
+            <p role="status" className="mb-2 text-xs text-ink-mute dark:text-moonlight">
+              Generating a draft… Editing will resume when it finishes.
+            </p>
+          )}
           {genResult?.status === "generated" &&
             genResult.unsupported_paragraphs &&
             genResult.unsupported_paragraphs.length > 0 && (
@@ -643,6 +616,8 @@ function SectionCard({
             )}
           <div ref={editorScopeRef}>
             <WriteEditor
+              key={draftRevision}
+              editorRef={editorRef}
               deliverableId={deliverableId}
               sectionId={section.section_id}
               initialContent={draftContent}
@@ -650,7 +625,6 @@ function SectionCard({
               // SPR-02: persist coarse prose_text on edit (mirrors the shape
               // CreationStudio uses), debounced, with an honest save indicator.
               onContentChange={handleContentChange}
-              className="font-serif text-base leading-relaxed text-ink dark:text-bright"
             />
           </div>
           {/* The SHARED FloatMenu (imported), extended with Write's rewrite
@@ -687,6 +661,9 @@ function SectionCard({
               {saveState.status === "pending" && (
                 <span className="text-ink-mute dark:text-moonlight">Saving…</span>
               )}
+              {saveState.status === "paused" && (
+                <span className="text-ink-mute dark:text-moonlight">Your edit is kept here. Saving will resume after sign-in is confirmed.</span>
+              )}
               {saveState.status === "saved" && (
                 <span className="text-ink-mute dark:text-moonlight">Saved.</span>
               )}
@@ -695,7 +672,7 @@ function SectionCard({
                   <span>Couldn&rsquo;t save your last edit ({saveState.message}).</span>
                   <button
                     type="button"
-                    onClick={() => void persistProse(latestProseRef.current)}
+                    onClick={() => void proseSession.flush()}
                     className="underline"
                   >
                     Retry
@@ -714,6 +691,47 @@ function SectionCard({
 function provenanceLabel(b: OutlineBlockView): string {
   if (b.is_user_originated || b.provenance_kind !== "graph_node") return "yours";
   return b.block_kind === "open_question" ? "question" : b.block_kind;
+}
+
+/** Where `text` sits in the editor: its own selection when that still holds
+ *  the text (whitespace-insensitive), else the first paragraph containing it.
+ *  Null when the text is no longer in the document. */
+function locateText(ed: Editor, text: string): { from: number; to: number } | null {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+  const want = norm(text);
+  if (!want) return null;
+  const { from, to } = ed.state.selection;
+  if (to > from && norm(ed.state.doc.textBetween(from, to, " ")) === want) return { from, to };
+  const needle = text.trim();
+  let found: { from: number; to: number } | null = null;
+  ed.state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (!node.isTextblock) return true;
+    const at = node.textContent.indexOf(needle);
+    if (at < 0) return false;
+    const start = textblockPos(node, pos, at);
+    const end = textblockPos(node, pos, at + needle.length);
+    if (start != null && end != null) found = { from: start, to: end };
+    return false;
+  });
+  return found;
+}
+
+/** The document position of character `index` of a textblock's text. */
+function textblockPos(
+  block: Editor["state"]["doc"],
+  blockPos: number,
+  index: number,
+): number | null {
+  let seen = 0;
+  let result: number | null = null;
+  block.forEach((child, offset) => {
+    if (result != null) return;
+    const len = child.isText ? (child.text ?? "").length : child.textContent.length;
+    if (child.isText && index <= seen + len) result = blockPos + 1 + offset + (index - seen);
+    seen += len;
+  });
+  return result;
 }
 
 /** Plain prose → editor HTML (paragraphs). Inline `[b: …]` citations the

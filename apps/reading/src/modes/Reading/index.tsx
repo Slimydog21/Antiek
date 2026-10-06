@@ -1,5 +1,7 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { List as ListIcon } from "lucide-react";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -11,18 +13,29 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import ReadingAppearance from "../../components/reader/ReadingAppearance";
+import ReadingTypography from "../../components/reader/ReadingTypography";
+import { useReadingTypography } from "../../lib/readingTypography";
+import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
+import { useViewportTier } from "../../workspace/useViewportTier";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
+import { READER_TOC_TOGGLE_EVENT } from "../../workspace/readerEvents";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
 import Attribution from "./Attribution";
 import ReadingCompanion from "./ReadingCompanion";
+import ForkProvenance from "./ForkProvenance";
 import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
 import { useReadingState } from "../../hooks/useReadingState";
+import { fetchDocumentForks } from "../../workspace/forkLineage";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
   createAnchor,
@@ -42,6 +55,7 @@ import ThreadIsland from "./island/ThreadIsland";
 import { deriveIslandRefs } from "./island/islandModel";
 import { runSpawnFlow } from "./island/spawnFlows";
 import { toast } from "../../components/lemon/LemonToast";
+import { describeFailure } from "../../shared/failure";
 import {
   HIDDEN_ISLANDS_CHANGED,
   readHiddenIslands,
@@ -81,6 +95,9 @@ export interface BookReaderProps {
    * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
    * and changes nothing. */
   origin?: { from: string; id: string } | null;
+  /** A one-shot page landing (the reformat trace jump, SPR-02): applied
+   *  once when the pages resolve, then the bus owns the position. */
+  initialPage?: number | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -92,11 +109,11 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp, origin = null }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
+  const typography = useReadingTypography();
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const openTalkOnLoad = searchParams.get("talk") === "1";
 
@@ -105,44 +122,51 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
+
+  const loadBook = useCallback(async (isCancelled: () => boolean) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [detail, full] = await Promise.all([
+        getBook(documentId),
+        getBookFullText(documentId),
+      ]);
+      if (isCancelled()) return;
+      setBook(detail);
+      setBody(full);
+      // House-state candidates for the zero-buyer ad border.
+      try {
+        const servable = await listBooks("servable");
+        if (!isCancelled()) setHousePool(servable.books);
+      } catch {
+        /* house pool is best-effort; a neutral house card is fine */
+      }
+    } catch (e: unknown) {
+      if (!isCancelled()) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  }, [documentId]);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    (async () => {
-      try {
-        const [detail, full] = await Promise.all([
-          getBook(documentId),
-          getBookFullText(documentId),
-        ]);
-        if (cancelled) return;
-        setBook(detail);
-        setBody(full);
-        // House-state candidates for the zero-buyer ad border.
-        try {
-          const servable = await listBooks("servable");
-          if (!cancelled) setHousePool(servable.books);
-        } catch {
-          /* house pool is best-effort; a neutral house card is fine */
-        }
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    void loadBook(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [documentId, reloadToken]);
+  }, [loadBook]);
 
-  const refreshSourceBody = useCallback(() => {
-    setReloadToken((token) => token + 1);
-  }, []);
+  // The fork lineage this session knows for the open document (both
+  // directions, one GET): the strip's badge/chip and the fork tab's
+  // provenance header render from it. Never blocking; a failure is an
+  // absent badge, never a wrong one.
+  useEffect(() => {
+    if (documentId) void fetchDocumentForks(documentId);
+  }, [documentId]);
 
-
+  const reload = useCallback(() => {
+    void loadBook(() => false);
+  }, [loadBook]);
 
   useEffect(() => {
     // The anchor-map is only meaningful with a readable body (the reader
@@ -182,6 +206,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   );
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // The one-shot page landing (the reformat trace jump): applied ONCE when
+  // the pages resolve; the bus owns the position from then on.
+  const initialPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
+    initialPageAppliedRef.current = true;
+    setPageIndex(initialPage);
+  }, [initialPage, pages.length, setPageIndex]);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
@@ -234,7 +267,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // the widgets over the reading column. An island whose anchor isn't laid
   // out (off-page, orphaned) resolves null and renders nothing — the
   // LayoutMap contract, never a fabricated position.
-  const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
   const [islandRects, setIslandRects] = useState<ReadonlyMap<string, PhysicsRect>>(
     () => new Map(),
   );
@@ -268,14 +301,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
       setIslandRects(next);
     }
     measure();
-    // jsdom has no ResizeObserver: the one measurement per pass stands there
-    // (repagination re-runs this effect anyway); real browsers get live
-    // resize tracking too.
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(main);
-    return () => observer.disconnect();
-  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks]);
+    // Glyph positions can move while the root box stays the same size.
+    document.fonts?.addEventListener("loadingdone", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(main);
+    return () => {
+      observer?.disconnect();
+      document.fonts?.removeEventListener("loadingdone", measure);
+    };
+  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks, typography]);
 
   const islandLayoutMap = useMemo(
     () => createLayoutMap(baseGeometryFromMap(islandRects)),
@@ -490,15 +524,24 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
   // needs the anchor id). Auto-pins are best-effort beside their action: a
   // failed pin never breaks the action (it is logged, never surfaced as if
-  // the action failed); the manual Pin is surfaced honestly.
+  // the action failed); the manual Pin is surfaced honestly (D8: the swallowed
+  // 422 anchor_resolution_not_found was the day-one journey blocker — the
+  // operator saw zero marks, zero alerts).
   const onPinAnchor = useCallback(
     (pin: { source: string }, sel: FloatMenuSelection) => {
+      const manual = pin.source === "pin";
       void (async () => {
         try {
           await pinFromSelection(pin.source, sel);
           refetchAnchors();
+          if (manual) toast.info("Highlight pinned.");
         } catch (e) {
-          console.warn(`anchor pin (${pin.source}) failed`, e);
+          // Diagnostics for logs; a plain sentence for the operator.
+          const described = describeFailure(e, { what: "pin that passage" });
+          console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
+          if (manual) {
+            toast.warn(`${described.title} ${described.detail}`);
+          }
         }
       })();
     },
@@ -628,10 +671,64 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     };
   }, [housePool, documentId]);
 
+  // The house slot is a promotion, not provenance: the book it promotes was
+  // never referenced by this one, so it opens as a ROOT tab in the tree the
+  // reader is in (a plain navigation keeps `?m`), never as a branch of kind
+  // "reference" (lane A B2-7).
+  const modeNavigate = useModeNavigate();
   const openHouse = useCallback(
-    (docId: string) => navigate(`/read/${encodeURIComponent(docId)}`),
-    [navigate],
+    (docId: string) => modeNavigate(`/read/${encodeURIComponent(docId)}`),
+    [modeNavigate],
   );
+
+  // The contents in a narrow pane (lane A B2-5). The TOC column answers to
+  // the reader's own width (container-reader); below reader-md it folds
+  // away, and this opens it over the page, in the pane: from the Contents
+  // button, or from the keymap (prefix shift+c) via the reader event.
+  const [tocOpen, setTocOpen] = useState(false);
+  useEffect(() => {
+    if (inWindow) return;
+    const onToggle = (e: Event) => {
+      e.preventDefault();
+      setTocOpen((open) => !open);
+    };
+    window.addEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+  }, [inWindow]);
+  const tocRef = useRef<HTMLElement>(null);
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!tocOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      // One Esc, one layer: a hidden TOC must not eat Escape (A1c low 11),
+      // and closing restores focus to the Contents toggle.
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (tocRef.current?.closest("[hidden]")) return;
+      e.preventDefault();
+      setTocOpen(false);
+      tocToggleRef.current?.focus();
+    };
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "reader.contents.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !tocRef.current?.closest("[hidden]"),
+    }, onKey);
+    return () => removeKeyboardOwner();
+  }, [tocOpen]);
+  const jumpFromToc = useCallback(
+    (index: number) => {
+      setPageIndex(index);
+      setTocOpen(false);
+    },
+    [setPageIndex],
+  );
+
+  // The reader's own companion column duplicates the cockpit's right pane
+  // (the companion), so it steps aside while that pane is on screen: the
+  // inset preset from tier md up. It stays in the docked preset, on a phone
+  // and in a window. Hidden, not unmounted, so a preset toggle keeps it.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
+  const cockpitCompanion = !inWindow && layoutPreset === "omarchy-inset" && tier !== "sm";
 
   // The decorations pipeline (anchor-first SPR-02): each persisted anchor
   // declares a decoration through the highlight augmentation (declare), the
@@ -715,12 +812,37 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
-    return <CenterNote inWindow={inWindow}>Opening the book…</CenterNote>;
+    return (
+      <CenterNote inWindow={inWindow}>
+        <LoadingState label="Opening the book" shape="page" />
+      </CenterNote>
+    );
+  }
+  if (error === "book_not_found") {
+    return (
+      <CenterNote inWindow={inWindow}>
+        <EmptyState
+          title="That book isn't in the library."
+          action={
+            <Link to="/library" className="text-sm text-teal underline underline-offset-2">
+              Go to the library
+            </Link>
+          }
+        />
+      </CenterNote>
+    );
   }
   if (error || !book || !body) {
+    // What failed and what is safe; the raw message ("Failed to fetch") is
+    // for "Copy error details", never the page.
     return (
-      <CenterNote tone="error" inWindow={inWindow}>
-        {error === "book_not_found" ? "That book isn't in the library." : error}
+      <CenterNote inWindow={inWindow}>
+        <ErrorState
+          title="Couldn't open this book"
+          body="Your library and notes are unchanged. Check your connection, then try again."
+          detail={error}
+          onRetry={reload}
+        />
       </CenterNote>
     );
   }
@@ -765,17 +887,35 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   return (
     <div
       data-testid="book-reader-root"
-      className={`flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
+      className={`container-reader relative flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
     >
-      {/* TOC sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden md:block">
+      {/* TOC sidebar. It (and the notes column) answers to the READER's width
+          (container-reader, tailwind.config.js), not the viewport: in the
+          cockpit the reader lives in a pane, and the text column must keep
+          its measure when the pane is narrower than the window. Below
+          reader-md it folds away, and the Contents toggle opens it over the
+          page, inside the pane (lane A B2-5). */}
+      <aside
+        ref={tocRef}
+        id={`reader-toc-${documentId}`}
+        data-reader-toc
+        data-open={tocOpen ? "true" : "false"}
+        aria-label="Contents"
+        {...(tocOpen ? ESC_OVERLAY_PROPS : {})}
+        className={
+          "w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 " +
+          (tocOpen
+            ? "absolute inset-y-0 left-0 z-20 block bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night reader-md:static reader-md:shadow-none"
+            : "hidden reader-md:block")
+        }
+      >
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
           {book.title ?? documentId}
         </p>
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
-        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
+        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={jumpFromToc} />
         {(orphanedAnchors.length > 0 || hiddenIslands.size > 0) && (
           <div
             className="mt-3 border-t border-rule dark:border-charcoal-1 pt-2"
@@ -864,229 +1004,269 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
 
 
       {/* Reading column */}
-      <main ref={mainRef} className="relative flex-1 overflow-y-auto">
-        {/* The island widget layer (SPR-02): anchored widgets enacted over the
-            reading column at their layout-map rects. Pointer-events pass
-            through except on the widgets themselves — the SAME pattern as the
-            floating layer. NEVER a workspace window. */}
-        {enactedIslands.length > 0 && (
-          <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
-            {enactedIslands.map((enacted) =>
-              enacted.rect ? (
-                <div
-                  key={enacted.widget.id}
-                  className="absolute pointer-events-auto"
-                  style={{
-                    top: enacted.rect.top,
-                    left: enacted.rect.left + enacted.rect.width,
-                  }}
+      {/* The title row sits above the scroller, so the Thought partner
+          bookmark stays reachable mid-read (cockpit R3); only the reading
+          body scrolls. */}
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
+          <div className="pb-2 border-b border-hairline">
+            <header className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 basis-48 items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setTocOpen((open) => !open)}
+                  ref={tocToggleRef}
+                  aria-expanded={tocOpen}
+                  aria-controls={`reader-toc-${documentId}`}
+                  aria-label="Contents"
+                  title="Contents (prefix ⇧C)"
+                  className="reader-md:hidden shrink-0 rounded px-1.5 py-1 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
                 >
-                  {enacted.widget.render(enacted.rect, islandRenderCtx)}
-                </div>
-              ) : null,
-            )}
+                  <ListIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+                <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
+                  {book.title ?? documentId}
+                </h1>
+              </div>
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <ReadingAppearance />
+                {!isArxivT2T3 && <ReadingTypography />}
+                <LemonTag colour={colour} dot>
+                  {label}
+                </LemonTag>
+                {/* M2 — the bookmark: a book-level MULTI-TURN talk-to-book
+                    conversation that persists across page navigation (session
+                    state, the usePosition precedent). Answers cite pages →
+                    jumpToPage moves the SPR-07 reader. The SPR-04 selection
+                    FloatMenu Dialogue stays one-shot; THIS is the multi-turn
+                    surface. It sits in the reader's title row, in flow, so it
+                    never covers a line of text; it was fixed to the viewport,
+                    which in a cockpit pane put it over the text and the right
+                    pane (cockpit R2-H4). Its open conversation is placed
+                    against the reader root, inside the pane. */}
+                <TalkToBook
+                  documentId={documentId}
+                  title={book.title}
+                  initialOpen={openTalkOnLoad}
+                  onJumpToPage={jumpToPage}
+                />
+              </div>
+            </header>
+            {/* SPR-01 (thread-merge + document fork): the fork tab's
+                provenance header — verdict C carrying spike B's salvaged
+                note. Renders only when this document IS a fork. */}
+            <ForkProvenance documentId={documentId} />
           </div>
-        )}
-        <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
-          <header className="flex items-center justify-between gap-3">
-            <h1 className="text-xl font-serif text-ink dark:text-bright truncate">
-              {book.title ?? documentId}
-            </h1>
-            <LemonTag colour={colour} dot>
-              {label}
-            </LemonTag>
-          </header>
-
-          {isArxivLinkBack ? (
-            /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
-               body and serves NO ads here (body-serving + ad-eligibility are
-               {T1}-only, per the binding rights law). The reader renders the
-               link-back ArxivFrame (pointing at the gate-served canonical_url)
-               + the Attribution chrome, and nothing else: no ReadingColumn body,
-               no AdBorder slots, no in-book page actions. The iframe inside the
-               frame, if it loads at all, loads browser→arXiv — Antiek never
-               proxies arXiv bytes. The only thing that differs between T2 and T3
-               is the attribution label (handled inside ArxivFrame/Attribution). */
-            <ArxivFrame
-              canonicalUrl={body.canonical_url as string}
-              title={book.title}
-              author={book.author}
-              tier={body.tier as "T2" | "T3"}
-            />
-          ) : isArxivLinkUnavailable ? (
-            /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
-               unreachable from the OAI persist path). Antiek hosts NO body for
-               these tiers and has no link to offer — so we render an HONEST
-               notice and nothing else: no empty ReadingColumn, no AdBorder
-               rails. This degrades the M3 contract gracefully rather than
-               falling through to an empty hosted-body view. */
-            <div
-              data-arxiv-link-unavailable
-              className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
-            >
-              This paper is read on arXiv, but its arXiv link isn’t available
-              right now. Try again later or search arXiv for the title above.
-            </div>
-          ) : (
-            <>
-              {!ownerReadable && (
-                <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
-                  {book.servability === "taken_down"
-                    ? "This title has been removed and is no longer available to read."
-                    : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
+        </div>
+        <div data-testid="reader-scroll" className="flex-1 min-h-0 overflow-y-auto">
+          <div ref={mainRef} className="relative min-h-full">
+            {/* The island widget layer (SPR-02): anchored widgets enacted over the
+                reading column at their layout-map rects. Pointer-events pass
+                through except on the widgets themselves — the SAME pattern as the
+                floating layer. NEVER a workspace window. */}
+            {enactedIslands.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
+                {enactedIslands.map((enacted) =>
+                  enacted.rect ? (
+                    <div
+                      key={enacted.widget.id}
+                      className="absolute pointer-events-auto"
+                      style={{
+                        top: enacted.rect.top,
+                        left: enacted.rect.left + enacted.rect.width,
+                      }}
+                    >
+                      {enacted.widget.render(enacted.rect, islandRenderCtx)}
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            )}
+            <div className="w-full mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
+              {isArxivLinkBack ? (
+                /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
+                   body and serves NO ads here (body-serving + ad-eligibility are
+                   {T1}-only, per the binding rights law). The reader renders the
+                   link-back ArxivFrame (pointing at the gate-served canonical_url)
+                   + the Attribution chrome, and nothing else: no ReadingColumn body,
+                   no AdBorder slots, no in-book page actions. The iframe inside the
+                   frame, if it loads at all, loads browser→arXiv — Antiek never
+                   proxies arXiv bytes. The only thing that differs between T2 and T3
+                   is the attribution label (handled inside ArxivFrame/Attribution). */
+                <ArxivFrame
+                  canonicalUrl={body.canonical_url as string}
+                  title={book.title}
+                  author={book.author}
+                  tier={body.tier as "T2" | "T3"}
+                />
+              ) : isArxivLinkUnavailable ? (
+                /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
+                   unreachable from the OAI persist path). Antiek hosts NO body for
+                   these tiers and has no link to offer — so we render an HONEST
+                   notice and nothing else: no empty ReadingColumn, no AdBorder
+                   rails. This degrades the M3 contract gracefully rather than
+                   falling through to an empty hosted-body view. */
+                <div
+                  data-arxiv-link-unavailable
+                  className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+                >
+                  This paper is read on arXiv, but its arXiv link isn’t available
+                  right now. Try again later or search arXiv for the title above.
                 </div>
-              )}
-
-              {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
-                  The backend computes ad-eligibility regression-safely: arXiv →
-                  {T1}-only; non-arXiv → == servable (today's behaviour). So a
-                  non-arXiv servable book keeps its rails (unchanged), an arXiv T1
-                  gets rails, and any non-ad-eligible body shows NO rails. The fill
-                  is still the zero-buyer house PLACEHOLDER (no live ad serving /
-                  revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
-              )}
-
-              {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
-                  attribution markers (SPR-09 M3). The shared useFloatMenuSelection
-                  hook listens on `selectionchange` and opens the menu only for
-                  selections inside this <article>; ReadingColumn forwards the ref so
-                  that scope is preserved verbatim. The load-bearing addition: when
-                  the gate served full text (a SERVABLE asset), the column carries
-                  `data-akb-asset-id={documentId}` so SPR-07's shell-level
-                  useFrameAttention — which scans the working region for
-                  [data-akb-asset-id] — finally detects an in-frame IP asset and the
-                  per-second telemetry stops being all-house-seconds. §9.0: a gated /
-                  taken-down work never reaches here with a body (the snippet path
-                  below renders the notice), so a tagged column is only ever a
-                  servable asset; attribution can never accrue to withheld text. We
-                  pass no chunkId — the books read path exposes no per-chunk id for
-                  the linear body, and we never fabricate one (asset-level is
-                  correct, per the contract's cover/title-card case). For an arXiv
-                  T1 the gate served extracted hosted TEXT (no PDF blob exists —
-                  see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
-                  through this SAME markdown column, no PDF.js. */}
-              <ReadingColumn
-                ref={articleRef}
-                assetId={ownerReadable ? documentId : null}
-                chunkId={
-                  page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
-                }
-                text={page?.text ?? ""}
-                contentFormat={body.content_format ?? "text"}
-                marks={pageMarks}
-              />
-
-              {/* Per-page actions: voice note + spin a deep research. */}
-              {page && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-end gap-2">
-                    <LemonButton
-                      type="button"
-                      variant="tertiary"
-                      size="sm"
-                      aria-pressed={showVoice}
-                      onClick={() => setShowVoice((v) => !v)}
-                    >
-                      {showVoice ? "Close voice note" : "＋ Voice note"}
-                    </LemonButton>
-                    <LemonButton
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={spawnFreeInquiry}
-                      title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
-                    >
-                      Research from here
-                    </LemonButton>
-                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
-                  </div>
-                  {showVoice && (
-                    <VoiceNote
-                      documentId={documentId}
-                      pageIndex={pageIndex}
-                      investigationId={readingThreadId}
-                    />
+              ) : (
+                <>
+                  {!ownerReadable && (
+                    <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                      {book.servability === "taken_down"
+                        ? "This title has been removed and is no longer available to read."
+                        : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
+                    </div>
                   )}
-                </div>
+
+                  {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
+                      The backend computes ad-eligibility regression-safely: arXiv →
+                      {T1}-only; non-arXiv → == servable (today's behaviour). So a
+                      non-arXiv servable book keeps its rails (unchanged), an arXiv T1
+                      gets rails, and any non-ad-eligible body shows NO rails. The fill
+                      is still the zero-buyer house PLACEHOLDER (no live ad serving /
+                      revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
+                  {adEligible && (
+                    <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
+                  )}
+
+                  {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
+                      attribution markers (SPR-09 M3). The shared useFloatMenuSelection
+                      hook listens on `selectionchange` and opens the menu only for
+                      selections inside this <article>; ReadingColumn forwards the ref so
+                      that scope is preserved verbatim. The load-bearing addition: when
+                      the gate served full text (a SERVABLE asset), the column carries
+                      `data-akb-asset-id={documentId}` so SPR-07's shell-level
+                      useFrameAttention — which scans the working region for
+                      [data-akb-asset-id] — finally detects an in-frame IP asset and the
+                      per-second telemetry stops being all-house-seconds. §9.0: a gated /
+                      taken-down work never reaches here with a body (the snippet path
+                      below renders the notice), so a tagged column is only ever a
+                      servable asset; attribution can never accrue to withheld text. We
+                      pass no chunkId — the books read path exposes no per-chunk id for
+                      the linear body, and we never fabricate one (asset-level is
+                      correct, per the contract's cover/title-card case). For an arXiv
+                      T1 the gate served extracted hosted TEXT (no PDF blob exists —
+                      see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
+                      through this SAME markdown column, no PDF.js. */}
+                  <ReadingColumn
+                    ref={articleRef}
+                    assetId={ownerReadable ? documentId : null}
+                    chunkId={
+                      page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
+                    }
+                    text={page?.text ?? ""}
+                    contentFormat={body.content_format ?? "text"}
+                    marks={pageMarks}
+                  />
+
+                  {/* Per-page actions: voice note + spin a deep research. */}
+                  {page && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <LemonButton
+                          type="button"
+                          variant="tertiary"
+                          size="sm"
+                          aria-pressed={showVoice}
+                          onClick={() => setShowVoice((v) => !v)}
+                        >
+                          {showVoice ? "Close voice note" : "＋ Voice note"}
+                        </LemonButton>
+                        <LemonButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={spawnFreeInquiry}
+                          title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
+                        >
+                          Research from here
+                        </LemonButton>
+                        <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
+                      </div>
+                      {showVoice && (
+                        <VoiceNote
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          investigationId={readingThreadId}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
+                  {adEligible && (
+                    <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+                  )}
+                </>
               )}
 
-              {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+              {/* Attribution (M3) — renders on ALL branches: it tells the reader
+                  where the work came from + under what license. For an arXiv doc it
+                  shows the canonical "via arXiv" link + tier/license chips; for a
+                  non-arXiv doc it renders nothing extra (the servability badge above
+                  stays the rights cue). Reads tier/canonical/license off the gate
+                  response, never a local flag. */}
+              <Attribution body={body} />
+
+              {/* Pager — hidden on the link-back branch (no hosted pages there). */}
+              {!isArxivLinkBack && pages.length > 0 && (
+                <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
+                  <LemonButton
+                    size="sm"
+                    type="button"
+                    disabled={pageIndex <= 0}
+                    onClick={() => setPageIndex(pageIndex - 1)}
+                  >
+                    ← Previous
+                  </LemonButton>
+                  <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                    {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
+                  </span>
+                  <LemonButton
+                    size="sm"
+                    type="button"
+                    disabled={pageIndex >= pages.length - 1}
+                    onClick={() => setPageIndex(pageIndex + 1)}
+                  >
+                    Next →
+                  </LemonButton>
+                </nav>
               )}
-            </>
-          )}
-
-          {/* Attribution (M3) — renders on ALL branches: it tells the reader
-              where the work came from + under what license. For an arXiv doc it
-              shows the canonical "via arXiv" link + tier/license chips; for a
-              non-arXiv doc it renders nothing extra (the servability badge above
-              stays the rights cue). Reads tier/canonical/license off the gate
-              response, never a local flag. */}
-          <Attribution body={body} />
-
-          {/* Pager — hidden on the link-back branch (no hosted pages there). */}
-          {!isArxivLinkBack && pages.length > 0 && (
-            <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex <= 0}
-                onClick={() => setPageIndex(pageIndex - 1)}
-              >
-                ← Previous
-              </LemonButton>
-              <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
-              </span>
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex >= pages.length - 1}
-                onClick={() => setPageIndex(pageIndex + 1)}
-              >
-                Next →
-              </LemonButton>
-            </nav>
-          )}
+            </div>
+          </div>
         </div>
       </main>
 
       {/* The Read glass-box (M2) stays available while highlight chases open in
           floating workspace chrome. The page never moves (usePosition), so a
           reader can inspect a spawned chase and keep the book context intact. */}
-      <ReadingCompanion
-        documentId={documentId}
-        title={book.title}
-        readingThreadId={readingThreadId}
-        onSourceBodyChanged={refreshSourceBody}
-      />
+      <div
+        data-reader-companion-slot
+        hidden={cockpitCompanion || undefined}
+        className={cockpitCompanion ? "hidden" : "contents"}
+      >
+        <ReadingCompanion
+          documentId={documentId}
+          title={book.title}
+          readingThreadId={readingThreadId}
+          pageIndex={pageIndex}
+        />
+      </div>
 
-
-      {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
-          conversation that persists across page navigation (session state, the
-          usePosition precedent). Answers cite pages → jumpToPage moves the
-          SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
-          THIS is the new multi-turn surface. */}
-      <TalkToBook
-        documentId={documentId}
-        title={book.title}
-        initialOpen={openTalkOnLoad}
-        onJumpToPage={jumpToPage}
-      />
     </div>
   );
 }
 
 function CenterNote({
   children,
-  tone,
   inWindow = false,
 }: {
   children: React.ReactNode;
-  tone?: "error";
   inWindow?: boolean;
 }) {
   return (
@@ -1094,13 +1274,7 @@ function CenterNote({
       data-testid="book-reader-status"
       className={`${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"} flex items-center justify-center`}
     >
-      <p
-        className={`text-sm font-serif ${
-          tone === "error" ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"
-        }`}
-      >
-        {children}
-      </p>
+      {children}
     </div>
   );
 }

@@ -82,7 +82,7 @@ dependencies = [
 
 [project.optional-dependencies]
 turbopuffer_shadow = [
-  "turbopuffer==2.9.0",
+  "turbopuffer==2.10.1",
 ]
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
@@ -162,14 +162,28 @@ dev = [
 
 [project.scripts]
 herdr-bridge = "infrastructure.connectors.herdr_bridge.cli:main"
-# Entry point lives at `antiek.cli:main` once we wire it. For now this is
-# a placeholder so `pip install -e .` doesn't fail; the real launcher
-# fires up Hermes with the right profile (see spec, "Compute and runtime").
-antiek = "antiek.cli:main"
+# The supported console launcher is `herdr-bridge` above.
 
 [tool.hatch.build.targets.wheel]
 # Each top-level directory in the spec is a separate Python package. We
 # tell hatchling about each one explicitly so it doesn't try to guess.
+# `services` is here because it was NOT, and the wheel was broken for it. Measured by an
+# adversarial audit of this repository:
+#
+#   services/ holds 117 tracked .py files, and twelve modules inside the roots below import
+#   it (interfaces/research/api/artifact_routes.py:21-23, deliverable_artifact.py, style_routes.py),
+#   and those modules are registered from create_app(). `pip wheel .` built cleanly and produced
+#   1,264 entries across exactly these roots with ZERO services/* entries, so:
+#
+#     cd /tmp && PYTHONPATH=<wheel> python -c 'import interfaces.research.api.artifact_routes'
+#     -> ModuleNotFoundError: No module named 'services.html_projection.context'
+#
+#   The identical import from the source tree printed SOURCE IMPORT OK. Control passes, artifact
+#   fails: packaging, not code. Nothing in the repo builds or installs the wheel, which is why no
+#   test noticed -- the declared artifact was the one thing with no test behind it.
+#
+# `services/` is a namespace package (no __init__.py), which is why telling hatchling about it is
+# sufficient and no source change is needed.
 packages = [
   "substrate",
   "skills",
@@ -183,6 +197,7 @@ packages = [
   "runtime",
   "integrations",
   "infrastructure",
+  "services",
 ]
 
 [tool.ruff]

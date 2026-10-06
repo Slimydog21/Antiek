@@ -51,6 +51,7 @@ writers wait). Cite: #3121 coexist; #3164/#3165 fill contention.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import contextlib
 import errno
@@ -258,6 +259,7 @@ _SAME_FILE_DIFFERENT_CONFIG = (
 )
 _READ_MODE_RETRY_WINDOW_S = 0.25
 _READ_MODE_RETRY_INTERVAL_S = 0.01
+_connect_open_lock = threading.Lock()
 
 
 def _external_duckdb_lock_conflict(exc: Exception) -> bool:
@@ -434,6 +436,10 @@ class WriteLockTimeout(RuntimeError):
 
 class ReadLockTimeout(RuntimeError):
     """Raised when another process holds DuckDB's file lock past the read budget."""
+
+
+class WriteConfigurationTimeout(RuntimeError):
+    """A same-process incompatible DuckDB connection outlived the write budget."""
 
 
 # Spec-facing alias. The spec names this WriteCoordinatorTimeout; the existing
@@ -823,6 +829,9 @@ def connect_write(
     Blocks up to timeout_s waiting for the lock; raises WriteLockTimeout if
     it can't be acquired. Polls rather than using a blocking flock so we can
     enforce a deadline.
+    If an incompatible same-process connection prevents the DuckDB write
+    open until that deadline, raises WriteConfigurationTimeout. The holder
+    must release its own handle; this function cannot safely close it.
 
     `purpose` is a short tag (e.g. "ingest", "extract", "supersession-review")
     stamped into the sidecar lock file so a stuck writer is identifiable.
@@ -1056,6 +1065,14 @@ def _connect_write_after_process_gate(
                 f"Could not acquire DuckDB file lock on {db_path} within "
                 f"{timeout_s}s; another process holds a conflicting connection."
             ) from open_error
+        if _SAME_FILE_DIFFERENT_CONFIG in str(open_error):
+            # The existing caller owns its handle and may still be using it. Preserve
+            # the wait above, then expose a typed retryable failure so the
+            # API's shared handler can return 503 instead of a raw 500.
+            raise WriteConfigurationTimeout(
+                f"Could not open DuckDB write connection on {db_path} within "
+                f"{timeout_s}s; an incompatible connection remains open in this process."
+            ) from open_error
         raise open_error
     return LockedConnection(
         con,
@@ -1212,10 +1229,41 @@ ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
 )
 
 
+# How long a read waits for another process to release the file before it
+# surfaces ReadLockTimeout. The wait existed but nothing used it: 199 of 202
+# production read sites inherited the old fail-at-once default (only
+# speak_routes.py, this module, and async_interview.py opted in), so a read
+# that merely lost a race with a write answered 503 + Retry-After instead of
+# waiting a few hundred milliseconds and succeeding. Tuneable so an operator
+# can trade latency for availability without a code change.
+_DEFAULT_LOCK_WAIT_S = float(os.environ.get("ANTIEK_READ_LOCK_WAIT_S", "2.0"))
+
+
+def _on_event_loop() -> bool:
+    """True when a call is running ON the event loop rather than beside it.
+
+    This is the whole reason the wait was opt-in. ``runtime/db_lock.py`` warns
+    that routes opting into the synchronous wait must not run on the loop, and
+    with uvicorn pinned to one worker (CLAUDE.md invariant 1) a blocking wait
+    there stalls every other request. So the safe default was chosen over the
+    useful one, and 199 call sites were left to remember an argument they
+    mostly did not know about.
+
+    Detect the context instead of asking call sites to declare it. Starlette
+    runs a sync route in its threadpool, where no loop is running in this
+    thread and a wait costs nothing but this request's latency.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
 def connect_read(
     db_path: str,
     *,
-    external_lock_timeout_s: float = 0.0,
+    external_lock_timeout_s: float | None = None,
 ) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
@@ -1238,8 +1286,22 @@ def connect_read(
     latency contract; routes that opt in must dispatch this synchronous wait
     off the event loop. Other connection errors are never retried.
 
+    Both immediate failure (``external_lock_timeout_s == 0``) and a bounded
+    wait that expires surface as ``ReadLockTimeout`` — never as the raw
+    ``duckdb.IOException``. The typed error is what the API's app-level
+    exception handler maps to 503 + ``Retry-After``; the raw ``IOException``
+    escaped as an uncaught HTTP 500 on ~128 request paths (read-open audit,
+    2026-10-01: 6,793 500s/24h on the busiest one).
+
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
+    if external_lock_timeout_s is None:
+        # None means "decide from the context this is actually running in":
+        # on the loop, never wait (fail fast, exactly as before, so no route
+        # can stall the loop by omission); off the loop, a threadpool worker
+        # or a script, wait a bounded time. An explicit float still wins, so
+        # the three opted-in sites and their tests are unaffected.
+        external_lock_timeout_s = 0.0 if _on_event_loop() else _DEFAULT_LOCK_WAIT_S
     if not math.isfinite(external_lock_timeout_s) or external_lock_timeout_s < 0:
         raise ValueError("external_lock_timeout_s must be finite and nonnegative")
 
@@ -1248,8 +1310,16 @@ def connect_read(
 
     def wait_for_external_lock(exc: Exception) -> bool:
         nonlocal external_deadline, retry_deadline
-        if not _external_duckdb_lock_conflict(exc) or external_lock_timeout_s == 0:
+        if not _external_duckdb_lock_conflict(exc):
             return False
+        if external_lock_timeout_s == 0:
+            # Fail immediately — but as the TYPED conflict error, so callers
+            # (and the API's exception handler) can distinguish "another
+            # process holds the file" from every other open failure.
+            raise ReadLockTimeout(
+                f"External lock conflict opening read connection on {db_path} "
+                f"(external_lock_timeout_s=0; another process holds the file)"
+            ) from exc
         # An external writer can span a complete local-handle handoff.
         # A later local mode conflict is a new transition, not a continuation
         # of the 250 ms window that preceded this writer.
@@ -1264,7 +1334,8 @@ def connect_read(
 
     while True:
         try:
-            return duckdb.connect(db_path, read_only=True)
+            with _connect_open_lock:
+                return duckdb.connect(db_path, read_only=True)
         except Exception as exc:
             if wait_for_external_lock(exc):
                 continue
@@ -1277,9 +1348,10 @@ def connect_read(
             if not lazy_ok:
                 raise
             try:
-                return _ReadOrientedConnection(
-                    duckdb.connect(db_path, read_only=False)
-                )
+                with _connect_open_lock:
+                    return _ReadOrientedConnection(
+                        duckdb.connect(db_path, read_only=False)
+                    )
             except Exception as fallback_exc:
                 if wait_for_external_lock(fallback_exc):
                     continue

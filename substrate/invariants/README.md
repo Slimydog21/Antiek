@@ -84,8 +84,32 @@ declaration it asserts:
   pytest, is **not** `@pytest.mark.xfail` (neither a genuinely-failing xfail nor
   an incidentally-passing xpass counts as a live guard), runs **green** at call
   time, and a `[non_vacuity]` proof is present and well-formed. A guard that is
-  missing, skipped, xfailed, xpassed, or stubbed-to-always-pass **reddens** the
-  meta-check (proven on deliberately-broken fixtures in the same test file).
+  missing, skipped, xfailed, or xpassed **reddens** the meta-check (proven on
+  deliberately-broken fixtures in the same test file).
+
+  **A stubbed-to-always-pass guard is NOT detectable this way, and the previous
+  wording here claimed it was.** The assertion for a `pytest`-kind guard is
+  `not was_xfail` and `passed` — a test whose body is `assert True` satisfies
+  both, and no amount of registry checking can tell it from a real test. The
+  claim pointed at `broken-stub` as its proof, but that fixture declares no
+  `[non_vacuity]` table at all, so it reddens on **missing proof**, not on being
+  vacuous:
+
+      # No [non_vacuity] table ⇒ the well-formedness gate rejects it.
+      assert inv.non_vacuity is None
+      with pytest.raises(AssertionError, match="non_vacuity"):
+          _check_guarded(inv)
+
+  **Measured**: a declaration identical to `broken-stub` but carrying a
+  well-formed prose `[non_vacuity]` loads without error and passes
+  `_check_guarded`. `tests/test_invariant_registry_meta.py
+  ::test_a_prose_non_vacuity_does_not_make_an_always_pass_guard_detectable`
+  now asserts that, so the limitation is tested rather than only described.
+
+  For a `pytest`-kind guard, **non-vacuity is prose plus "it runs green"** — the
+  `detail` is trusted. A `script`-kind guard is the one kind whose teeth are
+  actually verified, because it must name a `bite_test` node the meta-check
+  RUNS. `method` and `detail` are well-formedness checks, not teeth.
 * **guarded (`script`)** → an exit-code gate has no collectible node, so its
   non-vacuity is **VERIFIED by RUNNING its `[non_vacuity].bite_test`** — the
   declared strongest negative-control node — with the **same rigor** a

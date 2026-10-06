@@ -48,7 +48,11 @@ from acquisition.arxiv.oai_persist import (  # noqa: E402
 )
 from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
-from runtime.db_lock import LockedConnection, connect_write  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    LockedConnection,
+    connect_write,
+    write_handoff_requested,
+)
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.schema import load_arxiv_bulk_progress  # noqa: E402
 from substrate.schemas.documents import ArxivOaiRecord, RightsCensus  # noqa: E402
@@ -70,6 +74,17 @@ logger = logging.getLogger("tools.arxiv_oai_sync")
 DEFAULT_PERSIST_BATCH_SIZE = 200
 DEFAULT_MAX_LOCK_SECONDS = 15.0
 DEFAULT_LOCK_YIELD_SECONDS = 0.5
+
+# Fairness handoff (prod 2026-10-01). ``yield_s`` alone is a BLIND sleep: it
+# hands the lock back on a timer whether or not anyone is queued for it, so a
+# bulk pass can still starve a queued API writer. Measured on the live box
+# while this sync ran: the sync held the DuckDB file ~15s of every 15.5s
+# (~97% duty), the API's own connections failed for the whole multi-hour pass,
+# and uvicorn answered 6,793 500s in 24h. The yield is now a FLOOR: after it,
+# the sync steps aside for as long as ``write_handoff_requested`` reports a
+# live waiter — the same token protocol the warm writer already honours.
+HANDOFF_WAIT_MAX_S = 5.0
+HANDOFF_POLL_S = 0.05
 
 
 def _env_int(name: str, default: int) -> int:
@@ -113,6 +128,39 @@ def _persist_one(con: LockedConnection, record: ArxivOaiRecord, tally: dict[str,
         tally["updated"] += 1
 
 
+def _yield_between_lock_sessions(
+    db_path: str, yield_s: float, *, wait_for_waiters: bool = True
+) -> float:
+    """Give the DuckDB writer back, then wait out any live queued writer.
+
+    ``yield_s`` is a floor, not the mechanism: it exists so fills / agent-work
+    leases get a chance, but it is blind to whether anyone actually wants the
+    lock. After the floor sleeps, this waits — bounded by
+    ``HANDOFF_WAIT_MAX_S`` — while ``write_handoff_requested`` reports a live
+    waiter token, which is the same signal the API's warm writer yields on.
+    The wait is skipped once the waiter withdraws (its owner acquired or gave
+    up), so an abandoned token cannot stall the run past the bound.
+
+    Returns the seconds actually spent waiting on waiters (0.0 when none).
+    """
+    if yield_s > 0:
+        time.sleep(yield_s)
+    if not wait_for_waiters or HANDOFF_WAIT_MAX_S <= 0:
+        return 0.0
+    # ``write_handoff_requested`` also prunes abandoned tokens, so a stale
+    # token is cleared here rather than blocking the next acquisition.
+    if not write_handoff_requested(db_path):
+        return 0.0
+    t0 = time.monotonic()
+    deadline = t0 + HANDOFF_WAIT_MAX_S
+    while write_handoff_requested(db_path):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(HANDOFF_POLL_S, remaining))
+    return time.monotonic() - t0
+
+
 def _flush_persist_batch(
     db_path: str,
     batch: list[ArxivOaiRecord],
@@ -124,8 +172,9 @@ def _flush_persist_batch(
     """Persist ``batch`` under one or more short-lived write locks.
 
     Releases the lock every ``max_lock_s`` wall-clock seconds (or sooner when
-    the batch ends), sleeping ``yield_s`` between sessions so other writers
-    (uvicorn / agent-work lease) can acquire the flock.
+    the batch ends), then yields between sessions so other writers (uvicorn /
+    agent-work lease) can acquire the flock. The yield is a floor followed by a
+    wait on any live queued writer — see ``_yield_between_lock_sessions``.
     """
     if not batch:
         return
@@ -141,8 +190,8 @@ def _flush_persist_batch(
                 idx += 1
                 if max_lock_s > 0 and (time.monotonic() - t0) >= max_lock_s:
                     break
-        if idx < n and yield_s > 0:
-            time.sleep(yield_s)
+        if idx < n:
+            _yield_between_lock_sessions(db_path, yield_s)
 
 
 def _chunked_persist_tap(
@@ -178,8 +227,7 @@ def _chunked_persist_tap(
             )
             yield from pending
             pending = []
-            if yield_s > 0:
-                time.sleep(yield_s)
+            _yield_between_lock_sessions(db_path, yield_s)
     if pending:
         _flush_persist_batch(
             db_path, pending, tally, max_lock_s=max_lock_s, yield_s=yield_s
@@ -504,7 +552,12 @@ def run_bulk_sync(
 
     The whole-run flock serializes timer/CLI callers. Each bounded DuckDB
     transaction commits selected document rows with the next physical line
-    offset, cumulative event counts and bulk maximum date. On interruption,
+    offset, cumulative event counts and bulk maximum date. Between slices the
+    bulk phase yields via ``_yield_between_lock_sessions`` — a floor sleep
+    plus a bounded wait on ``write_handoff_requested`` — so a queued API
+    writer is served instead of losing the re-acquisition race to a blind
+    timer (prod incident 2026-10-02: ~85% of frame-telemetry writes refused
+    while ``incremental --bulk`` ran). On interruption,
     the DB cursor resumes the suffix; a tail failure leaves phase ``tail`` and
     replays its inclusive date window. Only complete success advances the DB
     high-water and writes the observational JSON mirror.
@@ -574,8 +627,7 @@ def run_bulk_sync(
                                 cast(int, progress["selected_record_count"]),
                             )
                         del pending[:consumed]
-                        if yield_s > 0:
-                            time.sleep(yield_s)
+                        _yield_between_lock_sessions(resolved_db, yield_s)
                     selected = 0
                 while pending:
                     assert_snapshot_unchanged(source)
@@ -594,8 +646,7 @@ def run_bulk_sync(
                             cast(int, progress["selected_record_count"]),
                         )
                     del pending[:consumed]
-                    if yield_s > 0:
-                        time.sleep(yield_s)
+                    _yield_between_lock_sessions(resolved_db, yield_s)
             assert_snapshot_unchanged(source)
             if verify_snapshot(source.path).sha256 != source.sha256:
                 raise ValueError("bulk snapshot digest changed during scanning")

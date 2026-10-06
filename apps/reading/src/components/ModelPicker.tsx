@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../workspace/keyboardOwnership";
 /**
  * ModelPicker — reusable per-action model-driver dropdown (BYOT directive).
  *
@@ -13,7 +14,7 @@
  *   * Empty candidate list renders a named empty state, not a blank menu.
  */
 
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ComposerCandidateView } from "../api/composerProjection";
 import { press } from "../design/motion";
@@ -86,10 +87,24 @@ export default function ModelPicker({
       e.preventDefault();
       if (open) choose(candidates[activeIndex]);
       else setOpen(true);
-    } else if (e.key === "Escape") {
-      setOpen(false);
     }
   }
+
+  // Esc closes the open list from any focus, and is its alone
+  // (workspace/escapeOverlay.ts): it never also exits a pane fullscreen.
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "model-picker.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onEsc);
+    return () => removeKeyboardOwner();
+  }, [open]);
 
   if (loading) {
     return (
@@ -153,6 +168,7 @@ export default function ModelPicker({
           <ul
             id={listboxId}
             role="listbox"
+            data-esc-overlay=""
             aria-label={label}
             className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border-2 border-sun bg-ice-0 py-1 shadow-[4px_4px_0_rgba(0,0,0,0.15)] dark:bg-charcoal-1"
           >
@@ -177,7 +193,7 @@ export default function ModelPicker({
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       {c.quality_basis === "measured" ? (
-                        <span className="rounded bg-success/10 px-1 text-xxs text-success">measured</span>
+                        <span className="rounded bg-card px-1 text-xxs text-success">measured</span>
                       ) : (
                         <span className="rounded bg-moonlight/15 px-1 text-xxs text-shadow-1 dark:text-moonlight">prior</span>
                       )}

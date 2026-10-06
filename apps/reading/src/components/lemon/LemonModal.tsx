@@ -1,8 +1,10 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 
 import { enter } from "../../design/motion";
+import { topModal } from "../../workspace/escapeOverlay";
 
 /**
  * LemonModal — centered modal with backdrop, ESC-to-close, outside-click-to-close,
@@ -73,10 +75,17 @@ export function LemonModal({
   useEffect(() => {
     if (!open || forceUserAction) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // The Esc is the dialog's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented && topModal() === dialogRef.current) {
+        e.preventDefault();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "modal.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && topModal() === dialogRef.current,
+    }, handler);
+    return () => removeKeyboardOwner();
   }, [open, onClose, forceUserAction]);
 
   // Focus trap: keep focus inside dialog while open

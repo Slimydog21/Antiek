@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import tempfile
@@ -16,6 +17,10 @@ from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_document
 from substrate.research_artifact.paths import artifact_source_path_for
+from substrate.research_artifact.source_merge import (
+    commit_source_merge_review,
+    preview_source_merge_review,
+)
 from substrate.research_artifact.store import ResearchArtifactStore
 
 
@@ -30,7 +35,16 @@ def api_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events)
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     ensure_initialized(db)
+    with connect_write(db, purpose="test/artifact-readable-source") as con:
+        insert_document(
+            con, document_id="doc-1", source_tier=2, document_type="web",
+            raw_text="Artifact source evidence.", content_class="public_domain",
+            owner_user_id="__operator__",
+        )
     return {"db": db, "events": events, "arts": arts}
 
 
@@ -247,154 +261,9 @@ def _source_merge_ready_packet(client: TestClient) -> tuple[dict, dict[str, str]
     )
 
 
-def test_source_merge_apply_requires_operator_acknowledgements(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-        },
-    )
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_operator_acknowledgement_required"
-
-
-def test_source_merge_apply_refuses_stale_review_packet(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    hashes["inv-src-a"] = "stale-" + hashes["inv-src-a"]
-
-    resp = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_stale_review_packet"
-
-
-def test_source_merge_apply_requires_hash_conflict_acknowledgement(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    packet["hash_conflict_count"] = 1
-    packet["hash_conflicts"] = [["inv-src-a", "inv-src-b"]]
-
-    resp = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-            "acknowledge_hash_conflicts": False,
-        },
-    )
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_hash_conflicts_acknowledgement_required"
-
-
-def test_source_merge_preview_returns_revision_evidence_without_writes(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/preview",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "previewed"
-    assert body["document_id"] == "doc-source-merge"
-    assert body["source_revision_id"].startswith("srcmerge-doc-source-merge-")
-    assert body["twin_revision_id"].startswith("twinmerge-doc-source-merge-")
-    assert body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
-    assert body["before_source_hash"] != body["after_source_hash"]
-    assert body["before_twin_hash"] != body["after_twin_hash"]
-    assert body["source_bytes_after"] > body["source_bytes_before"]
-    assert body["twin_bytes_after"] > 0
-    assert body["writes_performed"] is False
-
-
-def test_source_merge_preview_does_not_mutate_source_or_emit_event(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/preview",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 200
-    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/read_source_after_preview") as con:
-        (raw_text,) = con.execute(
-            "SELECT raw_text FROM documents WHERE document_id = ?",
-            ["doc-source-merge"],
-        ).fetchone()
-    assert raw_text == "Original source book body."
-    assert not (Path(api_env["events"]) / "read-doc-source-merge.jsonl").exists()
-
-
-def test_source_merge_preview_refuses_missing_source_document(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    packet["document_id"] = "doc-source-merge-missing"
-
-    resp = client.post(
-        "/research/artifacts/source-merge/preview",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_source_document_not_found"
-
-
-def _source_merge_preview_body(client: TestClient, packet: dict, hashes: dict[str, str]) -> dict:
-    resp = client.post(
-        "/research/artifacts/source-merge/preview",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-    assert resp.status_code == 200
-    return resp.json()
-
-
 def _source_merge_commit_payload(packet: dict, hashes: dict[str, str], preview: dict) -> dict:
+    """The body the retired commit route accepted, and the arguments that seed
+    a committed merge for the restore tests."""
     return {
         "reviewed_packet": packet,
         "expected_content_hashes": hashes,
@@ -412,96 +281,6 @@ def _source_merge_commit_payload(packet: dict, hashes: dict[str, str], preview: 
     }
 
 
-def test_source_merge_commit_requires_body_rewrite_acknowledgement(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    preview = _source_merge_preview_body(client, packet, hashes)
-    payload = _source_merge_commit_payload(packet, hashes, preview)
-    payload["acknowledge_body_rewrite"] = False
-
-    resp = client.post("/research/artifacts/source-merge/commit", json=payload)
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_body_rewrite_acknowledgement_required"
-
-
-def test_source_merge_commit_refuses_preview_hash_mismatch(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    preview = _source_merge_preview_body(client, packet, hashes)
-    payload = _source_merge_commit_payload(packet, hashes, preview)
-    payload["expected_after_source_hash"] = "stale-" + payload["expected_after_source_hash"]
-
-    resp = client.post("/research/artifacts/source-merge/commit", json=payload)
-
-    assert resp.status_code == 409
-    assert resp.json()["detail"] == "source_merge_preview_binding_mismatch"
-
-
-def test_source_merge_commit_rewrites_source_body_and_emits_metadata_event(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    preview = _source_merge_preview_body(client, packet, hashes)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/commit",
-        json=_source_merge_commit_payload(packet, hashes, preview),
-    )
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "committed"
-    assert body["writes_performed"] is True
-    assert body["source_revision_id"] == preview["source_revision_id"]
-    assert body["after_source_hash"] == preview["after_source_hash"]
-
-    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/read_source_after_commit") as con:
-        (raw_text,) = con.execute(
-            "SELECT raw_text FROM documents WHERE document_id = ?",
-            ["doc-source-merge"],
-        ).fetchone()
-        (twin_body_json,) = con.execute(
-            "SELECT twin_body_json FROM source_merge_body_commits WHERE document_id = ?",
-            ["doc-source-merge"],
-        ).fetchone()
-    assert "Original source book body." in raw_text
-    assert "antiek-source-merge-start" in raw_text
-    assert "Source merge A" in raw_text
-    assert "Source merge B" in raw_text
-    twin_body = json.loads(twin_body_json)
-    assert twin_body["kind"] == "antiek.source_merge.preview_payload"
-    assert twin_body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
-
-    events_path = Path(api_env["events"]) / "read-doc-source-merge.jsonl"
-    rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
-    event = rows[-1]
-    assert event["event_id"] == body["event_id"]
-    assert event["action_type"] == "source_merge.committed"
-    assert event["payload"]["source_book_body_rewritten"] is True
-    assert event["payload"]["twin_document_body_rewritten"] is True
-    assert event["payload"]["after_source_hash"] == preview["after_source_hash"]
-    assert "Source merge A" not in json.dumps(event)
-    assert "Source merge B" not in json.dumps(event)
-
-
-def test_source_merge_commit_is_idempotent_after_rewrite(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-    preview = _source_merge_preview_body(client, packet, hashes)
-    payload = _source_merge_commit_payload(packet, hashes, preview)
-
-    first = client.post("/research/artifacts/source-merge/commit", json=payload)
-    second = client.post("/research/artifacts/source-merge/commit", json=payload)
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-    first_body = first.json()
-    second_body = second.json()
-    assert first_body["writes_performed"] is True
-    assert second_body["writes_performed"] is False
-    assert {**first_body, "writes_performed": False} == second_body
-
-
 def _source_merge_restore_payload(commit: dict, *, acknowledged: bool = True) -> dict:
     return {
         "document_id": commit["document_id"],
@@ -515,15 +294,51 @@ def _source_merge_restore_payload(commit: dict, *, acknowledged: bool = True) ->
     }
 
 
+def _source_merge_preview_evidence(packet: dict, hashes: dict[str, str]) -> dict:
+    """The revision ids and hashes a commit binds to, from the substrate preview."""
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/source_merge_preview") as con:
+        preview = preview_source_merge_review(
+            con,
+            document_id=packet["document_id"],
+            draft_merge_path=packet["draft_merge_path"],
+            compose_index_path=packet["compose_index_path"],
+            member_investigation_ids=packet["member_investigation_ids"],
+            expected_content_hashes=hashes,
+            hash_conflicts=packet["hash_conflicts"],
+        )
+    return dataclasses.asdict(preview)
+
+
 def _committed_source_merge(client: TestClient) -> tuple[dict, dict, dict[str, str]]:
+    """A merge committed before the commit route was retired, as prod may hold.
+
+    The commit route now answers 410 (T6: a merge never writes the source), so
+    the commit is seeded through the substrate with the arguments the route
+    passed; restore, the undo for such a commit, is still tested through its
+    route.
+    """
     packet, hashes = _source_merge_ready_packet(client)
-    preview = _source_merge_preview_body(client, packet, hashes)
-    commit = client.post(
-        "/research/artifacts/source-merge/commit",
-        json=_source_merge_commit_payload(packet, hashes, preview),
-    )
-    assert commit.status_code == 200
-    return packet, commit.json(), hashes
+    payload = _source_merge_commit_payload(packet, hashes, _source_merge_preview_evidence(packet, hashes))
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/source_merge_seed_commit") as con:
+        receipt = commit_source_merge_review(
+            con,
+            document_id=packet["document_id"],
+            parent_reading_thread_id=packet["parent_reading_thread_id"],
+            draft_merge_path=packet["draft_merge_path"],
+            compose_index_path=packet["compose_index_path"],
+            member_investigation_ids=packet["member_investigation_ids"],
+            expected_content_hashes=payload["expected_content_hashes"],
+            hash_conflicts=packet["hash_conflicts"],
+            expected_source_revision_id=payload["expected_source_revision_id"],
+            expected_twin_revision_id=payload["expected_twin_revision_id"],
+            expected_before_source_hash=payload["expected_before_source_hash"],
+            expected_after_source_hash=payload["expected_after_source_hash"],
+            expected_before_twin_hash=payload["expected_before_twin_hash"],
+            expected_after_twin_hash=payload["expected_after_twin_hash"],
+            operator_reviewer=payload["operator_reviewer"],
+        )
+    assert receipt.writes_performed is True
+    return packet, dataclasses.asdict(receipt), hashes
 
 
 def test_source_merge_restore_requires_acknowledgement(api_env):
@@ -614,73 +429,6 @@ def test_source_merge_restore_is_idempotent_after_restore(api_env):
     assert first_body["writes_performed"] is True
     assert second_body["writes_performed"] is False
     assert {**first_body, "writes_performed": False} == second_body
-
-
-def test_source_merge_apply_records_deterministic_receipt(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "applied"
-    assert body["document_id"] == "doc-source-merge"
-    assert body["source_revision_id"].startswith("srcmerge-doc-source-merge-")
-    assert body["twin_revision_id"].startswith("twinmerge-doc-source-merge-")
-    assert body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
-    assert body["hash_conflicts_acknowledged"] is False
-    assert body["event_id"]
-
-    again = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-    assert again.status_code == 200
-    assert again.json() == body
-
-
-def test_source_merge_apply_emits_metadata_only_audit_event(api_env):
-    client = _client()
-    packet, hashes = _source_merge_ready_packet(client)
-
-    resp = client.post(
-        "/research/artifacts/source-merge/apply",
-        json={
-            "reviewed_packet": packet,
-            "expected_content_hashes": hashes,
-            "acknowledge_reviewed_draft": True,
-            "acknowledge_source_book_mutation": True,
-            "acknowledge_twin_document_mutation": True,
-        },
-    )
-
-    assert resp.status_code == 200
-    events_path = Path(api_env["events"]) / "read-doc-source-merge.jsonl"
-    rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
-    event = rows[-1]
-    assert event["event_id"] == resp.json()["event_id"]
-    assert event["action_type"] == "source_merge.applied"
-    assert event["document_id"] == "doc-source-merge"
-    assert event["payload"]["source_book_body_rewritten"] is False
-    assert event["payload"]["twin_document_body_rewritten"] is False
-    assert "Source merge A" not in json.dumps(event)
-    assert "Source merge B" not in json.dumps(event)
 
 
 def test_get_compose_draft_merge_html_requires_two_ids(api_env):

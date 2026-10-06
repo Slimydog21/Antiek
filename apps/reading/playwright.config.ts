@@ -62,9 +62,25 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
+  // `html` is REQUIRED HERE EVEN THOUGH NOBODY READS IT IN THE TERMINAL, because
+  // .github/workflows/e2e_chromium.yml has a step named "Upload report":
+  //
+  //     path: |
+  //       apps/reading/playwright-report
+  //       apps/reading/test-results
+  //     if-no-files-found: ignore
+  //
+  // `playwright-report/` is gitignored, so it is meant to be produced -- and with only
+  // `github` and `list` configured, it never was. `if-no-files-found: ignore` then made the
+  // empty upload silent, so the workflow has been reporting success while retaining nothing
+  // to inspect: a failing e2e run left traces and screenshots only if `test-results` was
+  // populated, and never the HTML report the step is named for.
+  //
+  // Found by an artifact-coverage audit as W03 and confirmed here. `open: "never"` because CI
+  // has no browser to open it with, and a reporter that tries would hang the run.
   reporter: process.env.CI
-    ? [["github"], ["list"]]
-    : [["list"]],
+    ? [["github"], ["list"], ["html", { open: "never" }]]
+    : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: STORYBOOK_BASE,
     trace: "retain-on-failure",
@@ -116,8 +132,9 @@ export default defineConfig({
       : [
           {
             command: "npx --yes http-server storybook-static -p 6006 -s --cors",
+            name: "storybook on :6006",
             url: "http://localhost:6006",
-            reuseExistingServer: true,
+            reuseExistingServer: !process.env.CI,
             timeout: 30_000,
           },
         ]),
@@ -183,8 +200,9 @@ export default defineConfig({
         ? [
             {
               command: "npx vite preview --port 4173 --strictPort",
+              name: "app preview on :4173",
               url: AMS_APP_BASE,
-              reuseExistingServer: true,
+              reuseExistingServer: !process.env.CI,
               timeout: 60_000,
             },
           ]

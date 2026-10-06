@@ -110,6 +110,12 @@ def _client(monkeypatch):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    # These flow tests assert the default same-origin link/redirect contract.
+    # Developer and agent shells commonly export public/frontend origins;
+    # dedicated cross-origin tests set their bases explicitly after _client().
+    monkeypatch.delenv("ANTIEK_FRONTEND_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTIEK_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTIEK_API_BASE_URL", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     # Existing magic-link contract tests model a device that has already
@@ -587,8 +593,8 @@ def test_cross_origin_callback_redirects_to_frontend(monkeypatch):
     """When ANTIEK_FRONTEND_BASE_URL is set, the callback redirect
     is absolute to the frontend host so the browser lands on Pages
     with the cookie set (cross-origin deployment)."""
-    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://antiek.ai")
     client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://antiek.ai")
     tok = mint_magic_link_token(_OPERATOR)
     r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
     assert r.status_code == 302
@@ -602,9 +608,9 @@ def test_public_base_url_drives_absolute_redirect(monkeypatch):
     ``Location: /`` — which the browser resolved against the API
     origin, landing the operator on api.antiek.ai instead of the app.
     The redirect must be absolute to the public app host."""
-    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://antiek.ai")
     monkeypatch.delenv("ANTIEK_FRONTEND_BASE_URL", raising=False)
     client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://antiek.ai")
     tok = mint_magic_link_token(_OPERATOR)
     r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
     assert r.status_code == 302
@@ -633,9 +639,9 @@ def test_magic_link_uses_api_base_when_set(monkeypatch):
         "interfaces.research.api.auth.get_email_provider",
         lambda: sender,
     )
+    client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_API_BASE_URL", "https://api.antiek.ai")
     monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://antiek.ai")
-    client = _client(monkeypatch)
     r = client.post("/auth/request", json={"email": _OPERATOR})
     assert r.status_code == 200
     body = sender.sent[0].email.text_body

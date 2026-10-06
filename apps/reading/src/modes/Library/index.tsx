@@ -28,7 +28,8 @@ import {
   runBookHtmlIndexJob,
   runBookHtmlPublishJob,
 } from "../../api/books";
-import { fetchLibraryCatalog } from "../../api/libraryCatalog";
+import { LibraryCatalogHttpError, fetchLibraryCatalog } from "../../api/libraryCatalog";
+import type { LibraryPage } from "../../api/libraryCatalog";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -39,6 +40,7 @@ import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
 import { documentsByTheme } from "./documentsByTheme";
 import type { FeedOrdering } from "./documentsByTheme";
+import { LoadingState } from "../../components/states";
 
 /**
  * Library — the home of the Read workflow (Read SPR-02; re-homed as the Read
@@ -66,6 +68,28 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
 ];
 const PAGE_SIZE = 20;
 
+/**
+ * A contended database is a RETRYABLE state, not a missing catalog.
+ *
+ * GET /library answers 503 + Retry-After while another process holds the
+ * DuckDB file - a bulk arXiv ingest holds it ~97% of the time. Production
+ * showed the cost of conflating the two: a 500 carrying no CORS headers reached
+ * the browser as a CORS failure, and this mode rendered "the catalog is
+ * unavailable" for a corpus that was intact.
+ */
+const CATALOG_BUSY_RETRIES = 2;
+const CATALOG_BUSY_RETRY_MS = 200;
+
+function isCatalogBusy(e: unknown): boolean {
+  return e instanceof LibraryCatalogHttpError && e.status === 503;
+}
+
+function catalogFailureCopy(e: unknown): string {
+  return isCatalogBusy(e)
+    ? "The library is busy: another job is using the database. Try again in a moment."
+    : "The library catalog is unavailable. Try again.";
+}
+
 export default function Library() {
   const navigate = useNavigate();
   // SPR-09 window-adaptation contract: the root fills its container (h-full —
@@ -86,6 +110,9 @@ export default function Library() {
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The catalog load itself failed (distinct from a curation or publish error
+  // sharing `error`): no count or empty-shelf claim may be made.
+  const [catalogFailed, setCatalogFailed] = useState(false);
 
   // Prompt-to-curate (SPR-04): an ordered list of servable document_ids,
   // or null when no prompt is active. Curated books are a re-ranked subset
@@ -163,11 +190,24 @@ export default function Library() {
     const generation = ++requestGeneration.current;
     setLoading(true);
     setError(null);
+    setCatalogFailed(false);
     setBooks([]);
     try {
-      const data = await fetchLibraryCatalog(
-        { filter: status, search, page, page_size: PAGE_SIZE }, signal,
-      );
+      let attempt = 0;
+      let data: LibraryPage;
+      for (;;) {
+        try {
+          data = await fetchLibraryCatalog(
+            { filter: status, search, page, page_size: PAGE_SIZE }, signal,
+          );
+          break;
+        } catch (e: unknown) {
+          if (!isCatalogBusy(e) || attempt >= CATALOG_BUSY_RETRIES) throw e;
+          attempt += 1;
+          await new Promise((resolve) => setTimeout(resolve, CATALOG_BUSY_RETRY_MS * attempt));
+          if (signal.aborted) throw e;
+        }
+      }
       if (generation !== requestGeneration.current || signal.aborted) return;
       const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
       if (page > lastPage) {
@@ -193,7 +233,8 @@ export default function Library() {
       }
     } catch (e: unknown) {
       if (generation !== requestGeneration.current || signal.aborted) return;
-      setError("The library catalog is unavailable. Try again.");
+      setCatalogFailed(true);
+      setError(catalogFailureCopy(e));
     } finally {
       if (generation === requestGeneration.current && !signal.aborted) setLoading(false);
     }
@@ -566,10 +607,13 @@ export default function Library() {
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
+    // A failed load leaves `total` at its last value (0 on first load); a
+    // count is only stated when the catalog actually answered.
+    if (catalogFailed) return "The shelf didn't load, so the count is unknown";
     if (status === "servable") return `${total} books readable in full`;
     if (status === "gated") return `${total} preview-only titles`;
     return `${total} titles`;
-  }, [loading, status, total]);
+  }, [catalogFailed, loading, status, total]);
 
   // The Library shelf body. Two surfaces:
   //  - inWindow (SPR-09 contract): a WorkspaceWindow already owns the glass, so
@@ -1474,7 +1518,7 @@ export default function Library() {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening the library" />
           )}
 
           {!loading && !error && displayed.length === 0 && (

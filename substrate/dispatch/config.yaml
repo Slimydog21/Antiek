@@ -147,15 +147,21 @@ tiers:
     # Sprint 13 — voice note ingestion. Whisper-grade audio→text.
     # Routes through OpenAI's whisper-1 directly (no good Hermes
     # transcription path today). $0.006/minute of audio is the
-    # canonical pricing; substrate.dispatch.whisper.WhisperProvider
-    # implements the actual call.
+    # canonical pricing; acquisition.voice.client.WhisperTranscriber
+    # makes the actual call (a direct httpx POST to /audio/transcriptions,
+    # not through the dispatch router).
     provider: openai
     model: whisper-1
     pricing:
-      # Whisper is per-minute, not per-token. The cost helper in
-      # ``processing.transcription`` computes USD from audio duration
-      # and reports it via ``dispatch.call`` events as if it were
-      # output tokens (1 minute = 1000 "output_tokens" placeholder).
+      # Whisper is per-minute, not per-token. NOTHING computes or records
+      # a per-call Whisper cost today: WhisperTranscriber emits no
+      # ``dispatch.call`` event and reads no pricing. These values are
+      # static config, parsed wherever this file's tiers are read whole:
+      # substrate.dispatch.router.DispatchConfig loads every tier, but no
+      # role_tiers entry routes to this one, and the ops-objective card
+      # and settings-budget tier pricing display it. The 6.0 encodes the
+      # per-minute price under a placeholder convention
+      # (1 minute = 1000 "output_tokens") that no caller applies.
       input_per_mtok: 0.0
       output_per_mtok: 6.0  # 1 mtok placeholder ≈ 1000 minutes
       cached_input_per_mtok: 0.0
@@ -240,6 +246,30 @@ role_tiers:
   # knowledge_extractor / thought_partner / creative_writer / autocomplete.
   # Tier=pro (conversational question generation, precedent-matched).
   interviewer: pro
+  # R6 REFORMAT (2026-10-02): substrate/reformat/pipeline.py:180 calls
+  # ``dispatch(prompt, "reformat", ...)`` and this file had NO role_tiers
+  # entry for it, so router._dispatch_authoritative raised
+  # KeyError("Role 'reformat' not in config.role_tiers") on EVERY call. The
+  # reformulation path could not run once -- not degraded, not partial. This
+  # is the fifth instance of the same production-only routing gap as the
+  # knowledge_extractor / thought_partner / creative_writer / interviewer
+  # precedents above, and the role tier entry alone is the established fix.
+  #
+  # Why no test found it, which is the part worth keeping: the reformat
+  # pipeline accepts an injected ``generate_fn``, every test in
+  # tests/test_reformat_pipeline.py and tests/test_reformat_routes.py injects
+  # a fixture generator, and so the ONE function that reaches the real
+  # dispatch path -- ``_dispatch_generate``, whose own neighbourhood says
+  # "the REAL one rides the one dispatch path" -- had zero callers in the
+  # suite. The real path was the only path never run. The guard that now
+  # closes the whole class is tests/test_dispatch_role_coverage.py: remove
+  # this entry and that test fails naming substrate/reformat/pipeline.py:180.
+  #
+  # Tier=pro -- generative prose rewriting, precedent-matched to
+  # creative_writer, which is the nearest call type. The operator can bump it
+  # to 'synthesis' if reformulation quality demands reasoning, exactly as the
+  # creative_writer comment above allows.
+  reformat: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

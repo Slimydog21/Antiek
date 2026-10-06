@@ -35,6 +35,8 @@ own); this module opens no connection of its own.
 from __future__ import annotations
 
 import hashlib
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -211,6 +213,70 @@ def _context_windows(text: str, start: int, end: int) -> tuple[str, str, str]:
     return quote, prefix, suffix
 
 
+
+# The DOM-offset / canonical-text bridge (LB-1). A browser selection's
+# quote/prefix/suffix are RENDERED text: entity-decoded, soft-hyphen-stripped,
+# zero-width-padded, whitespace-collapsed by CSS. The chunk store holds
+# `normalize_node_text(served_text)` which is NFC + line-endings only. When the
+# exact `_locate` misses, try a whitespace/zero-width-tolerant match and map
+# the span back to the ORIGINAL normalized offsets. Honesty rules:
+#   - still refuse when zero or still-multiple (never a guess);
+#   - the persisted anchor uses the chunk's canonical windows, so
+#     validate_node_text_anchor passes by construction.
+_ZERO_WIDTH = ("\u200b", "\u200c", "\u200d", "\ufeff", "\u00ad")
+
+
+def _bridge_norm(value: str) -> str:
+    """NFC + drop zero-widths/soft-hyphen + collapse whitespace runs to one space."""
+    s = unicodedata.normalize("NFC", value)
+    for ch in _ZERO_WIDTH:
+        s = s.replace(ch, "")
+    return re.sub(r"\s+", " ", s)
+
+
+def _bridge_index(value: str) -> list[int]:
+    """orig_index[i] = index in `value` of the i-th char of _bridge_norm(value)."""
+    out: list[int] = []
+    pending_space = False
+    for i, ch in enumerate(value):
+        if ch in _ZERO_WIDTH:
+            continue
+        if ch.isspace():
+            pending_space = True
+            continue
+        if pending_space and out:
+            out.append(i - 1)  # the collapsed space maps to the first original space
+            pending_space = False
+        out.append(i)
+    # trailing collapsed space is never part of a quote match; drop it
+    return out
+
+
+def _locate_bridge(
+    chunks: list[_Chunk], *, quote: str, prefix: str, suffix: str
+) -> list[tuple[_Chunk, int, int]]:
+    """Whitespace/zero-width tolerant locate. Returns ORIGINAL (chunk, start, end)."""
+    nq = _bridge_norm(quote)
+    if not nq:
+        return []
+    found: list[tuple[_Chunk, int, int]] = []
+    for chunk in chunks:
+        collapsed = _bridge_norm(chunk.normalized_text)
+        idx = _bridge_index(chunk.normalized_text)
+        start = 0
+        while True:
+            i = collapsed.find(nq, start)
+            if i < 0:
+                break
+            end = i + len(nq)
+            orig_start = idx[i] if i < len(idx) else -1
+            orig_end = idx[end - 1] + 1 if 0 <= end - 1 < len(idx) else -1
+            if orig_start >= 0 and orig_end > orig_start:
+                found.append((chunk, orig_start, orig_end))
+            start = i + 1
+    return found
+
+
 def resolve_pin(
     con: LockedConnection,
     *,
@@ -224,6 +290,10 @@ def resolve_pin(
     (PinResolutionError) when the passage is absent or ambiguous."""
     chunks = _load_chunks(con, document_id)
     candidates = _locate(chunks, quote=quote, prefix=prefix, suffix=suffix)
+    if not candidates:
+        # LB-1 bridge: a rendered DOM selection may miss the chunk store by
+        # whitespace/zero-width only. Retry tolerant; still refuse honestly.
+        candidates = _locate_bridge(chunks, quote=quote, prefix=prefix, suffix=suffix)
     if not candidates:
         raise PinResolutionError("not_found", "the passage could not be located in this document")
     if len(candidates) > 1:

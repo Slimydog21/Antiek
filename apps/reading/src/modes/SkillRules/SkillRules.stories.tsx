@@ -6,11 +6,11 @@ import SkillRules from "./index";
  * SkillRules page — read-only operator surface for the shared
  * substrate's cross-user promoted rules (master-spec §13.2 + §13.9).
  *
- * Stories render the full page. The backend fetch
- * (GET /skill-rules) fails silently in Storybook (no server) so
- * the page renders the empty state, which is itself a useful
- * snapshot ("No promoted rules yet" with the §13.9 promotion
- * threshold explainer). Real fetch behavior is covered by
+ * Stories render the full page. Storybook has no backend, so
+ * GET /skill-rules fails and the page renders its failure state: a
+ * dash in each confidence tile and "Skill rules didn't load." with
+ * Try again (a failed load is never shown as "No promoted rules
+ * yet"). Real fetch behavior is covered by
  * test_api_skill_rules_listing.py.
  */
 const meta = {
@@ -26,9 +26,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Default story — page renders in its empty-state because Storybook
- * has no backend. The page is intentionally informative even when
- * empty: the §13.9 promotion threshold explainer is on-screen so
- * the operator understands why no rules are listed yet.
+ * Default story — with no backend in Storybook this shows the failure
+ * state described above. The name stays EmptyState so its lost-pixel
+ * baseline path is unchanged.
  */
 export const EmptyState: Story = {};

@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
@@ -47,13 +48,20 @@ export function LemonDropdown({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      // The Esc is the menu's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      }
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "dropdown.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
     };
   }, [open, close]);
 
@@ -109,6 +117,7 @@ export function LemonDropdown({
             "py-1 " + menuClassName
           }
           role="menu"
+          data-esc-overlay=""
         >
           {children({ close })}
         </div>

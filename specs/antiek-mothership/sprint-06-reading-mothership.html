@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-06 · Reading mothership — The Antiek motherships</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 80px 28px;
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 28px 28px 24px 28px;
+  margin-bottom: 28px;
+}
+
+header.hero .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+header.hero h1 {
+  margin: 0 0 6px 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 16px 0;
+  font-size: 17px;
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 24px 20px 24px;
+  margin: 0 0 22px 0;
+}
+
+section.block > h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 18px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+section.block h3 {
+  margin: 22px 0 8px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 12px 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 12px 0;
+  padding-left: 22px;
+}
+
+section.block li { margin-bottom: 4px; }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+}
+
+table.spec th, table.spec td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 13px;
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 14px 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin: 10px 0 14px 0;
+  font-size: 14px;
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: 14px 14px 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.rigor-card h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: 14px;
+}
+
+.milestone .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: 4px;
+}
+
+.milestone .desc {
+  font-size: 14px;
+  margin: 4px 0 8px 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: 4px 0 0 0; padding-left: 18px; }
+.milestone .criteria li { margin-bottom: 3px; }
+
+.milestone .files {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: var(--border-thin);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: 14px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: 24px 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: 20px 0 6px 0;
+  padding: 6px 10px;
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-06</p>
+    <h1>Reading mothership</h1>
+    <p class="tagline">A home that asks what you want to read, a reader good enough to replace a Kindle, and footnotes and references that open as branches instead of taking you away.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 2</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 8 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The operator (D5, 2026-09-24) wants a Reading mothership for two uses:</p><ul><li><strong>(i)</strong> a Kindle or real-book replacement, where companion deep researches, footnotes and references open in tabs, so he can "tunnel through a rabbit hole and open many documents in the tabs";</li><li><strong>(ii)</strong> reading as the entry into a research or writing project: something specific, something he or an agent flagged, or something new.</li></ul><p>Grounding (<code>ground/lane-a-reading-mothership.json</code>, refuted MOSTLY_RELIABLE) found the reader short of a Kindle in five ways:</p><ul><li>no page keys (R2)</li><li>no Aa control (R7)</li><li>no focus mode (R5)</li><li>position only in sessionStorage, per tab, and clobbered when a citation opens the book (R4)</li><li>OS-only dark mode (R6)</li></ul><p>It also found that footnotes are deleted at ingest or left as dead text (F1), that in-body links navigate the whole app away (F2, ABSENT), and that there is no Continue or To-read door (H1, H2, T2, T3).</p><p><strong>What to reuse:</strong></p><ul><li><code>/readings</code> PersonalSpace (dwell history), which feeds Continue</li><li>the per-book thread <code>read-&lt;documentId&gt;</code></li><li>passage notes</li><li>W3's <code>.prose-antiek</code> layer</li><li>the ported rich <code>Reader.tsx</code> from MS-05</li></ul><p><strong>Base:</strong> MS-05. <strong>Branch:</strong> <code>design/mothership-06-reading</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>The Continue door is <code>GET /reading/continue</code>, and per-document position is <code>GET /documents/{id}/position</code> (§1.14).</li><li>The To-read door is <code>GET /flags?intent=read</code>. <code>actor {kind, id}</code> is server-derived; the label is "You" or the agent's role name (§1.13, Part 2 §2.8).</li><li>A standalone book is a <code>kind: reading</code> project with <code>primary_document_id</code>, promoted in place by "Add to project…" (§1.5).</li><li>Reading threads read <code>idle</code>, never "working" (§1.2).</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 2. It needs MS-04 (child tabs), MS-05 (openDocument and the ported Reader), and lane B's to-read flags plus durable position. Until those land it builds against contract §2.9.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>Opening the Reading mothership asks what to read: Continue, To read, or New. Reading feels like a good e-reader, and every footnote, reference and citation opens as a child tab you can return from to the exact passage.</strong></p>
+    <p>Kindle-grade here means:</p><ul><li>a 60–72ch measure in Charter</li><li>page turns on ←/→ and space</li><li>visible progress</li><li>text size and line height</li><li>day, night and paper themes</li><li>no layout shift while loading</li><li>a distraction-free mode (<code>prefix+f</code>) that leaves only the path header</li></ul><p>The rabbit hole is the branch tree from MS-04. The Continue door resumes the exact passage on any device once lane B's position record exists.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Reading home: three doors</div>
+        <p class="desc"><code>/w/:id/reading</code> home. <strong>Continue</strong>: documents in progress, with position and progress, from lane B's position record, falling back to local position plus <code>/readings</code> dwell history. <strong>To read</strong>: <code>intent: read</code> flags, each showing who set it (user or agent), why, and for which workstation. <strong>New</strong>: library, search, import.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Every door has loading, empty (truthful: "Nothing waiting" only after a real answer), error with Retry, and ready states (stories: light/dark, 1280/390).</li><li>An agent-set flag is visibly distinguished from a user-set one (label + icon, never colour alone).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/ReadingHome/* (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Kindle-grade reader: keys, progress, Aa, themes, stability</div>
+        <p class="desc">Page keys (←/→, space, PgUp/PgDn, Home/End) in a reader key scope inside MS-01's keymap. They never fire in inputs or FloatMenu, and they defer to a focused WorkspaceWindow, which owns ←/→ (MISS5). Also: a progress bar with % and chapter-remaining; an Aa control (size, line height, margins; pagination is size-independent per the <code>usePosition</code> docblock); day, night and paper themes on the W1 tokens; and a skeleton shaped like the final TOC and column.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Key-scope tests: keys work when the reader has focus and are inert in inputs, FloatMenu and focused windows.</li><li>Measure: the rendered line is 60–72 characters at the default size (measured in a story test).</li><li>Theme contrast is AA in all three themes (the tokens contrast test is extended).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/Reading/*</span><span class="file">apps/reading/src/components/reader/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">Distraction-free mode (prefix+f)</div>
+        <p class="desc">Hides NavRail, docks, the mascot, rails and ads, leaving the path header and the column. It is reversible with the same key or Esc, and the choice is remembered per document.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Chrome occupancy at 844 px tall drops from about 35–42% to under 10% (measured in a story).</li><li>The ad-frame attribution hooks are untouched when ads are shown (the existing ad tests pass).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/Reading/FocusMode.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Footnotes and endnotes in place</div>
+        <p class="desc">For documents whose ingest keeps structured notes (lane B), a note reference opens a popover in place, anchored to the marker and closable with Esc. "Open as tab" spawns a child tab at the note. For the legacy text-only case, notes are detected in the text; detection happens in the UI and never rewrites the stored document.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories: a footnote popover, an endnote at the end of a chapter, and a note on another page window (the <code>paginate()</code> split).</li><li>Tests: Esc returns focus to the marker, and "Open as tab" creates a child with <code>branch_origin.kind = footnote</code>.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/reader/Footnote*.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">Every in-body link becomes a branch, never a navigation</div>
+        <p class="desc">Intercept clicks on links in the reader body (F2). An internal document opens through <code>openDocument(id,{where:'child_tab', at})</code>. A DOI or arXiv reference opens a "resolve reference" state (in the graph → open; else a rights-aware "ingest?" offer from lane B). External web links get an explicit "open outside Antiek" confirmation.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: clicking a body link never changes <code>location.pathname</code> outside the workstation.</li><li>The resolve-reference state machine has a story for each state: found, not stored (offer), rights-blocked (honest reason), failed.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/components/reader/BodyLinks.ts (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Return to the exact passage</div>
+        <p class="desc"><code>prefix+u</code> from any child tab returns to the parent at its <code>branch_origin.locator</code>, scrolls there and briefly marks the passage. The mark respects reduced motion.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: open a footnote as a tab, go three levels deep, <code>prefix+u</code> ×3, and you land on the original passage.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/tabTree.ts</span><span class="file">apps/reading/src/components/reader/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Standalone books (use case i)</div>
+        <p class="desc">Opening a book outside any project creates or uses its own reading workstation, per Q-A5 (lane B's <code>kind: reading</code>). "Add to project…" links it into a project later, and its branch tree and threads come along.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test with the local adapter; the server path is NOT RUN until lane B lands, and the handoff says so.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/workspace/workstations.ts</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">8</div>
+      <div>
+        <div class="title">Bundle, stories, critic</div>
+        <p class="desc">Reading home and focus mode are lazy. Stories for every state.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>"Kindle-grade" invites adjectives, so every claim is one of these numbers:<ul><li>60–72 characters per line at the default size</li><li>under 10% chrome at 844 px tall in <code>prefix+f</code> mode (today 35–42%)</li><li>AA contrast in day, night and paper</li><li>CLS ≈ 0 in the load story</li><li>←/→/space inert in inputs and FloatMenu (the key-scope matrix)</li></ul>Anything unmeasured is written NOT MEASURED; never write "feels like a Kindle".</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman keeping footnotes as plain popovers with no tabs: simpler, and closer to a real book. It loses for use case (i), because the operator explicitly wants to tunnel down references as tabs. The popover stays the <em>default</em>, with the tab one click away, so the book-like reader isn't forced into branching. Who pays: the book-first reader pays one extra click per tunnel, and the use-case-(i) reader pays nothing. The builder carries two code paths (popover and child tab), plus the text-only detection fallback for legacy documents.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>Enumerate the link kinds in reader bodies before intercepting them: same-document anchor, other document in the graph, DOI, arXiv id, plain web URL, <code>mailto:</code>, and <code>javascript:</code> (strip it, it's a sanitiser failure). Each has an asserted behaviour. A same-document <code>#fn</code> anchor on another <code>paginate()</code> window is the tricky case, and it gets its own test.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>Read <code>usePosition.ts</code> (the pagination and size-independence docblock), <code>paginate()</code>, <code>readingFocus.ts</code>, <code>ReadingCompanion</code>, <code>PersonalSpace</code> (<code>/readings</code>) and W3's <code>.prose-antiek</code> before building. Ingest strips Wikisource footnotes (reading-lane F1 in <code>ground/lane-a-reading-mothership.json</code>, not GAPS F1): read <code>acquisition/books/wikisource.py:93-114</code> and <code>paginate.ts:23-60</code>, so the UI's detection fallback matches what actually survives. Also read the PersonalSpace dwell query that feeds the Continue door.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>Record why Continue reads lane B's position record first and local position second, and why a citation open never writes position (it would clobber the operator's real place, R4). Put that in a comment at the position hook, citing R4 and MISS6. For the no-clobber rule, point to MS-05 M4 and its page-40 resume test rather than re-owning it. Record the Continue precedence in DECISIONS.md under D5.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-05 — <span class="muted">openDocument, the ported Reader, the no-clobber position</span></li><li>MS-04 — <span class="muted">spawnChild and prefix+u</span></li><li>MS-02 (W3 on main) — <span class="muted">the prose layer and states</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: to-read flags (intent read, actor), durable position (a reading.position event), structured notes at ingest, a resolve-reference call, and a reading workstation kind (Q-A5).</li><li>The ported rich Reader from MS-05.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Islands and asking an agent from the reader (MS-07).</li><li>Ads layout changes. The attribution hooks must stay intact; ad design is not in scope.</li><li>Rewriting ingest to keep footnotes (lane B).</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Reader measurements</strong></td><td><code>story tests: chars per line, chrome % in focus mode, CLS</code></td><td>60–72ch; under 10% chrome; CLS ≈ 0</td></tr><tr><td><strong>Keys</strong></td><td><code>vitest key-scope matrix</code></td><td>pass</td></tr><tr><td><strong>Branches</strong></td><td><code>vitest: link click never leaves the workstation; prefix+u ×3 returns to the passage</code></td><td>pass</td></tr><tr><td><strong>Themes</strong></td><td><code>tokens contrast test for day, night and paper</code></td><td>AA</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-06 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Reading home: three doors — &lt;result&gt;
+- [ ] M2: Kindle-grade reader: keys, progress, Aa, themes, stability — &lt;result&gt;
+- [ ] M3: Distraction-free mode (prefix+f) — &lt;result&gt;
+- [ ] M4: Footnotes and endnotes in place — &lt;result&gt;
+- [ ] M5: Every in-body link becomes a branch, never a navigation — &lt;result&gt;
+- [ ] M6: Return to the exact passage — &lt;result&gt;
+- [ ] M7: Standalone books (use case i) — &lt;result&gt;
+- [ ] M8: Bundle, stories, critic — &lt;result&gt;
+### Verification gate results
+- Reader measurements: pass | fail | skipped (why)
+- Keys: pass | fail | skipped (why)
+- Branches: pass | fail | skipped (why)
+- Themes: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- The Reading mothership is pushed and accepted. MS-07's islands mount on its reader.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="inline"
+           data-harness-fanout-unit="None: the reader files are shared across milestones."
+           data-harness-verifier-lenses="no escape from the workstation | Kindle claims measured"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>inline</code></p><p class="muted">Reader, keys and links all converge in modes/Reading and components/reader.</p></div>
+      <div><h3>Fan-out unit</h3><p>None: the reader files are shared across milestones.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Does any path from inside a reader body leave the workstation, or move a book's saved position?</li><li>Are the Kindle claims measured (chars per line, chrome %, CLS, contrast), or only asserted?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-06 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

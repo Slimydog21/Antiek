@@ -224,6 +224,9 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     FEEDBACK_THREAD_RESOLVED = "feedback.thread.resolved"
     AGENT_WORK_TRANSITIONED = "agent.work.transitioned"
     ARTIFACT_FEEDBACK_REPLIED = "artifact.feedback.replied"
+    # A project tab tree accepted a new snapshot (THREAD-CONTRACT §1.6/§1.7).
+    # Broadcast only: tabs are navigation state, a row, never a trajectory.
+    PROJECT_TABS_VERSION_BUMPED = "project.tabs.version_bumped"
 
     # ── Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7
     #    + §13.9). Bumped EVENT_SCHEMA_VERSION accordingly when this
@@ -803,7 +806,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
 # v40: Feedback reply audit payload distinguishes reply, decline, and approval
 #     request outcomes without exposing private message text.
-EVENT_SCHEMA_VERSION: int = 40
+# v41: project.tabs.version_bumped, the broadcast-only notice that a project's
+#     tab tree accepted a snapshot (THREAD-CONTRACT §1.6/§1.7). It carries the
+#     project, mothership and version, never the tree. Purely additive.
+EVENT_SCHEMA_VERSION: int = 41
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1409,6 +1415,23 @@ class ArtifactFeedbackRepliedPayload(_PayloadBase):
     attempt_no: int = Field(gt=0)
     reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     result_kind: Literal["reply", "decline", "approval_request"] = "reply"
+
+
+class ProjectTabsVersionBumpedPayload(_PayloadBase):
+    """A project's tab tree for one mothership accepted a snapshot.
+
+    Broadcast on ``/ws/events`` after the PUT commits, so another device with
+    no pending operations refetches and one with pending operations rebases
+    (THREAD-CONTRACT §1.6, §1.7). It is never appended to a trajectory: tabs
+    are navigation state, kept as a row. It names the tree and its version,
+    never its contents."""
+
+    action_type: Literal[ActionType.PROJECT_TABS_VERSION_BUMPED] = (
+        ActionType.PROJECT_TABS_VERSION_BUMPED
+    )
+    project_id: str
+    mothership: str
+    version: int = Field(ge=1)
 
 
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────
@@ -4360,7 +4383,8 @@ TypedPayload = Annotated[
     | ArtifactCommentCreatedPayload
     | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
-    | ArtifactFeedbackRepliedPayload,
+    | ArtifactFeedbackRepliedPayload
+    | ProjectTabsVersionBumpedPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4402,6 +4426,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.FEEDBACK_THREAD_RESOLVED.value,
         ActionType.AGENT_WORK_TRANSITIONED.value,
         ActionType.ARTIFACT_FEEDBACK_REPLIED.value,
+        ActionType.PROJECT_TABS_VERSION_BUMPED.value,
         ActionType.GRAPH_TIER_ASSIGNED.value,
         ActionType.GRAPH_TIER_OVERRIDDEN.value,
         ActionType.TIER_REWRITE_BULK.value,
@@ -4677,6 +4702,7 @@ __all__ = [
     "FeedbackThreadResolvedPayload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
+    "ProjectTabsVersionBumpedPayload",
     # Middleware: source_tier
     "TierClassificationMethod",
     "TierAdjustmentMethod",

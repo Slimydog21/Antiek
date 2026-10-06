@@ -121,7 +121,22 @@ describe("AppShell SPR-06 M3 — symmetric full-width region + edge seam", () =>
     expect(frame!.style.boxSizing).toBe("border-box");
   });
 
-  it("renders the nav BELOW the working region (bottom rail, no left gutter)", () => {
+  it("mounts no ambient brain watermark, and contains what it positions (design wave 3)", () => {
+    // BrainPresence was a 420px, 8%-opacity brain anchored right:-6% /
+    // bottom:-12% behind every route: it bled past the frame (77px of sideways
+    // scroll at 1280, 23px at 390) and tinted the content. The spec keeps the
+    // mascot to hero, empty and error states.
+    const { container } = mountShell();
+    expect(container.querySelector(".brain-presence")).toBeNull();
+    const frame = container.querySelector("[data-akb-shell-frame]") as HTMLElement;
+    // relative + overflow-hidden: an absolute child is clipped by the frame
+    // instead of widening the page.
+    expect(frame.className).toMatch(/\brelative\b/);
+    expect(frame.className).toMatch(/\boverflow-hidden\b/);
+  });
+
+  it("renders the explicit docked preset's nav BELOW the working region", () => {
+    useWorkspace.getState().setLayoutPreset("docked");
     const { container } = mountShell();
     const region = container.querySelector('[data-testid="main-region"]');
     const navGroup = container.querySelector('[data-testid="navrail-workflows"]');

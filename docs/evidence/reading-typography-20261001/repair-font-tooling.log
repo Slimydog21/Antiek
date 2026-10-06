@@ -1,0 +1,15 @@
+Collecting fonttools[woff]==4.61.1
+  Downloading fonttools-4.61.1-cp311-cp311-macosx_10_9_universal2.whl (2.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.9/2.9 MB 3.3 MB/s eta 0:00:00
+Collecting brotli==1.2.0
+  Downloading brotli-1.2.0-cp311-cp311-macosx_10_9_universal2.whl (863 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 863.1/863.1 kB 5.8 MB/s eta 0:00:00
+Collecting zopfli>=0.1.4
+  Downloading zopfli-0.4.3-cp310-abi3-macosx_10_9_universal2.whl (291 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 291.5/291.5 kB 6.0 MB/s eta 0:00:00
+Installing collected packages: brotli, zopfli, fonttools
+Successfully installed brotli-1.2.0 fonttools-4.61.1 zopfli-0.4.3
+
+[notice] A new release of pip available: 22.3.1 -> 26.2.1
+[notice] To update, run: /private/tmp/antiek-typography-font-venv-20261001/bin/python -m pip install --upgrade pip
+FONT_ASSETS_OK files=52 woff2_bytes=2065532 latin_bytes=604720

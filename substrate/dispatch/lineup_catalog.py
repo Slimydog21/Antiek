@@ -176,8 +176,3 @@ ROLE_BY_ID: dict[str, RoleDef] = {r.role_id: r for r in ROLE_CATALOG}
 ACTION_BY_ID: dict[str, ActionDef] = {
     a.action_id: a for r in ROLE_CATALOG for a in r.actions
 }
-
-
-def default_tier_for_action(action_id: str) -> str | None:
-    action = ACTION_BY_ID.get(action_id)
-    return action.default_tier if action else None

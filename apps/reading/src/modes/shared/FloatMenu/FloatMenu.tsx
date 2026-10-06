@@ -1,7 +1,9 @@
+import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
+import { topModal } from "../../../workspace/escapeOverlay";
 import { zIndex } from "../../../design/zIndex";
 import { ApiError, editSelection } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
@@ -155,13 +157,20 @@ export default function FloatMenu({
   useEffect(() => {
     if (!selection) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]")) {
+        const modal = topModal();
+        if (modal && !modal.contains(rootRef.current)) return;
+        // The Esc is the menu's alone (workspace/escapeOverlay.ts).
+        e.preventDefault();
         window.getSelection()?.removeAllRanges();
         setView({ kind: "menu" });
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "reader.float-menu.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]") && (!topModal() || !!topModal()?.contains(rootRef.current)),
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, [selection]);
 
   // Rigor #3: empty / collapsed / out-of-scope selection → no window. The host
@@ -181,6 +190,7 @@ export default function FloatMenu({
     <div
       ref={rootRef}
       data-floatmenu
+      data-esc-overlay=""
       role="menu"
       aria-label="Highlight actions"
       style={{
@@ -307,7 +317,7 @@ export default function FloatMenu({
       {hybridEnabled && view.kind === "menu" && (
         <div
           data-floatmenu-hybrid
-          className="px-3 py-1.5 border-t border-charcoal-2 text-sun-deep"
+          className="px-3 py-1.5 border-t border-charcoal-2 text-sun"
           title="Hybrid: the AI may ask clarifying questions before launching. Not yet functional — see HYBRID_DECISION.md."
         >
           Hybrid — coming (AI asks first)
@@ -404,7 +414,7 @@ function NotePanel({
           useVoiceCapture.start() does NOT re-throw a denial — it reflects in
           recorderState "denied" — so we read that AND voice.error (ASR/503). */}
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type a note.
         </p>
       )}
@@ -535,7 +545,7 @@ function DialoguePanel({
         autoFocus
       />
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type your question.
         </p>
       )}
@@ -602,7 +612,7 @@ function SearchPanel({
   return (
     <Panel title="Search the corpus" onClose={onClose}>
       {withheld ? (
-        <p className="text-sun-deep" role="alert">
+        <p className="text-sun" role="alert">
           {WITHHELD_OUTBOUND_REASON}
         </p>
       ) : pending ? (
@@ -706,7 +716,7 @@ function EditPanel({
     <Panel title="Edit selection" onClose={onClose}>
       <div data-floatmenu-edit className="flex flex-col gap-1.5">
         {safeText === null ? (
-          <p className="text-sun-deep" role="alert">
+          <p className="text-sun" role="alert">
             {WITHHELD_OUTBOUND_REASON}
           </p>
         ) : null}

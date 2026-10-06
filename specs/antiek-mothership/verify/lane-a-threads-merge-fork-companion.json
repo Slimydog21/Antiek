@@ -1,0 +1,170 @@
+{
+  "area": "threads-merge-fork-companion",
+  "verdict": "MOSTLY_RELIABLE",
+  "checks": [
+    {
+      "id": "C01",
+      "claimed": "BUILT_UNREACHABLE: per-document thread list ('Saved chases') exists but no Reader action writes a read-<doc> handoff",
+      "holds": true,
+      "evidence": "READ: recordChaseDraftHandoff has exactly one caller, ChaseThread.tsx:111-117. The ChaseThread panel is opened only at ResearchWorkstation/index.tsx:154,168 with parentInvestigationId=investigationId (grep '\"ChaseThread\"' also finds only PanelRegistry.tsx:63 and panel.types.ts:40). ReadingCompanion.tsx:88 reads useChaseDraftHandoffs(readingThreadId) and the section is gated at :334. Reading/index.tsx:130 sets readingThreadId=`read-${documentId}`. Reading onDeepResearch at :246-256 calls spinResearch then navigate('/inv/..'). books.py:2186-2197 emits start_requested with no parent_investigation_id, and :2223-2227 calls link_passage_to_research. passage_research.py:135-199 defaults the parent to 'read-spin'. A grep of interfaces/substrate/orchestration/runtime/roles/services finds no caller of researches_for_passage or passage_for_research outside the module. app.py:543-560 InvestigationSummary has no document_id. Additions the grounding missed: (a) the reading-physics chase launcher (augmentations/chase-launcher.ts:105-140) is a second dead path, because no surface ever supplies ctx.components.ChaseLauncher (grep finds only types.ts:161 and docs); (b) the spin-research start event carries document_id in its envelope (books.py:2197), and Loop One reads it as ctx.document_id (orchestrator.py:1863), so the document linkage is on the event even though the list API does not expose it."
+    },
+    {
+      "id": "C02",
+      "claimed": "PARTIAL: thread list per project/workstation",
+      "holds": true,
+      "evidence": "READ: MyResearch.tsx:476 links every row to /replay/:id. useInvestigationTree.ts:24-41 falls back to a localStorage map. GET /investigations (app.py:3000-3100) lists events_dir and calls trajectory() on every *.jsonl per request, which is heavier than 'walks the dir'. It has no project filter and no projects table (the only CREATE TABLE match is interview_projects, schema.py:325). Missed evidence: the ProjectTree panel (shell/ProjectTree.tsx:18-33, opened with Cmd+B at workspace/shortcuts.ts:171-177,322-326) is scoped per WORKFLOW (Recent/Pinned investigations), not per project. The DRW session /deep-research/:sessionId (cascade_routes.py:1782-1800) is the only real multi-thread container: N researches with sub_question/state. The status stays PARTIAL."
+    },
+    {
+      "id": "C03",
+      "claimed": "ABSENT: ask an existing research thread a follow-up carrying its held context",
+      "holds": true,
+      "corrected_status": "ABSENT for completed threads. Live DRW threads offer steering only: Redirect swaps the sub_question, and Deepen raises the budget only.",
+      "evidence": "READ: ResearchWorkstation/index.tsx:104-110 labels the panel 'Chat \u00b7 this investigation', and ChatInputArea.tsx:62-77 calls startInvestigation to create a new child and navigates to it. note_injection has no production importer: the only non-test references are knowledge_reuse.py:16 (a docstring) and benchmarks/context_pack_timing.py. Nuances the grounding got wrong or missed: (1) Write SubAgentProposal ACCEPT does spawn a child research (SubAgentProposal.tsx:72-77), but Outline.tsx:603-605 onAccept={() => setProposal(null)} discards the child id. It does not 'just close'. (2) DRW 'Deepen' (DeepResearchWorkspace/ResearchPanel.tsx:71) sends only extra_budget_usd. host_local.py:461-466 appends payload.follow_up to st.follow_ups, which nothing consumes (grep follow_ups finds only status plumbing in host_local.py:178,478 and remote_exec/runner.py:133,368,387). (3) Auto-chase children inherit only the parent's original ctx.context string (orchestrator.py:2354-2360), not its synthesis."
+    },
+    {
+      "id": "C04",
+      "claimed": "PARTIAL: follow-up with held context in reading conversations",
+      "holds": true,
+      "evidence": "READ: TalkToBook.tsx:202-220 sends the active branch as history. useTalkThread.ts:10-22,78-96 stores it in sessionStorage key antiek.read.talk.<doc>, and the comment cites an 'operator decision'. useThoughtPartnerThread.ts:4,38,49 also uses sessionStorage. WrestleApp/index.tsx:48-51 keeps sessionStorage antiek.investigation_id. FloatMenu DialoguePanel (FloatMenu.tsx:409-445 \u2192 floatMenuActions.ts:209-221) is one-shot with a followUp string and no history. The ReadBookAnsweredPayload fields (events.py:3965-3984) have no thread_id or branch_id. TalkToBook.tsx:330 shows the user 'Same thought partner as Surface E'."
+    },
+    {
+      "id": "C05",
+      "claimed": "PARTIAL: manual context merge of threads is a view-layer concatenation",
+      "holds": true,
+      "evidence": "READ: DistillView.tsx:153 mounts ArtifactOutlineShelf. artifact_routes.py:325-380 hosts compose and draft-merge. compose.py:66,69,137-138,174 and twin_notes.py:63 emit file:// hrefs. The twin router is mounted at app.py:2072-2073 (prefix /twins at twin_notes_routes.py:24), and there is no frontend caller (grep '/twins' in apps/reading/src finds nothing). Missed: the AISidecar @-context picker (components/ai/ContextPicker.tsx:28-88, rendered at AISidecar.tsx:358, backed by POST /compose-context at app.py:6765-6783) is a working manual context merge. It composes a system_context from several items, but only ContextItemKind = 'doc' | 'insight' (lib/api.ts:899), entered as raw ids ('document or insight id' placeholder, ContextPicker.tsx:88). It has no investigation or thread kind. Also, GET /research/artifacts/compose/draft-merge.html is a GET that writes files (artifact_routes.py:326-345 calls compose_artifacts(write_draft_merge=True))."
+    },
+    {
+      "id": "C06",
+      "claimed": "ABSENT: automatic context merge; reuse pack discarded",
+      "holds": true,
+      "evidence": "READ: orchestrator.py:1851-1865 awaits maybe_reuse_prior_knowledge_at_start and ignores the result. The comment itself says it runs 'so /health flywheel_ready can become honest'. investigation_start_reuse.py:92-101 builds the pack with layers=[] and returns only reuse_event_id. host_local.py:291-302 calls assemble_context_pack_with_reuse and drops the return value. deriveAutoNotebook.ts and AutoNotebook.tsx contain no parent, child or spawn references (grep). The grounding under-describes one related mechanism: Loop One 'continuous chase mode' (orchestrator.py:2270-2382) auto-spawns children from open questions but never merges them back, and chase_mode appears in the frontend only in generated/types.ts:1743. That mode is BUILT_UNREACHABLE."
+    },
+    {
+      "id": "C07",
+      "claimed": "BUILT_AND_WIRED: process persisted and viewable; only UI entry is MyResearch 'replay'",
+      "holds": true,
+      "corrected_status": "BUILT_AND_WIRED. The 'only UI entry' evidence is wrong.",
+      "evidence": "READ: App.tsx:256 defines /replay/:investigationId. CommandPalette.tsx:399-454 adds a second palette row 'Replay: <question>' \u2192 /replay/:id for every investigation (Cmd+K), so MyResearch.tsx:476 is not the only entry. The completed /inv view (ResearchWorkstation/index.tsx:245-283) has no replay link, which holds. RUN (viewed the shot): route-authmock-replay-demo-investigation__light__1280.png shows 'Per master-spec \u00a714.1: replay is the substrate of operator-graded outcomes' and a red 'Failed to fetch' block with no retry."
+    },
+    {
+      "id": "C08",
+      "claimed": "BUILT_AND_WIRED: outcome persisted and viewable",
+      "holds": true,
+      "evidence": "READ: ResearchWorkstation/index.tsx:251-265 renders MasterMdViewer(synth) plus DistillView plus SuggestedResearch plus PasteIngest. artifact_routes.py:565-607 renders artifact.html live via build_body. Missed: saved meta-readings are a second durable, re-openable outcome type (/read/meta-reading/:assetId at App.tsx:202; MetaReading/index.tsx:40-80 getSavedMetaReading; /meta-readings list at App.tsx:208)."
+    },
+    {
+      "id": "C09",
+      "claimed": "PARTIAL: project companion; twin-notes.html is URL-only with no in-app link",
+      "holds": true,
+      "corrected_status": "PARTIAL. The 'no in-app link' evidence is wrong, and a sibling link is broken.",
+      "evidence": "READ: Reader 'Research this page' (ResearchThis.tsx:42-64, mounted at Reading/index.tsx:504) calls spinResearch(..., exportArtifact=true) and opens the researchArtifactReceipt window (components/windows/openWindow.ts:99-101). ResearchArtifactReceipt.tsx:24-28,83-93 renders 'Open' links to /research/{id}/artifact/twin-notes.html (a valid route, artifact_routes.py:310) and to /research/{id}/artifact/html. RUN: a TestClient over artifact_router with GET /research/inv-doesnotexist/artifact/html returned 404 {\"detail\":\"Not Found\"}. The OpenAPI paths contain only /research/{investigation_id}/artifact.html, so the Artifact HTML link is dead, and ResearchArtifactReceipt.test.tsx:24 pins the broken href. The export also runs at spin time (books.py:2229-2238), before the research has produced anything, so the on-disk artifact is an empty snapshot. The AutoNotebook empty state (AutoNotebook.tsx:62-73) tells the user to type a URL, which holds."
+    },
+    {
+      "id": "C10",
+      "claimed": "PARTIAL: per-evidence-document companion shows only marginalia and voice notes",
+      "holds": true,
+      "evidence": "READ: ReadingCompanion.tsx:87 calls deriveNotes (NotesPanel.tsx:66-110: note.emerged and marginalia.noted). The empty-state copy at :609 mentions only notes. grep '/explain/' in apps/reading/src finds only the route (App.tsx:251), intra-Explain claim links (Explain/index.tsx:701) and the taxonomy, so there is no inbound link to /explain/document/:id. The twin store has no producer or UI caller."
+    },
+    {
+      "id": "C11",
+      "claimed": "PARTIAL: agent-facing evidence base exists de facto but no named per-project/document bundle read at run time",
+      "holds": true,
+      "evidence": "READ: export.py:41-48 embeds an inert island. paths.py:15-19 writes to ~/.antiek/research-artifacts. export_routes.py:113 serves GET /export/my-graph. Run-time consumption is unwired (C03, C06). The import-notes route (artifact_routes.py:294-297) reads a client-supplied filesystem Path(body.path), which is also a risk."
+    },
+    {
+      "id": "C12",
+      "claimed": "PARTIAL: merge insight into a document",
+      "holds": true,
+      "evidence": "READ: write_routes.py:408 (context/promote) and :590 (from-investigation). Notebook SlashMenu.tsx:118-160 inserts synthesis_id:null, parked_question_id:null and exchange_id:null. source_merge.py:214-226 builds the appended text and :398-414 runs UPDATE documents SET raw_text. Missed risk: source_merge.py:189-193 _read_reviewed_draft reads any client-supplied draft_merge_path from the server filesystem, and neither _validate_source_merge_preflight (artifact_routes.py:219-250) nor the hash binding confines it to research_artifacts_dir. An authenticated caller could preview and then commit an arbitrary server file into documents.raw_text. That is PLAUSIBLE from READ; it was not RUN."
+    },
+    {
+      "id": "C13",
+      "claimed": "SPEC_ONLY: forked version with lineage",
+      "holds": false,
+      "corrected_status": "BUILT_UNREACHABLE",
+      "evidence": "READ: substrate/research_bridge/versioning.py:1-12,72-108 create_document_version persists an edit as a NEW document row with metadata.research_bridge {version, parent_document_id, version_root, edited_by, raw_sha256}, leaving the original byte-for-byte intact. document_versions (:111+) walks the chain. That is exactly a document fork with a parent pointer, and it is code, not spec. A grep for create_document_version outside tests finds only lint baselines and serve_invariants_check.py:113, so it has no route or UI. The SDAM schema (schema.py:1222-1350: derived_assets, derived_asset_revisions, _members, _current_revisions) is also installed code, and its only INSERTs are in tests/test_derived_asset_schema.py. Code exists with no path to it, which is BUILT_UNREACHABLE, not SPEC_ONLY. Notebook edits remain destructive (substrate/notebooks/__init__.py:219,250)."
+    },
+    {
+      "id": "C14",
+      "claimed": "ABSENT: diff/accept/reject UI",
+      "holds": true,
+      "evidence": "READ: FloatMenu.tsx:646-662 calls onApplyEdit(res.edited_text) immediately. Missed defect: Write/Outline.tsx:416-424 handleApplyEdit runs prev.replace(sel.text, editedText), which replaces the FIRST textual occurrence of the selected string, not the selected range. If the phrase appears earlier in the draft, the AI edit lands in the wrong place with no diff or undo. ReadingCompanion source-merge preview shows hashes and byte counts only."
+    },
+    {
+      "id": "C15",
+      "claimed": "BUILT_UNREACHABLE: ThreadBreadcrumb/ThreadJump + GET /thread/{node_id}",
+      "holds": true,
+      "evidence": "READ: app.py:7688-7689 include_router(make_thread_router()). AppShell.tsx:151 is <SceneChrome>{children}</SceneChrome> with no thread prop and is the only SceneChrome usage. ThreadJump is imported only by ThreadBreadcrumb.stories.tsx:4. The design manifest has 5 shell-threadbreadcrumb-spr-06 story ids (RUN: python regex over manifest.json)."
+    },
+    {
+      "id": "C16",
+      "claimed": "PARTIAL: highlight-spawned thread stays attached (island); PR #2838 open/unmerged",
+      "holds": true,
+      "corrected_status": "PARTIAL. The PR evidence is stale because the evidence-reader window is already on main.",
+      "evidence": "READ: e6cb18dfc (#2838 head, OPEN per gh) is NOT an ancestor of main, but commit 597f659a3 'choreograph evidence window arrival' put the capability on main. DeepResearchWorkspace/index.tsx:410-441 openEvidenceSource opens openWindow('reader', {documentId, evidenceSourceContext:true}) anchored beside the block via chooseEvidenceWindowRect, and it is wired at :487 onCiteSource. However, evidenceSourceContext has zero consumers (grep finds only DRW index.tsx:434 and a test). Inside that embedded reader window, highlight \u2192 Deep-research still runs Reading/index.tsx:246-256 navigate('/inv/..') and yanks the whole app out of DRW. Failures there are console.error only, with no user-visible state."
+    }
+  ],
+  "missed_capabilities": [
+    {
+      "name": "AISidecar @-context picker: ask an agent with composed context and no highlight (Cmd+/)",
+      "status": "PARTIAL",
+      "evidence": "READ components/ai/ContextPicker.tsx:28-88 (raw 'document or insight id' input), lib/api.ts:899 ContextItemKind='doc'|'insight' (no investigation or thread kind), app.py:6765-6783 POST /compose-context, AISidecar.tsx:226-262,358 (posts /thought-partner with investigation_id '__sidecar__'), shortcuts.ts:328-331 Cmd+/. The thread is sessionStorage-only (useThoughtPartnerThread.ts:38,49). Closest shipped primitive to 'ask a research agent and give it context'. It needs a thread/investigation item kind and a picker in place of raw ids."
+    },
+    {
+      "name": "Panel-hop hotkeys + per-investigation panel layout persistence (nearest thing to herdr tabs)",
+      "status": "PARTIAL",
+      "evidence": "READ workspace/shortcuts.ts:335-343 (Cmd+[ / Cmd+] cycle focused panel), :345-353 (Cmd+W closes a floating panel), useWorkspaceHydration.ts:19-29 (scope antiek.workspace.inv.<id>), persistence.ts:117,131 (localStorage). Floating ChaseThread panels are workspace panels, so they are hoppable and restored per investigation per browser. There is no thread-level tab strip and no server persistence."
+    },
+    {
+      "name": "ProjectTree panel (Cmd+B), workflow-scoped not project-scoped",
+      "status": "PARTIAL",
+      "evidence": "READ shell/ProjectTree.tsx:18-33 ('Research \u2192 Investigations / Chase trees / Outcomes'; Recent/Pinned from live data), shortcuts.ts:171-177. It is a tree of nouns per workflow and has no project entity."
+    },
+    {
+      "name": "Embedded reader window beside research (DRW evidence \u2192 reader)",
+      "status": "BUILT_AND_WIRED",
+      "evidence": "READ DeepResearchWorkspace/index.tsx:410-441,487. On main via 597f659a3. The evidenceSourceContext prop is unconsumed, and a highlight spawn inside the window navigates the app away (Reading/index.tsx:246-256)."
+    },
+    {
+      "name": "Reader 'Research this page' artifact receipt window (companion links)",
+      "status": "PARTIAL",
+      "evidence": "READ ResearchThis.tsx:42-64, ResearchArtifactReceipt.tsx:24-28,83-93. RUN: GET /research/{id}/artifact/html \u2192 404 against artifact_router (the only route is /artifact.html). ResearchArtifactReceipt.test.tsx:24 asserts the broken href, so the test is vacuous. The twin-notes link works (artifact_routes.py:310)."
+    },
+    {
+      "name": "Document fork-with-lineage primitive (create_document_version / document_versions)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ substrate/research_bridge/versioning.py:72-108,111+. There is no production caller (grep outside tests finds only lint baselines). It is a candidate substrate for the 'merge creates a FORKED version' goal, alongside the SDAM tables."
+    },
+    {
+      "name": "File a reading/meta-doc into a research project (document.filed_into_investigation)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ Reading/PersonalSpace/index.tsx:15-37, lib/researchSuggestion.ts:151-166 (emits the event on accept), app.py:2471-2483 (validation only), events.py:465,4151-4161. No reader consumes the filing: nothing shows filed docs in a project view and nothing injects them into a thread's context. The event is write-only, so the document\u2194project association is recorded but inert."
+    },
+    {
+      "name": "Loop One continuous chase mode (autonomous child threads from open questions)",
+      "status": "BUILT_UNREACHABLE",
+      "evidence": "READ orchestrator.py:2270-2382 spawns a child with parent_investigation_id plus spawned_from and halts on depth, duration or budget. In the frontend chase_mode appears only in generated/types.ts:1743, so the UI cannot turn it on. Children inherit ctx.context (the original string), not the parent's synthesis. Relevant to 'open questions feed autonomous diligence'."
+    },
+    {
+      "name": "DRW live steer Deepen/Redirect",
+      "status": "PARTIAL",
+      "evidence": "READ ResearchPanel.tsx:71 (Deepen sends {extra_budget_usd:0.25} only), :75-92 (Redirect sub_question), host_local.py:457-466. The deepen follow_up is stored in st.follow_ups and never consumed. It applies to live in-memory sessions only (cascade_routes.py:1880-1882 returns 404 if not live)."
+    },
+    {
+      "name": "Write sub-agent proposal accept (spawns a child, then drops it)",
+      "status": "PARTIAL",
+      "evidence": "READ Write/SubAgentProposal.tsx:72-77 calls startInvestigation with parent; Write/Outline.tsx:603-605 has onAccept={() => setProposal(null)}. The child id is lost and its outcome never returns to the draft."
+    },
+    {
+      "name": "Risk: unconfined server-path reads in the merge/notes routes",
+      "status": "RISK (READ, not RUN)",
+      "evidence": "READ source_merge.py:189-193 (Path(draft_merge_path).read_text with no root confinement, reached by preview and commit), artifact_routes.py:219-250 (preflight never checks the path), artifact_routes.py:294-297 (import_agent_notes(Path(body.path))). Combined with the in-place UPDATE documents SET raw_text (source_merge.py:410-413), an authenticated caller could copy an arbitrary server file into a document body."
+    },
+    {
+      "name": "Craft: Reader highlight Deep-research fails silently",
+      "status": "PARTIAL",
+      "evidence": "READ Reading/index.tsx:246-256: on error, catch only calls console.error, with no toast or inline state. Contrast ResearchThis.tsx:65-67, which sets an error. 'Every state designed' is violated for the primary highlight gesture."
+    }
+  ],
+  "summary": "I re-checked all 16 capabilities against origin/main 15e78e276 in the read-only ground worktree. vitest was not run because apps/reading/node_modules is absent. One status is wrong and four carry faulty or stale evidence; the other 15 statuses hold. C13 is BUILT_UNREACHABLE, not SPEC_ONLY: substrate/research_bridge/versioning.py:72-108 already forks a document into a new row with parent_document_id and version_root lineage, and the SDAM tables are installed code. Neither has a caller.\n\nThe four evidence corrections:\n- C07: CommandPalette.tsx:446-454 also exposes 'Replay:' rows, so MyResearch is not the only replay entry.\n- C09: twin-notes.html is linked in-app through the ResearchArtifactReceipt window opened by the Reader's 'Research this page'. That window's 'Artifact HTML' Open link 404s (RUN via TestClient). Its unit test pins the broken href.\n- C16: PR #2838 is stale evidence. Evidence reader windows already landed on main (597f659a3, DRW index.tsx:410-441). The evidenceSourceContext prop has no consumer, and a highlight spawn inside that window still navigates the whole app away.\n- C03: Write's sub-agent accept does spawn a child research but then drops its id. DRW Deepen only raises the budget; its follow_up field is stored and never consumed.\n\nCapabilities the grounding missed:\n- The AISidecar @-context picker (Cmd+/, POST /compose-context). It composes context from 'doc' and 'insight' items only, entered as raw ids, with no thread kind.\n- The Cmd+[ / Cmd+] panel cycling and the per-investigation panel layout saved in localStorage. These are the nearest thing to herdr tabs.\n- The workflow-scoped ProjectTree panel (Cmd+B).\n- The write-only document.filed_into_investigation filing event. It records a document-to-project link that nothing reads.\n- Loop One's continuous chase mode. It spawns child threads autonomously from open questions, but the UI cannot switch it on.\n\nNew defects:\n- Write's Cmd+K edit uses String.replace on the first matching text, so it can edit the wrong passage.\n- The source-merge and import-notes routes read a client-supplied server path with no confinement (PLAUSIBLE from READ, not RUN).\n- The Reader's highlight Deep-research fails silently: the error only goes to console.error.\n\nThe grounding's core picture holds. The thread list is unreachable, follow-up with held context and automatic merge are absent, merge is a file-based view concatenation, the reuse pack is discarded, and the source-merge path mutates documents.raw_text in place."
+}

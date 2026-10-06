@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MS-09 · Companion + merge-into-document + fork — The Antiek motherships</title>
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow"><a href="index.html">&larr; The Antiek motherships</a> · Sprint MS-09</p>
+    <h1>Companion + merge-into-document + fork</h1>
+    <p class="tagline">What the subagents found becomes a readable companion per project and per document. Any finding can be merged into your writing as a fork you review hunk by hunk.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
+      <span class="tag tag--yellow"><span class="dot"></span>specced</span>
+      <span class="tag tag--grey">Budget: 7 milestones</span>
+      <span class="tag tag--grey">Owner: Antiek Nudge v2 (lane A)</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Parent context</h2>
+    <p class="lede">Read this before starting. It is everything you need to execute this sprint without opening the master spec.</p>
+    <p>Antiek is the operator's research + reading + writing workstation. The repository is <code>Slimydog21/Antiek</code>. Its main checkout at <code>/Users/slimydog/Antiek/platform</code> sits on a <strong>stale branch</strong>, so never build or test there. Create your own worktree instead: <code>git -C /Users/slimydog/Antiek/platform fetch -q origin &amp;&amp; git -C /Users/slimydog/Antiek/platform worktree add -b &lt;branch&gt; /Users/slimydog/Antiek/platform/.claude/worktrees/&lt;name&gt; &lt;base&gt;</code>, then work only there, by absolute path.</p><p>The frontend is <code>apps/reading</code>: React 18, react-router 6, Vite, Tailwind with the W1 semantic tokens, Lemon UI primitives in <code>src/components/lemon</code>, and Zustand stores (for example <code>src/workspace/WorkspaceStore.ts</code>). Run these from <code>apps/reading</code> (<code>npm --prefix &lt;wt&gt;/apps/reading …</code>):</p><ul><li><code>npm ci</code>: a real install, never a symlinked <code>node_modules</code> (Vite's fs.allow breaks pdf.js).</li><li><code>npm run typecheck</code>: tsc -b --noEmit.</li><li><code>npm run test -- --no-color</code>: vitest. It must run with cwd = <code>apps/reading</code>, because some tests read module text by relative path.</li><li><code>npm run build:check</code>: the entry <code>index</code> chunk must stay under 700 KB gz. Lazy-load new surfaces, as W7 did for the operator pages.</li><li><code>npm run check:tokens</code>.</li></ul><p>Stories are <code>*.stories.tsx</code>. jest-dom matchers are <em>not</em> installed, so use <code>toBeTruthy()</code>, <code>toBeNull()</code> and <code>.textContent</code>. The backend is FastAPI + DuckDB behind a single writer; lane A edits no backend file unless a milestone says so.</p><p><strong>Never edit lane B's in-flight files:</strong> <code>substrate/research_artifact/{context,build_body}.py</code>, <code>substrate/event_log/events.py</code>, <code>substrate/provenance/pointers.py</code>, <code>roles/note_taker/{living_note,distill_query}.py</code>. If the UI needs a field, it goes in <code>THREAD-CONTRACT.md</code>.</p><p><strong>Merging:</strong> push your branch (branch pushes run no CI here), write <code>&lt;wt&gt;/.lane/PR_TITLE.txt</code> and <code>PR_BODY.md</code>, and message the session "Antiek Nudge", which is the only merger. Never open or merge a PR yourself.</p><p><strong>Critic:</strong> <code>codex exec -s workspace-write --skip-git-repo-check "&lt;brief&gt;" &lt; /dev/null</code> (gpt-6-sol). Without <code>&lt; /dev/null</code> it waits on stdin forever. In a background Claude session, never call EnterWorktree while a workflow is running, because it pins every agent to one worktree.</p><p><strong>Binding operator rulings:</strong> <code>/Users/slimydog/Antiek/specs/antiek-mothership/DECISIONS.md</code> (D1–D6). The model is in <code>DESIGN-MODEL.md</code>, the evidence in <code>GAPS.md</code>, <code>ground/</code> and <code>verify/</code>, all in the same folder.</p>
+    <p><strong>What this sprint is about.</strong> The operator wants outcomes "recorded as a human facing companion document to each project and each evidence document, while also maintaining an agent facing more rich version", and wants to merge insights into a document to "create a forked version".</p><p>D3 rules: a Companion <em>tab</em> per workstation, plus a slim companion <em>rail</em> beside each evidence document. Grounding found:</p><ul><li>AutoNotebook is a per-investigation companion (C09 PARTIAL).</li><li>ReadingCompanion is a per-document one (C10 PARTIAL).</li><li>Merge-into-document is PARTIAL (C12).</li><li>A fork-with-lineage primitive, <code>create_document_version</code>, exists with no production caller (C13, MISS6).</li><li>There is no diff/accept UI at all (C14 ABSENT).</li></ul><p><strong>Lane B guardrails:</strong> the companion derives from research-artifact and html_projection projections, never a parallel document model. Fork reuses the HTML-projection fork lineage and Write documents. <strong>Base:</strong> MS-08. <strong>Branch:</strong> <code>design/mothership-09-companion</code>.</p>
+    <div class="callout callout--warn"><strong>Contract facts (THREAD-CONTRACT.md rev 7, signed by both lanes 2026-09-26): these override any older wording on this page.</strong><ul><li>A document fork is a <strong>derived-asset revision</strong> on <code>write:&lt;deliverable_id&gt;</code>, the one mapping (§1.11). The flow is merge-drafts → per-hunk review (<code>review_id</code>) → <code>POST …/revisions {review_id, acknowledgement: "new_revision", idempotency_key}</code> (CAS) → lineage. <code>409 revision_moved</code> is <code>base_moved</code>: re-draft, and carry decisions only for byte-identical hunks. Revision 1 is written on first use, so the lineage always has an original. Each hunk's insertion is a <code>GatedText</code>: a cite-only hunk inserts a citation only, a withheld hunk can only be rejected (§1.11, Part 2 §2.6).</li><li>Legacy commit fields answer 422, and that is a lane-A bug. Source merge is retired, so never offer it. Write blocks are not a merge target.</li><li>The companion document returns <code>{entries[], content_hash, covered: {thread_id: through_event_id}, summarised_thread_count, total_thread_count, state}</code> (§1.12). Design <code>stale</code>, <code>refreshing</code> (<code>POST …/refresh</code> writes a receipt), <code>partial</code> ("n of m threads summarised") and <code>unavailable_until_rights</code>. Entries link their process by <code>process_ref</code>.</li></ul></div>
+    <div class="callout callout--info"><strong>Where this sprint sits:</strong> Wave 3, after MS-08. It needs lane B's derived companion, merge-proposal endpoint and fork repository.</div>
+  </section>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p><strong>Every workstation has a Companion tab and every evidence document a companion rail, both rendering lane B's derived companion. Any entry can be merged into a writing document as a fork, reviewed per hunk.</strong></p>
+    <p>The companion leads with outcome (claims, open questions, key insights) and keeps process one click deep. Margin marks and rail entries point at each other. "Merge into…" picks a Write document in the workstation, drafts the insertion with provenance, and opens DiffReview. Accepting creates a fork with lineage; the original is never touched. The agent-facing evidence base is lane B's; lane A renders only a link to it.</p>
+  </section>
+
+  <section class="block">
+    <h2>Technical milestones</h2>
+    <p class="lede">Numbered. Each milestone has explicit acceptance criteria and the files it touches. Do not declare a milestone complete unless the criteria are mechanically verified.</p>
+    
+    <div class="milestone">
+      <div class="num">1</div>
+      <div>
+        <div class="title">Companion tab (per workstation)</div>
+        <p class="desc">Renders the derived companion: sections for claims, open questions and key insights. Each entry shows confidence, sources and its threads. States: loading, empty (truthful), error, stale (newer results exist: Refresh).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Stories for every state.</li><li>Every entry links to its thread's process view (MS-08).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/companion/CompanionTab.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">2</div>
+      <div>
+        <div class="title">Companion rail (per evidence document, D3)</div>
+        <p class="desc">A slim rail beside the reader: the same companion filtered to this document, with margin marks ↔ rail entries both ways. At 390 px it is a sheet (CR-07). <code>prefix+r</code> toggles it.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A geometry test: the rail never narrows the reading column below 60ch at 1280.</li><li>Keyboard + focus return tests.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/companion/CompanionRail.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">3</div>
+      <div>
+        <div class="title">"How I got here" from the branch record</div>
+        <p class="desc">For any entry, show the path of branches (lane B's provenance record) that led to it. It reads the branch record, not the tab tree (contract §2.2).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: pruning tabs does not change the "how I got here" path.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/companion/Provenance.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">4</div>
+      <div>
+        <div class="title">Merge into… (choose target, draft with provenance)</div>
+        <p class="desc">From a companion entry or a thread outcome, choose a Write document in the workstation. Lane B drafts the proposed hunks (anchor, insert_html, source_refs).</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>States: choose, drafting, failed, ready (stories).</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/companion/MergeInto.tsx (new)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">5</div>
+      <div>
+        <div class="title">DiffReview: per-hunk accept or discard</div>
+        <p class="desc">A block-level diff between the parent version and the proposal. Each hunk is accepted or discarded, and shows its source (AI or operator) with its sources. Keyboard: j/k between hunks, a to accept, d to discard, both in the keymap table.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Tests: a partial accept creates a fork with exactly the accepted hunks; discard-all creates nothing.</li><li>Screen-reader labels on every hunk action.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/companion/DiffReview.tsx (new, lazy)</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">6</div>
+      <div>
+        <div class="title">Fork chip + lineage</div>
+        <p class="desc">The Write document header shows its fork lineage (parent version and the merged source threads). You can open the parent, or compare against it.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test: the original document is byte-identical after a merge.</li></ul></div>
+        <div class="files"><span class="file">apps/reading/src/modes/Write/*</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="num">7</div>
+      <div>
+        <div class="title">Bundle, stories, critic</div>
+        <p class="desc">All lazy.</p>
+        <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>build:check</code> within budget.</li><li>Codex critic ACCEPT.</li></ul></div>
+        <div class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — operating manual for this sprint</h2>
+    <p class="lede">How to execute well. Each value has been adapted to this sprint's specific work.</p>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence to evidence</h4><p>A companion built from partial data must say so ("3 of 7 threads summarised"), never present itself as complete. That needs coverage fields, which is a lane B ask: add <code>summarised_thread_count</code> and <code>total_thread_count</code> to contract §2.7, and render the partial state from them, with a story next to loading, empty, error and stale. If the endpoint returns stale data, show the stale state rather than hiding it.</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman the rejected alternative</h4><p>Steelman rendering the companion from AutoNotebook directly, since it already exists per investigation. It loses because AutoNotebook is per investigation, not per project or per document, and D3 needs both scopes from one derivation (lane B B3). AutoNotebook's section model (synthesis, insights, questions) is reused as the rendering shape. Who pays: lane B must ship the B3 derived-companion endpoint, and until then the tab and rail sit in empty or stale states. ReadingCompanion's per-document marginalia (C10) is not the rail's source, because it holds only that reader's notes, not every thread's findings.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Claims are mechanically checkable</h4><p>The original-is-untouched guarantee is the critical invariant. Assert byte identity of the parent version before and after every merge path: accept all, accept some, discard all, and a failed merge. A partial accept's fork must contain exactly the accepted hunks, compared against <code>proposed_hunks[]</code> by anchor. Discard-all must produce no <code>fork_id</code>.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before writing</h4><p>There is <em>no</em> Write version model on main (grounding). Fork versions come from <code>substrate/research_bridge/versioning.py</code> (<code>create_document_version</code>, no production caller yet) or the SDAM derived-asset revision tables. Read those, plus <code>source_merge.py</code> (and Sweep v2's path-confinement fix <code>9052cf933</code>, which changed its preflight), <code>artifact_routes.py</code>, <code>deriveAutoNotebook.ts</code>, <code>ReadingCompanion.tsx</code> and the HTML-projection lineage before rendering or merging.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Decisions survive turnover</h4><p>Record in DiffReview's header comment why merges create forks and never edit in place, quoting the operator's goal line ("merge their data into the document and create a forked version"), with DESIGN-MODEL.md §5 and THREAD-CONTRACT.md §2.6. Also record why per-hunk rather than whole-document accept: the operator's own writing stays his.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Dependencies</h2>
+    <p class="lede">What must be true before this sprint can start. Verify each one before executing milestone 1.</p>
+    <div class="two-col">
+      <div><h3>Upstream sprints</h3><ul><li>MS-08 — <span class="muted">threads and process views</span></li><li>MS-05 — <span class="muted">the reader the rail sits beside</span></li></ul></div>
+      <div><h3>External systems &amp; configs</h3><ul><li>Lane B: the companion document (§1.12, after the rights branches), the derived-asset revision repository with diff and per-hunk accept/reject (§1.11), and the branch record (§1.3).</li></ul></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Out of scope</h2>
+    <p class="lede">Explicit non-goals. These are the most-tempting expansions; do not pursue them here.</p>
+    <ul><li>Editing the agent-facing evidence base (lane B).</li><li>Flags (MS-10).</li></ul>
+    <div class="callout callout--warn"><strong>If you find yourself wanting to do one of the above:</strong> stop, write a note in the handoff packet, and proceed with the original scope.</div>
+  </section>
+
+  <section class="block">
+    <h2>Verification gates</h2>
+    <p class="lede">Before declaring this sprint complete, run each of these and record the result in the handoff packet.</p>
+    <table class="spec">
+      <thead><tr><th style="width: 24%">Gate</th><th style="width: 48%">How to verify</th><th style="width: 28%">Expected result</th></tr></thead>
+      <tbody><tr><td><strong>Original untouched</strong></td><td><code>vitest byte-identity across every merge path</code></td><td>pass</td></tr><tr><td><strong>Rail geometry</strong></td><td><code>the column stays ≥ 60ch with the rail open at 1280</code></td><td>pass</td></tr><tr><td><strong>States</strong></td><td><code>stories: companion tab, rail, merge-into, DiffReview</code></td><td>every state</td></tr><tr><td><strong>Bundle</strong></td><td><code>npm run build:check</code></td><td>within budget</td></tr><tr><td><strong>Critic</strong></td><td><code>codex exec … &lt; /dev/null</code></td><td>ACCEPT</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Handoff packet</h2>
+    <p class="lede">What this sprint hands back when done. Paste this block, filled in, at the end of your final message. The same content goes into <code>.lane/PR_BODY.md</code>.</p>
+    <pre><code>## Sprint MS-09 — Handoff
+### Status
+DONE | BLOCKED | PARTIAL (and why)
+### Branch / head / base
+design/mothership-… @ &lt;sha&gt; on &lt;base sha&gt;
+### Files touched
+- path:line — what changed and why
+### Milestones
+- [ ] M1: Companion tab (per workstation) — &lt;result&gt;
+- [ ] M2: Companion rail (per evidence document, D3) — &lt;result&gt;
+- [ ] M3: &quot;How I got here&quot; from the branch record — &lt;result&gt;
+- [ ] M4: Merge into… (choose target, draft with provenance) — &lt;result&gt;
+- [ ] M5: DiffReview: per-hunk accept or discard — &lt;result&gt;
+- [ ] M6: Fork chip + lineage — &lt;result&gt;
+- [ ] M7: Bundle, stories, critic — &lt;result&gt;
+### Verification gate results
+- Original untouched: pass | fail | skipped (why)
+- Rail geometry: pass | fail | skipped (why)
+- States: pass | fail | skipped (why)
+- Bundle: pass | fail | skipped (why)
+- Critic: pass | fail | skipped (why)
+### Decisions made mid-flight
+- Decision: what / why / what would reverse it
+### Assumptions surfaced (rigor #1)
+- …
+### Steelman of rejected alternative (rigor #2)
+- …
+### Open questions discovered
+- Question — who can answer
+### Next sprint can start when
+- Findings are readable and mergeable, so MS-10's autonomous results have somewhere to land.
+### Out-of-scope temptations encountered
+- What I wanted to do, what I did instead
+</code></pre>
+  </section>
+
+  <section class="block" id="harness-hint"
+           data-harness-pattern="fan-out-and-synthesize"
+           data-harness-fanout-unit="Companion (1–3) vs merge and fork (4–6) are file-disjoint."
+           data-harness-verifier-lenses="original untouched; provenance kept | rail never breaks measure; partial shown"
+           data-harness-rounds-floor="1"
+           data-harness-rounds-cap="6">
+    <h2>Execution harness hint <span class="tag tag--grey">optional · for /caffenagent</span></h2>
+    <p class="lede">For the executor, not a human. If this block is absent or says <code>inline</code>, run the sprint inline with no fan-out.</p>
+    <div class="two-col">
+      <div><h3>Recommended pattern</h3><p><code>fan-out-and-synthesize</code></p><p class="muted">Two disjoint groups against the contract.</p></div>
+      <div><h3>Fan-out unit</h3><p>Companion (1–3) vs merge and fork (4–6) are file-disjoint.</p></div>
+    </div>
+    <h3>Recommended verifier lenses</h3>
+    <ul><li>Can any merge path modify the original document or drop a hunk's provenance?</li><li>Does the rail ever squeeze the reading column below the measure, or hide that the companion is partial or stale?</li></ul>
+    <div class="callout callout--info"><strong>Irreversible acts stay in the main loop.</strong> Sub-agents investigate, build in worktrees and verify. Pushing is done by the sprint owner, and merging is done only by Antiek Nudge's train.</div>
+  </section>
+
+  <footer class="spec-footer">
+    Sprint MS-09 of The Antiek motherships · <a href="index.html">Back to master spec</a> · Generated 2026-09-24
+  </footer>
+</main>
+</body>
+</html>

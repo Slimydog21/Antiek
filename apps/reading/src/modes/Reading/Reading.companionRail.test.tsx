@@ -13,10 +13,16 @@
  *   - NO raw-HTML injection: the generated narrative renders as structured
  *     content only (the rail path greps clean of dangerouslySetInnerHTML,
  *     asserted at the source level);
- *   - the inspect toggle renders the honest evidence-base dump.
+ *   - the inspect toggle renders the honest evidence-base dump;
+ *   - LAZY (the lane-B hotfix's client half): the section is a collapsed
+ *     disclosure and NOTHING is requested on reader open — the GET used to
+ *     rebuild under the single writer lock on every open. First open GETs;
+ *     `not_built` POSTs /refresh exactly once; `withheld` and a 404 read the
+ *     same unavailable line; a 503 from refresh names only whether a last
+ *     build exists; no status number, server code or error_type renders.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
@@ -158,11 +164,38 @@ function evidenceRows() {
   };
 }
 
-function route(servable: boolean) {
-  apiFetchMock.mockImplementation(async (input: unknown) => {
+type CompanionHandler = (url: string) => Response | Promise<Response>;
+
+function builtPayload(over: Record<string, unknown> = {}) {
+  return { ...companionPayload(true), state: "built", ...over };
+}
+
+/** Lane B's pinned 503 body — the error_type is a server detail that must never render. */
+function rebuildFailed(hasLastBuild: boolean) {
+  return jsonResponse(
+    { detail: "companion_rebuild_failed", error_type: "DuckDBLockTimeout", has_last_build: hasLastBuild },
+    503,
+  );
+}
+
+function methodOf(init: unknown): string {
+  return ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
+}
+
+function route(
+  servable: boolean,
+  companion: { get?: CompanionHandler; post?: CompanionHandler } = {},
+) {
+  apiFetchMock.mockImplementation(async (input: unknown, init?: unknown) => {
     const url = String(input);
     if (url.includes("/companion")) {
-      return jsonResponse(companionPayload(servable));
+      if (methodOf(init) === "POST") {
+        return companion.post
+          ? companion.post(url)
+          : jsonResponse({ ...companionPayload(servable), state: "built" });
+      }
+      // Default GET: the PRE-hotfix payload (no `state`) — the legacy server.
+      return companion.get ? companion.get(url) : jsonResponse(companionPayload(servable));
     }
     if (url.endsWith("/evidence")) {
       return jsonResponse(evidenceRows());
@@ -201,6 +234,69 @@ function jsonResponse(body: unknown, status = 200) {
   } as unknown as Response;
 }
 
+function companionCalls(method: "GET" | "POST") {
+  return apiFetchMock.mock.calls.filter(
+    ([input, init]) => String(input).includes("/companion") && methodOf(init) === method,
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** Let every mount-time effect and microtask settle before counting calls. */
+async function settle() {
+  await new Promise((r) => setTimeout(r, 30));
+}
+
+async function companionSection(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const el = document.querySelector<HTMLElement>("[data-companion-section]");
+    expect(el).toBeTruthy();
+    return el!;
+  });
+}
+
+function companionHeader(section: HTMLElement): HTMLElement {
+  return within(section).getByRole("button", { name: "The companion so far" });
+}
+
+function companionRegion(section: HTMLElement): HTMLElement {
+  const id = companionHeader(section).getAttribute("aria-controls");
+  expect(id).toBeTruthy();
+  const region = document.getElementById(id!);
+  expect(region).toBeTruthy();
+  return region!;
+}
+
+async function openCompanion(): Promise<HTMLElement> {
+  const section = await companionSection();
+  fireEvent.click(companionHeader(section));
+  return section;
+}
+
+async function renderRail(documentId = "doc-1") {
+  const { default: ReadingCompanion } = await import("./ReadingCompanion");
+  const view = render(
+    <MemoryRouter>
+      <ReadingCompanion documentId={documentId} readingThreadId={`read-${documentId}`} />
+    </MemoryRouter>,
+  );
+  const rerenderRail = (next: string) =>
+    view.rerender(
+      <MemoryRouter>
+        <ReadingCompanion documentId={next} readingThreadId={`read-${next}`} />
+      </MemoryRouter>,
+    );
+  return { ...view, rerenderRail };
+}
+
 async function renderReader() {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("./index");
@@ -225,6 +321,13 @@ async function renderWindowReader() {
   );
 }
 
+// Pay the reader's cold module graph once, outside any single test's budget
+// (under host load the first test otherwise spends most of its 5s importing).
+beforeAll(async () => {
+  await import("./index");
+  await import("./ReadingCompanion");
+}, 60_000);
+
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.removeItem("antiek.island.hidden");
@@ -244,6 +347,8 @@ beforeEach(() => {
     reconnects: 0,
   });
   useWorkspace.getState().reset();
+  // This suite exercises the reader's own rail, not the cockpit companion.
+  useWorkspace.getState().setLayoutPreset("docked");
   resetReadingStateBus();
 });
 
@@ -258,20 +363,16 @@ describe("the companion rail section in BOTH reader mounts", () => {
     await renderReader();
     await screen.findByText("The opening of the book.");
 
-    const section = await waitFor(() => {
-      const el = document.querySelector("[data-companion-section]");
-      expect(el).toBeTruthy();
-      return el!;
-    });
+    const section = await openCompanion();
     // Generated content WITH provenance markers (data attrs, never labels).
-    expect(section.textContent).toContain("the companion's first finding");
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
     expect(section.textContent).toContain("a research thread on a passage");
     expect(section.querySelectorAll("[data-evidence-id]").length).toBeGreaterThanOrEqual(3);
     // Read-only: no edit affordance anywhere in the section.
     expect(section.querySelector("textarea, input, [contenteditable]")).toBeNull();
 
     // The inspect dump: the evidence base's only user surface.
-    fireEvent.click(screen.getByRole("button", { name: "inspect evidence base" }));
+    fireEvent.click(within(section).getByRole("button", { name: "inspect evidence base" }));
     const dump = await waitFor(() => {
       const el = document.querySelector("[data-companion-inspect]");
       expect(el).toBeTruthy();
@@ -286,23 +387,16 @@ describe("the companion rail section in BOTH reader mounts", () => {
     route(true);
     await renderWindowReader();
     await screen.findByText("The opening of the book.");
-    await waitFor(() =>
-      expect(document.querySelector("[data-companion-section]")).toBeTruthy(),
-    );
-    expect(
-      document.querySelector("[data-companion-section]")!.textContent,
-    ).toContain("the companion's open question");
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's open question"));
   });
 
   it("a withheld document's section renders metadata lines only — the withheld sentence never enters the DOM", async () => {
     route(false);
     await renderReader();
     await screen.findByText("The opening of the book.");
-    const section = await waitFor(() => {
-      const el = document.querySelector("[data-companion-section]");
-      expect(el).toBeTruthy();
-      return el!;
-    });
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("grounded in a withheld source"));
     expect(section.textContent).toContain("withheld");
     expect(section.textContent).toContain("grounded in a withheld source");
     // The grep enforcement at the DOM level: no claim text, and the withheld
@@ -327,5 +421,453 @@ describe("the companion rail section in BOTH reader mounts", () => {
     expect(rail).not.toContain("dangerouslySetInnerHTML");
     expect(client).not.toContain("dangerouslySetInnerHTML");
     expect(client).not.toContain("innerHTML");
+  });
+});
+
+const UNAVAILABLE = "The companion isn't available for this document.";
+const LOAD_FAILED = "Couldn't load the companion.";
+const BUILD_FAILED = "Couldn't build the companion yet.";
+const REBUILD_FAILED = "Couldn't rebuild the companion. The last version is shown.";
+const SERVER_DETAIL = /\b503\b|\b404\b|companion_rebuild_failed|book_not_found|DuckDBLockTimeout|error_type/;
+
+describe("the companion section is lazy — nothing requested on reader open", () => {
+  it("standalone reader open: zero companion calls, a collapsed disclosure", async () => {
+    route(true);
+    await renderReader();
+    await screen.findByText("The opening of the book.");
+    const section = await companionSection();
+    await settle();
+    expect(companionCalls("GET")).toHaveLength(0);
+    expect(companionCalls("POST")).toHaveLength(0);
+    const header = companionHeader(section);
+    expect(header.getAttribute("aria-expanded")).toBe("false");
+    // aria-controls points at a real element even while collapsed.
+    expect(companionRegion(section)).toBeTruthy();
+    expect(section.textContent).not.toContain("the companion's first finding");
+  });
+
+  it("window-mounted reader open: zero companion calls", async () => {
+    route(true);
+    await renderWindowReader();
+    await screen.findByText("The opening of the book.");
+    await companionSection();
+    await settle();
+    expect(companionCalls("GET")).toHaveLength(0);
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+});
+
+describe("the companion section's states (lane B's pinned wire shape)", () => {
+  it("open → built: one GET, today's rendering, no POST", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()) });
+    await renderRail();
+    const section = await openCompanion();
+    expect(companionHeader(section).getAttribute("aria-expanded")).toBe("true");
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(section.textContent).toContain("a research thread on a passage");
+    expect(section.textContent).toContain("rebuilt 2026-09-25");
+    expect(companionCalls("GET")).toHaveLength(1);
+    expect(String(companionCalls("GET")[0][0])).toContain("/documents/doc-1/companion?format=json");
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it("a legacy payload with no state (pre-hotfix server) renders as built", async () => {
+    route(true); // default GET omits `state`
+    await renderRail();
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(within(section).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it("open → not_built → 'Building the companion…' → exactly one POST → built", async () => {
+    const post = deferred<Response>();
+    route(true, {
+      get: () => jsonResponse({ document_id: "doc-1", state: "not_built" }),
+      post: () => post.promise,
+    });
+    await renderRail();
+    const section = await openCompanion();
+    const building = await within(section).findByText("Building the companion…");
+    expect(building.closest("[aria-live]")?.getAttribute("aria-live")).toBe("polite");
+    await waitFor(() => expect(companionCalls("POST")).toHaveLength(1));
+    expect(String(companionCalls("POST")[0][0])).toContain("/documents/doc-1/companion/refresh");
+    post.resolve(jsonResponse(builtPayload()));
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(section.textContent).not.toContain("Building the companion…");
+    await settle();
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(companionCalls("GET")).toHaveLength(1);
+  });
+
+  it("withheld: the unavailable line, never a POST, never a retry", async () => {
+    route(true, {
+      get: () => jsonResponse({ document_id: "doc-1", state: "withheld", reason: "taken_down" }),
+    });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(UNAVAILABLE);
+    await settle();
+    expect(companionCalls("POST")).toHaveLength(0);
+    expect(companionCalls("GET")).toHaveLength(1);
+    expect(within(section).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(section).queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(within(section).queryByRole("button", { name: "inspect evidence base" })).toBeNull();
+  });
+
+  it.each([
+    ["withheld", () => jsonResponse({ document_id: "doc-1", state: "withheld", reason: "not_servable" })],
+    ["404", () => jsonResponse({ detail: "book_not_found" }, 404)],
+  ])("%s → the region reads exactly the unavailable line (no existence disclosure)", async (_label, get) => {
+    route(true, { get });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(UNAVAILABLE);
+    expect(companionRegion(section).textContent?.trim()).toBe(UNAVAILABLE);
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it("refresh 503 with has_last_build=true while a payload is shown: keeps it, offers Retry, no server detail", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => rebuildFailed(true) });
+    await renderRail();
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    fireEvent.click(within(section).getByRole("button", { name: "Refresh" }));
+    await within(section).findByText(REBUILD_FAILED);
+    expect(section.textContent).toContain("the companion's first finding");
+    expect(within(section).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+  });
+
+  it("refresh 503 with has_last_build=false: couldn't build yet, Retry offered, no automatic retry", async () => {
+    route(true, {
+      get: () => jsonResponse({ document_id: "doc-1", state: "not_built" }),
+      post: () => rebuildFailed(false),
+    });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(BUILD_FAILED);
+    expect(within(section).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(section.textContent).not.toContain("the companion's first finding");
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+    await settle();
+    expect(companionCalls("POST")).toHaveLength(1);
+  });
+
+  it("refresh 503 with has_last_build=true and nothing in hand: reads the last build once so 'shown' is true", async () => {
+    let gets = 0;
+    route(true, {
+      get: () => {
+        gets += 1;
+        return gets === 1
+          ? jsonResponse({ document_id: "doc-1", state: "not_built" })
+          : jsonResponse(builtPayload());
+      },
+      post: () => rebuildFailed(true),
+    });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(REBUILD_FAILED);
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+    await settle();
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(companionCalls("GET")).toHaveLength(2);
+  });
+
+  it("a network failure reads 'Couldn't load the companion.' and Retry re-reads", async () => {
+    let gets = 0;
+    route(true, {
+      get: () => {
+        gets += 1;
+        if (gets === 1) throw new TypeError("Failed to fetch");
+        return jsonResponse(builtPayload());
+      },
+    });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(LOAD_FAILED);
+    expect(section.textContent).not.toContain("Failed to fetch");
+    fireEvent.click(within(section).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(section.textContent).not.toContain(LOAD_FAILED);
+    expect(companionCalls("GET")).toHaveLength(2);
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it("Retry after a failed first build POSTs once more, then renders", async () => {
+    let posts = 0;
+    route(true, {
+      get: () => jsonResponse({ document_id: "doc-1", state: "not_built" }),
+      post: () => {
+        posts += 1;
+        return posts === 1 ? rebuildFailed(false) : jsonResponse(builtPayload());
+      },
+    });
+    await renderRail();
+    const section = await openCompanion();
+    await within(section).findByText(BUILD_FAILED);
+    fireEvent.click(within(section).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    expect(companionCalls("POST")).toHaveLength(2);
+    expect(companionCalls("GET")).toHaveLength(1);
+  });
+
+  it("Refresh is disabled with a visible reason while a request is in flight", async () => {
+    const post = deferred<Response>();
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => post.promise });
+    await renderRail();
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    fireEvent.click(within(section).getByRole("button", { name: "Refresh" }));
+    await within(section).findByText("Rebuilding the companion…");
+    const refresh = within(section).getByRole("button", { name: "Refresh" }) as HTMLButtonElement;
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(refresh);
+    expect(companionCalls("POST")).toHaveLength(1);
+    // The companion in hand stays readable while it rebuilds.
+    expect(section.textContent).toContain("the companion's first finding");
+    post.resolve(jsonResponse(builtPayload({ rebuilt_at: "2026-09-27T08:00:00Z" })));
+    await waitFor(() => expect(section.textContent).toContain("rebuilt 2026-09-27"));
+    expect(refresh.getAttribute("aria-disabled")).toBe("false");
+    expect(section.textContent).not.toContain("Rebuilding the companion…");
+  });
+
+  it.each([true, false])("keeps visible content honest after refresh failure (last build %s) with one Retry", async (hasLastBuild) => {
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => rebuildFailed(hasLastBuild) });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await within(section).findByText(REBUILD_FAILED);
+    expect(document.activeElement).toBe(within(section).getByRole("status"));
+    expect(section.textContent).toContain("the companion's first finding");
+    expect(section.textContent).not.toContain(BUILD_FAILED);
+    expect(within(section).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(within(section).queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("keeps Refresh focused and rejects two clicks in the same React batch", async () => {
+    const post = deferred<Response>();
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => post.promise });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    act(() => {
+      fireEvent.click(refresh);
+      fireEvent.click(refresh);
+      expect(companionCalls("POST")).toHaveLength(1);
+    });
+    expect(document.activeElement).toBe(refresh);
+    expect(refresh.getAttribute("aria-disabled")).toBe("true");
+    expect(refresh.getAttribute("aria-describedby")).toBe(within(section).getByRole("status").id);
+    await act(async () => post.resolve(jsonResponse(builtPayload())));
+    expect(document.activeElement).toBe(refresh);
+    expect(within(section).getByRole("status").textContent).toBe("Companion ready.");
+  });
+
+  it.each(["read", "build"])("Retry after failed %s keeps focus on the status through success", async (stage) => {
+    const answer = deferred<Response>();
+    let attempts = 0;
+    route(true, {
+      get: () => {
+        if (stage === "build") return jsonResponse({ document_id: "doc-1", state: "not_built" });
+        attempts += 1;
+        if (attempts === 1) throw new TypeError("network");
+        return answer.promise;
+      },
+      post: () => ++attempts === 1 ? rebuildFailed(false) : answer.promise,
+    });
+    await renderRail();
+    const section = await openCompanion();
+    const retry = await within(section).findByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.click(retry);
+    const status = within(section).getByRole("status");
+    expect(document.activeElement).toBe(status);
+    await act(async () => answer.resolve(jsonResponse(builtPayload())));
+    expect(document.activeElement).toBe(status);
+    expect(status.textContent).toBe("Companion ready.");
+  });
+
+  it("refresh 404 removes stale content and controls, with the same unavailable line and a focus destination", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => jsonResponse({ detail: "book_not_found" }, 404) });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await within(section).findByText(UNAVAILABLE);
+    expect(companionRegion(section).textContent?.trim()).toBe(UNAVAILABLE);
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+    expect(within(section).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(section).queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(document.activeElement).toBe(within(section).getByRole("status"));
+  });
+
+  it("a late unavailable response does not move focus back from the disclosure", async () => {
+    const post = deferred<Response>();
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => post.promise });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    const header = companionHeader(section);
+    header.focus();
+    fireEvent.click(header);
+    await act(async () => post.resolve(jsonResponse({ detail: "book_not_found" }, 404)));
+    expect(document.activeElement).toBe(header);
+    expect(companionRegion(section).hidden).toBe(true);
+  });
+
+  it.each([true, false])("malformed refresh error never invents last-build availability (visible build %s)", async (inHand) => {
+    route(true, {
+      get: () => jsonResponse(inHand ? builtPayload() : { document_id: "doc-1", state: "not_built" }),
+      post: () => jsonResponse("not a valid error body", 503),
+    });
+    await renderRail();
+    const section = await openCompanion();
+    if (inHand) fireEvent.click(await within(section).findByRole("button", { name: "Refresh" }));
+    await within(section).findByText(inHand ? REBUILD_FAILED : "Couldn't refresh the companion.");
+    expect(within(section).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(companionCalls("GET")).toHaveLength(1);
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(section.textContent).not.toContain(BUILD_FAILED);
+  });
+
+  it.each(["built", "not_built"])("switching documents during GET ignores the old %s response and never starts its rebuild", async (oldState) => {
+    const oldGet = deferred<Response>();
+    const second = builtPayload({ document_id: "doc-2", claims: [{ evidence_id: "second", kind: "insight", node_ref: "node:2", text: "second document finding" }] });
+    route(true, { get: (url) => url.includes("/doc-1/") ? oldGet.promise : jsonResponse(second) });
+    const { rerenderRail } = await renderRail();
+    await openCompanion();
+    expect(companionCalls("GET")).toHaveLength(1);
+    rerenderRail("doc-2");
+    const section = await openCompanion();
+    await within(section).findByText("second document finding");
+    await act(async () => oldGet.resolve(jsonResponse(oldState === "built" ? builtPayload() : { document_id: "doc-1", state: "not_built" })));
+    expect(section.textContent).toContain("second document finding");
+    expect(section.textContent).not.toContain("the companion's first finding");
+    expect(companionCalls("GET")).toHaveLength(2);
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it.each(["success", "failure"])("switching documents during POST ignores its %s and does not recover the old document", async (outcome) => {
+    const oldPost = deferred<Response>();
+    const second = builtPayload({ document_id: "doc-2", claims: [{ evidence_id: "second", kind: "insight", node_ref: "node:2", text: "second document finding" }] });
+    route(true, {
+      get: (url) => jsonResponse(url.includes("/doc-1/") ? { document_id: "doc-1", state: "not_built" } : second),
+      post: () => oldPost.promise,
+    });
+    const { rerenderRail } = await renderRail();
+    await openCompanion();
+    await waitFor(() => expect(companionCalls("POST")).toHaveLength(1));
+    rerenderRail("doc-2");
+    const section = await openCompanion();
+    await within(section).findByText("second document finding");
+    await act(async () => oldPost.resolve(outcome === "success" ? jsonResponse(builtPayload()) : rebuildFailed(true)));
+    expect(section.textContent).toContain("second document finding");
+    expect(section.textContent).not.toContain("the companion's first finding");
+    expect(companionCalls("GET")).toHaveLength(2);
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(String(companionCalls("POST")[0][0])).toContain("/documents/doc-1/");
+  });
+
+  it("collapsing and re-opening does not refetch", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()) });
+    await renderRail();
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    fireEvent.click(companionHeader(section));
+    expect(companionHeader(section).getAttribute("aria-expanded")).toBe("false");
+    expect(companionRegion(section).hidden).toBe(true);
+    fireEvent.click(companionHeader(section));
+    expect(companionHeader(section).getAttribute("aria-expanded")).toBe("true");
+    expect(companionRegion(section).hidden).toBe(false);
+    expect(section.textContent).toContain("the companion's first finding");
+    await settle();
+    expect(companionCalls("GET")).toHaveLength(1);
+  });
+
+  it("the inspect toggle appears only once the section is open and built", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()) });
+    await renderRail();
+    const section = await companionSection();
+    expect(within(section).queryByRole("button", { name: "inspect evidence base" })).toBeNull();
+    fireEvent.click(companionHeader(section));
+    const inspect = await within(section).findByRole("button", { name: "inspect evidence base" });
+    fireEvent.click(inspect);
+    await waitFor(() => expect(section.querySelector("[data-companion-inspect]")).toBeTruthy());
+  });
+
+  it("a documentId change resets: collapsed again, nothing fetched until opened, then the new document", async () => {
+    route(true, {
+      get: (url) =>
+        jsonResponse(
+          url.includes("/documents/doc-2/")
+            ? builtPayload({
+                document_id: "doc-2",
+                claims: [{ evidence_id: "ev-d2", kind: "insight", node_ref: "node:d2", text: "the second book's finding" }],
+              })
+            : builtPayload(),
+        ),
+    });
+    const { rerenderRail } = await renderRail("doc-1");
+    let section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("the companion's first finding"));
+    rerenderRail("doc-2");
+    section = await companionSection();
+    await waitFor(() => expect(companionHeader(section).getAttribute("aria-expanded")).toBe("false"));
+    expect(section.textContent).not.toContain("the companion's first finding");
+    await settle();
+    expect(companionCalls("GET").filter(([u]) => String(u).includes("/documents/doc-2/"))).toHaveLength(0);
+    fireEvent.click(companionHeader(section));
+    await waitFor(() => expect(section.textContent).toContain("the second book's finding"));
+    expect(companionCalls("GET").filter(([u]) => String(u).includes("/documents/doc-2/"))).toHaveLength(1);
+  });
+});
+
+describe("claim labels follow the payload's real kind", () => {
+  it("insight → Finding, question → Open question, claim → Claim, evidence → Evidence, unknown → no label", async () => {
+    const claims = [
+      { evidence_id: "ev-insight", kind: "insight", node_ref: "node:1", text: "an insight row" },
+      { evidence_id: "ev-question", kind: "question", node_ref: "node:2", text: "a question row" },
+      { evidence_id: "ev-claim", kind: "claim", node_ref: "node:3", text: "a claim row" },
+      { evidence_id: "ev-evidence", kind: "evidence", node_ref: "node:4", text: "an evidence row" },
+      { evidence_id: "ev-unknown", kind: "mystery_kind", node_ref: "node:5", text: "an unknown row" },
+    ];
+    route(true, { get: () => jsonResponse(builtPayload({ claims })) });
+    await renderRail();
+    const section = await openCompanion();
+    await waitFor(() => expect(section.textContent).toContain("an unknown row"));
+    const row = (id: string) => section.querySelector(`[data-evidence-id="${id}"]`)!.textContent ?? "";
+    expect(row("ev-insight")).toContain("Finding");
+    expect(row("ev-question")).toContain("Open question");
+    expect(row("ev-claim")).toContain("Claim");
+    expect(row("ev-claim")).not.toContain("Open question");
+    expect(row("ev-evidence")).toContain("Evidence");
+    expect(row("ev-evidence")).not.toContain("Open question");
+    expect(row("ev-unknown").trim()).toBe("an unknown row");
+  });
+});
+
+describe("no status number, server code or error_type can render (source-level)", () => {
+  it("the companion section's source never reads a status, message, body or error_type", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const rail = fs.readFileSync(path.join(__dirname, "ReadingCompanion.tsx"), "utf-8");
+    // From the section's view model to EOF: the state union, its copy, the
+    // component and its label helper.
+    const start = rail.indexOf("type CompanionView =");
+    expect(start).toBeGreaterThan(-1);
+    const section = rail.slice(start);
+    expect(section).not.toMatch(/error_type|errorType|companion_rebuild_failed|book_not_found/);
+    expect(section).not.toMatch(/\.status\b|\.message\b|\.body\b|\bHTTP\b/);
+    expect(section).not.toMatch(/\b(404|500|503)\b/);
   });
 });

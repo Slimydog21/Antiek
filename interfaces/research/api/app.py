@@ -64,7 +64,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -86,6 +86,7 @@ from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
     DispatchCallPayload,
+    DocumentFiledIntoInvestigationPayload,
     Event,
     TypedPayload,
 )
@@ -93,6 +94,12 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+from .public_replay_health import _public_note_taker_replay  # noqa: E402
+
+# Retry-After hint (seconds) served with every 503 mapped from
+# runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
+# Conservative client backoff hint, not a measured hold time.
+_DB_CONNECTION_RETRY_AFTER_S = "2"
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -103,6 +110,8 @@ class TypedEventEnvelope(BaseModel):
     """POST body for ``/events/typed``. The ``payload`` field uses the
     discriminated TypedPayload union — the ``action_type`` field on the
     payload tells Pydantic which variant to validate against."""
+
+    model_config = ConfigDict(extra="forbid")
 
     investigation_id: str = Field(..., min_length=1)
     payload: TypedPayload
@@ -210,6 +219,9 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
+    # Last admitted replay worker phase only; even "current" is not a reader
+    # availability or recovery guarantee. An empty dict means no admitted phase.
+    note_taker_replay: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -226,6 +238,12 @@ class HealthResponse(BaseModel):
     prime_agent_invocations_attempted: int = 0
 
 
+# A registered provider id can be `user-<operator-user-id>-<their-configured-name>`.
+# /health needs no credentials, so those entries are never published: see the comment at
+# the `registered_providers=` call site.
+_PRIVATE_PROVIDER_PREFIX = "user-"
+
+
 def _probe_backup_freshness() -> dict[str, Any]:
     """Read-only backup freshness for /health. Never raises."""
     try:
@@ -236,7 +254,10 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_fresh": verdict.fresh,
             "backup_completed_at": verdict.completed_at,
             "backup_age_hours": verdict.age_hours,
-            "backup_marker_path": verdict.marker_path,
+            # The marker path is a filesystem location on the host: measured live,
+            # /health published `/home/antiek/.antiek/backup_freshness.json` to an
+            # unauthenticated caller.
+            "backup_marker_path": "",
             "backup_reason": verdict.reason,
         }
     except Exception as exc:
@@ -245,7 +266,11 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_completed_at": None,
             "backup_age_hours": None,
             "backup_marker_path": "",
-            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+            # type(exc).__name__ only. The previous form interpolated str(exc), and the
+            # freshness evaluator raises with the marker path in the message, so an
+            # anonymous caller could read a host path out of a failure of the very probe
+            # that exists to report absence.
+            "backup_reason": f"probe_exception: {type(exc).__name__}",
         }
 def _probe_prime_lane() -> dict[str, bool | int]:
     """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
@@ -555,6 +580,11 @@ class InvestigationSummary(BaseModel):
     # translates this into the "found by the loop" badge — the raw policy_id is
     # never sent to the client, only this honest boolean.
     spawned_by_daemon: bool = False
+    # LB-2 (A1c-H1 / R8): the source document this investigation reads.
+    # Optional and additive — null when the investigation has no document
+    # (daemon-spawned or legacy runs). The frontend's source-document
+    # affordance (companionStore.sourceDocumentOf) resolves against this.
+    document_id: str | None = None
 
 
 class InvestigationListResponse(BaseModel):
@@ -675,6 +705,8 @@ class InvestigationStatusResponse(BaseModel):
     # Source-pack intent recorded on the start event. Empty for legacy runs
     # and for requests that did not choose a source pack; never recomputed.
     source_policy: list[str] = Field(default_factory=list)
+    # LB-2: parity with InvestigationSummary — the source document, or null.
+    document_id: str | None = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -852,6 +884,11 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
+    # Additive compare-and-set guard (CR-F1's surviving half). Absent = the
+    # long-standing blind write, so existing callers are unchanged. Supplied,
+    # it must equal the stored prose or the write is refused with 409
+    # `prose_revision_conflict` and nothing is written.
+    based_on_prose_text: str | None = None
     original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -1627,6 +1664,34 @@ def create_app(
         ),
     )
 
+    # Database admission conflicts share one retryable HTTP response handler.
+    # ReadLockTimeout covers an external file lock; WriteConfigurationTimeout
+    # covers an incompatible same-process handle after the write wait expires.
+    # Separate types preserve existing route-specific WriteLockTimeout handling.
+    from fastapi.responses import JSONResponse
+
+    from runtime.db_lock import ReadLockTimeout, WriteConfigurationTimeout
+
+    @app.exception_handler(WriteConfigurationTimeout)
+    @app.exception_handler(ReadLockTimeout)
+    async def _database_connection_unavailable(
+        _request: Request, _exc: ReadLockTimeout | WriteConfigurationTimeout
+    ) -> JSONResponse:
+        # Static body: no db path or holder detail leaks to clients. The
+        # 2s Retry-After is a conservative client backoff hint, not derived
+        # from measured hold times.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "database read is temporarily unavailable; retry shortly"
+                    if isinstance(_exc, ReadLockTimeout)
+                    else "database connection is temporarily unavailable; retry shortly"
+                )
+            },
+            headers={"Retry-After": _DB_CONNECTION_RETRY_AFTER_S},
+        )
+
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
     # the operator can override via env for non-default ports or staging
     # hosts. WebSocket origin checks honor the same list.
@@ -1654,20 +1719,6 @@ def create_app(
                 "https://antiek.ai",
                 "https://www.antiek.ai",
             ]
-    if cors_origins:
-        # H6 magic-link auth: ``credentials=True`` is required for the
-        # browser to carry the ANTIEK_SESSION cookie cross-origin from
-        # the Pages frontend to api.antiek.ai. Pair with explicit
-        # origins (no wildcard); the cookie itself is HttpOnly +
-        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
     # ── H4 + H4.5 + H6: operator auth middleware ──
     # THREE complementary auth paths, all opt-in via env vars:
     #
@@ -1911,6 +1962,32 @@ def create_app(
             },
         )
 
+    if cors_origins:
+        # H6 magic-link auth: ``credentials=True`` is required for the
+        # browser to carry the ANTIEK_SESSION cookie cross-origin from
+        # the Pages frontend to api.antiek.ai. Pair with explicit
+        # origins (no wildcard); the cookie itself is HttpOnly +
+        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[
+                "X-Artifact-ID",
+                "X-Artifact-Style",
+                "X-Artifact-Version",
+                "X-Content-SHA256",
+                "X-Source-SHA256",
+                "X-Artifact-Source-State",
+                "X-Artifact-Current-Source-SHA256",
+                "X-Document-ID",
+                "X-Reader-Revision",
+                "ETag",
+            ],
+        )
+
     # ── Magic-link auth routes (PostHog-style owned login surface) ──
     # Mounted unconditionally so /auth/request + /auth/callback are
     # reachable; the routes themselves no-op when the operator email
@@ -1969,6 +2046,25 @@ def create_app(
     # owner-scoped evidence reads, project scope honestly unavailable.
     from .companion_routes import register_companion_routes
     register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
+    # Mothership W1 (THREAD-CONTRACT §1.5/§1.6) — the project registry over
+    # write_folders and the per-account tab trees: owner-scoped, a version
+    # compare-and-set, append-only number registers and a retirement history.
+    from .project_routes import register_project_routes
+    register_project_routes(app)
+    # Thread-merge + document fork SPR-01 — the fork primitive: copy/adopt
+    # creation idempotent on a client operation id, forks-of-this +
+    # forked-from in one read, fork detail, and depth-1 lineage.
+    from .fork_routes import register_fork_routes
+    register_fork_routes(app)
+    # Thread-merge + document fork SPR-02 — the selective thread-outcome
+    # merge INTO a fork: preview receipt + bound multi-ack commit,
+    # conflicts never auto-resolved, every resolution audited.
+    from .fork_merge_routes import register_fork_merge_routes
+    register_fork_merge_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
@@ -2327,7 +2423,18 @@ def create_app(
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
-            registered_providers=sorted(registered_providers),
+            # User-derived entries are NOT published. A registered provider id can be
+            # `user-<operator-user-id>-<their-configured-provider-name>`, and this route
+            # needs no credentials: measured live, /health returned
+            # `user-80946f0b-my-deepseek` among the registry, publishing a user id and
+            # that user's own provider configuration to anyone. The built-in ids carry
+            # the operational signal -- whether the registry is non-empty and which
+            # built-ins registered -- and nothing else is required by a health probe.
+            registered_providers=sorted(
+                name
+                for name in registered_providers
+                if not name.startswith(_PRIVATE_PROVIDER_PREFIX)
+            ),
             providers_ready=bool(route_ready_providers),
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
@@ -2355,11 +2462,10 @@ def create_app(
                     "indexed_row_count"
                 )
             ),
-            turbopuffer_content_hash=(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "content_hash"
-                )
-            ),
+            # The content hash of the indexed corpus is derived from private
+            # documents and is not needed by any health consumer. `_probe_backup_freshness`
+            # below is the same reasoning for filesystem paths.
+            turbopuffer_content_hash=None,
             # No bool() and no True default: both would launder "unknown"
             # into a definite answer. A missing key means the probe never ran,
             # which is exactly as unknown as a probe that raised.
@@ -2390,6 +2496,9 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
+            note_taker_replay=_public_note_taker_replay(
+                getattr(app.state, "note_taker_recovery", {})
+            ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -2401,7 +2510,9 @@ def create_app(
     # ── POST typed event ────────────────────────────────────────
 
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request,
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -2409,6 +2520,45 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if action_value == "investigation.start_requested":
+            raise HTTPException(
+                status_code=403,
+                detail="investigation.start_requested is server-owned; use POST /investigations.",
+            )
+        if any(
+            field == "owner_id" or field.startswith("owner_")
+            for field in envelope.payload.model_fields_set
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Ownership and launch authority are server-owned.",
+            )
+        if isinstance(envelope.payload, DocumentFiledIntoInvestigationPayload):
+            from runtime.db_lock import connect_read
+
+            from .books import _reader_owner_id
+
+            filed_document_id = envelope.payload.filed_document_id
+            if (
+                envelope.document_id not in (None, filed_document_id)
+                or envelope.investigation_id != envelope.payload.target_investigation_id
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Filing selectors must match the event envelope.",
+                )
+            owner = _reader_owner_id(request)
+
+            def _owns_filed_document() -> bool:
+                with connect_read(default_db_path()) as con:
+                    row = con.execute(
+                        "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                        [filed_document_id],
+                    ).fetchone()
+                return row is not None and row[0] == owner
+
+            if not await asyncio.to_thread(_owns_filed_document):
+                raise HTTPException(status_code=404, detail="document_not_found")
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -2428,6 +2578,18 @@ def create_app(
                 role=envelope.role,
                 policy_id=envelope.policy_id,
                 document_id=envelope.document_id,
+                # strict_write makes the except clause below reachable. It says
+                # "Pydantic ValidationError or write error", and with the emitter's
+                # default (False) a write error could never arrive here: `_safe`
+                # swallows it, prints to stderr, and emit_typed still returns a
+                # non-None event_id -- so the `event_id is None` check below, whose
+                # own comment promises to tell the client "nothing was persisted",
+                # could not fire either. A caller therefore received 201 and an
+                # event id for an event that was never written. Measured:
+                # substrate/event_log/events.py:424-428 returns event_id on both
+                # branches. This is a POST whose whole purpose is durability, and
+                # its sibling 503 already distinguishes that case by design.
+                strict_write=True,
             )
         except Exception as exc:  # Pydantic ValidationError or write error
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2488,7 +2650,6 @@ def create_app(
             # divergence between the log and the documents table).
             if action_value == "document.filed_into_investigation":
                 from runtime.db_lock import connect_write
-                from substrate.graph import default_db_path
 
                 payload = matching.get("payload") or {}
                 filed_doc = payload.get("filed_document_id")
@@ -2941,6 +3102,14 @@ def create_app(
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
 
+        # LB-2: the source document (envelope field on any row).
+        doc_id: str | None = None
+        for r in rows:
+            _doc = r.get("document_id")
+            if isinstance(_doc, str) and _doc.strip():
+                doc_id = _doc.strip()
+                break
+
         # Walk newest-first to find the latest phase, latest delivered,
         # and any terminal verdict.
         last_phase: int | None = None
@@ -3003,6 +3172,7 @@ def create_app(
                 rubric_score=rubric_score,
                 research_tier=research_tier,
                 source_policy=source_policy,
+                document_id=doc_id,
             )
 
         return InvestigationStatusResponse(
@@ -3014,6 +3184,7 @@ def create_app(
             rubric_score=rubric_score,
             research_tier=research_tier,
             source_policy=source_policy,
+            document_id=doc_id,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -3102,6 +3273,7 @@ def create_app(
             question: str | None = None
             started_at: str | None = None
             completed_at: str | None = None
+            document_id: str | None = None
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: str | None = None
@@ -3166,6 +3338,10 @@ def create_app(
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+                if document_id is None:
+                    _doc = r.get("document_id")
+                    if isinstance(_doc, str) and _doc.strip():
+                        document_id = _doc.strip()
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -3179,6 +3355,7 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
                 spawned_by_daemon=spawned_by_daemon,
+                document_id=document_id,
             ))
 
         # Derive each session container's status from its leaves (the same
@@ -3894,7 +4071,12 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.graph.ops import (
+            ProseRevisionConflict,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
         from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
         from substrate.write.event_outbox import (
             build_typed_envelope,
@@ -3919,9 +4101,22 @@ def create_app(
                 claim_node_id: str | None = None
                 claim_event_id: str | None = None
                 with eventful_transaction(con, req.investigation_id):
-                    update_section_prose(
-                        con, section_id=section_id, prose_text=req.prose_text,
-                    )
+                    try:
+                        update_section_prose(
+                            con, section_id=section_id, prose_text=req.prose_text,
+                            based_on_prose_text=req.based_on_prose_text,
+                        )
+                    except ProseRevisionConflict as exc:
+                        # Nothing is written and nothing is enqueued: the guard
+                        # raises before the UPDATE, inside the caller's
+                        # transaction, so the whole edit rolls back.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="prose_revision_conflict",
+                            headers={
+                                "X-Prose-Updated-At": str(exc.current_updated_at)
+                            },
+                        ) from exc
                     if req.promote_to_graph:
                         label = req.prose_text.strip().splitlines()[0]
                         if len(label) > 160:
@@ -5381,7 +5576,7 @@ def create_app(
         content_json: dict[str, Any]
         created_at: str
 
-    class NotebookResponse(BaseModel):
+    class NotebookSummaryResponse(BaseModel):
         notebook_id: str
         title: str
         investigation_id: str | None
@@ -5389,11 +5584,13 @@ def create_app(
         content_class: str
         created_at: str
         updated_at: str
+
+    class NotebookResponse(NotebookSummaryResponse):
         blocks: list[NotebookBlockResponse]
 
     class NotebookListResponse(BaseModel):
         count: int
-        notebooks: list[NotebookResponse]
+        notebooks: list[NotebookSummaryResponse]
 
     def _notebook_to_response(nb: Notebook) -> NotebookResponse:
         return NotebookResponse(
@@ -5417,19 +5614,38 @@ def create_app(
             ],
         )
 
+    def _notebook_for_owner(con: Any, notebook_id: str, request: Request) -> Notebook:
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
+
+        try:
+            notebook = readable_notebook_for(
+                con, notebook_id, owner_user_id=_reader_owner_id(request),
+            )
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+        if notebook is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return notebook
+
     @app.post(
         "/notebooks",
         response_model=NotebookResponse,
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import create_notebook, get_notebook
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:create_notebook") as con:
@@ -5438,6 +5654,7 @@ def create_app(
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
+                    owner_user_id=owner_user_id,
                     content_class=req.content_class,
                 )
                 return get_notebook(con, nb_id)
@@ -5453,6 +5670,7 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
+        request: Request,
         investigation_id: Annotated[str | None, Query()] = None,
         document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
@@ -5461,12 +5679,16 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import list_notebooks
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:list_notebooks") as con:
                 return list_notebooks(
                     con,
+                    owner_user_id=owner_user_id,
                     investigation_id=investigation_id,
                     document_id=document_id,
                     limit=limit,
@@ -5476,23 +5698,28 @@ def create_app(
         nbs = await asyncio.to_thread(_sync)
         return NotebookListResponse(
             count=len(nbs),
-            notebooks=[_notebook_to_response(nb) for nb in nbs],
+            notebooks=[NotebookSummaryResponse.model_validate(nb, from_attributes=True) for nb in nbs],
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
-        from runtime.db_lock import connect_write
+    async def get_notebook_endpoint(notebook_id: str, request: Request) -> NotebookResponse:
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
 
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:get_notebook") as con:
-                return get_notebook(con, notebook_id)
+            with connect_read(db_path) as con:
+                return readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
 
-        # flock wait off the uvicorn loop (#3111 to_thread class).
-        nb = await asyncio.to_thread(_sync)
+        try:
+            nb = await asyncio.to_thread(_sync)
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -5504,6 +5731,7 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
+        request: Request,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
@@ -5514,6 +5742,7 @@ def create_app(
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:append_notebook_block") as con:
+                _notebook_for_owner(con, notebook_id, request)
                 append_block(
                     con, notebook_id,
                     block_type=req.block_type,
@@ -5537,6 +5766,7 @@ def create_app(
     )
     async def patch_notebook_block(
         notebook_id: str,
+        request: Request,
         block_id: str,
         req: NotebookUpdateBlockRequest = Body(...),
     ) -> NotebookResponse:
@@ -5554,6 +5784,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:patch_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 updated = update_block(
                     con, notebook_id, block_id,
                     content=req.content,
@@ -5578,7 +5809,7 @@ def create_app(
         response_model=NotebookResponse,
     )
     async def delete_notebook_block(
-        notebook_id: str, block_id: str,
+        notebook_id: str, block_id: str, request: Request,
     ) -> NotebookResponse:
         """Delete one block from a notebook. Per master-spec §13.2
         substrate-is-source-of-truth: this deletes the row, not just
@@ -5594,6 +5825,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:delete_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 deleted = delete_block(con, notebook_id, block_id)
                 if not deleted:
                     raise HTTPException(
@@ -5614,6 +5846,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
+        request: Request,
         req: NotebookReorderBlocksRequest = Body(...),
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
@@ -5629,14 +5862,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:reorder_notebook_blocks",
             ) as con:
-                # Confirm the notebook exists before reordering so the
-                # error path returns 404 for missing notebooks rather
-                # than the more confusing "permutation mismatch" 422.
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                _notebook_for_owner(con, notebook_id, request)
                 reorder_blocks(
                     con, notebook_id,
                     ordered_block_ids=req.ordered_block_ids,
@@ -5658,6 +5884,7 @@ def create_app(
     )
     async def put_notebook_content(
         notebook_id: str,
+        request: Request,
         req: NotebookPutContentRequest = Body(...),
     ) -> NotebookResponse:
         """Atomic-replace a notebook's content from a TipTap document.
@@ -5696,11 +5923,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:put_notebook_content",
             ) as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
                 # ── SPR-01 empty-doc floor ──────────────────────────────────
                 # A fresh/unhydrated editor seeds ``<p></p>`` and its first
                 # autosave PUTs that near-empty doc; the atomic replace below
@@ -5811,6 +6034,7 @@ def create_app(
     )
     async def promote_notebook_to_public(
         notebook_id: str,
+        request: Request,
         rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
         force: bool = Query(default=False),
     ) -> NotebookResponse:
@@ -5837,11 +6061,7 @@ def create_app(
 
         def _sync() -> tuple[Any, Any, Any]:
             with connect_write(db_path, purpose="api:promote_notebook_public") as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
 
                 # Compute the quality-gate verdict from the current
                 # notebook state. Always run the gate so the event log
@@ -7890,17 +8110,31 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    note_taker_recovery_start_lock = threading.Lock()
+
     def _recover_note_taker_replay() -> None:
         from substrate.graph import default_db_path
 
         from .note_taking import start_replay_recovery
 
-        stop = threading.Event()
-        app.state.note_taker_recovery_stop = stop
-        app.state.note_taker_recovery_worker = start_replay_recovery(
-            db_path=default_db_path(),
-            stop_event=stop,
-        )
+        with note_taker_recovery_start_lock:
+            worker = getattr(app.state, "note_taker_recovery_worker", None)
+            # Repeated startup must retain the live worker and its stop/report
+            # handles; replacing them orphans a thread that shutdown cannot stop.
+            if worker is not None and worker.is_alive():
+                return
+            stop = threading.Event()
+            app.state.note_taker_recovery_stop = stop
+            # The worker's own report, published for /health. Prod 2026-10-01: it
+            # failed against a contended DuckDB write lock for hours — thousands of
+            # stderr lines and no projection progress — while /health answered
+            # "ok", because nothing read what the worker knew.
+            app.state.note_taker_recovery = {}
+            app.state.note_taker_recovery_worker = start_replay_recovery(
+                db_path=default_db_path(),
+                stop_event=stop,
+                state=app.state.note_taker_recovery,
+            )
 
     def _stop_note_taker_replay() -> None:
         stop = getattr(app.state, "note_taker_recovery_stop", None)

@@ -1,0 +1,8 @@
+/private/tmp/antiek-meta-g/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+SOURCE_UNCHANGED True
+DERIVED drv-87eff6d55f6a2326
+{"path": "/books/drv-87eff6d55f6a2326", "status": 404, "body": "{\"detail\":\"book_not_found\"}"}
+{"path": "/books/drv-87eff6d55f6a2326/full-text", "status": 200, "body": "{\"document_id\":\"drv-87eff6d55f6a2326\",\"servable\":true,\"servability\":\"public_domain\",\"full_text\":\"The pricing argument opens here.\\n\\npricing opens\\n\\nThe pricing chapters conclude with a flourish. And what that means for the operator's margins.\\n\\nThe loop's diligence found the pricing power note.\",\"snippet\":null,\"title\":\"The Pricing Book \u2014 reformatted\",\"author\":null,\"reason\":\"servable\",\"tier\":nul...[truncated]"}
+{"path": "/documents/drv-87eff6d55f6a2326/provenance", "status": 200, "body": "{\"document_id\":\"drv-87eff6d55f6a2326\",\"generation\":{\"generation_id\":\"gen-87eff6d55f6a2326\",\"source_document_id\":\"doc-1\",\"source_title\":\"The Pricing Book\",\"prompt\":\"the 20-minute version, focused on the pricing chapters\",\"model\":\"operator-default\",\"params\":{\"mode\":\"time_window\",\"thread_id\":\"reformat:gen-87eff6d55f6a2326\"},\"mostly_generated\":false,\"created_at\":\"2026-10-02 20:52:05.897187+03:00\"},\"bi...[truncated]"}
+{"path": "/books/doc-id-exists-nowhere", "status": 404, "body": "{\"detail\":\"book_not_found\"}"}

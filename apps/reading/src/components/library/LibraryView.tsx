@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ErrorBanner, LemonButton, LemonInput } from "../lemon";
 import { useLibrary, type LibraryFilter } from "./useLibrary";
 import WorkCard from "./WorkCard";
+import { LoadingState } from "../states";
 
 /**
  * LibraryView — the M2 Library browse view (Read SPR-09), the paginated browse
@@ -142,7 +143,7 @@ export default function LibraryView({
       )}
 
       {loading && (
-        <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+        <LoadingState variant="inline" label="Opening the library" />
       )}
 
       {!loading && !error && !routeAbsent && works.length === 0 && (
