@@ -42,6 +42,7 @@ from substrate.graph import (  # noqa: E402
     ensure_initialized,
 )
 from substrate.graph.ops import (  # noqa: E402
+    content_addressed_id,
     insert_chunk,
     insert_document,
     insert_node,
@@ -122,6 +123,7 @@ def ingest_voice_note(
     duration_seconds: float = 0.0,
     language: str | None = None,
     operator_id: str = "__operator__",
+    owner_user_id: str | None = None,
     source_tier: int = DEFAULT_VOICE_SOURCE_TIER,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
@@ -199,6 +201,7 @@ def ingest_voice_note(
             source_uri=None,
             title=auto_title,
             author=operator_id,
+            owner_user_id=owner_user_id if owner_user_id is not None else "__operator__",
             published_at=when,
             investigation_id=investigation_id,
             raw_text=full_text,
@@ -221,6 +224,10 @@ def ingest_voice_note(
                 con,
                 document_id=document_id,
                 chunk_index=i,
+                chunk_id=(
+                    content_addressed_id("chunk", f"{owner_user_id}|{document_id}|{i}")
+                    if owner_user_id is not None and owner_user_id != "__operator__" else None
+                ),
                 text=chunk.text,
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
@@ -239,6 +246,11 @@ def ingest_voice_note(
                 con,
                 canonical_label=label,
                 node_type="entity",
+                owner_user_id=owner_user_id,
+                node_id=(
+                    content_addressed_id("node", f"{owner_user_id}|{document_id}|{i}")
+                    if owner_user_id is not None and owner_user_id != "__operator__" else None
+                ),
                 graph_scope="cross_domain",
                 investigation_id=investigation_id,
                 embedding=emb.encode(label),

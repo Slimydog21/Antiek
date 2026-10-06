@@ -12,7 +12,8 @@ Conventions matched from ``app.py``:
   • db path via ``substrate.graph.default_db_path`` + ``ensure_initialized``;
   • writes through ``runtime.db_lock.connect_write`` (single-writer);
   • reads through a read-only DuckDB connection;
-  • auth is the app's global middleware — these handlers carry none.
+  • auth is the app's global middleware; private project routes also check
+    the stored owner using its verified principal.
 
 Domain exceptions map to HTTP status via ``_translate``:
   • consent / G7 ecosystem refusals → 403;
@@ -356,14 +357,50 @@ class ReleasePayoutRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _private_project_principal(request: Request) -> tuple[str, tuple[str, ...]]:
+    state = request.state
+    subject = getattr(state, "account_subject", None)
+    user_id = getattr(state, "user_id", None)
+    if subject is not None:
+        if (
+            not isinstance(subject, str) or not subject.strip() or subject != user_id
+            or getattr(state, "auth_method", None) != "antiek_session_cookie"
+        ):
+            raise HTTPException(status_code=401, detail="authenticated_owner_required")
+        legacy = getattr(state, "legacy_owner_user_id", None)
+        owners = (subject,)
+        if "operator" in getattr(state, "scopes", ()) and isinstance(legacy, str) and legacy:
+            owners = (subject, legacy) if legacy != subject else owners
+        return subject, owners
+    # The closed legacy operator has an explicit principal, not an account fallback.
+    if user_id == "__operator__" and "operator" in getattr(state, "scopes", ()):
+        return user_id, (user_id,)
+    raise HTTPException(status_code=401, detail="authenticated_owner_required")
+
+
+def _require_owned_project(con: Any, project_id: str, owners: tuple[str, ...]) -> None:
+    placeholders = ",".join("?" for _ in owners)
+    row = con.execute(
+        "SELECT 1 FROM speak_projects p "
+        "JOIN interview_projects ip ON ip.project_id = p.project_id "
+        f"WHERE p.project_id = ? AND ip.owner_user_id IN ({placeholders})",
+        [project_id, *owners],
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+
 @speak_router.post("/projects", response_model=ProjectResponse, status_code=201)
-async def create_project(req: CreateProjectRequest) -> ProjectResponse:
+async def create_project(req: CreateProjectRequest, request: Request) -> ProjectResponse:
+    owner, _ = _private_project_principal(request)
+
     def _sync() -> Any:
         with _translate(), _write("speak/api:create_project") as con:
             return project_mod.create_project(
                 con, title=req.title, subject_ref=req.subject_ref,
                 subject_status=req.subject_status, publish_intent=req.publish_intent,
                 topic_description=req.topic_description,
+                owner_user_id=owner,
                 interview_guide={"must_cover": [{
                     "id": "first_memory", "text": "Share a memory in your own words.",
                 }]},
@@ -406,10 +443,13 @@ async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionR
 
 
 @speak_router.get("/projects")
-async def list_projects() -> dict:
-    """List Speak projects (the operator's project index). Uses a write
+async def list_projects(request: Request) -> dict:
+    """List owned Speak projects. Uses a write
     lock only to ensure the Speak schema exists on a fresh DB; the query
     itself is a read."""
+    _, owners = _private_project_principal(request)
+    placeholders = ",".join("?" for _ in owners)
+
     def _sync() -> Any:
         with _translate(), _write("speak/api:list_projects") as con:
             return con.execute(
@@ -419,7 +459,9 @@ async def list_projects() -> dict:
                 "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S') "
                 "FROM speak_projects p "
                 "JOIN interview_projects ip ON ip.project_id = p.project_id "
-                "ORDER BY p.created_at DESC"
+                f"WHERE ip.owner_user_id IN ({placeholders}) "
+                "ORDER BY p.created_at DESC",
+                list(owners),
             ).fetchall()
 
     rows = await _off_loop(_sync)
@@ -435,9 +477,12 @@ async def list_projects() -> dict:
 
 
 @speak_router.get("/projects/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: str) -> ProjectResponse:
+async def get_project(project_id: str, request: Request) -> ProjectResponse:
+    _, owners = _private_project_principal(request)
+
     def _sync() -> Any:
         with _translate(), _write("speak/api:get_project") as con:
+            _require_owned_project(con, project_id, owners)
             return project_mod.get_project(con, project_id)
 
     p = await _off_loop(_sync)
@@ -522,12 +567,14 @@ async def public_feed() -> dict:
 
 
 @speak_router.post("/projects/{project_id}/invites", response_model=InviteResponse, status_code=201)
-async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
+async def invite(project_id: str, req: InviteRequest, request: Request) -> InviteResponse:
+    _, owners = _private_project_principal(request)
     if not (req.informant_email or req.informant_handle):
         raise HTTPException(status_code=400, detail="informant_email or informant_handle required")
 
     def _sync() -> Any:
         with _translate(), _write("speak/api:invite") as con:
+            _require_owned_project(con, project_id, owners)
             return invitations.invite_stakeholder(
                 con, project_id=project_id,
                 informant_email=req.informant_email, informant_handle=req.informant_handle,
@@ -543,9 +590,12 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
 
 
 @speak_router.get("/projects/{project_id}/invites")
-async def list_invites(project_id: str) -> dict:
+async def list_invites(project_id: str, request: Request) -> dict:
+    _, owners = _private_project_principal(request)
+
     def _sync() -> list[Any]:
         with _translate(), _write("speak/api:list_invites") as con:
+            _require_owned_project(con, project_id, owners)
             return invitations.lifecycle(con, project_id)
 
     rows = await _off_loop(_sync)
@@ -1265,6 +1315,17 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
     return iv.interview_id, iv.project_id
 
 
+def _require_legacy_voice_owner(con: Any, project_id: str) -> None:
+    row = con.execute(
+        "SELECT owner_user_id FROM interview_projects WHERE project_id = ?", [project_id]
+    ).fetchone()
+    if row is None or row[0] != "__operator__":
+        raise HTTPException(
+            status_code=403,
+            detail="Voice transcription is unavailable for this story. You can type your memory instead.",
+        )
+
+
 @speak_router.get("/invite/{token}")
 async def invitee_landing(token: str) -> dict:
     """One call for the invitee's landing page: the project they've been
@@ -1460,6 +1521,7 @@ async def invitee_voice(
                     _pre, invite.interview_id, ConsentScope.RECORD,
                     action="transcribe_voice",
                 )
+                _require_legacy_voice_owner(_pre, invite.project_id)
                 return True
         except FileNotFoundError:
             # No DB file yet means no invite can exist. Map to the same 404
@@ -1523,12 +1585,13 @@ async def invitee_voice(
         # two is harmless: a token revoked in between is caught by the
         # write-side check exactly as before.
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
-            interview_id, _ = _require_token(con, token)
+            interview_id, project_id = _require_token(con, token)
             # Recheck after admission: consent may have been revoked while
             # the body arrived. Never send unconsented audio to the provider.
             consent_mod.require_consent(
                 con, interview_id, ConsentScope.RECORD, action="transcribe_voice",
             )
+            _require_legacy_voice_owner(con, project_id)
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
         # — and off the loop, since Whisper is CPU-bound for seconds.
         with _translate():
