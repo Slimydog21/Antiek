@@ -51,7 +51,7 @@ _FOREIGN_EXTRA: tuple[tuple[str, re.Pattern[str]], ...] = (
 class SanitizeResult:
     safe: bool
     quarantined: bool
-    violations: list = field(default_factory=list)
+    violations: list[Violation] = field(default_factory=list)
     reason: str | None = None
 
 
