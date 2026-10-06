@@ -452,7 +452,10 @@ def register_ad_routes(app: FastAPI) -> None:
         # (asyncio.to_thread) with a short flock wait — #3121 coexist /
         # #3153 class. Default 300s write wait wedged uvicorn under
         # agent_work. No fake pricing: missing/unpriced fill still mints $0.
-        from runtime.db_lock import WriteLockTimeout
+        from interfaces.research.api.frame_write_health import (
+            frame_write_health_for,
+        )
+        from runtime.db_lock import WriteConfigurationTimeout, WriteLockTimeout
 
         def _accrue_sync() -> FrameTelemetryResponse:
             with connect_write(
@@ -553,9 +556,19 @@ def register_ad_routes(app: FastAPI) -> None:
                     clamped_cents=result.clamped_cents,
                 )
 
+        # Write-path health signal (prod incident 2026-10-02/03: 84.6% of
+        # flushes refused for 28h while /health said "ok"). Every request that
+        # reaches the accrual step records its outcome — success, or a
+        # retryable 503 from either refusal class (external write-lock timeout
+        # handled here; same-process write configuration conflict handled by
+        # the app-level handler in app.py). In-memory only: never opens a
+        # DuckDB handle, so the signal adds zero contention to the write path
+        # it measures. See interfaces/research/api/frame_write_health.py.
+        frame_write_health = frame_write_health_for(request.app)
         try:
-            return await asyncio.to_thread(_accrue_sync)
+            response = await asyncio.to_thread(_accrue_sync)
         except WriteLockTimeout as exc:
+            frame_write_health.record(refused=True)
             # Retry-After is the contract, not decoration: the emitter must
             # re-send the SAME window_id batch (idempotent by window), and a
             # bare 503 gives it nothing to schedule on.
@@ -564,6 +577,11 @@ def register_ad_routes(app: FastAPI) -> None:
                 detail="ad_frame_writer_busy",
                 headers={"Retry-After": "1"},
             ) from exc
+        except WriteConfigurationTimeout:
+            frame_write_health.record(refused=True)
+            raise
+        frame_write_health.record(refused=False)
+        return response
 
     @app.get("/api/ad/fill", response_model=AdFillResponse, tags=["ad"])
     async def ad_fill(
