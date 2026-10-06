@@ -328,6 +328,7 @@ def test_book_catalogue_body_and_default_model_join_actual_owner(account_api):
     state = {"page_index": 2, "revision": 0, "owner_user_id": bob.get("/auth/me").json()["user_id"]}
     assert alice.put("/books/local-alice-book/reading-state", json=state).status_code == 200
     assert alice.get("/books/local-alice-book/reading-state").json()["page_index"] == 2
+
     assert bob.get("/books/local-alice-book/reading-state").status_code == 403
     assert bob.put("/books/local-alice-book/reading-state", json=state).status_code == 403
     project = alice.post(
@@ -360,6 +361,50 @@ def test_book_catalogue_body_and_default_model_join_actual_owner(account_api):
     db_lock.flush_warm_writers(db)
     assert alice.get("/books/local-alice-book").status_code == 404
 
+
+def test_issued_accounts_corpus_search_denies_all_foreign_private_classes(account_api, monkeypatch):
+    from processing.embedding.embed import HashEmbedding
+    from runtime import db_lock
+    from substrate.graph import ensure_initialized
+    from substrate.graph.ops import insert_document
+
+    app, sender, root = account_api
+    alice, _payload, _code = sign_in(app, sender, ALICE)
+    bob, _payload, _code = sign_in(app, sender, BOB)
+    operator, _payload, _code = sign_in(app, sender, OPERATOR)
+    alice_subject = alice.get("/auth/me").json()["user_id"]
+    bob_subject = bob.get("/auth/me").json()["user_id"]
+    model = HashEmbedding(dimension=8)
+    # Only the external embedding dependency is deterministic. HTTP issuance,
+    # middleware, owner resolver and real DuckDB search remain in the control.
+    monkeypatch.setattr("substrate.graph.search.SentenceTransformerEmbedding", lambda: model)
+    db = str(root / "graph.duckdb")
+    ensure_initialized(db)
+    rows = [(f"alice-{kind}", alice_subject, kind) for kind in (
+        "user_owned", "personal_reading", "restricted_pending_opt_in", None,
+    )]
+    rows += [("bob-own", bob_subject, "user_owned"), ("legacy-own", "__operator__", "personal_reading"),
+             ("shared-public", alice_subject, "public_domain")]
+    with db_lock.connect_write(db, purpose="test/account-corpus-isolation", keepalive_s=0) as con:
+        for document_id, owner, content_class in rows:
+            insert_document(con, document_id=document_id, title=document_id, source_tier=2,
+                            document_type="book", raw_text=f"PRIVATE_{document_id}",
+                            owner_user_id=owner, content_class=content_class)
+            con.execute("INSERT INTO chunks (chunk_id, document_id, chunk_index, text, embedding) "
+                        "VALUES (?, ?, 0, ?, ?)",
+                        [f"chunk-{document_id}", document_id, f"PRIVATE_{document_id}", model.encode("ownership")])
+    db_lock.flush_warm_writers(db)
+    foreign = bob.get("/corpus/search?q=ownership", headers={"X-User-Id": alice_subject})
+    assert foreign.status_code == 200
+    assert {hit["document_id"] for hit in foreign.json()["hits"]} == {"bob-own", "shared-public"}
+    assert "alice-" not in foreign.text
+    assert "legacy-own" not in foreign.text
+    owned = alice.get("/corpus/search?q=ownership")
+    assert {hit["document_id"] for hit in owned.json()["hits"]} == {doc for doc, owner, _kind in rows if owner == alice_subject}
+    scoped_foreign = bob.get("/corpus/search?q=ownership&document_id=alice-user_owned")
+    assert scoped_foreign.status_code == 200 and scoped_foreign.json()["hits"] == []
+    legacy = operator.get("/corpus/search?q=ownership")
+    assert {hit["document_id"] for hit in legacy.json()["hits"]} == {"legacy-own", "shared-public"}
 
 def test_passkey_login_uses_verified_stored_account_not_first_operator(account_api, monkeypatch):
     from types import SimpleNamespace

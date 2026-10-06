@@ -2874,13 +2874,11 @@ def register_book_routes(app: FastAPI) -> None:
         document_id: str | None = None,
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
-        ``substrate.graph.search.search`` through the §9.0 gate. For the
-        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
-        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
-        ``operator_only`` tag, so the owner can search across HIS OWN
-        gated/personal corpus. For any non-owner / unauthenticated caller (401'd
-        by the middleware before reaching here when enforcement is on) the gate
-        stays non-privileged and excludes restricted/personal content.
+        ``substrate.graph.search.search`` through the §9.0 gate. Account
+        sessions use the same public-class-or-trusted-stored-owner boundary
+        as catalogue/body access, before embedding checks and ranking. Their
+        explicit legacy alias grants only that stored owner's rows. Closed
+        legacy mode retains its separate single-operator retrieval policy.
         ``document_id`` optionally scopes to one document. The Library's typed
         query + file-drop bias both POST text here (file = a query SIGNAL, never
         ingested)."""
@@ -2904,6 +2902,10 @@ def register_book_routes(app: FastAPI) -> None:
                 # server-side); non-owner / unauth callers stay gated.
                 policy_tag=_owner_read_policy_tag(request),
                 owner_user_id=getattr(request.state, "account_subject", None),
+                account_owner_ids=(
+                    _account_owner_ids(request)
+                    if getattr(request.state, "account_subject", None) else None
+                ),
             )
         finally:
             con.close()

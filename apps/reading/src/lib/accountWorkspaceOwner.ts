@@ -6,6 +6,7 @@ export interface WorkspaceOwnerSession {
 }
 
 let session: WorkspaceOwnerSession = { subject: null, epoch: 0 };
+let revalidating: WorkspaceOwnerSession | null = null;
 const listeners = new Set<() => void>();
 const retirementListeners = new Set<() => void>();
 
@@ -14,7 +15,16 @@ export function workspaceOwnerSession(): WorkspaceOwnerSession {
 }
 
 export function isWorkspaceOwnerSession(captured: WorkspaceOwnerSession): boolean {
-  return captured === session;
+  return captured === session && captured !== revalidating;
+}
+
+/** A cookie recheck suspends outbound work without destroying a same-owner draft. */
+export function suspendWorkspaceOwner(): void {
+  revalidating = session;
+}
+
+export function resumeWorkspaceOwner(): void {
+  revalidating = null;
 }
 
 export function subscribeWorkspaceOwner(listener: () => void): () => void {
@@ -33,6 +43,7 @@ export function setWorkspaceOwner(subject: string | null): void {
   if (subject === session.subject) return;
   for (const retire of retirementListeners) retire();
   session = { subject, epoch: session.epoch + 1 };
+  revalidating = null;
   for (const listener of listeners) listener();
 }
 

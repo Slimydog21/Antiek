@@ -134,6 +134,13 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
 
   const ownerEpoch = usePositionOwnerEpoch();
   const owner = useWorkspaceOwner();
+  const actionLifetime = useMemo(() => ({ active: true }), [documentId, owner]);
+  useEffect(() => {
+    actionLifetime.active = true;
+    return () => { actionLifetime.active = false; };
+  }, [actionLifetime]);
+  const readingActionCurrent = useCallback(() => actionLifetime.active
+    && owner.subject !== null && isWorkspaceOwnerSession(owner), [actionLifetime, owner]);
   const resource = useMemo(() => ({ documentId, ownerEpoch, owner }), [documentId, ownerEpoch, owner]);
   const resourceRef = useRef(resource);
   resourceRef.current = resource;
@@ -558,13 +565,28 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // a servable selection posts the quote and the server resolves canonically.
   const pinFromSelection = useCallback(
     async (source: string, sel: FloatMenuSelection): Promise<BookAnchor | null> => {
+      if (!readingActionCurrent()) return null;
       const loc = locateSelection(sel.text);
       const body = buildPinBody(source, sel, loc, normalizedBody, pageIndex);
       if (!body) return null;
-      return createAnchor(documentId, body);
+      const pinned = await createAnchor(documentId, body);
+      return readingActionCurrent() ? pinned : null;
     },
-    [documentId, pageIndex, locateSelection, normalizedBody],
+    [documentId, pageIndex, locateSelection, normalizedBody, readingActionCurrent],
   );
+
+  const spinFromPage = useCallback(async (passageText: string) => {
+    if (!readingActionCurrent()) throw new Error("The reading account changed.");
+    const spawned = await spinResearch(documentId, pageIndex, passageText);
+    if (!readingActionCurrent()) throw new Error("The reading account changed.");
+    return spawned;
+  }, [documentId, pageIndex, readingActionCurrent]);
+  const linkFromPage = useCallback(async (anchorId: string, investigationId: string) => {
+    if (!readingActionCurrent()) throw new Error("The reading account changed.");
+    const linked = await linkAnchorInvestigation(documentId, anchorId, investigationId);
+    if (!readingActionCurrent()) throw new Error("The reading account changed.");
+    return linked;
+  }, [documentId, readingActionCurrent]);
 
   // The FloatMenu's pin seam: Note/Dialogue/Search + the Pin button fire here
   // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
@@ -575,13 +597,16 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // operator saw zero marks, zero alerts).
   const onPinAnchor = useCallback(
     (pin: { source: string }, sel: FloatMenuSelection) => {
+      if (!readingActionCurrent()) return;
       const manual = pin.source === "pin";
       void (async () => {
         try {
           await pinFromSelection(pin.source, sel);
+          if (!readingActionCurrent()) return;
           refetchAnchors();
           if (manual) toast.info("Highlight pinned.");
         } catch (e) {
+          if (!readingActionCurrent()) return;
           // Diagnostics for logs; a plain sentence for the operator.
           const described = describeFailure(e, { what: "pin that passage" });
           console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
@@ -591,7 +616,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         }
       })();
     },
-    [pinFromSelection, refetchAnchors],
+    [pinFromSelection, refetchAnchors, readingActionCurrent],
   );
 
   // Deep-research (highlight) -> pin -> spin-research -> write-back, and the
@@ -604,7 +629,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // honestly, never an anchorless island.
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, sel: FloatMenuSelection) => {
-      if (safeSpawnText === null) return;
+      if (safeSpawnText === null || !readingActionCurrent()) return;
       window.getSelection()?.removeAllRanges();
       const loc = locateSelection(sel.text);
       void (async () => {
@@ -616,11 +641,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
             if (!pinned) throw new Error("the passage could not be anchored");
             return pinned;
           },
-          spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
-          link: (anchorId, investigationId) =>
-            linkAnchorInvestigation(documentId, anchorId, investigationId),
+          spin: spinFromPage,
+          link: linkFromPage,
           passageText: safeSpawnText,
         });
+        if (!readingActionCurrent()) return;
         if (result.ok) {
           refetchAnchors();
           toast.info("Research started — the island is on your passage.");
@@ -630,7 +655,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         }
       })();
     },
-    [documentId, pageIndex, anchors, locateSelection, pinFromSelection, refetchAnchors],
+    [anchors, locateSelection, pinFromSelection, spinFromPage, linkFromPage, refetchAnchors, readingActionCurrent],
   );
 
   // Free-inquiry (island SPR-03): pin the current page's LEAD passage first
@@ -639,6 +664,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // passage can't anchor (no manifest) and refuses honestly with no withheld
   // text anywhere.
   const spawnFreeInquiry = useCallback(() => {
+    if (!readingActionCurrent()) return;
     const page = pages[pageIndex];
     if (!page) return;
     const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
@@ -660,6 +686,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         anchors,
         locate: () => loc,
         pin: async () => {
+          if (!readingActionCurrent()) throw new Error("The reading account changed.");
           if (!loc || !chunkId) throw new Error("the passage could not be anchored");
           if (servableForOutbound) {
             return createAnchor(documentId, {
@@ -680,11 +707,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
             source: "pin",
           });
         },
-        spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
-        link: (anchorId, investigationId) =>
-          linkAnchorInvestigation(documentId, anchorId, investigationId),
+        spin: spinFromPage,
+        link: linkFromPage,
         passageText: lead,
       });
+      if (!readingActionCurrent()) return;
       if (result.ok) {
         refetchAnchors();
         toast.info("Research started — the island is on your passage.");
@@ -693,7 +720,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         refetchAnchors();
       }
     })();
-  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors]);
+  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors, readingActionCurrent, spinFromPage, linkFromPage]);
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
   // anchored menu would otherwise float over the wrong page. A chase already in

@@ -28,7 +28,7 @@ import {
 import { posthog, posthogEnabled } from "./posthogClient";
 import { setReadingStateOwner } from "../hooks/useReadingState";
 import { setSectionProseOwner, suspendSectionProseDispatch } from "../modes/Write/sectionProseOwner";
-import { beforeWorkspaceOwnerChange, setWorkspaceOwner, useWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import { beforeWorkspaceOwnerChange, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, useWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import "../workspace/WorkspaceStore";
 import "../workspace/tabTreeStore";
 import { useWindows } from "../workspace/windowsStore";
@@ -40,6 +40,9 @@ beforeWorkspaceOwnerChange(clearReadingFocus);
 
 function replaceWorkspaceOwner(subject: string | null): void {
   if (workspaceOwnerSession().subject === subject) return;
+  // The synchronous retirement listeners flush the known old owner's local
+  // partition before replacement. No awaiting work may retain that token.
+  resumeWorkspaceOwner();
   setWorkspaceOwner(subject);
   useWindows.getState().reset();
   useCompanion.getState().reset();
@@ -289,6 +292,7 @@ function AuthUnavailableScreen({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const workspaceOwner = useWorkspaceOwner();
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [revalidating, setRevalidating] = useState(false);
   const refreshEpochRef = useRef(0);
   const validatedSubjectRef = useRef<string | null>(null);
   const logoutPendingRef = useRef(false);
@@ -297,6 +301,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async (options?: { afterSignIn: true }) => {
     if (logoutPendingRef.current) return;
     const epoch = ++refreshEpochRef.current;
+    suspendWorkspaceOwner();
+    suspendSectionProseDispatch();
+    setRevalidating(true);
     let answer: IdentityAnswer;
     try {
       answer = await fetchIdentity();
@@ -314,6 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // and do not claim "unauthenticated" either — that sent a signed-in
       // user to /login during every backend restart.
       setState({ status: "unavailable", reason: answer.reason });
+      setRevalidating(false);
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
@@ -324,7 +332,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       && options?.afterSignIn !== true) {
       // A newer request is still using the retired cookie. An automatic
       // refresh cannot undo logout, including a failed logout transport.
+      replaceWorkspaceOwner(null);
+      setReadingStateOwner(null);
+      setSectionProseOwner(null);
       setState({ status: "unauthenticated" });
+      setRevalidating(false);
       return;
     }
     if (identity) {
@@ -337,12 +349,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // outlive.
     if (!(answer.kind === "anonymous" && answer.inferred)) {
       const subject = identity?.user_id ?? null;
-      const changed = validatedSubjectRef.current !== subject;
+      const previousSubject = validatedSubjectRef.current;
+      const changed = previousSubject !== subject;
       validatedSubjectRef.current = subject;
       replaceWorkspaceOwner(subject);
       setReadingStateOwner(identity?.user_id ?? null);
       setSectionProseOwner(identity?.user_id ?? null);
-      if (changed) notifyAuthSessionChange();
+      resumeWorkspaceOwner();
+      // Opening another window with the same shared cookie is no cookie change.
+      if ((changed && previousSubject !== null) || options?.afterSignIn === true) notifyAuthSessionChange();
     } else {
       suspendSectionProseDispatch();
     }
@@ -353,6 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setState({ status: "unauthenticated" });
     }
+    setRevalidating(false);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -361,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshEpochRef.current += 1;
     const logoutEpoch = refreshEpochRef.current;
     logoutPendingRef.current = true;
+    setRevalidating(false);
     retiredSubjectRef.current = validatedSubjectRef.current;
     persistLogoutRetirement(retiredSubjectRef.current);
     validatedSubjectRef.current = null;
@@ -386,11 +403,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let lastFocusRefresh = 0;
     const invalidate = () => {
       if (logoutPendingRef.current) return;
-      // The signal proves no identity. Hide and retire old rendered work,
-      // preserve its stored partition, then verify the shared cookie.
-      suspendSectionProseDispatch();
-      replaceWorkspaceOwner(null);
-      setState({ status: "loading" });
+      // An untrusted notification proves no change. Hide and suspend the
+      // mounted workspace until /auth/me confirms the current cookie owner.
       void refresh();
     };
     const onStorage = (event: StorageEvent) => {
@@ -443,7 +457,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {state.status === "unavailable" ? (
         <AuthUnavailableScreen reason={state.reason} onRetry={refresh} />
       ) : (
-        <Fragment key={workspaceOwner.epoch}>{children}</Fragment>
+        <div hidden={revalidating} style={{ display: revalidating ? "none" : "contents" }} aria-hidden={revalidating || undefined}>
+          <Fragment key={workspaceOwner.epoch}>{children}</Fragment>
+        </div>
       )}
     </AuthCtx.Provider>
   );

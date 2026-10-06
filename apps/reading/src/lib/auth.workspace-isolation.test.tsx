@@ -1,12 +1,13 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, isInaccessible, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_SESSION_CHANGE_KEY, AuthProvider, claimLogin, useAuth, type AuthContextValue } from "./auth";
-import { setWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import { isWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { useWorkspaceHydration } from "../workspace/useWorkspaceHydration";
 import { readScope } from "../workspace/persistence";
+import { openPopoutFor, receivePopoutPanel } from "../workspace/popout";
 
 function response(status: number, body: unknown = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -27,6 +28,7 @@ function WorkspaceView() {
   const panels = useWorkspace((state) => state.panels);
   useEffect(() => { controller = current; }, [current]);
   return <>
+    <input aria-label="Unsaved mounted draft" defaultValue="" />
     <output data-testid="identity">{current.state.status === "authenticated" ? current.state.identity.user_id : current.state.status}</output>
     {current.state.status === "authenticated" && <output data-testid="private-panels">{JSON.stringify(panels)}</output>}
   </>;
@@ -42,6 +44,27 @@ function openA() {
 async function refresh(reply: () => Promise<Response>) {
   authReply = reply;
   await act(async () => { await auth().refresh(); });
+}
+
+function expectPrivatePanelsHidden() {
+  const panels = screen.queryByTestId("private-panels");
+  expect(panels === null || isInaccessible(panels)).toBe(true);
+}
+
+// Only the OS window and cross-window transport are simulated. The auth
+// lifecycle, owner token, descriptor and popout publisher/receiver are real.
+class UnitChannel extends EventTarget {
+  static channels = new Set<UnitChannel>();
+  closed = false;
+  constructor(readonly name: string) { super(); UnitChannel.channels.add(this); }
+  postMessage(data: unknown) {
+    for (const peer of UnitChannel.channels) {
+      if (peer !== this && !peer.closed && peer.name === this.name) {
+        queueMicrotask(() => { if (!peer.closed) peer.dispatchEvent(new MessageEvent("message", { data })); });
+      }
+    }
+  }
+  close() { this.closed = true; UnitChannel.channels.delete(this); }
 }
 
 beforeEach(() => {
@@ -63,26 +86,32 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setWorkspaceOwner(null);
+  for (const channel of UnitChannel.channels) channel.close();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe("AuthProvider retires private workspace bodies", () => {
-  it("retires visible A on a cross-tab signal and only /auth/me can establish B", async () => {
+  it("hides and suspends A on a cross-tab signal and only verified B retires its token", async () => {
     mount();
     await screen.findByText("account-a", {}, { timeout: 10000 });
     openA();
+    const owner = workspaceOwnerSession();
     let finish: (response: Response) => void = () => { throw new Error("refresh not started"); };
     authReply = () => new Promise((done) => { finish = done; });
     act(() => { window.dispatchEvent(new StorageEvent("storage", {
       key: AUTH_SESSION_CHANGE_KEY, oldValue: "old", newValue: "untrusted-account-name",
     })); });
-    expect(screen.queryByTestId("private-panels")).toBeNull();
-    expect(workspaceOwnerSession().subject).toBeNull();
-    expect(useWorkspace.getState().panels).toEqual({});
+    expectPrivatePanelsHidden();
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
+    expect(useWorkspace.getState().panels["a-body"].props.initialContent).toBe("A private notebook");
     await act(async () => { finish(identity("account-b")); });
     expect(screen.getByTestId("identity").textContent).toBe("account-b");
     expect(screen.getByTestId("private-panels").textContent).not.toContain("A private");
+    expect(workspaceOwnerSession()).not.toBe(owner);
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
   }, 15000);
   it("A→B never carries pinned panel bodies and A's reload restores its own partition", async () => {
     const mounted = mount();
@@ -239,5 +268,107 @@ describe("AuthProvider retires private workspace bodies", () => {
     await waitFor(() => expect(screen.getByTestId("private-panels").textContent).toContain("A private notebook"), { timeout: 10000 });
     expect(screen.getByTestId("private-panels").textContent).toContain("A private provider");
     expect(workspaceOwnerSession().subject).toBe("account-a");
+  }, 15000);
+
+  it.each(["focus", "remote session notification"])("same-owner %s preserves the mounted unsaved input and exact owner token", async (signal) => {
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    const owner = workspaceOwnerSession();
+    const input = screen.getByRole("textbox", { name: "Unsaved mounted draft" });
+    fireEvent.change(input, { target: { value: "A unsaved mounted text" } });
+    let finish: (answer: Response) => void = () => { throw new Error("revalidation not sent"); };
+    authReply = () => new Promise((done) => { finish = done; });
+    act(() => {
+      if (signal === "focus") window.dispatchEvent(new Event("focus"));
+      else window.dispatchEvent(new StorageEvent("storage", {
+        key: AUTH_SESSION_CHANGE_KEY, oldValue: "old", newValue: "other-window-initial-auth",
+      }));
+    });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
+    expect(screen.getByLabelText("Unsaved mounted draft")).toBe(input);
+    expect(input).toHaveProperty("value", "A unsaved mounted text");
+    expect(isInaccessible(input)).toBe(true);
+    expectPrivatePanelsHidden();
+    await act(async () => { finish(identity("account-a")); });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(isWorkspaceOwnerSession(owner)).toBe(true);
+    expect(screen.getByRole("textbox", { name: "Unsaved mounted draft" })).toBe(input);
+    expect(input).toHaveProperty("value", "A unsaved mounted text");
+    expect(isInaccessible(input)).toBe(false);
+    expect(screen.getByTestId("private-panels").textContent).toContain("A private notebook");
+  }, 15000);
+
+  it("another real provider's initial A confirmation emits no replacement notification", async () => {
+    const first = mount();
+    await within(first.container).findByText("account-a", {}, { timeout: 10000 });
+    const input = within(first.container).getByRole("textbox", { name: "Unsaved mounted draft" });
+    fireEvent.change(input, { target: { value: "First window unsaved text" } });
+    const owner = workspaceOwnerSession();
+    expect(window.localStorage.getItem(AUTH_SESSION_CHANGE_KEY)).toBeNull();
+    let finish: (answer: Response) => void = () => { throw new Error("second initial auth not sent"); };
+    authReply = () => new Promise((done) => { finish = done; });
+    const second = mount();
+    await act(async () => { finish(identity("account-a")); });
+    await within(second.container).findByText("account-a", {}, { timeout: 10000 });
+    expect(window.localStorage.getItem(AUTH_SESSION_CHANGE_KEY)).toBeNull();
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(within(first.container).getByRole("textbox", { name: "Unsaved mounted draft" })).toBe(input);
+    expect(input).toHaveProperty("value", "First window unsaved text");
+    // A positive interactive proof has a different notification contract.
+    authReply = async () => identity("account-a");
+    await act(async () => { await auth().refresh({ afterSignIn: true }); });
+    expect(window.localStorage.getItem(AUTH_SESSION_CHANGE_KEY)).not.toBeNull();
+  }, 15000);
+
+  it("real popout handoff survives same-A focus and closes only after verified B", async () => {
+    vi.stubGlobal("BroadcastChannel", UnitChannel);
+    const closeWindow = vi.spyOn(window, "close").mockImplementation(() => {});
+    vi.spyOn(window, "open").mockReturnValue(window);
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    act(() => { openPopoutFor("a-body"); });
+    const publishers = [...UnitChannel.channels];
+    expect(publishers).toHaveLength(1);
+    const publisher = publishers[0];
+    if (publisher === undefined) throw new Error("Popout did not register its publisher");
+    const owner = workspaceOwnerSession();
+    let finish: (answer: Response) => void = () => { throw new Error("focus auth not sent"); };
+    authReply = () => new Promise((done) => { finish = done; });
+    act(() => { window.dispatchEvent(new Event("focus")); });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(publishers.every((channel) => !channel.closed)).toBe(true);
+    expectPrivatePanelsHidden();
+    const peer = new UnitChannel(publisher.name);
+    const pendingDeliveries: unknown[] = [];
+    peer.addEventListener("message", (event) => {
+      if (event instanceof MessageEvent) pendingDeliveries.push(event.data);
+    });
+    await act(async () => {
+      peer.postMessage({ kind: "popout-ready", panelId: "a-body" });
+      await Promise.resolve();
+    });
+    expect(pendingDeliveries).toEqual([]);
+    peer.close();
+    await act(async () => { finish(identity("account-a")); });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(closeWindow).not.toHaveBeenCalled();
+    await act(async () => {
+      const descriptor = await receivePopoutPanel("a-body");
+      expect(descriptor?.props.initialContent).toBe("A private notebook");
+    });
+    await refresh(async () => identity("account-b"));
+    expect(closeWindow).toHaveBeenCalledOnce();
+    expect(publishers.every((channel) => channel.closed)).toBe(true);
+    expect(workspaceOwnerSession()).not.toBe(owner);
+    expect(screen.getByTestId("private-panels").textContent).not.toContain("A private");
+    let pending: Promise<Awaited<ReturnType<typeof receivePopoutPanel>>> | null = null;
+    act(() => { pending = receivePopoutPanel("a-body"); });
+    await refresh(async () => response(401));
+    expect(await pending).toBeNull();
   }, 15000);
 });

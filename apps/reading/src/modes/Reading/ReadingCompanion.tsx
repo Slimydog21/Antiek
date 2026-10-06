@@ -13,6 +13,7 @@ import {
 import { createFork } from "../../api/forks";
 import { useBranchTo } from "../../workspace/useBranchTo";
 import { recordFork } from "../../workspace/forkLineage";
+import { isWorkspaceOwnerSession, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import {
@@ -348,6 +349,9 @@ function ForkSection({
   documentId: string;
   pageIndex: number | null;
 }) {
+  const owner = useWorkspaceOwner();
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const branchTo = useBranchTo();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<"rights" | "depth" | "error" | null>(null);
@@ -355,7 +359,8 @@ function ForkSection({
   const operationIdRef = useRef<string | null>(null);
 
   async function fork() {
-    if (busy) return;
+    const current = () => mounted.current && owner.subject !== null && isWorkspaceOwnerSession(owner);
+    if (busy || !current()) return;
     setBusy(true);
     setFailed(null);
     operationIdRef.current ??= crypto.randomUUID();
@@ -365,9 +370,10 @@ function ForkSection({
         fork_point_locator:
           pageIndex !== null && pageIndex >= 0 ? `page:${pageIndex}` : undefined,
       });
+      if (!current()) return;
       // A distinct fork intent gets a fresh operation id next time.
       operationIdRef.current = null;
-      recordFork(row);
+      recordFork(row, owner);
       setForked(true);
       branchTo(`/read/${encodeURIComponent(row.fork_document_id)}`, {
         document_id: documentId,
@@ -375,12 +381,13 @@ function ForkSection({
         page_index: pageIndex ?? undefined,
       });
     } catch (error) {
+      if (!current()) return;
       // The operation id is KEPT on failure: a retry replays it.
       if (error instanceof ApiError && error.status === 422) setFailed("rights");
       else if (error instanceof ApiError && error.status === 409) setFailed("depth");
       else setFailed("error");
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   }
 
