@@ -109,30 +109,20 @@ _OWNER_AUTH_METHODS: frozenset[str] = frozenset({
 
 
 def _owner_read_policy_tag(request: Request) -> str:
-    """Resolve the §9.0 retrieval policy_tag for an OWNER read endpoint.
+    """Account retrieval needs an actual subject and stored-resource owner join.
 
-    Returns the PRIVILEGED ``operator_only`` tag ONLY when the auth middleware
-    has stamped ``request.state.auth_method`` with one of the four AUTHENTICATED
-    methods (a real credential proven: session cookie, Cloudflare Access email,
-    Cloudflare service token, or operator bearer). For ANY other value — see the
-    ``_OWNER_AUTH_METHODS`` comment above for why ``unauthenticated_local`` and
-    absent state are EXCLUDED (the fail-closed, bind-to-a-real-credential rule) —
-    it returns the non-privileged default, so the §9.0 gate keeps excluding
-    gated/personal content. The privileged bypass requires a positive,
-    middleware-set authenticated signal; it is NEVER the default.
-
-    The signal is SERVER-DERIVED: ``auth_method`` is written only by the auth
-    middleware on the request object; a caller cannot set ``request.state`` or
-    spoof it via a header/param. When enforcement is on, a non-owner caller is
-    rejected with 401 BEFORE this runs, so it can only ever see owner requests.
-
-    PRIVILEGE == OWNER is ENFORCED, not merely assumed: the bypass is granted
-    only when the deployment is single-operator (``operator_allowlist_from_env``
-    resolves ≤ 1 operator); a multi-operator config FAILS CLOSED to the
-    non-privileged tag. See the SINGLE-OPERATOR ENFORCEMENT note above
-    ``_OWNER_AUTH_METHODS``.
+    Account routes below check the stored document owner before body access;
+    corpus search passes the subject into the retrieval filter. Closed legacy
+    mode keeps its existing single-operator policy. An auth method alone is
+    never a public account's resource authority.
     """
     auth_method = getattr(getattr(request, "state", None), "auth_method", None)
+    subject = getattr(request.state, "account_subject", None)
+    if (
+        subject and subject == getattr(request.state, "user_id", None)
+        and auth_method == "antiek_session_cookie" and isinstance(subject, str)
+    ):
+        return _OWNER_READ_POLICY_TAG
     # SINGLE-OPERATOR ENFORCEMENT: the privilege is owner-scoped only when the
     # deployment has ≤ 1 operator. With 2+ operator emails the bypass would be
     # cross-tenant (this helper keys on auth_method, not user_id), so it FAILS
@@ -145,13 +135,47 @@ def _owner_read_policy_tag(request: Request) -> str:
 def _reader_owner_id(request: Request) -> str:
     """Resolve ownership from middleware state, never from request data."""
     state = getattr(request, "state", None)
-    user_id = getattr(state, "user_id", None)
+    user_id = getattr(state, "private_owner_user_id", None) or getattr(state, "user_id", None)
     auth_method = getattr(state, "auth_method", None)
     if isinstance(user_id, str) and user_id.strip():
         return user_id.strip()
     if auth_method == "unauthenticated_local":
         return "__operator__"
     raise HTTPException(status_code=401, detail="authenticated_owner_required")
+
+
+_PUBLIC_BOOK_CLASSES = frozenset({
+    "public_domain", "opt_in_licensed", "source_declared_open", "user_public_contribution",
+})
+
+
+def _account_owner_ids(request: Request) -> tuple[str, ...]:
+    """Authenticated subject plus its explicitly persisted legacy storage alias."""
+    subject = getattr(request.state, "account_subject", None)
+    if not isinstance(subject, str) or subject != getattr(request.state, "user_id", None):
+        raise HTTPException(status_code=401, detail="authenticated_owner_required")
+    legacy = getattr(request.state, "legacy_owner_user_id", None)
+    return (subject, legacy) if isinstance(legacy, str) and legacy != subject else (subject,)
+
+
+def _account_can_read_book(con: Any, document_id: str, request: Request) -> bool:
+    if not getattr(request.state, "account_subject", None):
+        return True  # Existing closed operator mode is not a public account.
+    row = con.execute(
+        "SELECT owner_user_id, content_class FROM documents WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    return bool(row and (row[1] in _PUBLIC_BOOK_CLASSES or row[0] in _account_owner_ids(request)))
+
+
+def _require_account_book(con: Any, document_id: str, request: Request) -> None:
+    if (
+        getattr(request.state, "account_subject", None)
+        and con.execute("SELECT 1 FROM documents WHERE document_id = ?", [document_id]).fetchone() is None
+    ):
+        raise HTTPException(status_code=404, detail="book_not_found")
+    if not _account_can_read_book(con, document_id, request):
+        raise HTTPException(status_code=403, detail="book_access_withheld")
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -1340,6 +1364,7 @@ def register_book_routes(app: FastAPI) -> None:
 
     @app.get("/books", response_model=BookListResponse, tags=["books"])
     def list_books(
+        request: Request,
         status: Literal["servable", "gated", "all"] = "servable",
     ) -> BookListResponse:
         from runtime.db_lock import connect_read
@@ -1353,6 +1378,8 @@ def register_book_routes(app: FastAPI) -> None:
                 assets = list_book_assets(con, servable_only=False)
                 if status == "gated":
                     assets = [a for a in assets if not a.servable_full_text]
+            if getattr(request.state, "account_subject", None):
+                assets = [a for a in assets if _account_can_read_book(con, a.document_id, request)]
         finally:
             con.close()
         summaries = [BookSummary.from_asset(a) for a in assets]
@@ -2151,13 +2178,15 @@ def register_book_routes(app: FastAPI) -> None:
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
-    def get_book(document_id: str) -> BookDetail:
+    def get_book(document_id: str, request: Request) -> BookDetail:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
             asset = get_openable_book_asset(con, document_id)
+            if asset is not None:
+                _require_account_book(con, document_id, request)
         finally:
             con.close()
         if asset is None:
@@ -2169,12 +2198,13 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    def get_book_full_text(document_id: str) -> FullTextResponse:
+    def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _require_account_book(con, document_id, request)
             result = serve_full_text_guarded(con, document_id)
             result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
@@ -2214,6 +2244,7 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _require_account_book(con, document_id, request)
             result = serve_full_text_guarded(con, document_id, owner=True)
             result = _prefer_reader_html_body(con, document_id, result, owner=True)
         finally:
@@ -2442,10 +2473,22 @@ def register_book_routes(app: FastAPI) -> None:
                 "SELECT owner_user_id FROM documents WHERE document_id = ?",
                 [document_id],
             ).fetchone()
+            if asset is not None:
+                _require_account_book(con, document_id, request)
         finally:
             con.close()
         if asset is None:
             raise HTTPException(status_code=404, detail="book_not_found")
+
+        if (
+            getattr(request.state, "account_subject", None)
+            and "operator" not in getattr(request.state, "scopes", ())
+            and req.model_choice is None
+        ):
+            # Public signup never authorizes the process's default model keys
+            # or operator-funded route. Selected BYOT still joins subject,
+            # resource owner, credential owner and payer at dispatch below.
+            raise HTTPException(status_code=403, detail="owned_model_required")
 
         authorized_dispatch = None
         retrieval_owner: str | None = None
@@ -2860,6 +2903,7 @@ def register_book_routes(app: FastAPI) -> None:
                 # §9.0: privileged ONLY for the authenticated owner (resolved
                 # server-side); non-owner / unauth callers stay gated.
                 policy_tag=_owner_read_policy_tag(request),
+                owner_user_id=getattr(request.state, "account_subject", None),
             )
         finally:
             con.close()

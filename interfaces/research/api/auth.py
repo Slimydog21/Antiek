@@ -35,6 +35,7 @@ middleware's job is verify-on-every-request.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import html
 import json
@@ -54,6 +55,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from substrate.auth import (
     InvalidToken,
+    MockEmailProvider,
     OutboundEmail,
     PasskeyError,
     TokenExpired,
@@ -67,6 +69,16 @@ from substrate.auth import (
     mint_session_cookie,
     registration_options,
     verify_magic_link_token,
+)
+from substrate.auth.accounts import (
+    AccountStoreError,
+    account_for_email,
+    account_for_session,
+    account_for_verified_email,
+    account_registry_active,
+    legacy_account_for_session,
+    legacy_operator_email,
+    open_signup_enabled,
 )
 
 from .operator_allowlist import operator_allowlist_from_env
@@ -95,6 +107,8 @@ class AuthRequestPayload(BaseModel):
     @field_validator("email")
     @classmethod
     def _normalize_email(cls, value: str) -> str:
+        if not value.isascii():
+            raise ValueError("email must use an ASCII address")
         normalized = value.strip().lower()
         if not _EMAIL_RE.match(normalized):
             raise ValueError("email does not look like an address")
@@ -159,6 +173,8 @@ class _LoginAttempt:
         self.created_at = time.time()
         self.approved = False
         self.claimed = False
+        self.callback_used = False
+        self.callback_token_hash: str | None = None
         self.failed_code_attempts = 0
 
 
@@ -210,6 +226,8 @@ def _record_code_failure(email: str, protected: frozenset[str]) -> None:
     by spraying misses at throwaway emails.
     """
     if email not in _code_failures and len(_code_failures) >= _MAX_TRACKED_CODE_FAILURE_EMAILS:
+        if account_registry_active():
+            return  # New code entry is refused until mailbox proof frees capacity.
         for key in _code_failures:
             if key not in protected:
                 del _code_failures[key]
@@ -495,6 +513,47 @@ def register_auth_routes(
     def _resolve_allowlist() -> frozenset[str]:
         return _allowlist() | extra
 
+    async def _email_allowed(email: str) -> bool:
+        if email in _resolve_allowlist() or open_signup_enabled():
+            return True
+        if not account_registry_active():
+            return False
+        try:
+            return await asyncio.to_thread(account_for_email, email) is not None
+        except AccountStoreError:
+            return False
+
+    async def _session_subject(email: str) -> str:
+        if not account_registry_active():
+            if email not in _resolve_allowlist():
+                raise HTTPException(status_code=410, detail="login_attempt_expired")
+            return "__operator__"
+        legacy = legacy_operator_email() if email in _resolve_allowlist() else None
+        try:
+            account = await asyncio.to_thread(
+                account_for_verified_email, email, legacy_operator_email=legacy,
+            )
+        except AccountStoreError:
+            raise HTTPException(status_code=503, detail="account_storage_unavailable") from None
+        return account.user_id
+
+    def _credential_owners(request: Request) -> frozenset[str]:
+        subject = getattr(request.state, "user_id", None)
+        if not isinstance(subject, str) or not subject:
+            raise HTTPException(status_code=401, detail="authenticated_account_required")
+        owners = {subject}
+        legacy = getattr(request.state, "legacy_owner_user_id", None)
+        if isinstance(legacy, str):
+            owners.add(legacy)
+        return frozenset(owners)
+
+    def _credentials_for(request: Request) -> list[Any]:
+        credentials = list_credentials()
+        if not account_registry_active():
+            return credentials
+        owners = _credential_owners(request)
+        return [item for item in credentials if item.user_id in owners]
+
     @app.post(
         "/auth/request",
         response_model=AuthRequestResponse,
@@ -508,12 +567,11 @@ def register_auth_routes(
             )
         email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
-        allowlist = _resolve_allowlist()
         attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
-        if email in allowlist:
-            # THE WHOLE BRANCH IS GUARDED, not just the send. Three calls here run only for
-            # allowlisted addresses, and guarding one of them left the other two able to
-            # raise a 500 that a non-allowlisted address never sees -- the same membership
+        if await _email_allowed(email):
+            # Guard token creation, link construction and delivery together.
+            # Eligible accounts must have the same response as ineligible addresses,
+            # including when any delivery step fails -- otherwise membership
             # oracle this block was fixed once already to remove, through a different
             # exception. `get_email_provider()` raises on a misconfigured provider, which
             # is the ordinary state of a dev or freshly-provisioned box, and
@@ -523,10 +581,22 @@ def register_auth_routes(
             # same way an unlisted address succeeds. Whatever breaks, the caller gets the
             # same 200 every other caller gets, and the operator gets the type in the log.
             try:
-                token = mint_magic_link_token(email)
+                token = (
+                    mint_magic_link_token(email, attempt_id=attempt_id)
+                    if account_registry_active() else mint_magic_link_token(email)
+                )
+                with _attempts_lock:
+                    pending = _attempts.get(attempt_id)
+                    if pending is not None:
+                        pending.callback_token_hash = _digest_claim(token)
                 link = _build_magic_link(token, next_path, attempt_id)
                 provider = get_email_provider()
-                provider.send(
+                if account_registry_active() and isinstance(provider, MockEmailProvider):
+                    # A mock sender is not an inbox. Never expose public login
+                    # proofs through its default stdout development logger.
+                    provider.log_to_stdout = False
+                await asyncio.to_thread(
+                    provider.send,
                     _format_magic_link_email(
                         email=email,
                         link=link,
@@ -570,7 +640,7 @@ def register_auth_routes(
             return _redirect_login_error(error_code="magic_link_expired", next_path=next)
         except InvalidToken:
             return _redirect_login_error(error_code="magic_link_invalid", next_path=next)
-        if email not in _resolve_allowlist():
+        if not await _email_allowed(email):
             # Defensive: token was valid but the allowlist changed
             # between request and click. Reject without leaking which
             # case we're in.
@@ -578,9 +648,20 @@ def register_auth_routes(
         # Mailbox possession proven: the attacker cannot produce this, so
         # it (not time, not a fresh attempt) is what reopens code entry.
         with _attempts_lock:
+            if account_registry_active():
+                pending = _attempts.get(attempt or "")
+                if (
+                    pending is None or pending.email != email or pending.claimed
+                    or pending.callback_used
+                    or pending.callback_token_hash is None
+                    or not secrets.compare_digest(pending.callback_token_hash, _digest_claim(token))
+                    or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS
+                ):
+                    return _redirect_login_error(error_code="magic_link_invalid", next_path=next)
+                pending.callback_used = True
             _code_failures.pop(email, None)
         cookie = mint_session_cookie(
-            user_id="__operator__",
+            user_id=await _session_subject(email),
             email=email,
         )
         # The first successful email proof is also the passkey bootstrap.
@@ -644,6 +725,10 @@ def register_auth_routes(
             )
         allowlist = _resolve_allowlist()
         with _attempts_lock:
+            candidate = _attempts.get(payload.attempt_id)
+            candidate_email = candidate.email if candidate is not None else None
+        email_allowed = await _email_allowed(candidate_email) if candidate_email else False
+        with _attempts_lock:
             pending = _attempts.get(payload.attempt_id)
             valid_secret = bool(
                 pending
@@ -651,12 +736,18 @@ def register_auth_routes(
             )
             if not pending or not valid_secret or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS:
                 raise HTTPException(status_code=410, detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."})
+            if pending.claimed:
+                raise HTTPException(status_code=410, detail={"code": "login_attempt_claimed", "message": "This sign-in request was already used."})
             if payload.code is not None:
                 # Single-device flow: the typed code from the email is
                 # the possession proof. Wrong tries are counted; the
                 # whole attempt dies after five so a 10,000-space code
                 # cannot be ground through inside its 15-minute TTL.
-                if _code_failures.get(pending.email, 0) >= _MAX_CODE_FAILURES_PER_EMAIL:
+                if (
+                    _code_failures.get(pending.email, 0) >= _MAX_CODE_FAILURES_PER_EMAIL
+                    or (account_registry_active() and pending.email not in _code_failures
+                        and len(_code_failures) >= _MAX_TRACKED_CODE_FAILURE_EMAILS)
+                ):
                     raise HTTPException(
                         status_code=429,
                         detail={
@@ -668,7 +759,7 @@ def register_auth_routes(
                 # exactly like a wrong code: no allowlist oracle here.
                 code_ok = (
                     secrets.compare_digest(payload.code, pending.device_code)
-                    and pending.email in allowlist
+                    and email_allowed
                 )
                 if not code_ok:
                     pending.failed_code_attempts += 1
@@ -693,18 +784,20 @@ def register_auth_routes(
                 # Two-device flow: keep waiting until the email-click
                 # device approves (POST /auth/approve).
                 return Response(status_code=202)
-            if pending.claimed:
-                raise HTTPException(status_code=410, detail={"code": "login_attempt_claimed", "message": "This sign-in request was already used."})
-            if pending.email not in allowlist:
-                # Fail closed: only an allowlisted address is ever the
-                # operator, whatever path marked the attempt approved.
+            if not email_allowed:
+                # Approval proves mailbox possession, not current sign-in
+                # eligibility or an operator role.
                 raise HTTPException(status_code=410, detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."})
             pending.claimed = True
             email = pending.email
             next_path = pending.next_path
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        subject = await _session_subject(email)
+        cookie = mint_session_cookie(user_id=subject, email=email)
+        credentials = list_credentials()
+        if account_registry_active():
+            credentials = [item for item in credentials if item.user_id == subject]
         response = Response(
-            content=json.dumps({"authenticated": True, "setup_passkey": not bool(list_credentials()), "next": next_path}),
+            content=json.dumps({"authenticated": True, "setup_passkey": not bool(credentials), "next": next_path}),
             media_type="application/json",
         )
         response.set_cookie(
@@ -743,7 +836,7 @@ def register_auth_routes(
     @app.post("/auth/passkey/login/verify", tags=["auth"])
     async def auth_passkey_login_verify(payload: PasskeyCeremonyPayload) -> Response:
         try:
-            complete_authentication(
+            credential = complete_authentication(
                 ceremony_id=payload.ceremony_id,
                 credential=payload.credential,
             )
@@ -763,13 +856,56 @@ def register_auth_routes(
                     "message": "Antiek could not verify that passkey. Try again.",
                 },
             ) from exc
-        allow = sorted(_resolve_allowlist())
-        if not allow:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
-            )
-        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        if account_registry_active():
+            try:
+                if credential.user_id == "__operator__":
+                    retained_email = legacy_operator_email()
+                    account = (
+                        await asyncio.to_thread(legacy_account_for_session, retained_email)
+                        if retained_email is not None and retained_email in _resolve_allowlist() else None
+                    )
+                elif isinstance(credential.email, str):
+                    account = await asyncio.to_thread(
+                        account_for_session, credential.user_id, credential.email,
+                    )
+                else:
+                    account = None
+            except AccountStoreError:
+                account = None
+            if account is None:
+                raise HTTPException(status_code=400, detail="passkey_verification_failed")
+            subject, email = account.user_id, account.email
+        else:
+            allow = sorted(_resolve_allowlist())
+            if not allow:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
+                )
+            if credential.user_id == "__operator__":
+                retained = legacy_operator_email()
+                if retained is not None and retained in allow:
+                    email = retained
+                elif len(allow) == 1:
+                    email = allow[0]
+                else:
+                    raise HTTPException(status_code=503, detail="legacy_passkey_identity_unbound")
+                subject = "__operator__"
+            else:
+                # Disabling signup must never upgrade an existing public
+                # credential to the operator or borrow the operator's keys.
+                if credential.email is None or credential.email not in allow:
+                    raise HTTPException(status_code=400, detail="passkey_verification_failed")
+                try:
+                    account = await asyncio.to_thread(
+                        account_for_session, credential.user_id, credential.email,
+                    )
+                except AccountStoreError:
+                    account = None
+                if account is None:
+                    raise HTTPException(status_code=400, detail="passkey_verification_failed")
+                subject, email = account.user_id, account.email
+        cookie = mint_session_cookie(user_id=subject, email=email)
         response = Response(status_code=204)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -785,15 +921,22 @@ def register_auth_routes(
         if not email:
             allow = sorted(_resolve_allowlist())
             email = allow[0] if allow else "operator@antiek.ai"
+        if account_registry_active():
+            _credential_owners(request)
+            return registration_options(email=email, user_id=request.state.user_id)
         return registration_options(email=email)
 
     @app.post("/auth/passkey/register/verify", tags=["auth"])
-    async def auth_passkey_register_verify(payload: PasskeyRegistrationPayload) -> dict[str, Any]:
+    async def auth_passkey_register_verify(payload: PasskeyRegistrationPayload, request: Request) -> dict[str, Any]:
         try:
+            kwargs = {"user_id": request.state.user_id} if account_registry_active() else {}
+            if account_registry_active():
+                _credential_owners(request)
             credential = complete_registration(
                 ceremony_id=payload.ceremony_id,
                 credential=payload.credential,
                 label=payload.label,
+                **kwargs,
             )
         except PasskeyError as exc:
             # The SAME boundary as verification, and my first attempt at this fixed only that
@@ -816,7 +959,7 @@ def register_auth_routes(
         }
 
     @app.get("/auth/passkeys", tags=["auth"])
-    async def auth_passkeys() -> dict[str, Any]:
+    async def auth_passkeys(request: Request) -> dict[str, Any]:
         return {
             "passkeys": [
                 {
@@ -826,13 +969,18 @@ def register_auth_routes(
                     "created_at": item.created_at,
                     "last_used_at": item.last_used_at,
                 }
-                for item in list_credentials()
+                for item in _credentials_for(request)
             ]
         }
 
     @app.delete("/auth/passkeys/{credential_id}", status_code=204, tags=["auth"])
-    async def auth_passkey_delete(credential_id: str) -> Response:
-        if not delete_credential(credential_id):
+    async def auth_passkey_delete(credential_id: str, request: Request) -> Response:
+        owners = _credential_owners(request) if account_registry_active() else None
+        deleted = (
+            delete_credential(credential_id, owner_ids=owners)
+            if owners is not None else delete_credential(credential_id)
+        )
+        if not deleted:
             raise HTTPException(status_code=404, detail="Passkey not found")
         return Response(status_code=204)
 

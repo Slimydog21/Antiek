@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
+from interfaces.research.api.books import _reader_owner_id, _require_account_book, _resolve_db_path
 from substrate.books.highlights.schema import highlights_table_exists
 from substrate.books.reading_state import (
     PREFS_V1_ALLOWLIST,
@@ -109,6 +109,7 @@ def register_reading_state_routes(app: FastAPI) -> None:
         try:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _require_account_book(con, document_id, request)
             row = ReadingStateStore().get(
                 con, owner_user_id=owner, document_id=document_id
             )
@@ -145,6 +146,7 @@ def register_reading_state_routes(app: FastAPI) -> None:
         with connect_write(db, purpose="books/reading-state/put") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _require_account_book(con, document_id, request)
             store = ReadingStateStore()
             # Revision is the canonical stale-write signal. Check it before a
             # dead-ref echo can turn the same concurrent write into a 422.
