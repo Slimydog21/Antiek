@@ -86,14 +86,11 @@ export default function Notebook() {
   const editBlock = useCallback(
     async (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
-      try {
-        const data = (await patchNotebookBlock(
-          notebookId, blockId, { content },
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      // Preserve rejection so the canvas can keep the draft open for retry.
+      const data = (await patchNotebookBlock(
+        notebookId, blockId, { content },
+      )) as NotebookResponse;
+      setNotebook(data);
     },
     [notebookId],
   );
