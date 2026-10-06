@@ -5997,7 +5997,7 @@ def create_app(
         response_model=NotebookContentResponse,
     )
     async def get_notebook_content(
-        notebook_id: str,
+        notebook_id: str, request: Request,
     ) -> NotebookContentResponse:
         """SPR-01 hydration GET — return the composed TipTap document for a
         notebook so the editor seeds from the substrate, not localStorage.
@@ -6010,14 +6010,13 @@ def create_app(
         missing notebook, no widened exposure."""
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook
         from substrate.notebooks.tiptap_codec import compose
 
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:get_notebook_content") as con:
-                return get_notebook(con, notebook_id)
+                return _notebook_for_owner(con, notebook_id, request)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
         nb = await asyncio.to_thread(_sync)
