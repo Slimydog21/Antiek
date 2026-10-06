@@ -11,8 +11,8 @@ import { apiFetch } from "../lib/api";
  * the substrate is a server-side aggregator, not a real-time call.
  * The component:
  *
- *   1. Starts a MediaRecorder bound to the user's microphone (16kHz
- *      mono opus inside webm) once the operator clicks 'Start'.
+ *   1. Starts a MediaRecorder bound to the user's microphone, using
+ *      the browser's supported format, once the operator clicks 'Start'.
  *   2. Streams chunks as ondataavailable fires (~200ms intervals).
  *   3. Posts the accumulated Blob to the caller-provided upload route
  *      when the invitee clicks 'Stop'.

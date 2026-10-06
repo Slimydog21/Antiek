@@ -51,13 +51,13 @@ type DraftState =
   | { phase: "idle" }
   | { phase: "assembling" }
   | { phase: "ready"; draft: AssembledDraft }
-  | { phase: "failed" };
+  | { phase: "failed"; reason: string };
 
 type AgreeState =
   | { phase: "idle" }
   | { phase: "working" }
   | { phase: "ready"; points: AgreementPoint[] }
-  | { phase: "failed" };
+  | { phase: "failed"; reason: string };
 
 const POLL_MS = 8000;
 
@@ -161,8 +161,9 @@ export default function Speak() {
     try {
       const points = await whatEveryoneAgreesOn(projectId);
       setAgree({ phase: "ready", points });
-    } catch {
-      setAgree({ phase: "failed" });
+    } catch (e: unknown) {
+      setAgree({ phase: "failed", reason: e instanceof Error && e.message
+        ? e.message : "The comparison request failed." });
     }
   }, [projectId]);
 
@@ -176,8 +177,9 @@ export default function Speak() {
         will_be_public: project?.willBePublic ?? false,
       });
       setDraft({ phase: "ready", draft: d });
-    } catch {
-      setDraft({ phase: "failed" });
+    } catch (e: unknown) {
+      setDraft({ phase: "failed", reason: e instanceof Error && e.message
+        ? e.message : "The assembly request failed." });
     }
   }, [projectId, project?.willBePublic]);
 
@@ -406,6 +408,7 @@ export default function Speak() {
               {agree.phase === "failed" && (
                 <AIActionFailure
                   title="We couldn't compare the voices"
+                  reason={agree.reason}
                   onRetry={() => void seeAgreement()}
                 />
               )}
@@ -468,6 +471,7 @@ export default function Speak() {
               {draft.phase === "failed" && (
                 <AIActionFailure
                   title="The story couldn't be assembled"
+                  reason={draft.reason}
                   onRetry={() => void assemble()}
                   retryLabel="Try again"
                 />
