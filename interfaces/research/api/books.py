@@ -1339,7 +1339,7 @@ def register_book_routes(app: FastAPI) -> None:
     ``register_advertiser_routes`` — one call from ``create_app``."""
 
     @app.get("/books", response_model=BookListResponse, tags=["books"])
-    async def list_books(
+    def list_books(
         status: Literal["servable", "gated", "all"] = "servable",
     ) -> BookListResponse:
         from runtime.db_lock import connect_read
@@ -2151,7 +2151,7 @@ def register_book_routes(app: FastAPI) -> None:
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
-    async def get_book(document_id: str) -> BookDetail:
+    def get_book(document_id: str) -> BookDetail:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
