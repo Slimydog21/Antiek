@@ -83,7 +83,7 @@
         <div class="title">Key sheet (prefix+?) and aria-keyshortcuts from the same table</div>
         <p class="desc">Upgrade the existing <code>?</code> HUD into a key sheet rendered from <code>keymap.ts</code>: grouped by task, a <code>/</code> filter, the prefix form and the chord form side by side, with a close that returns focus. Every actionable control that has a binding gets <code>aria-keyshortcuts</code> generated from the table, never hand-written. The sheet is lazy-loaded.</p>
         <div class="criteria"><strong>Acceptance criteria</strong><ul><li>A test proves that no binding in the table is missing from the rendered sheet.</li><li><code>build:check</code> headroom is no worse than the baseline minus 0.5 KB (the sheet is lazy).</li><li>The sheet has stories in light and dark, at 1280 and 390.</li></ul></div>
-        <div class="files"><span class="file">apps/reading/src/components/hotkeys/KeySheet.tsx (new, lazy)</span><span class="file">apps/reading/src/components/hotkeys/HotkeysHud.tsx</span></div>
+        <div class="files"><span class="file">apps/reading/src/components/hotkeys/KeySheet.tsx (new, lazy)</span><span class="file">apps/reading/src/components/hotkeys/HotkeyHud.tsx</span></div>
       </div>
     </div>
     <div class="milestone">
