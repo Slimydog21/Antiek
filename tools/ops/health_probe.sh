@@ -7,12 +7,12 @@
 #  2. ``api.antiek.ai/ops/provider-ratio?window_minutes=15`` —
 #     confirms Hermes is actually taking traffic (not silently
 #     dropping to OpenRouter).
-#  3. ``api.antiek.ai/health`` ``.frame_write.alert_recommended`` —
+#  3. ``api.antiek.ai/health`` write verdict and refusal-rate alert —
 #     the frame-telemetry write-path refusal rate over a rolling
 #     15-minute window (the 2026-10-02/03 incident class: 84.6% of
 #     writes refused for 28h while every liveness check stayed green).
 #
-# When either check trips, posts to ``ANTIEK_ALERT_WEBHOOK`` (Slack-
+# When any check trips, posts to ``ANTIEK_ALERT_WEBHOOK`` (Slack-
 # compatible JSON ``{"text": "..."}``). When the env var is unset,
 # prints the alert to stderr instead.
 #
@@ -21,9 +21,9 @@
 # Discord, Zapier, PagerDuty) handles deduplication.
 #
 # Exit codes:
-#   0  both checks passed
+#   0  all checks passed
 #   1  bridge unhealthy, provider-ratio alert recommended, or write-path
-#      refusal-rate alert recommended
+#      refusal-rate alert recommended or sensor unreadable
 #   3  bad invocation (missing curl/jq)
 #
 # Required env (defaults shown):
@@ -92,13 +92,15 @@ fi
 # write can land. /health now carries a rolling 15-minute refusal rate with a
 # server-side threshold (derived in frame_write_health.py: measured healthy
 # 3.1%, incident 84.6%, threshold 25%); this check only forwards it, the same
-# shape as the provider-ratio alert. /health needs no auth. An empty body is
+# shape as the provider-ratio alert. An explicit unreadable sensor verdict
+# also alerts, even when its details are empty. /health needs no auth. An empty body is
 # NOT alerted on here: check (2) already reports API DOWN in that case.
 health_body=$(curl -fsS --max-time 8 "$API_URL/health" 2>/dev/null || true)
 if [ -n "$health_body" ]; then
   write_alert=$(echo "$health_body" | jq -r '.frame_write.alert_recommended // false')
-  if [ "$write_alert" = "true" ]; then
-    reason=$(echo "$health_body" | jq -r '.frame_write.alert_reason // "(no reason)"')
+  write_check=$(echo "$health_body" | jq -r '.status_checks.frame_write // "not_measured"')
+  if [ "$write_alert" = "true" ] || [ "$write_check" = "error" ] || [ "$write_check" = "degraded" ]; then
+    reason=$(echo "$health_body" | jq -r '.frame_write.alert_reason // .status_detail // "write-path sensor reports degradation"')
     alerts+=("WRITE PATH DEGRADED: $reason")
   fi
 fi

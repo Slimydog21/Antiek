@@ -430,3 +430,29 @@ def test_probe_stays_silent_on_healthy_shape(tmp_path: Path) -> None:
     print(result.stderr)
     assert result.returncode == 0, result.stderr
     assert not (tmp_path / "posted.json").exists()
+
+
+@pytest.mark.parametrize("verdict", ["error", "degraded"])
+def test_probe_alerts_on_explicit_write_verdict_with_empty_details(tmp_path: Path, verdict: str) -> None:
+    health = json.dumps({
+        "status": "degraded",
+        "status_checks": {"frame_write": verdict},
+        "status_detail": "frame_write details unavailable",
+        "frame_write": {},
+    })
+    result = _run_probe(tmp_path, health, _QUIET_RATIO)
+    assert result.returncode == 1
+    assert "WRITE PATH DEGRADED: frame_write details unavailable" in result.stderr
+    posted = json.loads((tmp_path / "posted.json").read_text())
+    assert "WRITE PATH DEGRADED: frame_write details unavailable" in posted["text"]
+
+
+def test_probe_stays_silent_when_write_path_is_not_measured(tmp_path: Path) -> None:
+    health = json.dumps({
+        "status": "ok",
+        "status_checks": {"frame_write": "not_measured"},
+        "frame_write": {"attempts": 0, "refusal_rate": None, "alert_recommended": False},
+    })
+    result = _run_probe(tmp_path, health, _QUIET_RATIO)
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "posted.json").exists()
