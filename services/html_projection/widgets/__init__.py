@@ -266,35 +266,35 @@ cite_block = _cite_block_module.render
 sketch = _sketch_module.render
 
 
-def _stat_chip_adapter(kind: str, attrs: dict) -> str:
+def _stat_chip_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _stat_chip_module.render(attrs)
 
 
-def _bar_chart_adapter(kind: str, attrs: dict) -> str:
+def _bar_chart_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _bar_chart_module.render(attrs)
 
 
-def _sparkline_adapter(kind: str, attrs: dict) -> str:
+def _sparkline_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _sparkline_module.render(attrs)
 
 
-def _donut_adapter(kind: str, attrs: dict) -> str:
+def _donut_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _donut_module.render(attrs)
 
 
-def _timeline_adapter(kind: str, attrs: dict) -> str:
+def _timeline_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _timeline_module.render(attrs)
 
 
-def _dep_graph_adapter(kind: str, attrs: dict) -> str:
+def _dep_graph_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _dep_graph_module.render(attrs)
 
 
-def _cite_block_adapter(kind: str, attrs: dict) -> str:
+def _cite_block_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _cite_block_module.render(attrs)
 
 
-def _sketch_adapter(kind: str, attrs: dict) -> str:
+def _sketch_adapter(kind: str, attrs: dict[str, object]) -> str:
     return _sketch_module.render(attrs)
 
 

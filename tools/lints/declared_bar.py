@@ -106,13 +106,34 @@ __all__ = [
 # tests/test_declared_bar.py (test_mypy_targets_match_wheel_packages).
 #
 # KNOWN ASYMMETRY vs ruff: ruff (run with no path arg) lints the WHOLE
-# tree — including tools/, tests/, scripts/, benchmarks/, antiek_extensions/,
-# apps/ — but mypy here covers only these 11 wheel packages. So a brand-new
-# top-level dir, or new untyped code under those non-package dirs, escapes
-# the strict TYPE gate (ruff still catches it). When you ship a new
-# top-level PACKAGE, add it to the wheel-package list (the cross-check test
-# then forces it in here) and re-capture declared_mypy.json. This hole is
-# documented as a known limitation in tools/lints/README.md.
+# tree -- 2,395 Python files across 20 top-level directories, measured -- but
+# mypy here covers only the wheel packages. So a brand-new top-level dir, or
+# new untyped code under a non-package dir, escapes the strict TYPE gate (ruff
+# still catches it). When you ship a new top-level PACKAGE, add it to the
+# wheel-package list (the cross-check test then forces it in here) and
+# re-capture declared_mypy.json. This hole is documented as a known limitation
+# in tools/lints/README.md.
+#
+# THE OMISSIONS, NAMED, because an unnamed exclusion is indistinguishable from
+# an oversight. A gate-coverage audit measured eight Python-bearing directories
+# absent from both this list and the wheel, and found that six were named in
+# the sentence above while TWO were not:
+#
+#   tools/  tests/  scripts/  benchmarks/  antiek_extensions/  apps/
+#       -- the six above: deliberately outside the shipped surface.
+#   docs/      4 files, 11 local diagnostics. GENERATORS for the built docs
+#       (docs/html/_build_landscape.py, docs/htmlspec/*/\_generate.py,
+#       docs/ui_redesign_posthog/_swap_svgs.py). Build tooling, not shipped
+#       code, so the exclusion is right -- but it was unnamed, which is what
+#       this paragraph fixes.
+#   services/  117 files, 430 diagnostics. THIS ONE WAS AN OVERSIGHT, now
+#       fixed: it is in the list below and in the wheel. Its 386 test-file
+#       diagnostics are baselined; its 44 source diagnostics are repaired.
+#
+# If you add a top-level directory and it does not belong in the type gate,
+# name it in the list above. The cost of naming it is one line; the cost of
+# not naming it was 430 unchecked diagnostics and a wheel that could not
+# import.
 DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "substrate",
     "skills",
@@ -126,6 +147,14 @@ DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "runtime",
     "integrations",
     "infrastructure",
+    # Added with the wheel-package entry in the same change. `services/` was missing from
+    # pyproject's root list while 117 modules lived there and twelve packaged files imported
+    # them, so `pip wheel .` built cleanly and could not import. Adding it to the wheel is what
+    # put it here -- tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages failed
+    # until this line existed, which is the cross-check working exactly as this file's comment
+    # describes: "When you ship a new top-level PACKAGE, add it to the wheel-package list (the
+    # cross-check test then forces it in here) and re-capture declared_mypy.json."
+    "services",
 )
 
 

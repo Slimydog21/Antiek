@@ -11,12 +11,11 @@ Rights filter lives in ``adapt_notebook_for_export``; zero-script gate in-route.
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from services.html_projection.adapters.notebook import ResolvedRefData
@@ -26,6 +25,9 @@ from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
 from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
 from substrate.contracts.anti_ek_honesty import html_projection_response_headers
+from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+from .books import _reader_owner_id
 
 _log = logging.getLogger(__name__)
 
@@ -49,9 +51,9 @@ def _resolve_db_path() -> str:
 
 
 def resolve_notebook_export(
-    notebook_id: str, *, db_path: str | None = None
+    notebook_id: str, *, owner_user_id: str, db_path: str | None = None
 ) -> NotebookExportSource | None:
-    """Read a notebook into a NotebookExportSource, or None if it does not exist.
+    """Read an owner's notebook, or None if absent; foreign ownership withholds.
 
     The notebook's ref-bearing nodes (claim/insight/question) are resolved
     against the substrate via ``resolve_refs`` — each ref's text + the SOURCE
@@ -63,32 +65,14 @@ def resolve_notebook_export(
     from runtime.db_lock import connect_read
 
     db = db_path or _resolve_db_path()
-    con = connect_read(db)
-    try:
-        row = con.execute(
-            "SELECT notebook_id, title, content_class, owner_user_id, document_id "
-            "FROM notebooks WHERE notebook_id = ?",
-            [notebook_id],
-        ).fetchone()
-        if row is None:
-            return None
-        block_rows = con.execute(
-            "SELECT content_json FROM notebook_blocks "
-            "WHERE notebook_id = ? ORDER BY block_index",
-            [notebook_id],
-        ).fetchall()
-    finally:
-        con.close()
+    with connect_read(db) as con:
+        notebook = readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
+    if notebook is None:
+        return None
 
     from substrate.notebooks.tiptap_codec import compose
 
-    blocks = []
-    for r in block_rows:
-        cj = r[0]
-        if isinstance(cj, str):
-            cj = json.loads(cj)
-        blocks.append({"content_json": cj})
-    content_tiptap = compose(blocks)
+    content_tiptap = compose([{"content_json": block.content_json} for block in notebook.blocks])
 
     from services.html_projection.adapters.notebook_export import collect_ref_ids
     from services.html_projection.resolvers.substrate_refs import resolve_refs
@@ -98,13 +82,23 @@ def resolve_notebook_export(
 
     return NotebookExportSource(
         content_tiptap=content_tiptap,
-        title=row[1],
-        document_id=row[4] or notebook_id,
-        owner_user_id=row[3] or "__operator__",
+        title=notebook.title,
+        document_id=notebook.document_id or notebook_id,
+        owner_user_id=notebook.owner_user_id,
         content_class="notebook",
         resolved_refs=resolved_refs,
     )
 
+
+
+def _source_for_reader(notebook_id: str, request: Request) -> NotebookExportSource:
+    try:
+        source = resolve_notebook_export(notebook_id, owner_user_id=_reader_owner_id(request))
+    except NotebookReadWithheld as exc:
+        raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"notebook {notebook_id!r} not found")
+    return source
 
 
 def _script_free_html(html: str) -> str:
@@ -135,13 +129,9 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         )
 
     @app.get("/api/notebooks/{notebook_id}/artifact.html", tags=["notebooks"])
-    async def notebook_artifact_html(notebook_id: str) -> Response:
+    async def notebook_artifact_html(notebook_id: str, request: Request) -> Response:
         """Daily-use HTML-native view — inline, script-free (not a download)."""
-        source = resolve_notebook_export(notebook_id)
-        if source is None:
-            raise HTTPException(
-                status_code=404, detail=f"notebook {notebook_id!r} not found"
-            )
+        source = _source_for_reader(notebook_id, request)
         html = _script_free_html(render(_doc_model(source), RenderContext()))
         return HTMLResponse(
             content=html,
@@ -151,12 +141,8 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         )
 
     @app.get("/api/notebooks/{notebook_id}/artifact", tags=["notebooks"])
-    async def notebook_artifact(notebook_id: str, format: str = "html") -> Response:
-        source = resolve_notebook_export(notebook_id)
-        if source is None:
-            raise HTTPException(
-                status_code=404, detail=f"notebook {notebook_id!r} not found"
-            )
+    async def notebook_artifact(notebook_id: str, request: Request, format: str = "html") -> Response:
+        source = _source_for_reader(notebook_id, request)
         if format not in EXPORT_FORMATS:
             raise HTTPException(
                 status_code=400,

@@ -370,13 +370,6 @@ def default_bulk_snapshot_path() -> str:
     return str(Path.home() / ".antiek" / "arxiv-metadata-oai-snapshot.json")
 
 
-def default_bulk_cache_dir() -> str:
-    env = os.environ.get("ANTIEK_ARXIV_BULK_CACHE_DIR")
-    if env:
-        return env
-    return str(Path.home() / ".antiek" / "arxiv_bulk")
-
-
 @dataclass
 class BulkFeedInfo:
     """Discovery result for the bulk metadata feed.

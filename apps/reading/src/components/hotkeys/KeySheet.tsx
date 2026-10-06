@@ -20,7 +20,7 @@ import {
 import "./KeySheet.css";
 
 /**
- * KeySheet — every key the app answers to, rendered from keymap.ts (`?` or
+ * KeySheet — built-in KEYMAP rows and saved user-defined bindings (`?` or
  * prefix+?). Lazy-loaded by HotkeyHud, so it costs the entry chunk nothing.
  *
  * Grouped by task. Each action shows its prefix form and its direct form

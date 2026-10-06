@@ -553,7 +553,27 @@ async def list_invites(project_id: str) -> dict:
 async def resolve_invite(token: str) -> InviteResponse:
     def _sync() -> Any:
         with _translate(), _read("speak/api:resolve") as con:
-            return _invite_read_or_404(con, token)
+            iv = _invite_read_or_404(con, token)
+            if iv is not None:
+                # AN ACTIVE TAKEDOWN WITHDRAWS THE CAPABILITY, not merely the listing.
+                # Checking takedown at mint time -- which the open-contribute path now
+                # does -- stops future issuance and leaves every ALREADY-ISSUED token
+                # working, so a withdrawn subject stayed reachable through the landing
+                # this function serves. Reported by the adversarial review of that fix:
+                # "takedown does not revoke existing open-contribution tokens; the
+                # unauthenticated landing still returns the withdrawn subject."
+                #
+                # Same 404 and the same message as an unknown token, deliberately: telling
+                # a token holder "this project was taken down" discloses that the project
+                # existed, which is the disclosure the takedown was asked to withdraw.
+                under_takedown = con.execute(
+                    "SELECT 1 FROM speak_takedowns "
+                    "WHERE project_id = ? AND status = 'active' LIMIT 1",
+                    [iv.project_id],
+                ).fetchone()
+                if under_takedown is not None:
+                    return None
+            return iv
 
     try:
         iv = await _off_loop(_sync)

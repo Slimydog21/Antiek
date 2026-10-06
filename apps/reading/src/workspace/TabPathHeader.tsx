@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * TabPathHeader — the breadcrumb from the root document to the active tab
  * (DESIGN-MODEL §2a): `1 Origin of Species › 1.3 Lyell, Principles ›
@@ -57,10 +58,13 @@ export function TabPathHeader({
       ellipsisRef.current?.focus();
     }
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "tabs.path.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !listRef.current?.closest("[hidden]") && (!topModal() || !!topModal()?.contains(listRef.current)),
+    }, onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      removeKeyboardOwner();
     };
   }, [open]);
 

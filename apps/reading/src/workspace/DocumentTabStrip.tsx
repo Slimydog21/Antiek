@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * DocumentTabStrip — the cockpit's left document tabs (D6, DESIGN-MODEL §2a).
  *
@@ -33,7 +34,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
-import { CornerDownRight, ListTree } from "lucide-react";
+import { CornerDownRight, ListTree, Plus } from "lucide-react";
 
 import { ErrorState, LoadingState } from "../components/states";
 import { branchIntentOf } from "./branchNavigation";
@@ -45,9 +46,11 @@ import { SiblingStrip } from "./SiblingStrip";
 import { TabPathHeader } from "./TabPathHeader";
 import { TabTreePanel } from "./TabTreePanel";
 import { labelForTab, type TabLabel } from "./tabLabels";
+import { useForkLineage } from "./forkLineage";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
 import { pathTo, type TabNode, type TabTree } from "./tabTree";
+import { toggleNewTabPicker } from "./shortcuts";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
@@ -74,6 +77,7 @@ function DocumentTabStripInner() {
   const navigate = useNavigate();
   const mothership = mothershipForPath(location.pathname, location.search);
 
+  const contextEpoch = useTabTrees((s) => s.contextEpoch);
   const tree = useTabTrees((s) => s.trees[mothership]);
   const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
@@ -81,13 +85,14 @@ function DocumentTabStripInner() {
   const entries = useTabTitles((s) => s.entries);
 
   // Keyed by the history entry, so a branch navigation to a surface already
-  // on screen elsewhere still files under its parent.
+  // on screen elsewhere still files under its parent. A project or adapter
+  // change clears the trees without navigating; reload that context too.
   const intent = branchIntentOf(location.state);
   useEffect(() => {
     void syncRouteToTree(mothership, location.pathname, intent);
     // `intent` is derived from the entry `location.key` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.key, mothership]);
+  }, [location.pathname, location.key, mothership, contextEpoch]);
 
   // tree → route: a USER activation's intent, taken once. An intent left
   // behind by a newer activation, or by a tab the route sync has since moved
@@ -114,7 +119,14 @@ function DocumentTabStripInner() {
     // so a section of another piece never leaves this piece on screen.
     const holder = routeTabFor(t, navIntent.tabId);
     if (!holder) return;
-    if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
+    // BrowserRouter can render the previous location while a navigation is
+    // pending. A second key must compare against history, like locationStamp,
+    // or a return to that previous location is mistaken for a no-op.
+    const current = window.location;
+    if (
+      navIntent.mothership === mothershipForPath(current.pathname, current.search) &&
+      tabShowsPath(holder, current.pathname)
+    ) return;
     const route = routeForTab(holder);
     if (route) navigate(route);
   }, [navIntent, mothership, location.pathname, location.search, navigate]);
@@ -163,6 +175,36 @@ function DocumentTabStripInner() {
 
   const status: StripStatus = tree ? "ready" : loadError ? "error" : "loading";
 
+  // SPR-01 (thread-merge + document fork), verdict C: the fork badge and
+  // the forks chip, for the ACTIVE tab when it is a reader tab. The lineage
+  // is the session's learned view (forkLineage.ts) — the reader mount feeds
+  // it; an unknown neighbourhood renders nothing, never a wrong badge.
+  const activeTab = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
+  const activeRef = activeTab?.kind === "reader" ? activeTab.ref : null;
+  const forkedFrom = useForkLineage((s) =>
+    activeRef !== null ? (s.byFork[activeRef] ?? null) : null,
+  );
+  const forksOfActive = useForkLineage((s) =>
+    activeRef !== null ? (s.byParent[activeRef] ?? null) : null,
+  );
+  // The hop: an already-open tab for the document is ACTIVATED (the badge
+  // hops between the two tabs); otherwise the document opens on its route
+  // and the route sync files the tab.
+  const openDocument = useCallback(
+    (documentId: string) => {
+      const t = useTabTrees.getState().trees[mothership];
+      const open = t
+        ? Object.values(t.nodes).find((n) => n.kind === "reader" && n.ref === documentId)
+        : null;
+      if (t && open) {
+        useTabTrees.getState().activateTab(mothership, open.tab_id);
+        return;
+      }
+      navigate(`/read/${encodeURIComponent(documentId)}`);
+    },
+    [mothership, navigate],
+  );
+
   return (
     <DocumentTabStripView
       status={status}
@@ -177,12 +219,23 @@ function DocumentTabStripInner() {
       labelOf={labelOf}
       treePanelOpen={treePanelOpen}
       subtreeFocusId={subtreeFocusId}
+      forkBadge={
+        forkedFrom
+          ? {
+              parentDocumentId: forkedFrom.parent_document_id,
+              parentTitle: forkedFrom.parent_title,
+            }
+          : null
+      }
+      forkDocumentIds={forksOfActive?.map((row) => row.fork_document_id) ?? null}
+      onOpenDocument={openDocument}
       onActivate={activate}
       onToggleTree={() => useTabTrees.getState().toggleTreePanel()}
       onFocusSubtree={(id) => useTabTrees.getState().setSubtreeFocus(id)}
       onVisitChild={() => useTabTrees.getState().visitChildOfActive(mothership)}
       onRowsShown={requestRows}
       onCloseTab={(id, mode) => useTabTrees.getState().closeTabById(mothership, id, mode)}
+      onNewTab={toggleNewTabPicker}
     />
   );
 }
@@ -214,6 +267,13 @@ export interface DocumentTabStripViewProps {
   labelOf: (tabId: string) => TabLabel;
   treePanelOpen: boolean;
   subtreeFocusId: string | null;
+  /** SPR-01 verdict C: the active tab IS a fork — the badge hops to the
+   *  original. */
+  forkBadge?: { parentDocumentId: string; parentTitle: string | null } | null;
+  /** SPR-01 verdict C: the active tab HAS forks — the chip hops to the
+   *  latest one (creation order from the lineage store). */
+  forkDocumentIds?: string[] | null;
+  onOpenDocument?: (documentId: string) => void;
   onActivate: (tabId: string) => void;
   onToggleTree: () => void;
   onFocusSubtree: (tabId: string | null) => void;
@@ -221,6 +281,8 @@ export interface DocumentTabStripViewProps {
   onRowsShown?: (tabIds: string[]) => void;
   /** The tree panel's Delete / Shift+Delete (prune / close only this). */
   onCloseTab?: (tabId: string, mode: "prune" | "lift_children") => void;
+  /** The + button: the new-tab picker (prefix+c), one path with the key. */
+  onNewTab: () => void;
 }
 
 /** The presentational strip: every state, no store, no router. */
@@ -232,12 +294,16 @@ export function DocumentTabStripView({
   labelOf,
   treePanelOpen,
   subtreeFocusId,
+  forkBadge = null,
+  forkDocumentIds = null,
+  onOpenDocument,
   onActivate,
   onToggleTree,
   onFocusSubtree,
   onVisitChild,
   onRowsShown,
   onCloseTab,
+  onNewTab,
 }: DocumentTabStripViewProps) {
   const toggleRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -260,10 +326,13 @@ export function DocumentTabStripView({
       onToggleTree();
     };
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "tabs.tree.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      removeKeyboardOwner();
     };
   }, [treePanelOpen, onToggleTree]);
 
@@ -353,6 +422,35 @@ export function DocumentTabStripView({
           </button>
         ) : null}
 
+        {/* SPR-01 verdict C: lineage from the chrome itself. The fork badge
+            answers "what is this, what did it come from" without opening
+            anything; the forks chip answers the reverse from the source
+            tab. Both HOP (open-or-activate), never mutate. */}
+        {active && forkBadge && onOpenDocument ? (
+          <button
+            type="button"
+            data-fork-badge
+            onClick={() => onOpenDocument(forkBadge.parentDocumentId)}
+            aria-label={`This tab is a fork of ${forkBadge.parentTitle?.trim() || "the original"}: open the original`}
+            title="This tab is a fork — the original is untouched. Open it."
+            className="shrink-0 ml-1 my-1 flex items-center gap-0.5 rounded px-1.5 font-mono text-xxs text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            fork of {forkBadge.parentTitle?.trim() || "the original"}
+          </button>
+        ) : null}
+        {active && forkDocumentIds && forkDocumentIds.length > 0 && onOpenDocument ? (
+          <button
+            type="button"
+            data-forks-chip
+            onClick={() => onOpenDocument(forkDocumentIds[forkDocumentIds.length - 1])}
+            aria-label={`${forkDocumentIds.length} fork${forkDocumentIds.length === 1 ? "" : "s"} of this document: open the latest`}
+            title={`${forkDocumentIds.length} fork${forkDocumentIds.length === 1 ? "" : "s"} of this document — open the latest`}
+            className="shrink-0 ml-1 my-1 flex items-center gap-0.5 rounded px-1.5 font-mono text-xxs text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            {forkDocumentIds.length} fork{forkDocumentIds.length === 1 ? "" : "s"} ▸
+          </button>
+        ) : null}
+
         {bridge ? (
           <span
             className="shrink-0 ml-1 flex items-center text-xs text-shadow-1 dark:text-moonlight italic pr-2"
@@ -362,6 +460,20 @@ export function DocumentTabStripView({
             opens as window
           </span>
         ) : null}
+
+        {/* New tab (prefix+c): the picker's button half. It sits after the
+            tabs, where a browser puts it, and takes the SAME toggle as the
+            key, so a click and prefix+c can never drift apart. */}
+        <button
+          type="button"
+          data-new-tab
+          onClick={onNewTab}
+          aria-label="New tab (prefix c)"
+          title="New tab (prefix c)"
+          className="shrink-0 ml-auto flex items-center px-2 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+        >
+          <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </div>
 
       {treePanelOpen ? (

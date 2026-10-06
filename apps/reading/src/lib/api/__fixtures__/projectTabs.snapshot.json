@@ -1,0 +1,99 @@
+{
+  "_about": "THREAD-CONTRACT §1.6 wire fixture, shared by tests/test_project_routes.py (which replays allocate and the two PUTs against the real routes and requires GET to equal `expected`, closed_at aside) and the frontend's projectTabs tests. It holds both sides, an agent-opened left tab with opened_by under a right agent tab, and a retired entry carrying its whole node.",
+  "mothership": "research",
+  "allocate": ["t-thread", "t-doc", "t-agent-doc", "t-dialogue"],
+  "put1": {
+    "expected_version": 0,
+    "active": { "left": "t-agent-doc", "right": "t-thread" },
+    "tree": {
+      "root_order": ["t-thread", "t-doc", "t-dialogue"],
+      "nodes": {
+        "t-thread": {
+          "tab_id": "t-thread", "parent_tab_id": null, "side": "right", "kind": "research",
+          "ref": "inv-fixture-1", "title": "Why did the bridge fail?", "mothership": "research",
+          "public_number": 1, "hier_number": "1", "child_order": ["t-agent-doc"],
+          "last_visited_child_id": "t-agent-doc"
+        },
+        "t-doc": {
+          "tab_id": "t-doc", "parent_tab_id": null, "side": "left", "kind": "reader",
+          "ref": "doc-fixture-1", "title": "Inquiry report", "mothership": "research",
+          "public_number": 2, "hier_number": "2", "child_order": []
+        },
+        "t-agent-doc": {
+          "tab_id": "t-agent-doc", "parent_tab_id": "t-thread", "side": "left", "kind": "reader",
+          "ref": "doc-fixture-2", "title": "Load tables, 1998", "mothership": "research",
+          "public_number": 3, "hier_number": "1.1", "child_order": [],
+          "branch_origin": {
+            "document_id": "doc-fixture-2", "kind": "agent",
+            "anchor": {
+              "document_id": "doc-fixture-2",
+              "source_locator": {
+                "start": 120, "end": 188,
+                "text_sha256": "9f2b5c1e0d7a4b3c8e6f1a2d5c7b9e0f3a4d6c8b1e2f5a7c9d0b3e6f8a1c4d7e"
+              }
+            }
+          },
+          "opened_by": { "thread_id": "inv-fixture-1", "agent_kind": "research" }
+        },
+        "t-dialogue": {
+          "tab_id": "t-dialogue", "parent_tab_id": null, "side": "right", "kind": "dialogue",
+          "ref": "dlg-fixture-1", "title": "Ask about the welds", "mothership": "research",
+          "public_number": 4, "hier_number": "3", "child_order": []
+        }
+      }
+    }
+  },
+  "put2": {
+    "expected_version": 1,
+    "active": { "left": "t-agent-doc", "right": "t-thread" },
+    "drop": ["t-dialogue"]
+  },
+  "expected": {
+    "version": 2,
+    "active": { "left": "t-agent-doc", "right": "t-thread" },
+    "next_child_index": { "root": 4, "t-thread": 2 },
+    "tree": {
+      "root_order": ["t-thread", "t-doc"],
+      "nodes": {
+        "t-thread": {
+          "tab_id": "t-thread", "parent_tab_id": null, "side": "right", "kind": "research",
+          "ref": "inv-fixture-1", "title": "Why did the bridge fail?", "mothership": "research",
+          "public_number": 1, "hier_number": "1", "child_order": ["t-agent-doc"],
+          "last_visited_child_id": "t-agent-doc"
+        },
+        "t-doc": {
+          "tab_id": "t-doc", "parent_tab_id": null, "side": "left", "kind": "reader",
+          "ref": "doc-fixture-1", "title": "Inquiry report", "mothership": "research",
+          "public_number": 2, "hier_number": "2", "child_order": []
+        },
+        "t-agent-doc": {
+          "tab_id": "t-agent-doc", "parent_tab_id": "t-thread", "side": "left", "kind": "reader",
+          "ref": "doc-fixture-2", "title": "Load tables, 1998", "mothership": "research",
+          "public_number": 3, "hier_number": "1.1", "child_order": [],
+          "branch_origin": {
+            "document_id": "doc-fixture-2", "kind": "agent",
+            "anchor": {
+              "document_id": "doc-fixture-2",
+              "source_locator": {
+                "start": 120, "end": 188,
+                "text_sha256": "9f2b5c1e0d7a4b3c8e6f1a2d5c7b9e0f3a4d6c8b1e2f5a7c9d0b3e6f8a1c4d7e"
+              }
+            }
+          },
+          "opened_by": { "thread_id": "inv-fixture-1", "agent_kind": "research" }
+        }
+      }
+    },
+    "retired": [
+      {
+        "closed_at": "2026-09-27T00:00:00.000000Z",
+        "close_mode": "close",
+        "node": {
+          "tab_id": "t-dialogue", "parent_tab_id": null, "side": "right", "kind": "dialogue",
+          "ref": "dlg-fixture-1", "title": "Ask about the welds", "mothership": "research",
+          "public_number": 4, "hier_number": "3", "child_order": []
+        }
+      }
+    ]
+  }
+}

@@ -87,28 +87,6 @@ def record_claim(
     return get_claim(con, cid)
 
 
-def tag_third_party(con: Any, claim_id: str, *, subject_ref: str | None = None) -> None:
-    """Mark an existing claim as a third-party claim (requires
-    verification before publish). Idempotent."""
-    ensure_speak_schema(con)
-    row = con.execute(
-        "SELECT project_id FROM speak_claims WHERE claim_id = ?", [claim_id]
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"claim {claim_id!r} not found")
-    con.execute(
-        "UPDATE speak_claims SET is_third_party = TRUE, "
-        "subject_ref = COALESCE(?, subject_ref), updated_at = CURRENT_TIMESTAMP "
-        "WHERE claim_id = ?",
-        [subject_ref, claim_id],
-    )
-    record_speak_event(
-        SPEAK_THIRD_PARTY_TAGGED,
-        {"claim_id": claim_id, "subject_ref": subject_ref, "retagged": True},
-        project_id=row[0],
-    )
-
-
 def get_claim(con: Any, claim_id: str) -> ClaimRecord:
     row = con.execute(
         "SELECT claim_id, project_id, interview_id, text, about_subject, "

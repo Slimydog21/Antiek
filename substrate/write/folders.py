@@ -104,6 +104,23 @@ def _folders_schema_exists(con: Any) -> bool:
     return row is not None
 
 
+def _node_members(con: Any, alias: str = "") -> str:
+    """The SQL condition that keeps a membership read to graph nodes.
+
+    A folder is also a project (THREAD-CONTRACT §1.5), whose members may be
+    documents, investigations or deliverables. Write's block reads mean
+    nodes only. The ``member_kind`` column arrives with the first project
+    write, so before it exists every member is a node."""
+    has_kind = con.execute(
+        "SELECT 1 FROM duckdb_columns() WHERE table_name = 'write_folder_members' "
+        "AND column_name = 'member_kind' LIMIT 1"
+    ).fetchone()
+    if has_kind is None:
+        return "TRUE"
+    prefix = f"{alias}." if alias else ""
+    return f"COALESCE({prefix}member_kind, 'node') = 'node'"
+
+
 def ensure_folders_schema(con: LockedConnection) -> None:
     """Idempotent: create the folder tables if absent. Safe to call on
     every folder write."""
@@ -171,17 +188,21 @@ def remove_block_from_folder(
     return True
 
 
-def list_folders(con: Any) -> list[Folder]:
-    """All folders with their member counts. Read-only; deterministic."""
+def list_folders(con: Any, *, owner_user_id: str | None = None) -> list[Folder]:
+    """Folders with their node counts, only ``owner_user_id``'s when given.
+    Read-only; deterministic."""
     if not _folders_schema_exists(con):
         return []
+    owner_filter = "WHERE f.owner_user_id = ? " if owner_user_id is not None else ""
     rows = con.execute(
         "SELECT f.folder_id, f.name, f.owner_user_id, "
         "       COUNT(m.node_id) AS member_count "
         "FROM write_folders f "
-        "LEFT JOIN write_folder_members m ON f.folder_id = m.folder_id "
+        f"LEFT JOIN write_folder_members m ON f.folder_id = m.folder_id AND {_node_members(con, 'm')} "
+        f"{owner_filter}"
         "GROUP BY f.folder_id, f.name, f.owner_user_id "
-        "ORDER BY f.name, f.folder_id"
+        "ORDER BY f.name, f.folder_id",
+        [owner_user_id] if owner_user_id is not None else [],
     ).fetchall()
     return [Folder(folder_id=r[0], name=r[1], owner_user_id=r[2], member_count=int(r[3])) for r in rows]
 
@@ -191,7 +212,8 @@ def list_folder_node_ids(con: Any, folder_id: str) -> list[str]:
     if not _folders_schema_exists(con):
         return []
     rows = con.execute(
-        "SELECT node_id FROM write_folder_members WHERE folder_id = ? ORDER BY node_id",
+        f"SELECT node_id FROM write_folder_members WHERE folder_id = ? AND {_node_members(con)} "
+        "ORDER BY node_id",
         [folder_id],
     ).fetchall()
     return [r[0] for r in rows]
@@ -203,7 +225,8 @@ def folders_for_node(con: Any, node_id: str) -> list[str]:
     if not _folders_schema_exists(con):
         return []
     rows = con.execute(
-        "SELECT folder_id FROM write_folder_members WHERE node_id = ? ORDER BY folder_id",
+        f"SELECT folder_id FROM write_folder_members WHERE node_id = ? AND {_node_members(con)} "
+        "ORDER BY folder_id",
         [node_id],
     ).fetchall()
     return [r[0] for r in rows]
@@ -215,7 +238,7 @@ def is_block_in_folder(con: Any, *, folder_id: str, node_id: str) -> bool:
         return False
     return (
         con.execute(
-            "SELECT 1 FROM write_folder_members WHERE folder_id = ? AND node_id = ?",
+            f"SELECT 1 FROM write_folder_members WHERE folder_id = ? AND node_id = ? AND {_node_members(con)}",
             [folder_id, node_id],
         ).fetchone()
         is not None

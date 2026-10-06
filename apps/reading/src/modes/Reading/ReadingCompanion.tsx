@@ -5,10 +5,14 @@ import { useInvestigation } from "../../hooks/useInvestigation";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import {
   API_BASE,
+  ApiError,
   composeResearchArtifacts,
   type InvestigationSummary,
   type ResearchArtifactComposeResponse,
 } from "../../lib/api";
+import { createFork } from "../../api/forks";
+import { useBranchTo } from "../../workspace/useBranchTo";
+import { recordFork } from "../../workspace/forkLineage";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import {
@@ -74,12 +78,15 @@ export interface ReadingCompanionProps {
    * in (not minted here) so the reader and companion agree on one thread.
    */
   readingThreadId: string;
+  /** The reader's current page — the fork's point locator when it forks. */
+  pageIndex?: number | null;
 }
 
 export default function ReadingCompanion({
   documentId,
   title,
   readingThreadId,
+  pageIndex = null,
 }: ReadingCompanionProps) {
   // Read/display only — subscribe to the book's reading thread for notes.
   const reading = useInvestigation(readingThreadId);
@@ -271,6 +278,11 @@ export default function ReadingCompanion({
           derived document (a plain book shows nothing). */}
       <ReformatReview documentId={documentId} />
 
+      {/* Thread-merge + document fork SPR-01: the fork action. Creates the
+          named divergent copy and opens it as a tab beside this one; the
+          original is never touched. */}
+      <ForkSection documentId={documentId} pageIndex={pageIndex} />
+
       <CompanionSection key={documentId} documentId={documentId} />
 
       <div className="flex-1 min-h-0">
@@ -315,6 +327,106 @@ export default function ReadingCompanion({
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * ForkSection — the fork action (thread-merge + document fork SPR-01,
+ * verdict C). POSTs the copy fork idempotently (ONE operation id per fork
+ * intent, so a retry after a network failure returns the same fork, never a
+ * second one), records the lineage the session just learned (the strip's
+ * badge/chip render from it), and opens the fork BESIDE this book through
+ * the branch navigation — the landed tab wiring files it under this tab in
+ * the reading tree. Failure copy is named from the server's status: the
+ * rights refusal (422), the depth-1 limit (409), anything else generic —
+ * never a fake success.
+ */
+function ForkSection({
+  documentId,
+  pageIndex,
+}: {
+  documentId: string;
+  pageIndex: number | null;
+}) {
+  const branchTo = useBranchTo();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<"rights" | "depth" | "error" | null>(null);
+  const [forked, setForked] = useState(false);
+  const operationIdRef = useRef<string | null>(null);
+
+  async function fork() {
+    if (busy) return;
+    setBusy(true);
+    setFailed(null);
+    operationIdRef.current ??= crypto.randomUUID();
+    try {
+      const row = await createFork(documentId, {
+        operation_id: operationIdRef.current,
+        fork_point_locator:
+          pageIndex !== null && pageIndex >= 0 ? `page:${pageIndex}` : undefined,
+      });
+      // A distinct fork intent gets a fresh operation id next time.
+      operationIdRef.current = null;
+      recordFork(row);
+      setForked(true);
+      branchTo(`/read/${encodeURIComponent(row.fork_document_id)}`, {
+        document_id: documentId,
+        kind: "manual",
+        page_index: pageIndex ?? undefined,
+      });
+    } catch (error) {
+      // The operation id is KEPT on failure: a retry replays it.
+      if (error instanceof ApiError && error.status === 422) setFailed("rights");
+      else if (error instanceof ApiError && error.status === 409) setFailed("depth");
+      else setFailed("error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      className="border-b border-rule px-4 py-3 dark:border-charcoal-1"
+      aria-label="Fork this book"
+      data-fork-section
+    >
+      <button
+        type="button"
+        onClick={() => void fork()}
+        disabled={busy}
+        className="font-mono text-xs text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+        title="Copy this book into your own divergent version — the original is never touched"
+      >
+        {busy ? "forking…" : "Fork this book"}
+      </button>
+      <p className="mt-1 font-mono text-xxs text-shadow-1 dark:text-moonlight">
+        A fork is a full copy as its own document, opened in the tab beside this
+        one. The original stays untouched.
+      </p>
+      {forked && (
+        <p
+          role="status"
+          className="mt-1 font-serif text-xs italic text-ink-mute dark:text-moonlight"
+        >
+          Forked — opened in the tab beside this one.
+        </p>
+      )}
+      {failed === "rights" && (
+        <p role="status" className="mt-1 font-serif text-xs text-emperor">
+          This book's rights don't allow a fork.
+        </p>
+      )}
+      {failed === "depth" && (
+        <p role="status" className="mt-1 font-serif text-xs text-emperor">
+          This book is already a fork — forks of forks aren't available yet.
+        </p>
+      )}
+      {failed === "error" && (
+        <p role="status" className="mt-1 font-serif text-xs text-emperor">
+          Couldn't fork this book. Nothing was changed.
+        </p>
+      )}
+    </section>
   );
 }
 

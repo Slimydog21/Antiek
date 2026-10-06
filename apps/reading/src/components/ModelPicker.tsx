@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../workspace/keyboardOwnership";
 /**
  * ModelPicker — reusable per-action model-driver dropdown (BYOT directive).
  *
@@ -98,8 +99,11 @@ export default function ModelPicker({
       e.preventDefault();
       setOpen(false);
     };
-    document.addEventListener("keydown", onEsc);
-    return () => document.removeEventListener("keydown", onEsc);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "model-picker.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onEsc);
+    return () => removeKeyboardOwner();
   }, [open]);
 
   if (loading) {
