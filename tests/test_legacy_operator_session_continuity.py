@@ -33,7 +33,7 @@ LegacyApi = tuple[FastAPI, MockEmailProvider, Path]
 def legacy_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> LegacyApi:
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", ORIGINAL)
-    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
+    monkeypatch.delenv("ANTIEK_LEGACY_OPERATOR_EMAIL", raising=False)
     monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "0")
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     monkeypatch.setenv("ANTIEK_ACCOUNT_STORE", str(tmp_path / "accounts.json"))
@@ -89,7 +89,7 @@ def test_existing_original_cookie_retains_real_private_notebook_and_canonical_su
         "content": {"type": "paragraph", "content": [{"type": "text", "text": "ORIGINAL_PRIVATE_BODY"}]},
     }).status_code == 201
     sent_before = len(sender.sent)
-    monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
 
     identity = original.get("/auth/whoami")
     assert identity.status_code == 200
@@ -109,6 +109,7 @@ def test_existing_original_cookie_retains_real_private_notebook_and_canonical_su
     assert store.read_bytes() == before
     assert len(sender.sent) == sent_before  # no new personal-address request for continuity
 
+    monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
     ordinary = claim_email(app, sender, INTERIM)
     ordinary_identity = ordinary.get("/auth/whoami").json()
     assert ordinary_identity["user_id"] != identity.json()["user_id"]
@@ -126,7 +127,7 @@ def test_concurrent_existing_cookie_creates_one_locked_alias(
     original = claim_email(app, sender, ORIGINAL)
     cookie = original.cookies.get(SESSION_COOKIE_NAME)
     assert cookie
-    monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
 
     def read_subject(_index: int) -> str:
         client = TestClient(app)
@@ -149,6 +150,7 @@ def test_ineligible_cookie_never_bootstraps_alias(
     legacy_api: LegacyApi, monkeypatch: pytest.MonkeyPatch, case: str,
 ) -> None:
     app, _sender, root = legacy_api
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
     cookie = mint_session_cookie(user_id="__operator__", email=ORIGINAL)
     if case == "tampered":
         payload, signature = cookie.split(".", 1)
@@ -185,6 +187,7 @@ def test_cookie_requires_exact_original_binding_and_current_policy(
     legacy_api: LegacyApi, monkeypatch: pytest.MonkeyPatch, case: str,
 ) -> None:
     app, _sender, root = legacy_api
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
     email = ORIGINAL
     if case == "interim-allowlisted":
         email = INTERIM
@@ -212,6 +215,8 @@ def test_actual_dev_login_cookie_cannot_create_account_alias(
     assert issued.status_code == 302
     assert SESSION_COOKIE_NAME in issued.cookies
     assert client.get("/auth/me").status_code == 200
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
+    assert_unbound(client, root)  # the explicit rollout binding refuses dev proof even before signup
     monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
     assert_unbound(client, root)
     assert client.get("/auth/dev-login", params={"token": token}).status_code == 404
@@ -221,6 +226,7 @@ def test_configured_identity_and_bearer_are_not_bootstrap_proof(
     legacy_api: LegacyApi, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app, _sender, root = legacy_api
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
     monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
     anonymous = TestClient(app)
     assert anonymous.get("/auth/me", params={"email": ORIGINAL}).status_code == 401
@@ -274,6 +280,36 @@ def test_corrupt_store_is_not_overwritten_by_valid_original_cookie(
     store = root / "accounts.json"
     store.write_text("not valid account storage")
     before = store.read_bytes()
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
     monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
     assert old.get("/auth/me").status_code == 401
     assert store.read_bytes() == before
+
+
+def test_original_config_alone_cannot_activate_account_registry_before_public_signup(
+    legacy_api: LegacyApi, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, _sender, root = legacy_api
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
+    client = TestClient(app)
+    assert client.get("/auth/me").status_code == 401
+    assert not (root / "accounts.json").exists()
+    denied = client.post("/auth/request", json={"email": INTERIM})
+    assert denied.status_code == 200
+    assert not (root / "accounts.json").exists()
+
+
+def test_failed_original_alias_write_before_signup_cannot_fall_back_to_shared_operator(
+    legacy_api: LegacyApi, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from substrate.auth import accounts
+
+    app, sender, root = legacy_api
+    original = claim_email(app, sender, ORIGINAL)
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", ORIGINAL)
+
+    def unavailable_write(_path: Path, _accounts: list[accounts.Account]) -> None:
+        raise OSError("private controlled account-store write failure")
+
+    monkeypatch.setattr(accounts, "_write", unavailable_write)
+    assert_unbound(original, root)

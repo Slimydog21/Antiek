@@ -218,9 +218,9 @@ def account_for_email(email: str) -> Account | None:
 def legacy_account_for_session(email: str) -> Account | None:
     """Resolve an old operator session only after an explicit persisted binding.
 
-    This lookup never creates an account or migrates a credential. Email proof
-    must have established the alias first, and current deployment policy must
-    still name that exact retained email.
+    This lookup never creates an account or migrates a credential. Verified
+    original email or eligible original-session proof must have established
+    the alias first; current policy must still name that exact retained email.
     """
     normalized = _normalized_email(email)
     if normalized != legacy_operator_email():
