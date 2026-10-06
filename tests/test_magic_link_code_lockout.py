@@ -278,7 +278,7 @@ def test_dev_login_refuses_rather_than_minting_a_dead_cookie_without_allowlist(
     login does instead of handing out a session that cannot work."""
     c = _app_client(monkeypatch, operator_email=None)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
-    r = c.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    r = c.post("/auth/dev-login", data={"token": _DEV_TOKEN}, follow_redirects=False)
     assert r.status_code == 503
     assert r.json()["detail"]["code"] == "operator_email_missing"
     assert SESSION_COOKIE_NAME not in r.cookies
