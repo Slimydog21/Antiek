@@ -191,6 +191,7 @@ def guard_candidate_full_text(
     status = servability_of(content_class, taken_down=taken_down)
     owner_readable = (
         owner
+        and not taken_down
         and content_class == PERSONAL_READING_CONTENT_CLASS
         and content_class in PERSONAL_READABLE_CONTENT_CLASSES
     )
