@@ -54,7 +54,7 @@ describe("Library operational recovery (synthetic failures only)", () => {
     expect(oldSignal?.aborted).toBe(true);
     await act(async () => { old.reject(new Error("obsolete request failed")); });
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Opening the library")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Opening the library");
     await act(async () => { current.reject(new Error("current request failed")); });
     expect(screen.getByRole("alert").textContent).toContain("current request failed");
   });
