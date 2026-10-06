@@ -32,6 +32,11 @@ import os
 import sys
 from typing import Protocol, cast
 
+from processing.embedding.cpu_inference import (
+    EmbeddingInferenceUnavailable,
+    configure_cpu_inference,
+)
+
 # Default dimension when nothing else is configured. Matches MiniLM-L6-v2
 # (the Researchmaxx default in tier_rules + embeddings_meta).
 DEFAULT_EMBEDDING_DIM = 384
@@ -166,7 +171,8 @@ class SentenceTransformerEmbedding:
                 "sentence-transformers not installed. Install via "
                 "`pip install sentence-transformers` or use HashEmbedding."
             ) from exc
-        self._model = SentenceTransformer(model_name)
+        configure_cpu_inference()
+        self._model = SentenceTransformer(model_name, device="cpu")
         self.dimension = int(self._model.get_sentence_embedding_dimension() or DEFAULT_EMBEDDING_DIM)
         self._model_name = model_name
         # Truncation accounting (audit wave 3, #2). The model reads at most
@@ -214,7 +220,10 @@ class SentenceTransformerEmbedding:
                     f"(see SentenceTransformerEmbedding.truncation_ratio).",
                     file=sys.stderr,
                 )
-        vec = self._model.encode([text])[0]
+        try:
+            vec = self._model.encode([text])[0]
+        except RuntimeError as exc:
+            raise EmbeddingInferenceUnavailable("embedding inference failed") from exc
         return [float(x) for x in vec]
 
 
