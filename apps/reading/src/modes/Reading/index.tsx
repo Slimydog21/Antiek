@@ -121,7 +121,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const [body, setBody] = useState<FullTextResponse | null>(null);
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ cause: unknown } | null>(null);
 
   const loadBook = useCallback(async (isCancelled: () => boolean) => {
     setLoading(true);
@@ -142,7 +142,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         /* house pool is best-effort; a neutral house card is fine */
       }
     } catch (e: unknown) {
-      if (!isCancelled()) setError(e instanceof Error ? e.message : String(e));
+      if (!isCancelled()) setError({ cause: e });
     } finally {
       if (!isCancelled()) setLoading(false);
     }
@@ -818,7 +818,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       </CenterNote>
     );
   }
-  if (error === "book_not_found") {
+  if (error?.cause instanceof Error && error.cause.message === "book_not_found") {
     return (
       <CenterNote inWindow={inWindow}>
         <EmptyState
@@ -835,13 +835,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   if (error || !book || !body) {
     // What failed and what is safe; the raw message ("Failed to fetch") is
     // for "Copy error details", never the page.
+    const failure = describeFailure(error?.cause, { what: "open this book" });
+    const detail = error?.cause instanceof Error ? error.cause.message : error ? String(error.cause) : null;
     return (
       <CenterNote inWindow={inWindow}>
         <ErrorState
           title="Couldn't open this book"
-          body="Your library and notes are unchanged. Check your connection, then try again."
-          detail={error}
-          onRetry={reload}
+          body={`Your library and notes are unchanged. ${failure.detail}`}
+          detail={detail}
+          onRetry={failure.retryable ? reload : undefined}
         />
       </CenterNote>
     );
