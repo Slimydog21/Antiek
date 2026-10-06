@@ -31,8 +31,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 async function start(props: Parameters<typeof InterviewVoiceCapture>[0]) {
   const view = render(<InterviewVoiceCapture {...props} />);
-  fireEvent.click(screen.getByRole("button", { name: /grant mic access/i }));
-  fireEvent.click(await screen.findByRole("button", { name: /start recording/i }));
+  await act(async () => { fireEvent.click(screen.getByText("Grant mic access")); });
+  fireEvent.click(screen.getByText("Start recording"));
   return view;
 }
 function flush() {
@@ -105,6 +105,37 @@ describe("Speak recording completion", () => {
     expect(screen.getByText(/recording didn't finish/i)).toBeTruthy();
     expect(apiFetch).not.toHaveBeenCalled();
     expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a retry's bytes and stream isolated from a timed-out recorder's late callbacks", async () => {
+    apiFetch.mockResolvedValue({ ok: true, json: async () => ({ transcript: "Unit-test response" }) });
+    await start({ buildUploadUrl: () => "/speak/invite/test/voice" });
+    const oldRecorder = recorder;
+    const oldData = oldRecorder.ondataavailable;
+    const oldError = oldRecorder.onerror;
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText("Stop & upload"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    vi.useRealTimers();
+    expect(oldRecorder.ondataavailable).toBeNull();
+    expect(oldRecorder.onerror).toBeNull();
+    expect(oldRecorder.onstop).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByText("Try recording again")); });
+    fireEvent.click(screen.getByText("Start recording"));
+    const retry = recorder;
+    act(() => {
+      retry.ondataavailable?.({ data: new Blob(["B"]) });
+      oldData?.({ data: new Blob(["OLD-A"]) });
+      oldError?.(new Event("error"));
+    });
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(screen.getByText("Stop & upload")).toBeTruthy();
+    fireEvent.click(screen.getByText("Stop & upload"));
+    act(() => retry.onstop?.());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+    const init: RequestInit = apiFetch.mock.calls[0][1];
+    expect(init.body instanceof Blob && init.body.size).toBe(1);
+    expect(stopTrack).toHaveBeenCalledTimes(2);
   });
 
   it("stops a permission result that arrives after unmount", async () => {

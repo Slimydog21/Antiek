@@ -63,8 +63,8 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     apiFetchMock.mockImplementation((url: string) => url.endsWith("/consent")
       ? Promise.reject(new TypeError("Failed to fetch"))
       : Promise.resolve(landingResponse(NOT_CONSENTED)));
-    mount();
-    fireEvent.click(await screen.findByRole("button", { name: /i'll share a memory/i }));
+    await act(async () => { mount(); });
+    fireEvent.click(screen.getByRole("button", { name: /i'll share a memory/i }));
     expect(await screen.findByText(/couldn't start sharing/i)).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: /i'll share a memory/i }).hasAttribute("disabled")).toBe(false));
     expect(screen.queryByText(/tap to talk/i)).toBeNull();
@@ -74,8 +74,8 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     apiFetchMock.mockImplementation((url: string) => url.endsWith("/answer")
       ? Promise.reject(new TypeError("Failed to fetch"))
       : Promise.resolve(landingResponse(CONSENTED)));
-    mount();
-    fireEvent.click(await screen.findByRole("button", { name: /i'd rather type/i }));
+    await act(async () => { mount(); });
+    fireEvent.click(screen.getByRole("button", { name: /i'd rather type/i }));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "My unsent memory" } });
     fireEvent.click(screen.getByRole("button", { name: /send this memory/i }));
     expect(await screen.findByText(/couldn't send your answer/i)).toBeTruthy();

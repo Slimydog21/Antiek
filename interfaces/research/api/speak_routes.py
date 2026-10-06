@@ -1522,6 +1522,11 @@ async def invitee_voice(
                 transcriber=_INVITEE_TRANSCRIBER,
                 language=language,
             )
+            if not text.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="This recording yielded no words. Please try again or type your memory.",
+                )
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,

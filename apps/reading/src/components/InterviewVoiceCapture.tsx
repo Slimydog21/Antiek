@@ -146,9 +146,11 @@ export default function InterviewVoiceCapture({
       // Let the browser choose a supported format (Safari may use audio/mp4).
       const rec = new MediaRecorder(streamRef.current);
       rec.ondataavailable = (e) => {
+        if (!mountedRef.current || mediaRecorderRef.current !== rec) return;
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onerror = (e: Event) => {
+        if (!mountedRef.current || mediaRecorderRef.current !== rec) return;
         cleanup();
         setError(e instanceof ErrorEvent ? e.message : "Recording failed. Please try again.");
         setState("error");
@@ -242,14 +244,16 @@ export default function InterviewVoiceCapture({
       setState("error");
     } finally {
       clearTimeout(uploadTimer);
-      cancelFlushRef.current = null;
       rec.onstop = null;
-      uploadAbortRef.current = null;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+      rec.ondataavailable = null;
+      rec.onerror = null;
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
+      if (mediaRecorderRef.current === rec) {
+        cancelFlushRef.current = null;
+        streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+        mediaRecorderRef.current = null;
       }
-      mediaRecorderRef.current = null;
     }
   };
 

@@ -162,6 +162,24 @@ def test_invitee_voice_empty_body_400(client, monkeypatch):
     assert r.status_code == 400
 
 
+@pytest.mark.parametrize("text", ["", "   ", "\n\t"])
+def test_invitee_voice_blank_transcription_does_not_consume_question(client, monkeypatch, text):
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", StubTranscriber(text))
+    token = _invited_token(client)
+    client.post(f"/speak/invite/{token}/consent", json={"scopes": ["record"]})
+    before = client.get(f"/speak/invite/{token}").json()
+    response = client.post(
+        f"/speak/invite/{token}/voice?question_id=q1",
+        content=b"controlled-transcriber-test-input",
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert response.status_code == 422, response.text
+    assert "no words" in response.json()["detail"]
+    after = client.get(f"/speak/invite/{token}").json()
+    assert after["transcript"] == before["transcript"]
+    assert after["pending_questions"] == before["pending_questions"]
+
+
 def test_invitee_voice_surface_open_while_operator_authed(client, monkeypatch):
     """The voice route is under /speak/invite/ — the token is the credential,
     so it must stay reachable when operator auth is ON (404 for a bad token,
