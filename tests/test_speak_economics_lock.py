@@ -124,6 +124,13 @@ def test_other_speak_reads_and_voice_precheck_wait_off_loop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     db, project_id, interview_id, token = _seed(tmp_path, monkeypatch)
+    with TestClient(create_app(register_wrestling=False, register_providers=False,
+                               cors_origins=[])) as client:
+        consent = client.post(
+            f"/speak/invite/{token}/consent", json={"scopes": ["record"]}
+        )
+        assert consent.status_code == 200, consent.text
+        assert "record" in consent.json()["granted"]
     monkeypatch.setattr(speak_routes, "_WRITE_TIMEOUT_S", 3.0)
     proc = _hold_writer(db)
     request = Request({
