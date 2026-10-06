@@ -58,6 +58,18 @@ def test_hosts_state_the_same_policy(policies: dict[str, str]) -> None:
     assert policies["caddy"] == policies["headers"]
 
 
+def test_microphone_is_available_only_to_the_same_origin() -> None:
+    caddy = re.search(r'Permissions-Policy "([^"]+)"', _CADDY.read_text())
+    pages = re.search(r"^  Permissions-Policy: (.+)$", _HEADERS.read_text(), re.MULTILINE)
+    assert caddy and pages
+    for policy in (caddy.group(1), pages.group(1)):
+        directives = dict(part.strip().split("=", 1) for part in policy.split(","))
+        # Speak still requests browser consent; foreign frames get no mic.
+        assert directives == {
+            "camera": "()", "microphone": "(self)", "geolocation": "()",
+        }
+
+
 def test_frame_ancestors_unchanged(policies: dict[str, str]) -> None:
     for name, policy in policies.items():
         assert _directives(policy)["frame-ancestors"] == ["'self'"], name

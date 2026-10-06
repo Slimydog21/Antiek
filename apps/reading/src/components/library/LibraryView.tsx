@@ -74,10 +74,11 @@ export default function LibraryView({
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
     if (routeAbsent) return "the catalog service isn’t available yet";
+    if (error) return "The shelf did not load, so the count is unknown";
     if (filter === "servable") return `${total} readable in full`;
     if (filter === "gated") return `${total} preview-only titles`;
     return `${total} titles`;
-  }, [loading, routeAbsent, filter, total]);
+  }, [loading, routeAbsent, error, filter, total]);
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
@@ -137,8 +138,11 @@ export default function LibraryView({
       )}
 
       {error && (
-        <ErrorBanner>
-          {error}
+        <ErrorBanner className="flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <LemonButton size="sm" type="button" variant="tertiary" onClick={reload}>
+            Retry
+          </LemonButton>
         </ErrorBanner>
       )}
 
@@ -173,7 +177,7 @@ export default function LibraryView({
         </section>
       )}
 
-      {!loading && !routeAbsent && total > pageSize && (
+      {!loading && !error && !routeAbsent && total > pageSize && (
         <nav
           aria-label="Library pages"
           className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3"

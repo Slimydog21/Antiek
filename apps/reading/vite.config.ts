@@ -103,6 +103,9 @@ export default defineConfig({
       // Write blocks/folders/sections (modes/Write/writeApi.ts). Also the
       // SPA's /write and /write/:deliverableId.
       "/write": apiSharedWithSpa(),
+      // Speak shares its prefix with the SPA's project/invitation pages.
+      // Fetches and voice uploads reach the API; hard reloads render the SPA.
+      "/speak": apiSharedWithSpa(),
       // Notebook CRUD + content (lib/api.ts, modes/Notebook). Also the SPA's
       // /notebooks list (the editor lives at /notebook/:id, not shadowed).
       "/notebooks": apiSharedWithSpa(),
