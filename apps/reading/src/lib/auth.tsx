@@ -147,6 +147,9 @@ type IdentityAnswer =
 /** Upper bound on the /health reachability probe. */
 export const HEALTH_PROBE_TIMEOUT_MS = 3_000;
 
+/** One deadline covers identity headers, body and any reachability probe. */
+export const IDENTITY_REQUEST_TIMEOUT_MS = 10_000;
+
 /**
  * P-02 workaround: is the API reachable at all?
  *
@@ -163,28 +166,31 @@ export const HEALTH_PROBE_TIMEOUT_MS = 3_000;
  * Astra backend INBOX): /auth/me will then answer 401 readably and this
  * function becomes dead weight on every logged-out page load.
  */
-async function apiIsReachable(): Promise<boolean> {
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = setTimeout(() => controller?.abort(), HEALTH_PROBE_TIMEOUT_MS);
+async function apiIsReachable(signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return false;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, HEALTH_PROBE_TIMEOUT_MS);
   try {
-    const probe = apiFetch(authUrl("/health"), { signal: controller?.signal });
-    const r = await Promise.race([
-      probe,
-      new Promise<never>((_, reject) => {
-        controller?.signal.addEventListener("abort", () => reject(new Error("health probe timed out")));
-      }),
-    ]);
+    const cancelled = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener("abort", () => reject(new Error("health probe cancelled")), { once: true });
+    });
+    const probe = apiFetch(authUrl("/health"), { signal: controller.signal });
+    const r = await Promise.race([probe, cancelled]);
     return r.status < 500;
   } catch {
     return false;
   } finally {
     clearTimeout(timer);
+    signal.removeEventListener("abort", abort);
+    controller.abort();
   }
 }
 
 /** A transport failure or unreadable 200 on /auth/me: masked 401 or real outage? */
-async function classifyUnreadable(reason: AuthUnavailableReason): Promise<IdentityAnswer> {
-  return (await apiIsReachable())
+async function classifyUnreadable(reason: AuthUnavailableReason, signal: AbortSignal): Promise<IdentityAnswer> {
+  return (await apiIsReachable(signal))
     ? { kind: "anonymous", inferred: true }
     : { kind: "unavailable", reason };
 }
@@ -209,15 +215,16 @@ function isIdentity(body: unknown): body is AuthIdentity {
   return typeof b.user_id === "string" && b.user_id !== "" && typeof b.auth_method === "string";
 }
 
-async function fetchIdentity(): Promise<IdentityAnswer> {
+async function readIdentity(signal: AbortSignal): Promise<IdentityAnswer> {
   let r: Response;
   try {
-    r = await apiFetch(authUrl("/auth/me"));
+    r = await apiFetch(authUrl("/auth/me"), { signal });
   } catch {
+    if (signal.aborted) return { kind: "unavailable", reason: "server" };
     // fetch rejects with a TypeError when the network, DNS, TLS or CORS
     // fails. In prod that includes the logged-out 401 (P-02: no CORS
     // headers), so ask /health before calling it an outage.
-    return classifyUnreadable("offline");
+    return classifyUnreadable("offline", signal);
   }
   if (r.status === 401) return { kind: "anonymous" };
   if (!r.ok) {
@@ -229,14 +236,37 @@ async function fetchIdentity(): Promise<IdentityAnswer> {
   try {
     body = await r.json();
   } catch {
+    if (signal.aborted) return { kind: "unavailable", reason: "server" };
     // e.g. an HTML error page with a 200 from a proxy (SyntaxError).
-    return classifyUnreadable("malformed");
+    return classifyUnreadable("malformed", signal);
   }
   // The middleware returns auth_method "unauthenticated_local" when no auth
   // env vars are set (local dev). That is a real identity (user_id
   // "__operator__"), so dev doesn't loop through the login page.
-  if (!isIdentity(body)) return classifyUnreadable("malformed");
+  if (!isIdentity(body)) return classifyUnreadable("malformed", signal);
   return { kind: "identity", identity: body };
+}
+
+async function fetchIdentity(signal: AbortSignal): Promise<IdentityAnswer> {
+  if (signal.aborted) return { kind: "unavailable", reason: "server" };
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, IDENTITY_REQUEST_TIMEOUT_MS);
+  try {
+    // Some transports or body readers do not settle on abort. The race
+    // bounds the caller too; its generation guard refuses every late reply.
+    const cancelled = new Promise<IdentityAnswer>((resolve) => {
+      controller.signal.addEventListener("abort", () => {
+        resolve({ kind: "unavailable", reason: "server" });
+      }, { once: true });
+    });
+    return await Promise.race([readIdentity(controller.signal), cancelled]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", abort);
+    controller.abort();
+  }
 }
 
 const UNAVAILABLE_HINT: Record<AuthUnavailableReason, string> = {
@@ -294,25 +324,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
   const [revalidating, setRevalidating] = useState(false);
   const refreshEpochRef = useRef(0);
+  const refreshControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const validatedSubjectRef = useRef<string | null>(null);
   const logoutPendingRef = useRef(false);
   const retiredSubjectRef = useRef<string | null | undefined>(undefined);
 
   const refresh = useCallback(async (options?: { afterSignIn: true }) => {
-    if (logoutPendingRef.current) return;
+    if (!mountedRef.current || logoutPendingRef.current) return;
     const epoch = ++refreshEpochRef.current;
+    refreshControllerRef.current?.abort();
+    const controller = new AbortController();
+    refreshControllerRef.current = controller;
     suspendWorkspaceOwner();
     suspendSectionProseDispatch();
     setRevalidating(true);
     let answer: IdentityAnswer;
     try {
-      answer = await fetchIdentity();
+      answer = await fetchIdentity(controller.signal);
     } catch {
       // fetchIdentity classifies every failure itself; this is belt and
       // braces for a bug in that classification, and it errs to unavailable.
       answer = { kind: "unavailable", reason: "offline" };
     }
-    if (refreshEpochRef.current !== epoch) return;
+    if (refreshControllerRef.current === controller) refreshControllerRef.current = null;
+    if (!mountedRef.current || controller.signal.aborted || refreshEpochRef.current !== epoch) return;
     if (answer.kind === "unavailable") {
       suspendSectionProseDispatch();
       // Unknown transport failure is not an identity transition. Keep the
@@ -375,6 +411,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // A logout invalidates every identity answer already in flight; it must
     // never be reversed by an older /auth/me response.
     refreshEpochRef.current += 1;
+    refreshControllerRef.current?.abort();
+    refreshControllerRef.current = null;
     const logoutEpoch = refreshEpochRef.current;
     logoutPendingRef.current = true;
     setRevalidating(false);
@@ -396,7 +434,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
+    return () => {
+      mountedRef.current = false;
+      refreshEpochRef.current += 1;
+      refreshControllerRef.current?.abort();
+      refreshControllerRef.current = null;
+    };
   }, [refresh]);
 
   useEffect(() => {
