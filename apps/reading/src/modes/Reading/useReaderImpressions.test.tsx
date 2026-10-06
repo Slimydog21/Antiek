@@ -4,6 +4,11 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { recordAdImpressions } from "../../api/books";
 import type { AdFillView } from "./AdBorder";
 import { useReaderImpressions } from "./useReaderImpressions";
+import {
+  beforeWorkspaceOwnerChange,
+  setWorkspaceOwner,
+  workspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 
 vi.mock("../../api/books", async (original) => ({
   ...await original<typeof import("../../api/books")>(),
@@ -18,6 +23,7 @@ const slots = [{ slotId: "top", fill: houseFill }];
 beforeEach(() => {
   clock = 0;
   hidden = false;
+  setWorkspaceOwner("unit-reader-a");
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
   vi.mocked(recordAdImpressions).mockReset().mockResolvedValue(undefined);
@@ -25,6 +31,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setWorkspaceOwner(null);
   vi.restoreAllMocks();
 });
 
@@ -173,5 +180,122 @@ describe("focused reader dwell", () => {
     act(() => result.current.flush());
     expect(callback).toHaveBeenCalledTimes(1);
     expect(recordAdImpressions).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses account-retired cleanup and deferred callbacks before React can render", async () => {
+    let finishImpression: (() => void) | undefined;
+    vi.mocked(recordAdImpressions).mockReturnValue(new Promise<void>((resolve) => {
+      finishImpression = resolve;
+    }));
+    const callback = vi.fn();
+    const { result, unmount } = renderHook(() => useReaderImpressions("a", "session", callback));
+    act(() => result.current.observePage(0, slots));
+    clock = 20_000;
+    act(() => result.current.observePage(1, slots));
+    expect(recordAdImpressions).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenLastCalledWith({ totalDwellMs: 20_000, pagesSeen: 1 });
+    const retired = result.current;
+    callback.mockClear();
+    clock = 30_000;
+
+    act(() => {
+      setWorkspaceOwner("unit-reader-b");
+      retired.flush();
+      retired.observePage(9, slots);
+      unmount();
+    });
+    await act(async () => {
+      if (!finishImpression) throw new Error("The admitted impression did not start");
+      finishImpression();
+    });
+
+    expect(recordAdImpressions).toHaveBeenCalledTimes(1);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("refuses an A-B-A account replacement and starts the new owner at zero", () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useReaderImpressions("a", "session", callback));
+    act(() => result.current.observePage(0, slots));
+    const retired = result.current;
+    const firstOwner = workspaceOwnerSession();
+    clock = 30_000;
+    act(() => {
+      setWorkspaceOwner("unit-reader-b");
+      setWorkspaceOwner("unit-reader-a");
+      retired.flush();
+    });
+    expect(workspaceOwnerSession()).not.toBe(firstOwner);
+    expect(recordAdImpressions).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+    act(() => result.current.observePage(0, []));
+    clock = 35_000;
+    act(() => result.current.flush());
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ totalDwellMs: 5_000, pagesSeen: 1 });
+  });
+
+  it("preserves the two-page leave flush when the same owner is verified again", () => {
+    const callback = vi.fn();
+    const { result, unmount } = renderHook(() => useReaderImpressions("a", "session", callback));
+    const owner = workspaceOwnerSession();
+    act(() => result.current.observePage(0, slots));
+    clock = 20_000;
+    act(() => result.current.observePage(1, slots));
+    clock = 30_000;
+    act(() => setWorkspaceOwner("unit-reader-a"));
+    unmount();
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(callback).toHaveBeenLastCalledWith({ totalDwellMs: 30_000, pagesSeen: 2 });
+    expect(recordAdImpressions).toHaveBeenLastCalledWith("a", "session", [
+      expect.objectContaining({ page_index: 1, focused_dwell_ms: 10_000 }),
+    ]);
+  });
+
+  it("retires before another retirement listener can flush under the old identity", () => {
+    const callback = vi.fn();
+    const { result } = renderHook(() => useReaderImpressions("a", "session", callback));
+    act(() => result.current.observePage(0, slots));
+    const owner = workspaceOwnerSession();
+    const retired = result.current;
+    const duringRetirement = vi.fn(() => {
+      expect(workspaceOwnerSession()).toBe(owner);
+      retired.flush();
+    });
+    const unsubscribe = beforeWorkspaceOwnerChange(duringRetirement);
+    clock = 30_000;
+    try {
+      act(() => setWorkspaceOwner("unit-reader-b"));
+    } finally {
+      unsubscribe();
+    }
+    expect(duringRetirement).toHaveBeenCalledTimes(1);
+    expect(recordAdImpressions).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("refuses logged-out measurement and cleanup", () => {
+    setWorkspaceOwner(null);
+    const callback = vi.fn();
+    const { result, unmount } = renderHook(() => useReaderImpressions("a", "session", callback));
+    act(() => result.current.observePage(0, slots));
+    clock = 30_000;
+    act(() => result.current.flush());
+    unmount();
+    expect(recordAdImpressions).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the owner before onDwell when impression dispatch retires it", () => {
+    const callback = vi.fn();
+    const { result, unmount } = renderHook(() => useReaderImpressions("a", "session", callback));
+    act(() => result.current.observePage(0, slots));
+    vi.mocked(recordAdImpressions).mockImplementation(async () => {
+      setWorkspaceOwner(null);
+    });
+    clock = 30_000;
+    act(() => result.current.flush());
+    unmount();
+    expect(recordAdImpressions).toHaveBeenCalledTimes(1);
+    expect(callback).not.toHaveBeenCalled();
   });
 });

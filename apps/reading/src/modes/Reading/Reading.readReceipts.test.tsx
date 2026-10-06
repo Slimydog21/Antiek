@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import { resetReadingStateBus, setReadingStateOwner } from "../../hooks/useReadingState";
+import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 
 // Only the external API responses are controlled. The reader, dwell hook,
 // threshold and typed-event serialization run together. These synthetic
@@ -34,6 +35,7 @@ beforeEach(() => {
   vi.spyOn(performance, "now").mockImplementation(() => clock);
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
   window.sessionStorage.clear();
+  setWorkspaceOwner("unit-reader");
   setReadingStateOwner("unit-reader");
   resetReadingStateBus();
   detail.mockImplementation(async (id) => ({
@@ -62,6 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setWorkspaceOwner(null);
   resetReadingStateBus();
   setReadingStateOwner(null);
   vi.restoreAllMocks();
@@ -100,4 +103,18 @@ it("emits once for each ad-free book, with no duplicate on a same-session revisi
   fireEvent.click(screen.getByRole("button", { name: "← Previous" }));
   await readTwoPages("a");
   expect(events).toHaveLength(2);
+});
+
+it("refuses source.read on cleanup after the account retires at the reading threshold", async () => {
+  const view = render(tree("a"));
+  await screen.findByText("Unit a passage 1.");
+  clock = 20_000;
+  fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+  await screen.findByText("Unit a passage 2.");
+  clock = 30_000;
+  act(() => {
+    setWorkspaceOwner(null);
+    view.unmount();
+  });
+  expect(events).toEqual([]);
 });

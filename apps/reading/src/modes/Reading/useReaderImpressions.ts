@@ -3,6 +3,12 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { AdFillView } from "./AdBorder";
 import { recordAdImpressions } from "../../api/books";
 import type { ImpressionItem } from "../../api/books";
+import {
+  beforeWorkspaceOwnerChange,
+  isWorkspaceOwnerSession,
+  useWorkspaceOwner,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 
 /**
  * Reader ad-impression flushing (Read SPR-05 → SPR-09).
@@ -43,6 +49,7 @@ export interface ReaderDwell {
 }
 
 interface DwellSession {
+  readonly owner: WorkspaceOwnerSession;
   active: boolean;
   dwellMs: number;
   focusedSince: number | null;
@@ -50,6 +57,11 @@ interface DwellSession {
   totalDwellMs: number;
   pages: Set<number>;
   onDwell: ((dwell: ReaderDwell) => void) | undefined;
+}
+
+function isCurrent(measurement: DwellSession): boolean {
+  return measurement.active && measurement.owner.subject !== null
+    && isWorkspaceOwnerSession(measurement.owner);
 }
 
 export function useReaderImpressions(
@@ -60,9 +72,11 @@ export function useReaderImpressions(
    * per session on the dwell threshold — reusing this clock, not adding one. */
   onDwell?: (dwell: ReaderDwell) => void,
 ) {
-  // Each document/session owns its clock, pages and callback. Its effect
-  // cleanup must flush that document even after the next one has rendered.
+  const owner = useWorkspaceOwner();
+  // A same-owner document/session change flushes its previous measurement.
+  // Account retirement discards it before any cleanup can use a new cookie.
   const measurement = useMemo<DwellSession>(() => ({
+    owner,
     active: true,
     dwellMs: 0,
     focusedSince: null,
@@ -70,13 +84,14 @@ export function useReaderImpressions(
     totalDwellMs: 0,
     pages: new Set(),
     onDwell: undefined,
-  }), [documentId, sessionId]);
+  }), [documentId, sessionId, owner]);
 
   useEffect(() => {
     measurement.onDwell = onDwell;
   }, [measurement, onDwell]);
 
   const accumulate = useCallback(() => {
+    if (!isCurrent(measurement)) return;
     if (measurement.focusedSince !== null) {
       const delta = nowMs() - measurement.focusedSince;
       measurement.dwellMs += delta;
@@ -86,14 +101,14 @@ export function useReaderImpressions(
   }, [measurement]);
 
   const resume = useCallback(() => {
-    if (measurement.active && measurement.page && measurement.focusedSince === null
+    if (isCurrent(measurement) && measurement.page && measurement.focusedSince === null
       && (typeof document === "undefined" || !document.hidden)) {
       measurement.focusedSince = nowMs();
     }
   }, [measurement]);
 
   const flush = useCallback(() => {
-    if (!measurement.active || !measurement.page) return;
+    if (!isCurrent(measurement) || !measurement.page) return;
     accumulate();
     const ctx = measurement.page;
     const dwell = Math.round(measurement.dwellMs);
@@ -107,17 +122,19 @@ export function useReaderImpressions(
       focused_dwell_ms: dwell,
       tab_focused: tabFocused,
     }));
-    if (items.length > 0) {
+    if (items.length > 0 && isCurrent(measurement)) {
       void recordAdImpressions(documentId, sessionId, items).catch(() => {
         /* best-effort — never disrupt reading */
       });
     }
     // Report the SESSION-cumulative dwell evidence (SPR-07 M4). The consumer
     // decides the source.read "read" verdict from this; the hook just measures.
-    measurement.onDwell?.({
-      totalDwellMs: measurement.totalDwellMs,
-      pagesSeen: measurement.pages.size,
-    });
+    if (isCurrent(measurement)) {
+      measurement.onDwell?.({
+        totalDwellMs: measurement.totalDwellMs,
+        pagesSeen: measurement.pages.size,
+      });
+    }
     resume();
   }, [accumulate, resume, documentId, sessionId, measurement]);
 
@@ -126,10 +143,11 @@ export function useReaderImpressions(
    * one. */
   const observePage = useCallback(
     (pageIndex: number, slots: { slotId: string; fill: AdFillView }[]) => {
-      if (!measurement.active) return;
+      if (!isCurrent(measurement)) return;
       if (measurement.page && measurement.page.pageIndex !== pageIndex) {
         flush();
       }
+      if (!isCurrent(measurement)) return;
       measurement.pages.add(pageIndex);
       measurement.page = { pageIndex, slots };
       // (Re)start the dwell clock for the page now showing.
@@ -142,6 +160,10 @@ export function useReaderImpressions(
   useEffect(() => {
     measurement.active = true;
     resume();
+    const unsubscribeRetirement = beforeWorkspaceOwnerChange(() => {
+      measurement.active = false;
+      measurement.focusedSince = null;
+    });
     const onVisibility = () => {
       if (document.hidden) accumulate();
       else resume();
@@ -149,6 +171,7 @@ export function useReaderImpressions(
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flush);
     return () => {
+      unsubscribeRetirement();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
       try {
