@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { List as ListIcon } from "lucide-react";
@@ -707,8 +708,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       setTocOpen(false);
       tocToggleRef.current?.focus();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "reader.contents.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !tocRef.current?.closest("[hidden]"),
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, [tocOpen]);
   const jumpFromToc = useCallback(
     (index: number) => {

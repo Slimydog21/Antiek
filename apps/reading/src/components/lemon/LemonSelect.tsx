@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -104,10 +105,13 @@ export function LemonSelect<V>({
       }
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "select.keys", scope: "overlay",
+      eligible: (e) => (e.key === "Escape" && !e.defaultPrevented) || ["ArrowDown", "ArrowUp", "Enter"].includes(e.key),
+    }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
     };
   }, [open, options, hoverIdx, onChange, close]);
 

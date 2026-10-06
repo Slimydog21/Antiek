@@ -3,7 +3,7 @@
  *
  *   C2  the Omarchy inset preset: two tall rounded rectangles over the scene
  *       (the gap shows the background), the SAME slot structure inside, the
- *       docked preset byte-identical by default, the choice persisted via
+ *       explicit docked preset unchanged, the choice persisted via
  *       its own global blob (the custom-hotkeys precedent).
  *   C3  the pane key rows: prefix h/l (+ ctrl+alt twins) move DOM focus
  *       between the panes with a visible ring — and in the docked preset
@@ -120,7 +120,7 @@ function mountLayout() {
   );
 }
 
-describe("the docked preset is the default and its DOM is unchanged", () => {
+describe("the explicit docked preset keeps its DOM unchanged", () => {
   it("no inset frame, the docks keep their chrome, main slot intact", () => {
     openTwoDocks();
     const { container, getByText } = mountLayout();

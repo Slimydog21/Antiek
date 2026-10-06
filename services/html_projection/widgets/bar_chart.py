@@ -20,13 +20,14 @@ import math
 
 from services.html_projection import tokens
 from services.html_projection.escape import escape_text
+from services.html_projection.widgets._coerce import to_float
 
 MAX_BARS = 12
 
 
 def _num(value: object) -> float:
     try:
-        parsed = float(value)
+        parsed = to_float(value)
     except (TypeError, ValueError):
         return 0.0
     # Non-finite (nan/inf) -> 0: never let an upstream nan/inf become an
@@ -38,7 +39,7 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_bars = data.get("bars")
     bars = raw_bars if isinstance(raw_bars, list) else []
     rows: list[tuple[str, float]] = []

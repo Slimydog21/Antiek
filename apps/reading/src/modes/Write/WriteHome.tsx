@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -86,8 +87,11 @@ export default function WriteHome() {
       setBlocksOpen(false);
       blocksToggleRef.current?.focus();
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "write.blocks.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !blocksRef.current?.closest("[hidden]"),
+    }, onKeyDown);
+    return () => removeKeyboardOwner();
   }, [blocksOpen]);
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to

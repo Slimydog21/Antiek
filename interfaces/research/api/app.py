@@ -64,7 +64,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -86,6 +86,7 @@ from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
     DispatchCallPayload,
+    DocumentFiledIntoInvestigationPayload,
     Event,
     TypedPayload,
 )
@@ -110,6 +111,8 @@ class TypedEventEnvelope(BaseModel):
     """POST body for ``/events/typed``. The ``payload`` field uses the
     discriminated TypedPayload union — the ``action_type`` field on the
     payload tells Pydantic which variant to validate against."""
+
+    model_config = ConfigDict(extra="forbid")
 
     investigation_id: str = Field(..., min_length=1)
     payload: TypedPayload
@@ -2533,7 +2536,9 @@ def create_app(
     # ── POST typed event ────────────────────────────────────────
 
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request,
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -2541,6 +2546,45 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if action_value == "investigation.start_requested":
+            raise HTTPException(
+                status_code=403,
+                detail="investigation.start_requested is server-owned; use POST /investigations.",
+            )
+        if any(
+            field == "owner_id" or field.startswith("owner_")
+            for field in envelope.payload.model_fields_set
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Ownership and launch authority are server-owned.",
+            )
+        if isinstance(envelope.payload, DocumentFiledIntoInvestigationPayload):
+            from runtime.db_lock import connect_read
+
+            from .books import _reader_owner_id
+
+            filed_document_id = envelope.payload.filed_document_id
+            if (
+                envelope.document_id not in (None, filed_document_id)
+                or envelope.investigation_id != envelope.payload.target_investigation_id
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Filing selectors must match the event envelope.",
+                )
+            owner = _reader_owner_id(request)
+
+            def _owns_filed_document() -> bool:
+                with connect_read(default_db_path()) as con:
+                    row = con.execute(
+                        "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                        [filed_document_id],
+                    ).fetchone()
+                return row is not None and row[0] == owner
+
+            if not await asyncio.to_thread(_owns_filed_document):
+                raise HTTPException(status_code=404, detail="document_not_found")
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -2632,7 +2676,6 @@ def create_app(
             # divergence between the log and the documents table).
             if action_value == "document.filed_into_investigation":
                 from runtime.db_lock import connect_write
-                from substrate.graph import default_db_path
 
                 payload = matching.get("payload") or {}
                 filed_doc = payload.get("filed_document_id")
@@ -5559,7 +5602,7 @@ def create_app(
         content_json: dict[str, Any]
         created_at: str
 
-    class NotebookResponse(BaseModel):
+    class NotebookSummaryResponse(BaseModel):
         notebook_id: str
         title: str
         investigation_id: str | None
@@ -5567,11 +5610,13 @@ def create_app(
         content_class: str
         created_at: str
         updated_at: str
+
+    class NotebookResponse(NotebookSummaryResponse):
         blocks: list[NotebookBlockResponse]
 
     class NotebookListResponse(BaseModel):
         count: int
-        notebooks: list[NotebookResponse]
+        notebooks: list[NotebookSummaryResponse]
 
     def _notebook_to_response(nb: Notebook) -> NotebookResponse:
         return NotebookResponse(
@@ -5595,19 +5640,38 @@ def create_app(
             ],
         )
 
+    def _notebook_for_owner(con: Any, notebook_id: str, request: Request) -> Notebook:
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
+
+        try:
+            notebook = readable_notebook_for(
+                con, notebook_id, owner_user_id=_reader_owner_id(request),
+            )
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+        if notebook is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return notebook
+
     @app.post(
         "/notebooks",
         response_model=NotebookResponse,
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import create_notebook, get_notebook
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:create_notebook") as con:
@@ -5616,6 +5680,7 @@ def create_app(
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
+                    owner_user_id=owner_user_id,
                     content_class=req.content_class,
                 )
                 return get_notebook(con, nb_id)
@@ -5631,6 +5696,7 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
+        request: Request,
         investigation_id: Annotated[str | None, Query()] = None,
         document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
@@ -5639,12 +5705,16 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import list_notebooks
 
+        from .books import _reader_owner_id
+
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:list_notebooks") as con:
                 return list_notebooks(
                     con,
+                    owner_user_id=owner_user_id,
                     investigation_id=investigation_id,
                     document_id=document_id,
                     limit=limit,
@@ -5654,23 +5724,28 @@ def create_app(
         nbs = await asyncio.to_thread(_sync)
         return NotebookListResponse(
             count=len(nbs),
-            notebooks=[_notebook_to_response(nb) for nb in nbs],
+            notebooks=[NotebookSummaryResponse.model_validate(nb, from_attributes=True) for nb in nbs],
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
-        from runtime.db_lock import connect_write
+    async def get_notebook_endpoint(notebook_id: str, request: Request) -> NotebookResponse:
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook
+        from substrate.notebooks import NotebookReadWithheld, readable_notebook_for
+
+        from .books import _reader_owner_id
 
         db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:get_notebook") as con:
-                return get_notebook(con, notebook_id)
+            with connect_read(db_path) as con:
+                return readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
 
-        # flock wait off the uvicorn loop (#3111 to_thread class).
-        nb = await asyncio.to_thread(_sync)
+        try:
+            nb = await asyncio.to_thread(_sync)
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
@@ -5682,6 +5757,7 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
+        request: Request,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
@@ -5692,6 +5768,7 @@ def create_app(
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:append_notebook_block") as con:
+                _notebook_for_owner(con, notebook_id, request)
                 append_block(
                     con, notebook_id,
                     block_type=req.block_type,
@@ -5715,6 +5792,7 @@ def create_app(
     )
     async def patch_notebook_block(
         notebook_id: str,
+        request: Request,
         block_id: str,
         req: NotebookUpdateBlockRequest = Body(...),
     ) -> NotebookResponse:
@@ -5732,6 +5810,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:patch_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 updated = update_block(
                     con, notebook_id, block_id,
                     content=req.content,
@@ -5756,7 +5835,7 @@ def create_app(
         response_model=NotebookResponse,
     )
     async def delete_notebook_block(
-        notebook_id: str, block_id: str,
+        notebook_id: str, block_id: str, request: Request,
     ) -> NotebookResponse:
         """Delete one block from a notebook. Per master-spec §13.2
         substrate-is-source-of-truth: this deletes the row, not just
@@ -5772,6 +5851,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:delete_notebook_block",
             ) as con:
+                _notebook_for_owner(con, notebook_id, request)
                 deleted = delete_block(con, notebook_id, block_id)
                 if not deleted:
                     raise HTTPException(
@@ -5792,6 +5872,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
+        request: Request,
         req: NotebookReorderBlocksRequest = Body(...),
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
@@ -5807,14 +5888,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:reorder_notebook_blocks",
             ) as con:
-                # Confirm the notebook exists before reordering so the
-                # error path returns 404 for missing notebooks rather
-                # than the more confusing "permutation mismatch" 422.
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                _notebook_for_owner(con, notebook_id, request)
                 reorder_blocks(
                     con, notebook_id,
                     ordered_block_ids=req.ordered_block_ids,
@@ -5836,6 +5910,7 @@ def create_app(
     )
     async def put_notebook_content(
         notebook_id: str,
+        request: Request,
         req: NotebookPutContentRequest = Body(...),
     ) -> NotebookResponse:
         """Atomic-replace a notebook's content from a TipTap document.
@@ -5874,11 +5949,7 @@ def create_app(
             with connect_write(
                 db_path, purpose="api:put_notebook_content",
             ) as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
                 # ── SPR-01 empty-doc floor ──────────────────────────────────
                 # A fresh/unhydrated editor seeds ``<p></p>`` and its first
                 # autosave PUTs that near-empty doc; the atomic replace below
@@ -5989,6 +6060,7 @@ def create_app(
     )
     async def promote_notebook_to_public(
         notebook_id: str,
+        request: Request,
         rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
         force: bool = Query(default=False),
     ) -> NotebookResponse:
@@ -6015,11 +6087,7 @@ def create_app(
 
         def _sync() -> tuple[Any, Any, Any]:
             with connect_write(db_path, purpose="api:promote_notebook_public") as con:
-                existing = get_notebook(con, notebook_id)
-                if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                existing = _notebook_for_owner(con, notebook_id, request)
 
                 # Compute the quality-gate verdict from the current
                 # notebook state. Always run the gate so the event log
