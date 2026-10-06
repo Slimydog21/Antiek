@@ -245,7 +245,7 @@ def test_original_cookie_does_not_rewrite_existing_unaliased_account(
     app, sender, root = legacy_api
     old = claim_email(app, sender, ORIGINAL)
     monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "1")
-    monkeypatch.delenv("ANTIEK_LEGACY_OPERATOR_EMAIL")
+    monkeypatch.delenv("ANTIEK_LEGACY_OPERATOR_EMAIL", raising=False)
     current = claim_email(app, sender, ORIGINAL)
     store = root / "accounts.json"
     before = store.read_bytes()
