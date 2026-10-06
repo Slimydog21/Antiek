@@ -429,15 +429,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // justified dwell threshold, reusing the focused-dwell clock the ad-impression
   // tracker already runs. A per-session guard (ref) coalesces it: never per-page
   // spam, never refired. §9.0: the event carries no body (sourceRead.ts).
-  const readEmittedRef = useRef(false);
+  const readEmittedRef = useRef(new Set<string>());
   // The current page's chunk for the source.read event — resolved live from
   // the anchor-map (the HONEST GAP closure), never the old null placeholder.
   const pageChunkRef = useRef<string | null>(null);
   const onDwell = useCallback(
     (dwell: { totalDwellMs: number; pagesSeen: number }) => {
-      if (readEmittedRef.current) return;
+      if (readEmittedRef.current.has(documentId)) return;
       if (!isRead(dwell.totalDwellMs, dwell.pagesSeen)) return;
-      readEmittedRef.current = true;
+      readEmittedRef.current.add(documentId);
       void emitSourceRead({
         documentId,
         readingThreadId,
