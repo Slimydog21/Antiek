@@ -89,6 +89,25 @@ def test_public_subject_survives_normalized_relogin(account_api):
     assert first.get("/auth/me").json()["user_id"] == second.get("/auth/me").json()["user_id"]
 
 
+def test_interim_allowlist_entry_does_not_claim_the_original_legacy_owner(account_api, monkeypatch):
+    app, sender, root = account_api
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", f"{OPERATOR},{ALICE}")
+    interim, _payload, _code = sign_in(app, sender, ALICE)
+    subject = interim.get("/auth/me").json()["user_id"]
+    operator, _payload, _code = sign_in(app, sender, OPERATOR)
+    stored = {row["email"]: row for row in json.loads((root / "accounts.json").read_text())["accounts"]}
+    assert stored[ALICE]["legacy_owner"] is None
+    assert stored[ALICE]["user_id"] == subject == derive_owner_from_verified_email(ALICE)
+    assert stored[OPERATOR]["legacy_owner"] == "__operator__"
+    assert stored[OPERATOR]["user_id"] == operator.get("/auth/me").json()["user_id"]
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", OPERATOR)
+    retained = interim.get("/auth/whoami").json()
+    assert retained["user_id"] == subject
+    assert retained["is_operator"] is False
+    assert "operator" not in retained["scopes"]
+    assert "shared_substrate_write" not in retained["scopes"]
+
+
 def test_two_accounts_cannot_hydrate_or_mutate_each_others_notebook(account_api):
     app, sender, _root = account_api
     alice, _payload, _code = sign_in(app, sender, ALICE)
@@ -359,10 +378,26 @@ def test_book_catalogue_body_and_default_model_join_actual_owner(account_api):
     with db_lock.connect_write(db, purpose="test/account-takedown", keepalive_s=0) as con:
         take_down(con, "local-alice-book", reason="local account test")
     db_lock.flush_warm_writers(db)
-    assert alice.get("/books/local-alice-book").status_code == 404
+    # Registered metadata remains openable, explicitly marked taken down;
+    # its presence is not body-serving authority on either text endpoint.
+    metadata = alice.get("/books/local-alice-book")
+    assert metadata.status_code == 200
+    assert metadata.json()["taken_down"] is True
+    assert metadata.json()["servability"] == "taken_down"
+    assert metadata.json()["servable_full_text"] is False
+    for route in ("/books/local-alice-book/owner-full-text", "/books/local-alice-book/full-text"):
+        refused = alice.get(route)
+        assert refused.status_code == 200
+        assert refused.json()["servable"] is False
+        assert refused.json()["full_text"] is None
+        assert refused.json()["snippet"] is None
+        assert refused.json()["reason"] == "taken_down"
+        assert "LOCAL_ACCOUNT_PRIVATE_BODY" not in refused.text
 
 
 def test_issued_accounts_corpus_search_denies_all_foreign_private_classes(account_api, monkeypatch):
+    from importlib import import_module
+
     from processing.embedding.embed import HashEmbedding
     from runtime import db_lock
     from substrate.graph import ensure_initialized
@@ -377,7 +412,8 @@ def test_issued_accounts_corpus_search_denies_all_foreign_private_classes(accoun
     model = HashEmbedding(dimension=8)
     # Only the external embedding dependency is deterministic. HTTP issuance,
     # middleware, owner resolver and real DuckDB search remain in the control.
-    monkeypatch.setattr("substrate.graph.search.SentenceTransformerEmbedding", lambda: model)
+    graph_search = import_module("substrate.graph.search")
+    monkeypatch.setattr(graph_search, "SentenceTransformerEmbedding", lambda: model)
     db = str(root / "graph.duckdb")
     ensure_initialized(db)
     rows = [(f"alice-{kind}", alice_subject, kind) for kind in (
