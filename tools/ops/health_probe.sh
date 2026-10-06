@@ -73,7 +73,7 @@ else
 fi
 
 # ── (2) Provider ratio ──
-ratio_body=$(curl -fsS --max-time 8 "${API_AUTH_HEADER[@]}" \
+ratio_body=$(curl -fsS --max-time 8 ${API_AUTH_HEADER[@]+"${API_AUTH_HEADER[@]}"} \
   "$API_URL/ops/provider-ratio?window_minutes=$WINDOW" 2>/dev/null || true)
 if [ -z "$ratio_body" ]; then
   alerts+=("API DOWN: $API_URL/ops/provider-ratio returned nothing")
