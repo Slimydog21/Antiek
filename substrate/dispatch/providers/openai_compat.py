@@ -70,6 +70,7 @@ except ImportError:  # pragma: no cover
 # 4xx other than 429 are configuration / quota / malformed-request
 # errors and should not retry.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_CORE_REQUEST_FIELDS = frozenset({"model", "max_tokens", "temperature", "messages"})
 
 # Default request timeout (seconds). Long enough for a slow synthesis
 # call; short enough that a hung connection doesn't deadlock the
@@ -216,8 +217,19 @@ class OpenAICompatProvider:
         temperature: float,
         extra_body: Mapping[str, Any] | None = None,
     ) -> RawProviderResponse:
-        """``extra_body`` adds fields for this call only, after the
-        constructor's; a shared adapter instance is never mutated per call."""
+        """Add vendor fields without replacing the selected request.
+
+        Call-specific options override constructor vendor options without
+        mutating the shared adapter. Core-field collisions refuse before I/O.
+        """
+        vendor_fields = dict(self._extra_body)
+        if extra_body is not None:
+            vendor_fields.update(extra_body)
+        if _CORE_REQUEST_FIELDS.intersection(vendor_fields):
+            raise ProviderError(
+                f"{self.name}: extra_body cannot override core request fields",
+                provider=self.name, model=model, latency_ms=0,
+            )
         api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {
@@ -232,10 +244,7 @@ class OpenAICompatProvider:
         }
         # Vendor-specific fields (e.g. z.ai's reasoning toggle) merge on
         # top, never overriding the core request shape.
-        if self._extra_body:
-            body.update(self._extra_body)
-        if extra_body:
-            body.update(extra_body)
+        body.update(vendor_fields)
 
         client = self._ensure_client()
         t_start = time.monotonic()
