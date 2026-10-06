@@ -152,7 +152,7 @@ def _decode(
 # ── Magic-link tokens ────────────────────────────────────────────────
 
 
-def mint_magic_link_token(email: str) -> str:
+def mint_magic_link_token(email: str, *, attempt_id: str | None = None) -> str:
     """Mint a magic-link token bound to ``email``.
 
     The token embeds the requested email; verification returns it so
@@ -160,10 +160,10 @@ def mint_magic_link_token(email: str) -> str:
     enforcement is the caller's job (in ``auth.py``).
     """
     normalized = email.strip().lower()
-    return _encode(
-        _MAGIC_LINK_AUDIENCE,
-        {"email": normalized, "iat": int(time.time())},
-    )
+    payload: dict[str, Any] = {"email": normalized, "iat": int(time.time())}
+    if attempt_id is not None:
+        payload["attempt_id"] = attempt_id
+    return _encode(_MAGIC_LINK_AUDIENCE, payload)
 
 
 def verify_magic_link_token(

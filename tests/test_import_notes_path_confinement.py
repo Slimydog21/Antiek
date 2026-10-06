@@ -17,14 +17,18 @@ from pathlib import Path
 
 from test_artifact_routes import _client, api_env  # noqa: F401  (fixture)
 
+from substrate.event_log import log_event
 from substrate.graph.insight_question import promote_insight
 
 REFUSAL = "import_notes_path_invalid"
 
 
 def _exported(client, api_env) -> Path:  # noqa: F811
+    log_event("inv-imp", "investigation.start_requested", payload={
+        "question": "Import confinement control", "owner_user_id": "__operator__",
+    })
     promote_insight(text="An importable finding.", investigation_id="inv-imp",
-                    confidence="moderate", source_document_id=None)
+                    confidence="moderate", source_document_id="doc-1")
     resp = client.post("/research/inv-imp/artifact/export")
     assert resp.status_code == 200, resp.text
     return Path(resp.json()["path"])

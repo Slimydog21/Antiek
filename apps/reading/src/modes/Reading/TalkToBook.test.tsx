@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../testAccountOwner";
 /**
  * TalkToBook.test.tsx — Read SPR-08 M2 (+ M3 wiring).
  *
@@ -199,7 +200,7 @@ describe("TalkToBook (M2)", () => {
       model_id: "model-a",
     });
     expect(askBookMock.mock.calls[0][2].operationId).toMatch(/^talk-/);
-    const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+    const stored = JSON.parse(window.sessionStorage.getItem(unitAccountKey("antiek.read.talk.doc-x")) ?? "{}");
     expect(stored.branches[0].messages[0].operation_id).toBe(
       askBookMock.mock.calls[0][2].operationId,
     );
@@ -318,7 +319,7 @@ describe("TalkToBook (M2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     expect(await screen.findByText(/provider outcome is not confirmed/i)).toBeTruthy();
     expect(screen.getByText("clear").hasAttribute("disabled")).toBe(true);
-    const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+    const stored = JSON.parse(window.sessionStorage.getItem(unitAccountKey("antiek.read.talk.doc-x")) ?? "{}");
     expect(stored.branches[0].messages[0].operation_id).toMatch(/^talk-/);
     expect(stored.branches[0].messages[0].model_operation_state).toBe("unknown");
     unmount();
@@ -379,7 +380,7 @@ describe("TalkToBook (M2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Release reservation" }));
     await waitFor(() => expect(screen.queryByText(/reserved but not sent/i)).toBeNull());
     expect(cancelBookModelOperationMock).toHaveBeenCalledTimes(1);
-    const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+    const stored = JSON.parse(window.sessionStorage.getItem(unitAccountKey("antiek.read.talk.doc-x")) ?? "{}");
     expect(stored.branches[0].messages).toEqual([]);
   });
 
@@ -529,7 +530,7 @@ describe("TalkToBook (M2)", () => {
     await screen.findByTestId("talk-branches");
     expect(screen.getByRole("button", { name: "main" })).toBeTruthy();
     expect(screen.getByTestId("talk-model-receipt").textContent).toContain("system-provider");
-    const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+    const stored = JSON.parse(window.sessionStorage.getItem(unitAccountKey("antiek.read.talk.doc-x")) ?? "{}");
     expect(stored.branches[1].messages[0].model_receipt.actual_model_id).toBe("system-model");
   });
 
@@ -538,7 +539,7 @@ describe("TalkToBook (M2)", () => {
     await openAndAsk();
     fireEvent.click(screen.getByText("clear"));
     await waitFor(() => {
-      const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
+      const stored = JSON.parse(window.sessionStorage.getItem(unitAccountKey("antiek.read.talk.doc-x")) ?? "{}");
       expect(stored.branches[0].messages).toEqual([]);
     });
   });
@@ -561,7 +562,7 @@ describe("TalkToBook (M2)", () => {
   });
 
   it("migrates an old stored message whose receipt and operation id are absent", () => {
-    window.sessionStorage.setItem("antiek.read.talk.doc-x", JSON.stringify({
+    window.sessionStorage.setItem(unitAccountKey("antiek.read.talk.doc-x"), JSON.stringify({
       active_branch_id: "trunk",
       branches: [{
         branch_id: "trunk",

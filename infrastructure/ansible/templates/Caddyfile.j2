@@ -15,9 +15,8 @@
 #           answers on neither 80 nor 443 from the internet
 #   127.0.0.1:443 — Caddy. The tunnel dials loopback, and its
 #     originRequest sets originServerName: api.antiek.ai and
-#     noTLSVerify: true. This site block has no `bind`, so Caddy itself
-#     listens on every interface; UFW, not the bind address, is what
-#     keeps 80/443 unreachable from the internet.
+#     noTLSVerify: true. The site binds loopback; only the local tunnel
+#     may supply Cloudflare's client-IP header. UFW also closes 80/443.
 #         ├─ /<api-prefix>/*  → 127.0.0.1:8001 (uvicorn)
 #         └─ everything else  → {{ frontend_dist_dir }} (SPA)
 #
@@ -47,7 +46,18 @@
 #      `proxy_pass` config like nginx demands.
 #   4. One file, mostly self-explanatory; nginx config blocks are dense.
 
+# Cloudflare overwrites CF-Connecting-IP at the edge. Only the loopback
+# tunnel is trusted to carry it; inbound X-Forwarded-For is not attribution.
+{
+    servers {
+        trusted_proxies static 127.0.0.1/32
+        trusted_proxies_strict
+        client_ip_headers CF-Connecting-IP
+    }
+}
+
 {{ api_domain }} {
+    bind 127.0.0.1
     # ── Path-based routing via `route` ────────────────────────────────
     # `route` preserves the order of inner directives; without it,
     # Caddy reorders by global default (file_server runs LAST,
@@ -144,8 +154,8 @@
                 write_timeout 900s
                 dial_timeout 30s
             }
-            header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
+            header_up X-Real-IP {client_ip}
+            header_up X-Forwarded-For {client_ip}
             header_up X-Forwarded-Proto {scheme}
         }
 

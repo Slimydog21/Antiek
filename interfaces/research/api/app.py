@@ -34,6 +34,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import threading
 from collections.abc import Awaitable, Callable
@@ -1823,6 +1824,14 @@ def create_app(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        from substrate.auth.accounts import (
+            AccountStoreError,
+            account_for_session,
+            account_registry_active,
+            legacy_account_for_session,
+        )
+
+        account_mode = account_registry_active()
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
         operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
         expected_st_client_id = os.environ.get(
@@ -1844,7 +1853,7 @@ def create_app(
                     status_code=413,
                     content={"detail": "TTS gateway request body is invalid"},
                 )
-        if not expected_token and not operator_emails and not expected_st_client_id:
+        if not account_mode and not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1866,7 +1875,10 @@ def create_app(
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
+        if request.url.path in _OPERATOR_AUTH_OPEN_PATHS and not (
+            account_mode and request.url.path == "/auth/passkey/status"
+            and request.cookies.get(_SESSION_COOKIE_NAME)
+        ):
             return await call_next(request)
         # The outbound Herdr bridge has a narrower credential namespace and
         # scope model than operator auth. Let only its explicit scheme reach
@@ -1937,9 +1949,69 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
+                    if account_mode:
+                        try:
+                            if cookie_claims.user_id == "__operator__" and cookie_email in operator_emails:
+                                account = await asyncio.to_thread(legacy_account_for_session, cookie_email)
+                            else:
+                                account = await asyncio.to_thread(
+                                    account_for_session, cookie_claims.user_id, cookie_email,
+                                )
+                        except AccountStoreError:
+                            account = None
+                        if account is not None:
+                            is_operator = account.email in operator_emails
+                            request.state.user_id = account.user_id
+                            request.state.user_email = account.email
+                            request.state.auth_method = "antiek_session_cookie"
+                            request.state.account_subject = account.user_id
+                            # The alias is persisted only after explicit legacy email proof.
+                            # Keep it separate from the subject used by credentials/billing.
+                            request.state.legacy_owner_user_id = account.legacy_owner if is_operator else None
+                            request.state.private_owner_user_id = (
+                                account.legacy_owner if is_operator and account.legacy_owner
+                                else account.user_id
+                            )
+                            if is_operator:
+                                from substrate.multi_user.auth import operator_claims as _oc
+                                request.state.scopes = frozenset(_oc().scopes)
+                            else:
+                                request.state.scopes = frozenset({"account", "private_research"})
+                                # Every older route assumed operator authority. Only audited
+                                # owner-bound routes are admitted for an ordinary account.
+                                # New routes default to refusal, including tools and paid AI.
+                                path, method = request.url.path, request.method
+                                admitted = (
+                                    path in {"/auth/me", "/auth/whoami", "/auth/logout", "/auth/approve", "/auth/passkeys", "/auth/passkey/status"}
+                                    or path in {"/auth/passkey/register/options", "/auth/passkey/register/verify"}
+                                    or re.fullmatch(r"/auth/passkeys/[^/]+", path) is not None
+                                    or (path == "/notebooks" and method in {"GET", "POST"})
+                                    or (re.fullmatch(r"/notebooks/[^/]+", path) is not None and method == "GET")
+                                    or (re.fullmatch(r"/notebooks/[^/]+/content", path) is not None and method in {"GET", "PUT"})
+                                    or (re.fullmatch(r"/notebooks/[^/]+/blocks(?:/[^/]+)?", path) is not None and method in {"POST", "PATCH", "DELETE"})
+                                    or (path == "/projects" and method in {"GET", "POST"})
+                                    or (re.fullmatch(r"/projects/[^/]+", path) is not None and method in {"GET", "PATCH"})
+                                    or (re.fullmatch(r"/projects/[^/]+/members(?:/[^/]+)?", path) is not None and method in {"POST", "DELETE"})
+                                    or (re.fullmatch(r"/projects/[^/]+/tabs/[^/]+(?:/(?:retired|allocate))?", path) is not None and method in {"GET", "PUT", "POST"})
+                                    or (path == "/documents" and method == "GET")
+                                    or (path == "/books" and method == "GET")
+                                    or (path != "/books/curate" and re.fullmatch(r"/books/[^/]+(?:/(?:full-text|owner-full-text))?", path) is not None and method == "GET")
+                                    or (re.fullmatch(r"/books/[^/]+/ask", path) is not None and method == "POST")
+                                    or (re.fullmatch(r"/books/[^/]+/reading-state", path) is not None and method in {"GET", "PUT"})
+                                    or (path == "/corpus/search" and method == "GET")
+                                    or (re.fullmatch(r"/research/[^/]+/artifact/export", path) is not None and method == "POST")
+                                    or (re.fullmatch(r"/research/[^/]+/artifact", path) is not None and method == "GET")
+                                    or (path == "/settings/models/catalog" and method == "GET")
+                                    or path == "/settings/models/user"
+                                    or re.fullmatch(r"/settings/models/user/[^/]+(?:/resolve)?", path) is not None
+                                )
+                                if not admitted:
+                                    from fastapi.responses import JSONResponse
+                                    return JSONResponse(status_code=403, content={"detail": "operator_access_required"})
+                            return await call_next(request)
                     # Allowlist, never "no list = anyone": with no
                     # operator email configured a cookie proves nobody.
-                    if cookie_email in operator_emails:
+                    if not account_mode and cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -5252,7 +5324,7 @@ def create_app(
 
     # ── WebSocket live tail ─────────────────────────────────────
 
-    def _ws_client_is_authorised(ws: WebSocket) -> bool:
+    async def _ws_client_is_authorised(ws: WebSocket) -> bool:
         """Apply the operator gate to a WebSocket handshake.
 
         ``_operator_auth_middleware`` is installed with
@@ -5279,11 +5351,17 @@ def create_app(
         which is precisely the boundary we want.
         """
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        from substrate.auth.accounts import (
+            AccountStoreError,
+            account_for_session,
+            account_registry_active,
+            legacy_account_for_session,
+        )
         operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not operator_emails and not expected_st_client_id:
+        if not account_registry_active() and not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled — local dev and the existing tests, which
             # connect to this socket with no credentials, work unchanged.
             return True
@@ -5300,6 +5378,17 @@ def create_app(
         if claims is None:
             return False
         cookie_email = claims.email.strip().lower()
+        if account_registry_active():
+            if cookie_email not in operator_emails:
+                return False  # This bus is not account-scoped.
+            try:
+                if claims.user_id == "__operator__":
+                    account = await asyncio.to_thread(legacy_account_for_session, cookie_email)
+                else:
+                    account = await asyncio.to_thread(account_for_session, claims.user_id, cookie_email)
+            except AccountStoreError:
+                return False
+            return account is not None
         return cookie_email in operator_emails
 
     @app.websocket("/ws/events")
@@ -5307,7 +5396,7 @@ def create_app(
         ws: WebSocket,
         investigation_id: str | None = Query(default=None),
     ) -> None:
-        if not _ws_client_is_authorised(ws):
+        if not await _ws_client_is_authorised(ws):
             # Close BEFORE accept: an unauthenticated peer must never reach
             # the event bus, and never sees 101.
             await ws.close(code=1008)
@@ -6156,6 +6245,7 @@ def create_app(
     )
     async def get_notebook_content(
         notebook_id: str,
+        request: Request,
     ) -> NotebookContentResponse:
         """SPR-01 hydration GET — return the composed TipTap document for a
         notebook so the editor seeds from the substrate, not localStorage.
@@ -6168,14 +6258,13 @@ def create_app(
         missing notebook, no widened exposure."""
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import get_notebook
         from substrate.notebooks.tiptap_codec import compose
 
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(db_path, purpose="api:get_notebook_content") as con:
-                return get_notebook(con, notebook_id)
+                return _notebook_for_owner(con, notebook_id, request)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
         nb = await asyncio.to_thread(_sync)
@@ -7797,6 +7886,7 @@ def create_app(
         response_model=DocumentListResponse,
     )
     async def list_documents(
+        request: Request,
         source_tier: int | None = Query(default=None, ge=1, le=5),
         investigation_id: str | None = Query(default=None),
         limit: int = Query(default=200, ge=1, le=2000),
@@ -7809,6 +7899,16 @@ def create_app(
 
         clauses: list[str] = []
         params: list[Any] = []
+        if getattr(request.state, "account_subject", None):
+            from .books import _account_owner_ids
+
+            owners = _account_owner_ids(request)
+            clauses.append(
+                "(content_class IN ('public_domain', 'opt_in_licensed', "
+                "'source_declared_open', 'user_public_contribution') "
+                "OR owner_user_id IN (" + ",".join("?" for _ in owners) + "))"
+            )
+            params.extend(owners)
         if source_tier is not None:
             clauses.append("source_tier = ?")
             params.append(source_tier)

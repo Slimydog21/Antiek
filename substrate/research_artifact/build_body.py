@@ -34,7 +34,7 @@ def build_body_for_reader(
 
     Graph products use the node/source read gate. Opaque event/file fields
     need both a caller-owned artifact record and matching start-event owners.
-    A stored artifact alone is not authority: the export endpoint can mint
+    A stored artifact alone is not authority: older exports could mint
     one for a foreign investigation. Missing, legacy or conflicting start
     ownership withholds context. An incomplete product withholds it too.
     """
@@ -42,18 +42,44 @@ def build_body_for_reader(
     view = readable_distillation_for(
         investigation_id, owner_user_id=owner_user_id, db_path=db, events_dir=events_dir,
     )
-    starts = [
-        row.get("payload") or {} for row in trajectory(investigation_id, events_dir=events_dir)
-        if row.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value
-    ]
     context_owned = (
-        bool(starts)
-        and all(start.get("owner_user_id") == owner_user_id for start in starts)
+        _started_by(investigation_id, owner_user_id=owner_user_id, events_dir=events_dir)
         and view.unavailable_count == 0
         and ResearchArtifactStore(db).get_for_investigation(investigation_id, owner_user_id) is not None
     )
     return _assemble_body(
         investigation_id, view, events_dir=events_dir, include_context=context_owned,
+    )
+
+
+def build_body_for_export(
+    investigation_id: str,
+    *,
+    owner_user_id: str,
+    db_path: str,
+    events_dir: str | None = None,
+) -> ResearchArtifactBody:
+    """Authorize a first export without trusting the receipt it will create."""
+    if not _started_by(investigation_id, owner_user_id=owner_user_id, events_dir=events_dir):
+        raise PermissionError("investigation export access withheld")
+    view = readable_distillation_for(
+        investigation_id, owner_user_id=owner_user_id, db_path=db_path, events_dir=events_dir,
+    )
+    if view.unavailable_count:
+        raise PermissionError("investigation export access withheld")
+    return _assemble_body(investigation_id, view, events_dir=events_dir, include_context=True)
+
+
+def _started_by(
+    investigation_id: str, *, owner_user_id: str, events_dir: str | None,
+) -> bool:
+    starts = [
+        row.get("payload") for row in trajectory(investigation_id, events_dir=events_dir)
+        if row.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    return bool(owner_user_id.strip() and starts) and all(
+        isinstance(start, dict) and start.get("owner_user_id") == owner_user_id
+        for start in starts
     )
 
 

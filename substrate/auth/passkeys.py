@@ -1,12 +1,7 @@
-"""Passkey ceremonies and the single-operator credential store.
+"""Account-bound passkeys with short-lived, one-shot ceremonies.
 
-Antiek is deliberately single-operator until G7.  This module keeps the
-WebAuthn boundary equally small: discoverable credentials for one operator,
-short-lived one-shot challenges in process memory, and an atomic JSON store
-outside the repository.  The FastAPI service is already constrained to one
-worker by the DuckDB single-writer invariant, so a process-local challenge
-registry is the honest deployment model (a restart merely asks the operator
-to touch Face ID / Touch ID again).
+The service uses one worker. A restart discards pending challenges but leaves
+stored public credentials and their authenticated account bindings intact.
 
 Credential private keys never reach Antiek.  The store contains only public
 keys, counters, transports, and operator-chosen labels.  Registration is
@@ -61,6 +56,8 @@ class PasskeyCredential:
     label: str
     created_at: int
     last_used_at: int | None = None
+    user_id: str = "__operator__"
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +65,8 @@ class _Ceremony:
     kind: Literal["registration", "authentication"]
     challenge: bytes
     expires_at: float
+    user_id: str | None = None
+    email: str | None = None
 
 
 _ceremonies: dict[str, _Ceremony] = {}
@@ -109,6 +108,8 @@ def _read_credentials_unlocked() -> list[PasskeyCredential]:
                 label=item.get("label", "Passkey"),
                 created_at=int(item["created_at"]),
                 last_used_at=item.get("last_used_at"),
+                user_id=item.get("user_id", "__operator__"),
+                email=item.get("email"),
             )
             for item in payload.get("credentials", [])
         ]
@@ -121,11 +122,15 @@ def list_credentials() -> list[PasskeyCredential]:
         return _read_credentials_unlocked()
 
 
-def delete_credential(credential_id: str) -> bool:
+def delete_credential(credential_id: str, *, owner_ids: frozenset[str] | None = None) -> bool:
     """Remove one public credential, returning whether it existed."""
     with _store_lock:
         credentials = _read_credentials_unlocked()
-        remaining = [item for item in credentials if item.credential_id != credential_id]
+        remaining = [
+            item for item in credentials
+            if item.credential_id != credential_id
+            or (owner_ids is not None and item.user_id not in owner_ids)
+        ]
         if len(remaining) == len(credentials):
             return False
         _write_credentials_unlocked(remaining)
@@ -159,7 +164,10 @@ def _write_credentials_unlocked(credentials: list[PasskeyCredential]) -> None:
         temp.unlink(missing_ok=True)
 
 
-def _put_ceremony(kind: Literal["registration", "authentication"], challenge: bytes) -> str:
+def _put_ceremony(
+    kind: Literal["registration", "authentication"], challenge: bytes,
+    *, user_id: str | None = None, email: str | None = None,
+) -> str:
     ceremony_id = secrets.token_urlsafe(24)
     now = time.monotonic()
     with _ceremony_lock:
@@ -173,16 +181,23 @@ def _put_ceremony(kind: Literal["registration", "authentication"], challenge: by
             kind=kind,
             challenge=challenge,
             expires_at=now + PASSKEY_CHALLENGE_TTL_SECONDS,
+            user_id=user_id,
+            email=email,
         )
     return ceremony_id
 
 
-def _consume_ceremony(ceremony_id: str, kind: Literal["registration", "authentication"]) -> bytes:
+def _consume_ceremony(
+    ceremony_id: str, kind: Literal["registration", "authentication"],
+    *, user_id: str | None = None,
+) -> _Ceremony:
     with _ceremony_lock:
         ceremony = _ceremonies.pop(ceremony_id, None)
     if ceremony is None or ceremony.kind != kind or ceremony.expires_at <= time.monotonic():
         raise PasskeyError("This unlock request expired. Try again.")
-    return ceremony.challenge
+    if ceremony.user_id != user_id:
+        raise PasskeyError("This unlock request does not belong to this account.")
+    return ceremony
 
 
 def _rp_id() -> str:
@@ -219,14 +234,14 @@ def _descriptors(credentials: list[PasskeyCredential]) -> list[PublicKeyCredenti
     return descriptors
 
 
-def registration_options(*, email: str) -> dict[str, Any]:
-    credentials = list_credentials()
+def registration_options(*, email: str, user_id: str = "__operator__") -> dict[str, Any]:
+    credentials = [item for item in list_credentials() if item.user_id == user_id]
     options = generate_registration_options(
         rp_id=_rp_id(),
         rp_name="Antiek",
-        user_id=_OPERATOR_USER_ID,
+        user_id=_OPERATOR_USER_ID if user_id == "__operator__" else user_id.encode("utf-8"),
         user_name=email,
-        user_display_name="Antiek operator",
+        user_display_name=email,
         timeout=PASSKEY_CHALLENGE_TTL_SECONDS * 1000,
         exclude_credentials=_descriptors(credentials),
         authenticator_selection=AuthenticatorSelectionCriteria(
@@ -236,16 +251,21 @@ def registration_options(*, email: str) -> dict[str, Any]:
         ),
     )
     body = cast(dict[str, Any], json.loads(options_to_json(options)))
-    body["ceremony_id"] = _put_ceremony("registration", options.challenge)
+    body["ceremony_id"] = _put_ceremony(
+        "registration", options.challenge, user_id=user_id, email=email,
+    )
     return body
 
 
-def complete_registration(*, ceremony_id: str, credential: dict[str, Any], label: str) -> PasskeyCredential:
-    challenge = _consume_ceremony(ceremony_id, "registration")
+def complete_registration(
+    *, ceremony_id: str, credential: dict[str, Any], label: str,
+    user_id: str = "__operator__",
+) -> PasskeyCredential:
+    ceremony = _consume_ceremony(ceremony_id, "registration", user_id=user_id)
     try:
         verified = verify_registration_response(
             credential=credential,
-            expected_challenge=challenge,
+            expected_challenge=ceremony.challenge,
             expected_rp_id=_rp_id(),
             expected_origin=_origins(),
             require_user_verification=True,
@@ -265,9 +285,16 @@ def complete_registration(*, ceremony_id: str, credential: dict[str, Any], label
         backed_up=verified.credential_backed_up,
         label=label.strip()[:80] or "Passkey",
         created_at=now,
+        user_id=user_id,
+        email=ceremony.email,
     )
     with _store_lock:
         existing = _read_credentials_unlocked()
+        if any(
+            item.credential_id == record.credential_id and item.user_id != user_id
+            for item in existing
+        ):
+            raise PasskeyError("That passkey belongs to a different account.")
         existing = [item for item in existing if item.credential_id != record.credential_id]
         existing.append(record)
         _write_credentials_unlocked(existing)
@@ -290,7 +317,7 @@ def authentication_options() -> dict[str, Any]:
 
 
 def complete_authentication(*, ceremony_id: str, credential: dict[str, Any]) -> PasskeyCredential:
-    challenge = _consume_ceremony(ceremony_id, "authentication")
+    ceremony = _consume_ceremony(ceremony_id, "authentication")
     credential_id = credential.get("id")
     if not isinstance(credential_id, str) or not credential_id:
         raise PasskeyError("That passkey response was incomplete.")
@@ -302,7 +329,7 @@ def complete_authentication(*, ceremony_id: str, credential: dict[str, Any]) -> 
         try:
             verified = verify_authentication_response(
                 credential=credential,
-                expected_challenge=challenge,
+                expected_challenge=ceremony.challenge,
                 expected_rp_id=_rp_id(),
                 expected_origin=_origins(),
                 credential_public_key=_unb64(match.public_key),

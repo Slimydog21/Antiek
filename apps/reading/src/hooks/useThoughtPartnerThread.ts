@@ -1,3 +1,4 @@
+import { accountStorageKey, isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 /**
  * Multi-turn Thought Partner thread (Surface E / AISidecar).
  *
@@ -24,16 +25,17 @@ export interface ThoughtPartnerMessage {
 const MAX_HISTORY_TURNS = 8;
 const KEY_PREFIX = "antiek.tp.thread.v1.";
 
-function scopeKey(): string {
+function scopeKey(owner: WorkspaceOwnerSession): string | null {
   const doc = getReadingFocus()?.documentId?.trim();
-  return KEY_PREFIX + (doc || "__workspace__");
+  return accountStorageKey(KEY_PREFIX + (doc || "__workspace__"), owner);
 }
 
 function empty(): ThoughtPartnerMessage[] {
   return [];
 }
 
-function readStored(key: string): ThoughtPartnerMessage[] {
+function readStored(key: string | null): ThoughtPartnerMessage[] {
+  if (key === null) return empty();
   try {
     const raw = window.sessionStorage.getItem(key);
     if (!raw) return empty();
@@ -44,7 +46,8 @@ function readStored(key: string): ThoughtPartnerMessage[] {
   }
 }
 
-function writeStored(key: string, messages: ThoughtPartnerMessage[]): void {
+function writeStored(key: string | null, messages: ThoughtPartnerMessage[], owner: WorkspaceOwnerSession): void {
+  if (key === null || !isWorkspaceOwnerSession(owner)) return;
   try {
     window.sessionStorage.setItem(key, JSON.stringify(messages));
   } catch {
@@ -93,14 +96,15 @@ export interface UseThoughtPartnerThread {
 }
 
 export function useThoughtPartnerThread(): UseThoughtPartnerThread {
-  const [scope, setScope] = useState(() => scopeKey());
+  const [owner] = useState(workspaceOwnerSession);
+  const [scope, setScope] = useState(() => scopeKey(owner));
   const [messages, setMessages] = useState<ThoughtPartnerMessage[]>(() =>
-    readStored(scopeKey()),
+    readStored(scopeKey(owner)),
   );
 
   useEffect(() => {
     const sync = () => {
-      const next = scopeKey();
+      const next = scopeKey(owner);
       setScope((prev) => {
         if (prev === next) return prev;
         setMessages(readStored(next));
@@ -120,7 +124,7 @@ export function useThoughtPartnerThread(): UseThoughtPartnerThread {
           ...prev,
           { id, question, answer: null, shape: null },
         ];
-        writeStored(scope, next);
+        writeStored(scope, next, owner);
         return next;
       });
       return id;
@@ -144,7 +148,7 @@ export function useThoughtPartnerThread(): UseThoughtPartnerThread {
               }
             : m,
         );
-        writeStored(scope, next);
+        writeStored(scope, next, owner);
         return next;
       });
     },
@@ -163,7 +167,7 @@ export function useThoughtPartnerThread(): UseThoughtPartnerThread {
               }
             : m,
         );
-        writeStored(scope, next);
+        writeStored(scope, next, owner);
         return next;
       });
     },
@@ -172,10 +176,10 @@ export function useThoughtPartnerThread(): UseThoughtPartnerThread {
 
   const clear = useCallback(() => {
     setMessages(() => {
-      writeStored(scope, []);
+      writeStored(scope, [], owner);
       return [];
     });
   }, [scope]);
 
-  return { messages, scope, startTurn, completeTurn, failTurn, clear };
+  return { messages, scope: scope ?? "", startTurn, completeTurn, failTurn, clear };
 }

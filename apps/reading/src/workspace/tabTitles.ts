@@ -17,6 +17,7 @@
  * into honest copy: a raw id is never a label.
  */
 import { create } from "zustand";
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 import { getBook } from "../api/books";
 import { getDeliverable, listInvestigations, type DeliverableDetailResponse } from "../lib/api";
@@ -91,6 +92,7 @@ async function questionOf(ref: string): Promise<string | null> {
 }
 
 async function draftTitle(ref: string): Promise<string | null> {
+  const owner = workspaceOwnerSession();
   if (sectionIdFromRef(ref) !== null) {
     // A section's heading arrives with its piece (registered by the tree
     // sync or by the piece tab's own resolution), never by itself.
@@ -98,7 +100,7 @@ async function draftTitle(ref: string): Promise<string | null> {
   }
   if (!ref.startsWith("/write/")) throw new Error("not a draft ref");
   const detail = await getDeliverable(ref.slice("/write/".length));
-  registerDeliverableTitles(detail);
+  if (isWorkspaceOwnerSession(owner)) registerDeliverableTitles(detail);
   return detail.title;
 }
 
@@ -119,6 +121,8 @@ export function setTitleResolvers(next: Partial<Record<TabKind, TitleResolver>> 
 /** Ask for a tab's title once; later calls for the same ref are no-ops,
  *  except that a failed lookup is retried once TITLE_RETRY_MS has passed. */
 export function requestTabTitle(tab: Pick<TabNode, "kind" | "ref">): void {
+  const owner = workspaceOwnerSession();
+  const generation = titleGeneration;
   const key = titleKey(tab.kind, tab.ref);
   const entry = useTabTitles.getState().entries[key];
   if (entry && !(entry.state === "failed" && Date.now() - (entry.at ?? 0) >= TITLE_RETRY_MS)) return;
@@ -127,19 +131,23 @@ export function requestTabTitle(tab: Pick<TabNode, "kind" | "ref">): void {
   put(key, { state: "loading" });
   resolve(tab.ref).then(
     (title) => {
+      if (!isWorkspaceOwnerSession(owner) || generation !== titleGeneration) return;
       // A registration that landed meanwhile is at least as fresh.
       if (useTabTitles.getState().entries[key]?.state === "loading") {
         put(key, { state: "known", title: title?.trim() || null });
       }
     },
     () => {
+      if (!isWorkspaceOwnerSession(owner) || generation !== titleGeneration) return;
       if (useTabTitles.getState().entries[key]?.state === "loading") put(key, { state: "failed", at: Date.now() });
     },
   );
 }
 
 /** Test seam. */
+let titleGeneration = 0;
 export function resetTabTitles(): void {
+  titleGeneration += 1;
   investigationList = null;
   resolvers = DEFAULT_RESOLVERS;
   useTabTitles.setState({ entries: {} });

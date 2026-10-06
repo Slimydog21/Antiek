@@ -25,6 +25,7 @@ import type { BookDetail, FullTextResponse } from "../../api/books";
 import type { BookAnchor } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { resetReadingStateBus } from "../../hooks/useReadingState";
+import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { LemonToastViewport } from "../../components/lemon/LemonToast";
 
 const {
@@ -324,6 +325,84 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => { throw new Error("deferred not initialized"); };
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe("reading actions cannot continue under a replacement account", () => {
+  it.each(["highlight", "free-inquiry"])("a deferred %s pin cannot send A's passage to B's research", async (flow) => {
+    setWorkspaceOwner("account-a");
+    const server = seedServer([]);
+    const transport = apiFetchMock.getMockImplementation();
+    if (!transport) throw new Error("anchor transport missing");
+    const pin = deferred<Response>();
+    apiFetchMock.mockImplementation(async (input, init) => {
+      const result = await transport(input, init);
+      return String(input).endsWith("/anchors") && init?.method === "POST" ? pin.promise : result;
+    });
+    await renderReader();
+    await screen.findByText("The opening of the book.");
+    await waitFor(() => expect(server.calls.some((call) => call.url.endsWith("/anchor-map"))).toBe(true));
+    if (flow === "highlight") {
+      const article = document.querySelector("article");
+      if (!article) throw new Error("reader article missing");
+      selectTextIn(article, "The open");
+      fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+    } else fireEvent.click(screen.getByRole("button", { name: "Research from here" }));
+    await waitFor(() => expect(server.calls.filter((call) => call.method === "POST")).toHaveLength(1));
+    act(() => { setWorkspaceOwner("account-b"); });
+    await act(async () => { pin.resolve(jsonResponse(anchorRow())); });
+    expect(spinResearchMock).not.toHaveBeenCalled();
+    expect(server.calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    expect(screen.queryByText(/Research started/)).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["replacement", "unmount"])("a deferred research result refuses anchor linking after %s", async (retirement) => {
+    setWorkspaceOwner("account-a");
+    const server = seedServer([]);
+    const spin = deferred<{ investigation_id: string }>();
+    spinResearchMock.mockReturnValue(spin.promise);
+    const reader = await renderReader();
+    await screen.findByText("The opening of the book.");
+    await waitFor(() => expect(server.calls.some((call) => call.url.endsWith("/anchor-map"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "Research from here" }));
+    await waitFor(() => expect(spinResearchMock).toHaveBeenCalledOnce());
+    if (retirement === "replacement") act(() => { setWorkspaceOwner("account-b"); });
+    else reader.unmount();
+    await act(async () => { spin.resolve({ investigation_id: "a-private-research" }); });
+    expect(server.calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    expect(screen.queryByText(/Research started/)).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("a deferred link result cannot notify or refetch private A anchors under B", async () => {
+    setWorkspaceOwner("account-a");
+    const server = seedServer([]);
+    const transport = apiFetchMock.getMockImplementation();
+    if (!transport) throw new Error("anchor transport missing");
+    const link = deferred<Response>();
+    apiFetchMock.mockImplementation(async (input, init) => {
+      const result = await transport(input, init);
+      return init?.method === "PATCH" ? link.promise : result;
+    });
+    await renderReader();
+    await screen.findByText("The opening of the book.");
+    await waitFor(() => expect(server.calls.some((call) => call.url.endsWith("/anchor-map"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "Research from here" }));
+    await waitFor(() => expect(server.calls.filter((call) => call.method === "PATCH")).toHaveLength(1));
+    act(() => { setWorkspaceOwner("account-b"); });
+    await act(async () => { await Promise.resolve(); });
+    const anchorReads = server.calls.filter((call) => call.method === "GET" && call.url.endsWith("/anchors")).length;
+    await act(async () => { link.resolve(jsonResponse(anchorRow({ investigation_id: "a-private-research" }))); });
+    expect(server.calls.filter((call) => call.method === "GET" && call.url.endsWith("/anchors"))).toHaveLength(anchorReads);
+    expect(screen.queryByText(/Research started/)).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
 });
 
 /** The island's thread projection, live (SPR-01's path, end-to-end). */

@@ -13,6 +13,7 @@
  * never changes.
  */
 import { toast } from "../components/lemon/LemonToast";
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { adoptTabForRoute, branchOriginOf, childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
 import { adoptRoute } from "./routeSync";
 import { setTabTitle } from "./tabTitles";
@@ -49,6 +50,7 @@ export interface OpenDocumentRequest {
  *  same parent ACTIVATES the open tab (never a duplicate); reopening one
  *  that was closed takes a fresh id, since the closed id stays in history. */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
+  const owner = workspaceOwnerSession();
   const pathname = window.location.pathname;
   const mothership = mothershipForPath(pathname, window.location.search);
   const requestedAt = locationStamp();
@@ -60,9 +62,12 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
   const requestTree = useTabTrees.getState().trees[mothership];
   const requestParent = requestTree?.active_tab_id ?? null;
   const offerOpen = () => toast.info("A document is ready to open.", {
-    action: { label: "Open document", run: () => spawnDocumentTab(req) },
+    action: { label: "Open document", run: () => {
+      if (isWorkspaceOwnerSession(owner)) spawnDocumentTab(req);
+    } },
   });
   void store.ensureMothership(mothership).then(() => {
+    if (!isWorkspaceOwnerSession(owner)) return;
     const s = useTabTrees.getState();
     if (s.contextEpoch !== contextEpoch) {
       offerOpen();

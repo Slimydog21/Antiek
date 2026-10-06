@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { emitMascotExperience } from "../../../mascot";
+import { emitMascotExperience } from "../../../mascot/reactionBus";
 
 /**
  * useFloatMenuSelection — the shared, host-agnostic selection listener that
