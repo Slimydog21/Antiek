@@ -22,12 +22,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from interfaces.research.api.auth import reset_auth_throttles
 
 _OPERATOR_TOKEN = "test-operator-token"
 
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    # The open-contribute mint is throttled per IP in-process, and TestClient
+    # pins one constant client host for the whole pytest process: any sibling
+    # file that exercised the route within the last 60s (the G7 rate-limit
+    # tests deliberately fill the bucket) would make these mints 429 here.
+    # Clear the shared windows so this file decides its own budget.
+    reset_auth_throttles()
     tmpdir = tempfile.mkdtemp(prefix="speak-takedown-revokes-")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmpdir, "t.duckdb"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))
