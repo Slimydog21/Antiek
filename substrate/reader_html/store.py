@@ -40,6 +40,16 @@ from substrate.books.html_sanitizer import SANITIZER_VERSION, sanitize_book_html
 MAX_READER_HTML_CHARS = 500_000
 
 
+def bounded_sanitized_reader_html(main_html: str) -> str:
+    """Return the exact body the sidecar writer stores for ``main_html``.
+
+    The storage bound is applied before sanitization. This pure projection is
+    useful for read-only preflight; only :func:`store_reader_html` may persist
+    the result or stamp trusted sanitizer provenance.
+    """
+    return sanitize_book_html(main_html[:MAX_READER_HTML_CHARS])
+
+
 def _require_locked(con: Any) -> None:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -55,6 +65,7 @@ def store_reader_html(
     main_html: str,
     source_kind: str,
     source_url: str | None = None,
+    edited_at: datetime | None = None,
 ) -> int:
     """The ONLY write path for the reader-HTML sidecar.
 
@@ -66,28 +77,39 @@ def store_reader_html(
 
     Idempotent: re-storing for the same ``document_id`` upserts the row
     (``revision`` increments, ``captured_at`` refreshes) — the safe behaviour
-    for the URL re-ingest / replace paths. Returns the stored byte length of
-    the sanitized body.
+    for the URL re-ingest / replace paths. By default, re-storing clears
+    ``edited_at`` as before. Internal repair callers may pass an existing
+    database editor timestamp to preserve it while the body is re-sanitized.
+    This argument is stored metadata, not client input. Returns the stored
+    byte length of the sanitized body.
     """
     _require_locked(con)
-    sanitized = sanitize_book_html(main_html[:MAX_READER_HTML_CHARS])
+    sanitized = bounded_sanitized_reader_html(main_html)
     captured_at = datetime.now(UTC).replace(tzinfo=None)
     con.execute(
         """
         INSERT INTO document_reader_html (
             document_id, html_body, sanitizer_version, source_kind,
             source_url, captured_at, edited_at, revision
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT (document_id) DO UPDATE SET
             html_body = EXCLUDED.html_body,
             sanitizer_version = EXCLUDED.sanitizer_version,
             source_kind = EXCLUDED.source_kind,
             source_url = EXCLUDED.source_url,
             captured_at = EXCLUDED.captured_at,
-            edited_at = NULL,
+            edited_at = EXCLUDED.edited_at,
             revision = document_reader_html.revision + 1
         """,
-        [document_id, sanitized, SANITIZER_VERSION, source_kind, source_url, captured_at],
+        [
+            document_id,
+            sanitized,
+            SANITIZER_VERSION,
+            source_kind,
+            source_url,
+            captured_at,
+            edited_at,
+        ],
     )
     return len(sanitized.encode("utf-8"))
 
@@ -257,6 +279,7 @@ def serve_reader_html(
 
 __all__ = [
     "MAX_READER_HTML_CHARS",
+    "bounded_sanitized_reader_html",
     "ReaderHtmlResult",
     "serve_reader_html",
     "store_reader_html",
