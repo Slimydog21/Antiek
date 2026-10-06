@@ -236,7 +236,7 @@ async function renderBothMounts() {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  window.localStorage.removeItem("antiek.island.hidden");
+  window.localStorage.clear();
   vi.stubGlobal("fetch", apiFetchMock);
   apiFetchMock.mockReset();
   getBookMock.mockReset().mockResolvedValue(makeDetail());
@@ -633,6 +633,7 @@ function AuthReader() {
   const { state, refresh, signOut } = useAuth();
   return <>
     <button onClick={() => void refresh()}>refresh auth</button>
+    <button onClick={() => void refresh({ afterSignIn: true })}>finish sign in</button>
     <button onClick={() => void signOut()}>sign out</button>
     {state.status === "authenticated" && <PositionReader />}
   </>;
@@ -678,7 +679,7 @@ describe("auth owner transitions", () => {
     fireEvent.click(screen.getByText("sign out"));
     await waitFor(() => expect(screen.queryByTestId("owner-page")).toBeNull());
     signedIn = "reader-b";
-    fireEvent.click(screen.getByText("refresh auth"));
+    fireEvent.click(screen.getByText("finish sign in"));
     await waitFor(() => expect(screen.getByTestId("owner-page").textContent).toBe("0"));
     heldPut.release();
     await act(async () => { await Promise.resolve(); });
@@ -806,7 +807,7 @@ describe("auth owner transitions", () => {
     await waitFor(() => expect(signedIn).toBeNull());
 
     signedIn = "reader-b";
-    fireEvent.click(screen.getByText("refresh auth"));
+    fireEvent.click(screen.getByText("finish sign in"));
     await waitFor(() => expect(screen.getByTestId("owner-page").textContent).toBe("0"));
     const bKey = positionStorageKey("doc-1");
     fireEvent.click(screen.getByText("turn page"));
@@ -863,7 +864,7 @@ describe("auth owner transitions", () => {
     fireEvent.click(screen.getByText("sign out"));
     await waitFor(() => expect(screen.queryByTestId("owner-page")).toBeNull());
     signedIn = "reader-b";
-    fireEvent.click(screen.getByText("refresh auth"));
+    fireEvent.click(screen.getByText("finish sign in"));
     await waitFor(() => expect(screen.getByTestId("owner-page").textContent).toBe("0"));
     heldAGet.release();
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 500)); });
@@ -897,7 +898,7 @@ describe("auth owner transitions", () => {
     fireEvent.click(screen.getByText("sign out"));
     await waitFor(() => expect(screen.queryByTestId("owner-page")).toBeNull());
     signedIn = "reader-b";
-    fireEvent.click(screen.getByText("refresh auth"));
+    fireEvent.click(screen.getByText("finish sign in"));
     await waitFor(() => expect(screen.getByTestId("owner-page").textContent).toBe("7"));
     expect(useReadingStateBus.getState().byDocument["doc-1"]?.revision).toBe(9);
   });

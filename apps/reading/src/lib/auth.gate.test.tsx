@@ -136,6 +136,7 @@ function renderApp(at: string) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   authReplies = [];
   authMeCalls = 0;
   healthReplies = [];

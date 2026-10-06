@@ -60,9 +60,9 @@ async function mount() {
   await screen.findByDisplayValue("owner-a saved");
   vi.useFakeTimers();
 }
-async function refresh(reply: Reply) {
+async function refresh(reply: Reply, options?: Parameters<AuthContextValue["refresh"]>[0]) {
   authReply = reply;
-  await act(async () => { await auth().refresh(); });
+  await act(async () => { await auth().refresh(options); });
 }
 async function tick(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
@@ -77,6 +77,7 @@ function outage(kind: "unavailable" | "inferred"): Reply {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   setSectionProseOwner(null);
   controller = null;
   sentProse = [];
@@ -169,7 +170,8 @@ describe("AuthProvider and the writing mutation lifetime", () => {
     edit("A queued");
     let signingOut = Promise.resolve();
     act(() => { signingOut = auth().signOut(); });
-    expect(screen.getByRole("textbox", { name: "Draft" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("textbox", { name: "Draft" })).toBeNull();
+    expect(screen.getByTestId("auth-state").textContent).toBe("unauthenticated");
     await act(async () => { first.resolve(response(200)); });
     await tick(1000);
     expect(sentProse).toEqual(["A sent"]);
@@ -202,7 +204,7 @@ describe("AuthProvider and the writing mutation lifetime", () => {
     let staleRefresh = Promise.resolve();
     act(() => { staleRefresh = auth().refresh(); });
     await act(async () => { await auth().signOut(); });
-    await refresh(async () => identity("owner-b"));
+    await refresh(async () => identity("owner-b"), { afterSignIn: true });
     await act(async () => { stale.resolve(identity("owner-a")); await staleRefresh; });
     expect(screen.getByDisplayValue("owner-b saved")).toBeTruthy();
     edit("B new draft");
