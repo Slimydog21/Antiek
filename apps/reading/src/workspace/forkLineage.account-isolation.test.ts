@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentFork } from "../api/forks";
-import { setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
+import { resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { fetchDocumentForks, forkLineageOf, recordFork, resetForkLineage, useForkLineage } from "./forkLineage";
 
 // The real listForks parser and apiFetch run against synthetic HTTP responses.
@@ -47,6 +47,39 @@ afterEach(() => {
 });
 
 describe("fork lineage belongs to the dispatched owner session", () => {
+  it("holds a completed list until same-owner confirmation and preserves the pending dedupe slot", async () => {
+    const a = deferred<Response>();
+    reply = () => a.promise;
+    const owner = workspaceOwnerSession();
+    const pending = fetchDocumentForks("shared-parent");
+    suspendWorkspaceOwner();
+    a.resolve(listed([aFork]));
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    expectNoARows();
+    resumeWorkspaceOwner();
+    expect(fetchDocumentForks("shared-parent")).toBe(pending);
+    await pending;
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(forkLineageOf("shared-parent").forks).toEqual([aFork]);
+    expect(fetches).toHaveBeenCalledOnce();
+  });
+
+  it("B confirmation retires a completed list held during A revalidation", async () => {
+    const a = deferred<Response>();
+    reply = () => a.promise;
+    const pending = fetchDocumentForks("shared-parent");
+    suspendWorkspaceOwner();
+    a.resolve(listed([aFork]));
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    setWorkspaceOwner("account-b");
+    await pending;
+    expectNoARows();
+    reply = async () => listed([]);
+    await fetchDocumentForks("shared-parent");
+    expect(fetches).toHaveBeenCalledTimes(2);
+    expectNoARows();
+  });
+
   it("a delayed A HTTP list cannot fill B's same-document lineage after B fails", async () => {
     const a = deferred<Response>();
     reply = () => a.promise;

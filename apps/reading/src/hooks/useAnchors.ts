@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createAnchor,
@@ -8,6 +8,7 @@ import {
   type BookAnchor,
 } from "../lib/api";
 import {
+  awaitWorkspaceOwnerSession,
   isWorkspaceOwnerSession,
   useWorkspaceOwner,
   type WorkspaceOwnerSession,
@@ -40,6 +41,12 @@ export interface UseAnchorsState {
  */
 export function useAnchors(documentId: string | null): UseAnchorsState {
   const owner = useWorkspaceOwner();
+  const lifetime = useRef<{ owner: WorkspaceOwnerSession; documentId: string | null; controller: AbortController } | null>(null);
+  useEffect(() => {
+    const captured = { owner, documentId, controller: new AbortController() };
+    lifetime.current = captured;
+    return () => { captured.controller.abort(); if (lifetime.current === captured) lifetime.current = null; };
+  }, [owner, documentId]);
   const [frame, setFrame] = useState<{
     owner: WorkspaceOwnerSession;
     documentId: string | null;
@@ -58,27 +65,34 @@ export function useAnchors(documentId: string | null): UseAnchorsState {
       setFrame({ owner, documentId, anchors: [], loading: false, error: null });
       return;
     }
-    let cancelled = false;
-    const current = () => !cancelled && isWorkspaceOwnerSession(owner);
+    const controller = new AbortController();
+    const current = () => !controller.signal.aborted && isWorkspaceOwnerSession(owner);
     setFrame((previous) => ({
       owner, documentId, loading: true, error: null,
       anchors: previous.owner === owner && previous.documentId === documentId ? previous.anchors : [],
     }));
     void (async () => {
       try {
-        const resp = await listAnchors(documentId);
-        if (current()) setFrame({ owner, documentId, anchors: resp.anchors, loading: false, error: null });
-      } catch (e) {
-        if (current()) {
-          setFrame({
-            owner, documentId, anchors: [], loading: false,
-            error: e instanceof Error ? e.message : String(e),
-          });
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
         }
+        const resp = await listAnchors(documentId);
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+        }
+        setFrame({ owner, documentId, anchors: resp.anchors, loading: false, error: null });
+      } catch (e) {
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+        }
+        setFrame({
+          owner, documentId, anchors: [], loading: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [documentId, tick, owner]);
 
@@ -91,12 +105,16 @@ export function useAnchors(documentId: string | null): UseAnchorsState {
       source?: string;
     }): Promise<BookAnchor> => {
       if (!documentId) throw new ApiError("useAnchors.pin without a document", 0, "");
-      if (owner.subject === null || !isWorkspaceOwnerSession(owner)) {
+      const captured = lifetime.current;
+      if (captured === null || captured.owner !== owner || captured.documentId !== documentId
+        || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
         throw new ApiError("Account changed before the passage could be saved.", 409, "");
       }
       const anchor = await createAnchor(documentId, body);
-      if (!isWorkspaceOwnerSession(owner)) {
-        throw new ApiError("Account changed before the passage could be saved.", 409, "");
+      while (!isWorkspaceOwnerSession(owner) || captured.controller.signal.aborted) {
+        if (!await awaitWorkspaceOwnerSession(owner, captured.controller.signal)) {
+          throw new ApiError("Account changed before the passage could be saved.", 409, "");
+        }
       }
       refetch();
       return anchor;
@@ -107,9 +125,13 @@ export function useAnchors(documentId: string | null): UseAnchorsState {
   const remove = useCallback(
     async (anchorId: string): Promise<void> => {
       if (!documentId) return;
-      if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
+      const captured = lifetime.current;
+      if (captured === null || captured.owner !== owner || captured.documentId !== documentId
+        || owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
       await deleteAnchor(documentId, anchorId);
-      if (!isWorkspaceOwnerSession(owner)) return;
+      while (!isWorkspaceOwnerSession(owner) || captured.controller.signal.aborted) {
+        if (!await awaitWorkspaceOwnerSession(owner, captured.controller.signal)) return;
+      }
       refetch();
     },
     [documentId, refetch, owner],

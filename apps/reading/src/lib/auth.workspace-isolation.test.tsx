@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_SESSION_CHANGE_KEY, AuthProvider, claimLogin, useAuth, type AuthContextValue } from "./auth";
-import { isWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { useWorkspaceHydration } from "../workspace/useWorkspaceHydration";
 import { readScope } from "../workspace/persistence";
@@ -90,6 +90,59 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("owner confirmation holds completions without replacing same-account state", () => {
+  it("does not release pending work until the captured owner is confirmed", async () => {
+    setWorkspaceOwner("account-a");
+    const owner = workspaceOwnerSession();
+    suspendWorkspaceOwner();
+    const completed = vi.fn();
+    const pending = awaitWorkspaceOwnerSession(owner).then((confirmed) => {
+      if (confirmed && isWorkspaceOwnerSession(owner)) completed();
+    });
+    await Promise.resolve();
+    expect(completed).not.toHaveBeenCalled();
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
+    resumeWorkspaceOwner();
+    await pending;
+    expect(completed).toHaveBeenCalledOnce();
+    expect(workspaceOwnerSession()).toBe(owner);
+  });
+
+  it("replacement refuses a held A completion, including a later A-B-A return", async () => {
+    setWorkspaceOwner("account-a");
+    const owner = workspaceOwnerSession();
+    suspendWorkspaceOwner();
+    const pending = awaitWorkspaceOwnerSession(owner);
+    setWorkspaceOwner("account-b");
+    expect(await pending).toBe(false);
+    setWorkspaceOwner("account-a");
+    expect(await awaitWorkspaceOwnerSession(owner)).toBe(false);
+  });
+
+  it("disposal retires a waiter while identity remains unconfirmed", async () => {
+    setWorkspaceOwner("account-a");
+    const owner = workspaceOwnerSession();
+    const controller = new AbortController();
+    suspendWorkspaceOwner();
+    const pending = awaitWorkspaceOwnerSession(owner, controller.signal);
+    controller.abort();
+    expect(await pending).toBe(false);
+    expect(isWorkspaceOwnerSession(owner)).toBe(false);
+    resumeWorkspaceOwner();
+    expect(await awaitWorkspaceOwnerSession(owner, controller.signal)).toBe(false);
+  });
+
+  it("the retirement flush's synchronous resume cannot release work into B", async () => {
+    setWorkspaceOwner("account-a");
+    const owner = workspaceOwnerSession();
+    suspendWorkspaceOwner();
+    const pending = awaitWorkspaceOwnerSession(owner).then((confirmed) => confirmed && isWorkspaceOwnerSession(owner));
+    resumeWorkspaceOwner();
+    setWorkspaceOwner("account-b");
+    expect(await pending).toBe(false);
+  });
 });
 
 describe("AuthProvider retires private workspace bodies", () => {

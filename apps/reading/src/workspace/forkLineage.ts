@@ -24,7 +24,7 @@
 import { create } from "zustand";
 
 import { listForks, type DocumentFork } from "../api/forks";
-import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../lib/accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 interface ForkLineageState {
   /** document id → the fork row where it is the CHILD. */
@@ -81,8 +81,10 @@ export function fetchDocumentForks(documentId: string): Promise<void> {
   const running = inflight.get(documentId);
   if (running) return running;
   const run = listForks(documentId)
-    .then((resp) => {
-      if (!isWorkspaceOwnerSession(owner)) return;
+    .then(async (resp) => {
+      while (!isWorkspaceOwnerSession(owner)) {
+        if (!await awaitWorkspaceOwnerSession(owner)) return;
+      }
       if (resp.forked_from) recordFork(resp.forked_from, owner);
       for (const row of resp.forks) recordFork(row, owner);
     })

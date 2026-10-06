@@ -9,6 +9,7 @@ let session: WorkspaceOwnerSession = { subject: null, epoch: 0 };
 let revalidating: WorkspaceOwnerSession | null = null;
 const listeners = new Set<() => void>();
 const retirementListeners = new Set<() => void>();
+const confirmationListeners = new Set<() => void>();
 
 export function workspaceOwnerSession(): WorkspaceOwnerSession {
   return session;
@@ -25,6 +26,29 @@ export function suspendWorkspaceOwner(): void {
 
 export function resumeWorkspaceOwner(): void {
   revalidating = null;
+  for (const listener of confirmationListeners) listener();
+}
+
+/** Hold a completion through a cookie recheck; replacement or disposal refuses it.
+ * Callers must still check their resource/lifetime after awaiting confirmation. */
+export function awaitWorkspaceOwnerSession(
+  captured: WorkspaceOwnerSession,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const retired = () => captured.subject === null || captured !== session || signal?.aborted === true;
+  if (retired()) return Promise.resolve(false);
+  if (isWorkspaceOwnerSession(captured)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!retired() && !isWorkspaceOwnerSession(captured)) return;
+      confirmationListeners.delete(check);
+      signal?.removeEventListener("abort", check);
+      resolve(!retired() && isWorkspaceOwnerSession(captured));
+    };
+    confirmationListeners.add(check);
+    signal?.addEventListener("abort", check, { once: true });
+    check();
+  });
 }
 
 export function subscribeWorkspaceOwner(listener: () => void): () => void {
@@ -44,6 +68,7 @@ export function setWorkspaceOwner(subject: string | null): void {
   for (const retire of retirementListeners) retire();
   session = { subject, epoch: session.epoch + 1 };
   revalidating = null;
+  for (const listener of confirmationListeners) listener();
   for (const listener of listeners) listener();
 }
 

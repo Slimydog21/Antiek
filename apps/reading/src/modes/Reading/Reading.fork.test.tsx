@@ -15,7 +15,7 @@
  *      plain document.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationState } from "../../hooks/useInvestigation";
@@ -56,6 +56,7 @@ import ReadingCompanion from "./ReadingCompanion";
 import ForkProvenance from "./ForkProvenance";
 import { ApiError } from "../../lib/api";
 import { forkLineageOf, recordFork, resetForkLineage } from "../../workspace/forkLineage";
+import { resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 const FORK_ROW: DocumentFork = {
   fork_id: "fork-1",
@@ -86,6 +87,7 @@ function state(over: Partial<InvestigationState>): InvestigationState {
 }
 
 beforeEach(() => {
+  setWorkspaceOwner("account-a");
   useInvestigationMock.mockReset();
   useInvestigationMock.mockReturnValue(state({}));
   listState.investigations = [];
@@ -95,6 +97,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setWorkspaceOwner(null);
   resetForkLineage();
 });
 
@@ -112,6 +115,72 @@ function renderCompanion() {
 }
 
 describe("the companion's fork action (SPR-01 verdict C)", () => {
+  it("holds a completed fork while revalidating and clears busy after same-A confirmation", async () => {
+    let finish: (row: DocumentFork) => void = () => { throw new Error("fork not dispatched"); };
+    createForkMock.mockImplementation(() => new Promise<DocumentFork>((resolve) => { finish = resolve; }));
+    renderCompanion();
+    const owner = workspaceOwnerSession();
+    fireEvent.click(screen.getByRole("button", { name: "Fork this book" }));
+    act(suspendWorkspaceOwner);
+    await act(async () => { finish(FORK_ROW); });
+    expect(screen.getByRole("button", { name: "forking…" }).hasAttribute("disabled")).toBe(true);
+    expect(branchToMock).not.toHaveBeenCalled();
+    expect(forkLineageOf("doc-1").forks).toEqual([]);
+    act(resumeWorkspaceOwner);
+    await waitFor(() => expect(branchToMock).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Fork this book" }).hasAttribute("disabled")).toBe(false));
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(forkLineageOf("doc-1").forks).toEqual([FORK_ROW]);
+    expect(createForkMock).toHaveBeenCalledOnce();
+  });
+
+  it("a held fork failure clears busy and retains the same operation id for a legitimate retry", async () => {
+    let fail: (error: Error) => void = () => { throw new Error("fork not dispatched"); };
+    createForkMock.mockImplementationOnce(() => new Promise<DocumentFork>((_, reject) => { fail = reject; }));
+    createForkMock.mockResolvedValue(FORK_ROW);
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: "Fork this book" }));
+    const operationId: unknown = createForkMock.mock.calls[0][1].operation_id;
+    act(suspendWorkspaceOwner);
+    await act(async () => { fail(new ApiError("controlled failure", 503, "")); });
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(branchToMock).not.toHaveBeenCalled();
+    act(resumeWorkspaceOwner);
+    await screen.findByRole("status");
+    const retry = screen.getByRole("button", { name: "Fork this book" });
+    expect(retry.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(retry);
+    await waitFor(() => expect(branchToMock).toHaveBeenCalledOnce());
+    expect(createForkMock.mock.calls[1][1].operation_id).toBe(operationId);
+  });
+
+  it("B cannot record or navigate to a fork result held during A revalidation", async () => {
+    let finish: (row: DocumentFork) => void = () => { throw new Error("fork not dispatched"); };
+    createForkMock.mockImplementation(() => new Promise<DocumentFork>((resolve) => { finish = resolve; }));
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: "Fork this book" }));
+    act(suspendWorkspaceOwner);
+    await act(async () => { finish(FORK_ROW); });
+    await act(async () => { setWorkspaceOwner("account-b"); });
+    expect(branchToMock).not.toHaveBeenCalled();
+    expect(forkLineageOf("doc-1").forks).toEqual([]);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Fork this book" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("unmount refuses a held fork without waiting for a later account confirmation", async () => {
+    let finish: (row: DocumentFork) => void = () => { throw new Error("fork not dispatched"); };
+    createForkMock.mockImplementation(() => new Promise<DocumentFork>((resolve) => { finish = resolve; }));
+    const mounted = renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: "Fork this book" }));
+    act(suspendWorkspaceOwner);
+    await act(async () => { finish(FORK_ROW); });
+    mounted.unmount();
+    await act(async () => { resumeWorkspaceOwner(); });
+    expect(branchToMock).not.toHaveBeenCalled();
+    expect(forkLineageOf("doc-1").forks).toEqual([]);
+  });
+
   it("creates the fork idempotently and opens it beside the book", async () => {
     createForkMock.mockResolvedValue(FORK_ROW);
     renderCompanion();

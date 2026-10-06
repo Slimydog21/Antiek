@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import type { BookAnchor } from "../../lib/api";
 import { AuthProvider, useAuth, type AuthContextValue } from "../../lib/auth";
-import { setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+import { resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { clearReadingFocus, formatReadingFocusSystemContext } from "../../lib/readingFocus";
 import { resetReadingStateBus, setReadingStateOwner } from "../../hooks/useReadingState";
 import { resetForkLineage } from "../../workspace/forkLineage";
@@ -137,6 +137,95 @@ afterEach(() => {
 });
 
 describe("real authenticated reader retires private body and derived state", () => {
+  it("a second revalidation before a resumed completion runs keeps that body held until confirmation", async () => {
+    const pendingBody = deferred<Response>();
+    bodyReply = () => pendingBody.promise;
+    mount();
+    await waitFor(() => expect(bodyReadCount()).toBe(1), { timeout: 10000 });
+    const owner = workspaceOwnerSession();
+    act(suspendWorkspaceOwner);
+    await act(async () => { pendingBody.resolve(response(200, body)); });
+    expectNoAPrivateState();
+    await act(async () => { resumeWorkspaceOwner(); suspendWorkspaceOwner(); });
+    expectNoAPrivateState();
+    act(resumeWorkspaceOwner);
+    await screen.findByText(privateText, {}, { timeout: 10000 });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(bodyReadCount()).toBe(1);
+  }, 15000);
+
+  it("a pending body completed during revalidation opens after same-A confirmation without a second body request", async () => {
+    const pendingBody = deferred<Response>();
+    bodyReply = () => pendingBody.promise;
+    mount();
+    await waitFor(() => expect(bodyReadCount()).toBe(1), { timeout: 10000 });
+    const owner = workspaceOwnerSession();
+    const confirmation = deferred<Response>();
+    authReply = () => confirmation.promise;
+    let recheck: Promise<void> | null = null;
+    act(() => { recheck = auth().refresh(); });
+    await act(async () => { pendingBody.resolve(response(200, body)); });
+    expectNoAPrivateState();
+    expect(bodyReadCount()).toBe(1);
+    await act(async () => { confirmation.resolve(identity("account-a")); await recheck; });
+    await screen.findByText(privateText, {}, { timeout: 10000 });
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(bodyReadCount()).toBe(1);
+    expect(formatReadingFocusSystemContext()).toContain(privateText);
+  }, 15000);
+
+  it("a pending body failure completed during revalidation exits opening after same-A confirmation", async () => {
+    const pendingBody = deferred<Response>();
+    bodyReply = () => pendingBody.promise;
+    mount();
+    await waitFor(() => expect(bodyReadCount()).toBe(1), { timeout: 10000 });
+    const confirmation = deferred<Response>();
+    authReply = () => confirmation.promise;
+    let recheck: Promise<void> | null = null;
+    act(() => { recheck = auth().refresh(); });
+    await act(async () => { pendingBody.resolve(response(503, { detail: "controlled body unavailable" })); });
+    expectNoAPrivateState();
+    await act(async () => { confirmation.resolve(identity("account-a")); await recheck; });
+    await screen.findByRole("alert", {}, { timeout: 10000 });
+    expectNoAPrivateState();
+    expect(bodyReadCount()).toBe(1);
+  }, 15000);
+
+  it("B cannot receive a body result held during A confirmation", async () => {
+    const pendingBody = deferred<Response>();
+    bodyReply = () => pendingBody.promise;
+    mount();
+    await waitFor(() => expect(bodyReadCount()).toBe(1), { timeout: 10000 });
+    const confirmation = deferred<Response>();
+    authReply = () => confirmation.promise;
+    let recheck: Promise<void> | null = null;
+    act(() => { recheck = auth().refresh(); });
+    await act(async () => { pendingBody.resolve(response(200, body)); });
+    expectNoAPrivateState();
+    detailReply = async () => response(401);
+    bodyReply = async () => response(401);
+    await act(async () => { confirmation.resolve(identity("account-b")); await recheck; });
+    await screen.findByRole("alert", {}, { timeout: 10000 });
+    expect(screen.getByTestId("reader-identity").textContent).toBe("account-b");
+    expectNoAPrivateState();
+  }, 15000);
+
+  it("unmount retires a held body completion before confirmation and emits no house-pool read", async () => {
+    const pendingBody = deferred<Response>();
+    bodyReply = () => pendingBody.promise;
+    const mounted = mount();
+    await waitFor(() => expect(bodyReadCount()).toBe(1), { timeout: 10000 });
+    const confirmation = deferred<Response>();
+    authReply = () => confirmation.promise;
+    let recheck: Promise<void> | null = null;
+    act(() => { recheck = auth().refresh(); });
+    await act(async () => { pendingBody.resolve(response(200, body)); });
+    mounted.unmount();
+    await act(async () => { confirmation.resolve(identity("account-a")); await recheck; });
+    expectNoAPrivateState();
+    expect(fetches.mock.calls.filter(([input]) => new URL(String(input), "http://localhost").pathname === "/books")).toHaveLength(0);
+  }, 15000);
+
   it("keeps the authorized A body and page context across a same-A verification", async () => {
     mount();
     await screen.findByText(privateText, {}, { timeout: 10000 });

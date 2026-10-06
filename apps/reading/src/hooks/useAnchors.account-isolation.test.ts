@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookAnchor } from "../lib/api";
-import { setWorkspaceOwner } from "../lib/accountWorkspaceOwner";
+import { resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { useAnchors } from "./useAnchors";
 
 // Real hook and apiFetch; only the external HTTP boundary is synthetic.
@@ -42,6 +42,83 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setWorkspaceOwner(null); vi.unstubAllGlobals(); });
 
 describe("same-document anchors follow the trusted owner session", () => {
+  it("holds a pending list during revalidation and finishes loading after genuine same-A confirmation", async () => {
+    const held = deferred<Response>();
+    listReply = () => held.promise;
+    const owner = workspaceOwnerSession();
+    const { result } = renderHook(() => useAnchors(documentId));
+    await waitFor(() => expect(fetches).toHaveBeenCalledOnce());
+    act(suspendWorkspaceOwner);
+    await act(async () => { held.resolve(list([aAnchor])); });
+    expect(result.current.anchors).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    act(resumeWorkspaceOwner);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.anchors).toEqual([aAnchor]);
+    expect(workspaceOwnerSession()).toBe(owner);
+    expect(fetches).toHaveBeenCalledOnce();
+  });
+
+  it("releases an honest list failure after same-A confirmation instead of staying loading", async () => {
+    const held = deferred<Response>();
+    listReply = () => held.promise;
+    const { result } = renderHook(() => useAnchors(documentId));
+    await waitFor(() => expect(fetches).toHaveBeenCalledOnce());
+    act(suspendWorkspaceOwner);
+    await act(async () => { held.resolve(response(503, { detail: "controlled unavailable list" })); });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+    act(resumeWorkspaceOwner);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toContain("503");
+    expect(result.current.anchors).toEqual([]);
+  });
+
+  it("a held list cannot expose A quotes when B replaces the suspended session", async () => {
+    const held = deferred<Response>();
+    listReply = () => held.promise;
+    const { result } = renderHook(() => useAnchors(documentId));
+    await waitFor(() => expect(fetches).toHaveBeenCalledOnce());
+    act(suspendWorkspaceOwner);
+    await act(async () => { held.resolve(list([aAnchor])); });
+    listReply = async () => list([]);
+    act(() => { setWorkspaceOwner("account-b"); });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.anchors).toEqual([]);
+    expect(JSON.stringify(result.current)).not.toContain("A private quote");
+  });
+
+  it("a held pin resumes only under the same owner and refetches its persisted row", async () => {
+    const { result } = renderHook(() => useAnchors(documentId));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const held = deferred<Response>();
+    pinReply = () => held.promise;
+    let pending: Promise<BookAnchor> | null = null;
+    act(() => { pending = result.current.pin({ quote: "A private quote" }); });
+    act(suspendWorkspaceOwner);
+    await act(async () => { held.resolve(response(201, aAnchor)); });
+    expect(fetches).toHaveBeenCalledTimes(2);
+    await act(async () => { resumeWorkspaceOwner(); expect(await pending).toEqual(aAnchor); });
+    await waitFor(() => expect(fetches).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.anchors).toEqual([aAnchor]);
+  });
+
+  it("unmount refuses a held pin without leaving a waiter or dispatching a refetch", async () => {
+    const { result, unmount } = renderHook(() => useAnchors(documentId));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const held = deferred<Response>();
+    pinReply = () => held.promise;
+    const pending = result.current.pin({ quote: "A private quote" });
+    const refused = expect(pending).rejects.toThrow("Account changed");
+    act(suspendWorkspaceOwner);
+    await act(async () => { held.resolve(response(201, aAnchor)); });
+    unmount();
+    await refused;
+    resumeWorkspaceOwner();
+    expect(fetches).toHaveBeenCalledTimes(2);
+  });
+
   it("immediately retires loaded A quotes, ids and research links when B is admitted", async () => {
     const { result } = renderHook(() => useAnchors(documentId));
     await waitFor(() => expect(result.current.anchors).toEqual([aAnchor]), { timeout: 10000 });

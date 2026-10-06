@@ -13,7 +13,7 @@ import {
 import { createFork } from "../../api/forks";
 import { useBranchTo } from "../../workspace/useBranchTo";
 import { recordFork } from "../../workspace/forkLineage";
-import { isWorkspaceOwnerSession, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import {
@@ -350,17 +350,28 @@ function ForkSection({
   pageIndex: number | null;
 }) {
   const owner = useWorkspaceOwner();
-  const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const lifetime = useRef<AbortController | null>(null);
   const branchTo = useBranchTo();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<"rights" | "depth" | "error" | null>(null);
   const [forked, setForked] = useState(false);
   const operationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    setBusy(false);
+    setFailed(null);
+    setForked(false);
+    operationIdRef.current = null;
+    return () => { controller.abort(); if (lifetime.current === controller) lifetime.current = null; };
+  }, [documentId, owner]);
 
   async function fork() {
-    const current = () => mounted.current && owner.subject !== null && isWorkspaceOwnerSession(owner);
+    const controller = lifetime.current;
+    const current = () => controller !== null && !controller.signal.aborted
+      && lifetime.current === controller && owner.subject !== null && isWorkspaceOwnerSession(owner);
     if (busy || !current()) return;
+    if (controller === null) return;
     setBusy(true);
     setFailed(null);
     operationIdRef.current ??= crypto.randomUUID();
@@ -370,7 +381,9 @@ function ForkSection({
         fork_point_locator:
           pageIndex !== null && pageIndex >= 0 ? `page:${pageIndex}` : undefined,
       });
-      if (!current()) return;
+      while (!current()) {
+        if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+      }
       // A distinct fork intent gets a fresh operation id next time.
       operationIdRef.current = null;
       recordFork(row, owner);
@@ -381,13 +394,18 @@ function ForkSection({
         page_index: pageIndex ?? undefined,
       });
     } catch (error) {
-      if (!current()) return;
+      while (!current()) {
+        if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+      }
       // The operation id is KEPT on failure: a retry replays it.
       if (error instanceof ApiError && error.status === 422) setFailed("rights");
       else if (error instanceof ApiError && error.status === 409) setFailed("depth");
       else setFailed("error");
     } finally {
-      if (current()) setBusy(false);
+      while (!current()) {
+        if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+      }
+      setBusy(false);
     }
   }
 
