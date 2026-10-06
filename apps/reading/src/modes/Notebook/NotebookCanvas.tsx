@@ -82,6 +82,23 @@ function BlockOrEditor({
   const [draft, setDraft] = useState<string>(
     String(block.content_json.text ?? ""),
   );
+  const [save, setSave] = useState<
+    | { kind: "idle" }
+    | { kind: "saving" }
+    | { kind: "failed"; message: string }
+  >({ kind: "idle" });
+
+  const saveDraft = async () => {
+    if (!onEditBlock || save.kind === "saving") return;
+    setSave({ kind: "saving" });
+    try {
+      await onEditBlock(block.block_id, { text: draft });
+      setSave({ kind: "idle" });
+      setEditing(false);
+    } catch (e: unknown) {
+      setSave({ kind: "failed", message: e instanceof Error ? e.message : String(e) });
+    }
+  };
 
   if (!onEditBlock || block.block_type !== "prose") {
     return <BlockView block={block} />;
@@ -90,25 +107,30 @@ function BlockOrEditor({
     return (
       <div className="space-y-2">
         <textarea
+          aria-label="Prose text"
+          disabled={save.kind === "saving"}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={Math.max(3, Math.min(12, draft.split("\n").length + 1))}
           className="w-full text-base font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 leading-relaxed"
         />
+        {save.kind === "failed" && (
+          <p role="alert" className="text-sm text-emperor">{save.message}</p>
+        )}
         <div className="flex gap-2 text-xs font-mono">
           <button
             type="button"
-            onClick={async () => {
-              await onEditBlock(block.block_id, { text: draft });
-              setEditing(false);
-            }}
+            disabled={save.kind === "saving"}
+            onClick={() => void saveDraft()}
             className="px-2 py-1 rounded-md bg-ink text-white hover:bg-shadow-2"
           >
-            Save
+            {save.kind === "saving" ? "Saving…" : "Save"}
           </button>
           <button
             type="button"
+            disabled={save.kind === "saving"}
             onClick={() => {
+              setSave({ kind: "idle" });
               setDraft(String(block.content_json.text ?? ""));
               setEditing(false);
             }}
