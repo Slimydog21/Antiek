@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal, Self
 import yaml
 from pydantic import Field, StringConstraints, model_validator
 
-from .models import BackendKind, DataLocality, Identifier, StrictModel, WorkloadClass
+from .models import BackendKind, DataLocality, Identifier, OwnerUserId, StrictModel, WorkloadClass
 
 PositiveInt = Annotated[int, Field(gt=0)]
 
@@ -33,7 +33,7 @@ class WorkloadPolicy(StrictModel):
 
 
 class TenantPolicy(StrictModel):
-    owner_user_ids: list[Identifier] = Field(min_length=1)
+    owner_user_ids: list[OwnerUserId] = Field(min_length=1)
     projects: list[Identifier] = Field(min_length=1)
     session_budget_acu: Annotated[int, Field(ge=0)]
     data_locality: DataLocality = Field(strict=False)

@@ -10,6 +10,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")]
+OwnerUserId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_][A-Za-z0-9_.:/-]{0,127}$")]
 
 
 class StrictModel(BaseModel):
@@ -111,7 +112,7 @@ class ReasonCode(StrEnum):
 
 
 class JobRequest(StrictModel):
-    owner_user_id: Identifier
+    owner_user_id: OwnerUserId
     tenant_id: Identifier
     project_id: Identifier
     idempotency_key: Identifier

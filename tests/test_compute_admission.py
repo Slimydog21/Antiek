@@ -501,6 +501,21 @@ class AdmissionTests(ComputeTestCase):
 
 
 class PlacementTests(ComputeTestCase):
+    def test_current_canonical_operator_id_can_be_allocated_and_journaled(self):
+        raw = policy().model_dump()
+        raw["tenants"]["tenant"]["owner_user_ids"] = ["__operator__"]
+        scheduler = self.scheduler_for(ComputePolicy.model_validate(raw), enabled=True)
+        decision = scheduler.submit(request(owner_user_id="__operator__"))
+        self.assertEqual(decision.code, OutcomeCode.ADMITTED)
+        result = scheduler.run(decision.job.job_id, lambda _: 1)
+        self.assertEqual(result.decision.state, JobState.SUCCEEDED)
+        self.assertTrue(all(row["owner_user_id"] == "__operator__" for row in self.rows(scheduler)))
+        denied = scheduler.submit(request(owner_user_id="owner"))
+        self.assertEqual(denied.reason, ReasonCode.OWNER_UNALLOCATED)
+        for invalid in ("", " operator ", "operator\n", "owner@domain"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValidationError):
+                request(owner_user_id=invalid)
+
     def test_non_eu_antiek_user_refusal_is_typed_and_journaled_without_execution(self):
         for region in ("us", "unknown"):
             for kind in BackendKind:

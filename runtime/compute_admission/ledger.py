@@ -17,6 +17,7 @@ from .models import (
     Identifier,
     JobState,
     OutcomeCode,
+    OwnerUserId,
     ReasonCode,
     Reference,
     StrictModel,
@@ -33,7 +34,7 @@ class LedgerEvent(StrictModel):
     event_id: str
     timestamp: datetime
     policy_version: str
-    owner_user_id: Identifier
+    owner_user_id: OwnerUserId
     tenant_id: Identifier
     project_id: Identifier
     job_id: str
