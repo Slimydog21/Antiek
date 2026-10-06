@@ -60,13 +60,9 @@ function NotebookDetail({ notebookId }: { notebookId: string }) {
   const appendBlock = useCallback(
     async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
-      try {
-        const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
-        track("notebook_block_appended", { block_type: req.block_type });
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
+      track("notebook_block_appended", { block_type: req.block_type });
+      setNotebook(data);
     },
     [notebookId],
   );
