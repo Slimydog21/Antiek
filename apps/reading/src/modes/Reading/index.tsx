@@ -73,6 +73,7 @@ import {
 import { clearReadingFocus, setReadingFocus } from "../../lib/readingFocus";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
+import { readingPositionOwnerEpoch, usePositionOwnerEpoch } from "./usePosition";
 
 /**
  * Book reader — the Read workflow's reading surface (Read SPR-03).
@@ -109,6 +110,15 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
+type BookResource = { documentId: string; ownerEpoch: number };
+type LoadedBook = { book: BookDetail; body: FullTextResponse; housePool: BookSummary[] };
+type BookLoad = BookResource & (
+  | { kind: "loading"; data: LoadedBook | null }
+  | { kind: "ready"; data: LoadedBook }
+  | { kind: "failed"; data: LoadedBook | null; error: unknown }
+);
+type BookLoadLifetime = { resource: BookResource; active: boolean; attempt: object | null };
+
 export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
   const typography = useReadingTypography();
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
@@ -117,44 +127,70 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const [searchParams] = useSearchParams();
   const openTalkOnLoad = searchParams.get("talk") === "1";
 
-  const [book, setBook] = useState<BookDetail | null>(null);
-  const [body, setBody] = useState<FullTextResponse | null>(null);
-  const [housePool, setHousePool] = useState<BookSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ cause: unknown } | null>(null);
+  const ownerEpoch = usePositionOwnerEpoch();
+  const resource = useMemo(() => ({ documentId, ownerEpoch }), [documentId, ownerEpoch]);
+  const resourceRef = useRef(resource);
+  resourceRef.current = resource;
+  const lifetimeRef = useRef<BookLoadLifetime | null>(null);
+  const [loadState, setLoadState] = useState<BookLoad>(() => ({ ...resource, kind: "loading", data: null }));
+  const load = loadState.documentId === documentId && loadState.ownerEpoch === ownerEpoch ? loadState : null;
+  const book = load?.data?.book ?? null;
+  const body = load?.data?.body ?? null;
+  const housePool = load?.data?.housePool ?? [];
+  const loading = !load || load.kind === "loading";
+  const error = load?.kind === "failed" ? load.error : null;
 
-  const loadBook = useCallback(async (isCancelled: () => boolean) => {
-    setLoading(true);
-    setError(null);
+  const loadBook = useCallback(async (lifetime: BookLoadLifetime) => {
+    const attempt = {};
+    const admitted = () => lifetime.active && lifetimeRef.current === lifetime
+      && lifetime.resource === resource
+      && resourceRef.current === lifetime.resource
+      && readingPositionOwnerEpoch() === lifetime.resource.ownerEpoch;
+    if (!admitted()) return;
+    lifetime.attempt = attempt;
+    const current = () => admitted() && lifetime.attempt === attempt;
+    setLoadState((previous) => current() ? {
+      ...lifetime.resource,
+      kind: "loading",
+      data: previous.documentId === documentId && previous.ownerEpoch === ownerEpoch ? previous.data : null,
+    } : previous);
     try {
       const [detail, full] = await Promise.all([
         getBook(documentId),
         getBookFullText(documentId),
       ]);
-      if (isCancelled()) return;
-      setBook(detail);
-      setBody(full);
+      if (!current()) return;
+      setLoadState((previous) => current() ? {
+        ...lifetime.resource, kind: "ready",
+        data: { book: detail, body: full, housePool: previous.data?.housePool ?? [] },
+      } : previous);
       // House-state candidates for the zero-buyer ad border.
       try {
         const servable = await listBooks("servable");
-        if (!isCancelled()) setHousePool(servable.books);
+        if (!current()) return;
+        setLoadState((previous) => current() && previous.data ? {
+          ...previous, data: { ...previous.data, housePool: servable.books },
+        } : previous);
       } catch {
         /* house pool is best-effort; a neutral house card is fine */
       }
-    } catch (e: unknown) {
-      if (!isCancelled()) setError({ cause: e });
-    } finally {
-      if (!isCancelled()) setLoading(false);
+    } catch (cause: unknown) {
+      if (!current()) return;
+      setLoadState((previous) => current() ? {
+        ...lifetime.resource, kind: "failed", data: previous.data, error: cause,
+      } : previous);
     }
-  }, [documentId]);
+  }, [documentId, ownerEpoch, resource]);
 
   useEffect(() => {
-    let cancelled = false;
-    void loadBook(() => cancelled);
+    const lifetime: BookLoadLifetime = { resource, active: true, attempt: null };
+    lifetimeRef.current = lifetime;
+    void loadBook(lifetime);
     return () => {
-      cancelled = true;
+      lifetime.active = false;
+      if (lifetimeRef.current === lifetime) lifetimeRef.current = null;
     };
-  }, [loadBook]);
+  }, [loadBook, resource]);
 
   // The fork lineage this session knows for the open document (both
   // directions, one GET): the strip's badge/chip and the fork tab's
@@ -165,7 +201,8 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   }, [documentId]);
 
   const reload = useCallback(() => {
-    void loadBook(() => false);
+    const lifetime = lifetimeRef.current;
+    if (lifetime) void loadBook(lifetime);
   }, [loadBook]);
 
   useEffect(() => {
@@ -818,7 +855,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       </CenterNote>
     );
   }
-  if (error?.cause instanceof Error && error.cause.message === "book_not_found") {
+  if (load?.kind === "failed" && error instanceof Error && error.message === "book_not_found") {
     return (
       <CenterNote inWindow={inWindow}>
         <EmptyState
@@ -832,11 +869,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       </CenterNote>
     );
   }
-  if (error || !book || !body) {
+  if (load?.kind === "failed" || !book || !body) {
     // What failed and what is safe; the raw message ("Failed to fetch") is
     // for "Copy error details", never the page.
-    const failure = describeFailure(error?.cause, { what: "open this book" });
-    const detail = error?.cause instanceof Error ? error.cause.message : error ? String(error.cause) : null;
+    const failure = describeFailure(error, { what: "open this book" });
+    const detail = error instanceof Error ? error.message : error == null ? null : String(error);
     return (
       <CenterNote inWindow={inWindow}>
         <ErrorState

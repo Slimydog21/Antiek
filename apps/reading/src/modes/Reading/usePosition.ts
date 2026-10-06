@@ -12,11 +12,13 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
  */
 
 let owner: string | null = null;
+let ownerEpoch = 0;
 const ownerListeners = new Set<() => void>();
 
 export function setReadingPositionOwner(nextOwner: string | null, notify = true): void {
   if (owner === nextOwner) return;
   owner = nextOwner;
+  ownerEpoch += 1;
   if (notify) notifyReadingPositionOwner();
 }
 
@@ -35,6 +37,14 @@ function currentOwner(): string | null {
 
 export function readingPositionOwner(): string | null {
   return owner;
+}
+
+export function readingPositionOwnerEpoch(): number {
+  return ownerEpoch;
+}
+
+export function usePositionOwnerEpoch(): number {
+  return useSyncExternalStore(subscribeOwner, readingPositionOwnerEpoch);
 }
 
 export function usePositionOwner(): string | null {
