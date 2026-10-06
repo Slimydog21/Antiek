@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import time
+from importlib import import_module
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -87,6 +90,144 @@ def test_public_subject_survives_normalized_relogin(account_api):
     first, _payload, _code = sign_in(app, sender, ALICE)
     second, _payload, _code = sign_in(app, sender, " ALICE@EXAMPLE.TEST ")
     assert first.get("/auth/me").json()["user_id"] == second.get("/auth/me").json()["user_id"]
+
+
+def test_request_email_budget_survives_rotating_ips_and_normalization(account_api):
+    app, sender, root = account_api
+    auth = import_module("interfaces.research.api.auth")
+    for index in range(6):
+        client = TestClient(app, client=(f"192.0.2.{index + 1}", 50000))
+        requested = client.post("/auth/request", json={"email": ALICE})
+        assert requested.status_code == 200
+        assert set(requested.json()) == {"sent", "attempt_id", "claim_secret"}
+    assert len(sender.sent) == 6
+    retained = set(auth._attempts)
+    blocked = TestClient(app, client=("192.0.2.100", 50000)).post(
+        "/auth/request", json={"email": " ALICE@EXAMPLE.TEST "},
+    )
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"]["code"] == "rate_limited"
+    assert blocked.headers["Retry-After"] == "60"
+    assert len(sender.sent) == 6
+    assert set(auth._attempts) == retained
+    assert not (root / "accounts.json").exists()
+    other = TestClient(app, client=("192.0.2.101", 50000)).post(
+        "/auth/request", json={"email": BOB},
+    )
+    assert other.status_code == 200
+    assert sender.sent[-1].email.to == BOB
+
+
+def test_request_ip_budget_survives_rotating_recipients(account_api):
+    app, sender, _root = account_api
+    client = TestClient(app, client=("192.0.2.1", 50000))
+    for index in range(6):
+        requested = client.post("/auth/request", json={"email": f"recipient-{index}@example.test"})
+        assert requested.status_code == 200
+    auth = import_module("interfaces.research.api.auth")
+    retained = set(auth._attempts)
+    blocked = client.post("/auth/request", json={"email": ALICE})
+    assert blocked.status_code == 429
+    assert blocked.headers["Retry-After"] == "60"
+    assert len(sender.sent) == 6
+    assert set(auth._attempts) == retained
+    other = TestClient(app, client=("192.0.2.2", 50000)).post(
+        "/auth/request", json={"email": ALICE},
+    )
+    assert other.status_code == 200
+    assert sender.sent[-1].email.to == ALICE
+
+
+def test_rejected_request_does_not_extend_email_cooldown(account_api, monkeypatch):
+    app, sender, _root = account_api
+    auth = import_module("interfaces.research.api.auth")
+    clock = [1000.0]
+    monkeypatch.setattr(auth, "time", SimpleNamespace(monotonic=lambda: clock[0], time=time.time))
+    for index in range(6):
+        response = TestClient(app, client=(f"192.0.2.{index + 1}", 50000)).post(
+            "/auth/request", json={"email": ALICE},
+        )
+        assert response.status_code == 200
+    clock[0] += 59.9
+    refused = TestClient(app, client=("192.0.2.100", 50000)).post(
+        "/auth/request", json={"email": ALICE},
+    )
+    assert refused.status_code == 429
+    assert len(sender.sent) == 6
+    clock[0] = 1060.0
+    admitted = TestClient(app, client=("192.0.2.101", 50000)).post(
+        "/auth/request", json={"email": ALICE},
+    )
+    assert admitted.status_code == 200
+    assert len(sender.sent) == 7
+
+
+@pytest.mark.parametrize("email", [OPERATOR, ALICE])
+def test_email_rate_response_does_not_enumerate_closed_signup(account_api, monkeypatch, email):
+    app, sender, root = account_api
+    monkeypatch.delenv("ANTIEK_OPEN_SIGNUP")
+    for index in range(6):
+        requested = TestClient(app, client=(f"192.0.2.{index + 1}", 50000)).post(
+            "/auth/request", json={"email": email},
+        )
+        assert requested.status_code == 200
+        assert set(requested.json()) == {"sent", "attempt_id", "claim_secret"}
+        assert requested.json()["sent"] is True
+    blocked = TestClient(app, client=("192.0.2.100", 50000)).post(
+        "/auth/request", json={"email": email},
+    )
+    assert blocked.status_code == 429
+    assert blocked.json() == {
+        "detail": {
+            "code": "rate_limited",
+            "message": "Too many sign-in requests. Wait a minute and try again.",
+        },
+    }
+    assert blocked.headers["Retry-After"] == "60"
+    assert len(sender.sent) == (6 if email == OPERATOR else 0)
+    assert not (root / "accounts.json").exists()
+
+
+def test_active_throttle_capacity_cannot_evict_an_inbox_budget(account_api, monkeypatch):
+    app, sender, _root = account_api
+    auth = import_module("interfaces.research.api.auth")
+    clock = [1000.0]
+    monkeypatch.setattr(auth, "time", SimpleNamespace(monotonic=lambda: clock[0], time=time.time))
+    monkeypatch.setattr(auth, "_MAX_TRACKED_THROTTLE_KEYS", 4)
+    alice = TestClient(app, client=("192.0.2.1", 50000))
+    bob = TestClient(app, client=("192.0.2.2", 50000))
+    assert alice.post("/auth/request", json={"email": ALICE}).status_code == 200
+    assert bob.post("/auth/request", json={"email": BOB}).status_code == 200
+    retained = set(auth._throttle)
+    assert len(retained) == 4
+    spray = TestClient(app, client=("192.0.2.3", 50000))
+    assert spray.post("/auth/request", json={"email": OPERATOR}).status_code == 429
+    assert set(auth._throttle) == retained
+    for _ in range(5):
+        assert alice.post("/auth/request", json={"email": ALICE}).status_code == 200
+    assert alice.post("/auth/request", json={"email": ALICE}).status_code == 429
+    assert len(sender.sent) == 7
+    clock[0] += 60.0
+    assert spray.post("/auth/request", json={"email": OPERATOR}).status_code == 200
+    assert len(auth._throttle) == 2
+
+
+@pytest.mark.parametrize("signup_open", [True, False])
+def test_account_service_refuses_configured_dev_login(account_api, monkeypatch, signup_open):
+    app, sender, root = account_api
+    if not signup_open:
+        sign_in(app, sender, ALICE)
+        monkeypatch.delenv("ANTIEK_OPEN_SIGNUP")
+    before = (root / "accounts.json").read_bytes() if (root / "accounts.json").exists() else None
+    token = "local-dev-login-control-" + "q" * 40
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", token)
+    client = TestClient(app)
+    refused = client.get("/auth/dev-login", params={"token": token}, follow_redirects=False)
+    assert refused.status_code == 404
+    assert "ANTIEK_SESSION" not in refused.cookies
+    assert client.get("/auth/me").status_code == 401
+    after = (root / "accounts.json").read_bytes() if (root / "accounts.json").exists() else None
+    assert after == before
 
 
 def test_interim_allowlist_entry_does_not_claim_the_original_legacy_owner(account_api, monkeypatch):
@@ -178,6 +319,37 @@ def test_account_claim_stays_one_use_and_wrong_code_does_not_sign_in(account_api
         == 400
     )
     assert client.get("/auth/me").status_code == 401
+
+
+@pytest.mark.parametrize("proof", ["code", "link"])
+def test_expired_account_attempt_cannot_create_an_account(account_api, monkeypatch, proof):
+    from urllib.parse import parse_qs, urlsplit
+
+    app, sender, root = account_api
+    client = TestClient(app)
+    requested = client.post("/auth/request", json={"email": ALICE}).json()
+    delivered = sender.sent[-1].email
+    code = delivered.subject.rsplit("·", 1)[-1].strip()
+    link = next(line.strip() for line in delivered.text_body.splitlines() if "/auth/callback?" in line)
+    query = parse_qs(urlsplit(link).query)
+    auth = import_module("interfaces.research.api.auth")
+    expiry = auth._attempts[requested["attempt_id"]].created_at + auth._ATTEMPT_TTL_SECONDS + 1
+    monkeypatch.setattr(auth, "time", SimpleNamespace(monotonic=time.monotonic, time=lambda: expiry))
+    if proof == "code":
+        refused = client.post("/auth/claim", json={**payload_without_sent(requested), "code": code})
+        assert refused.status_code == 410
+        assert refused.json()["detail"]["code"] == "login_attempt_expired"
+    else:
+        refused = client.get(
+            "/auth/callback",
+            params={"token": query["token"][0], "attempt": requested["attempt_id"]},
+            follow_redirects=False,
+        )
+        assert refused.status_code == 302
+        assert "magic_link_invalid" in refused.headers["location"]
+    assert "ANTIEK_SESSION" not in refused.cookies
+    assert client.get("/auth/me").status_code == 401
+    assert not (root / "accounts.json").exists()
 
 
 def test_signup_with_no_operator_config_still_requires_auth(account_api, monkeypatch):

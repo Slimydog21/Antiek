@@ -12,9 +12,10 @@ Routes:
   return ``{"sent": true, attempt_id, claim_secret}``. Always 200
   with the same shape even for non-allowlisted addresses, to avoid
   enumerating valid operators. The send (and the code) only ever
-  happen for allowlisted emails; the code is NOT part of the API
+  happen for any valid email when signup is open, or an admitted existing
+  account/operator when it is closed; the code is NOT part of the API
   response, so typing it into the browser is real email-possession
-  proof, not theater. Rate-limited per IP.
+  proof, not theater. Rate-limited per IP and normalized email.
 - ``GET /auth/callback?token=...&next=/`` — verify the token, set
   the session cookie, redirect to ``next`` (default ``/``).
 - ``POST /auth/claim`` — body ``{"attempt_id, claim_secret}`` plus
@@ -198,13 +199,15 @@ _MAX_CODE_FAILURES_PER_EMAIL = 10
 _MAX_TRACKED_CODE_FAILURE_EMAILS = 1024
 _code_failures: dict[str, int] = {}  # guarded by _attempts_lock
 
-# Per-IP sliding-window throttles for the two email-surface routes.
+# Sliding-window throttles for request IPs, recipient emails and claim IPs.
 # In-process state is the honest deployment model here: the FastAPI
 # service is pinned to one worker by the DuckDB single-writer
 # invariant, so a process-local window is complete, not best-effort.
 _REQUEST_RATE_LIMIT = 6    # POST /auth/request per minute per IP
+_REQUEST_EMAIL_RATE_LIMIT = 6  # POST /auth/request per minute across recipient IPs
 _CLAIM_RATE_LIMIT = 30     # code-bearing POST /auth/claim per minute per IP
 _THROTTLE_WINDOW_SECONDS = 60.0
+_MAX_TRACKED_THROTTLE_KEYS = 4096
 _throttle: dict[str, list[float]] = {}
 _throttle_lock = threading.Lock()
 
@@ -239,7 +242,18 @@ def _throttled(key: str, limit: int) -> bool:
     """Record one hit for ``key``; True when the caller is over limit."""
     now = time.monotonic()
     with _throttle_lock:
-        hits = [t for t in _throttle.setdefault(key, []) if now - t < _THROTTLE_WINDOW_SECONDS]
+        hits = [t for t in _throttle.get(key, []) if now - t < _THROTTLE_WINDOW_SECONDS]
+        if key not in _throttle and len(_throttle) >= _MAX_TRACKED_THROTTLE_KEYS:
+            # Reclaim only expired windows. Evicting an active recipient
+            # would let sprayed addresses renew another inbox's send budget.
+            expired = [
+                tracked for tracked, timestamps in _throttle.items()
+                if not timestamps or now - timestamps[-1] >= _THROTTLE_WINDOW_SECONDS
+            ]
+            for tracked in expired:
+                del _throttle[tracked]
+            if len(_throttle) >= _MAX_TRACKED_THROTTLE_KEYS:
+                return True
         if len(hits) >= limit:
             _throttle[key] = hits
             return True
@@ -560,12 +574,15 @@ def register_auth_routes(
         tags=["auth"],
     )
     async def auth_request(payload: AuthRequestPayload, request: Request) -> AuthRequestResponse:
-        if _throttled(f"request:{_client_ip(request)}", _REQUEST_RATE_LIMIT):
+        email = payload.email
+        if _throttled(f"request:{_client_ip(request)}", _REQUEST_RATE_LIMIT) or _throttled(
+            f"request-email:{_digest_claim(email)}", _REQUEST_EMAIL_RATE_LIMIT,
+        ):
             raise HTTPException(
                 status_code=429,
                 detail={"code": "rate_limited", "message": "Too many sign-in requests. Wait a minute and try again."},
+                headers={"Retry-After": "60"},
             )
-        email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
         attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if await _email_allowed(email):
@@ -986,6 +1003,10 @@ def register_auth_routes(
 
     @app.get("/auth/dev-login", tags=["auth"])
     async def auth_dev_login(token: str = "", next: str = "/") -> Response:
+        if account_registry_active():
+            # An issued-account service requires mailbox/passkey proof,
+            # including when signup is subsequently closed.
+            raise HTTPException(status_code=404, detail="Not Found")
         # Disabled unless the operator opted in by setting both the
         # dev-login token AND the auth secret (the secret is what makes
         # the minted cookie verifiable by the middleware). 404 — not

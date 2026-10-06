@@ -356,7 +356,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   useEffect(() => {
     const main = mainRef.current;
     if (!main || visibleIslands.length === 0) {
-      setIslandRects(new Map());
+      setIslandRects((previous) => previous.size === 0 ? previous : new Map());
       return;
     }
     function measure() {
