@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * DocumentTabStrip — the cockpit's left document tabs (D6, DESIGN-MODEL §2a).
  *
@@ -33,7 +34,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
-import { CornerDownRight, ListTree } from "lucide-react";
+import { CornerDownRight, ListTree, Plus } from "lucide-react";
 
 import { ErrorState, LoadingState } from "../components/states";
 import { branchIntentOf } from "./branchNavigation";
@@ -49,6 +50,7 @@ import { useForkLineage } from "./forkLineage";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
 import { pathTo, type TabNode, type TabTree } from "./tabTree";
+import { toggleNewTabPicker } from "./shortcuts";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
@@ -75,6 +77,7 @@ function DocumentTabStripInner() {
   const navigate = useNavigate();
   const mothership = mothershipForPath(location.pathname, location.search);
 
+  const contextEpoch = useTabTrees((s) => s.contextEpoch);
   const tree = useTabTrees((s) => s.trees[mothership]);
   const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
@@ -82,13 +85,14 @@ function DocumentTabStripInner() {
   const entries = useTabTitles((s) => s.entries);
 
   // Keyed by the history entry, so a branch navigation to a surface already
-  // on screen elsewhere still files under its parent.
+  // on screen elsewhere still files under its parent. A project or adapter
+  // change clears the trees without navigating; reload that context too.
   const intent = branchIntentOf(location.state);
   useEffect(() => {
     void syncRouteToTree(mothership, location.pathname, intent);
     // `intent` is derived from the entry `location.key` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.key, mothership]);
+  }, [location.pathname, location.key, mothership, contextEpoch]);
 
   // tree → route: a USER activation's intent, taken once. An intent left
   // behind by a newer activation, or by a tab the route sync has since moved
@@ -115,7 +119,14 @@ function DocumentTabStripInner() {
     // so a section of another piece never leaves this piece on screen.
     const holder = routeTabFor(t, navIntent.tabId);
     if (!holder) return;
-    if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
+    // BrowserRouter can render the previous location while a navigation is
+    // pending. A second key must compare against history, like locationStamp,
+    // or a return to that previous location is mistaken for a no-op.
+    const current = window.location;
+    if (
+      navIntent.mothership === mothershipForPath(current.pathname, current.search) &&
+      tabShowsPath(holder, current.pathname)
+    ) return;
     const route = routeForTab(holder);
     if (route) navigate(route);
   }, [navIntent, mothership, location.pathname, location.search, navigate]);
@@ -224,6 +235,7 @@ function DocumentTabStripInner() {
       onVisitChild={() => useTabTrees.getState().visitChildOfActive(mothership)}
       onRowsShown={requestRows}
       onCloseTab={(id, mode) => useTabTrees.getState().closeTabById(mothership, id, mode)}
+      onNewTab={toggleNewTabPicker}
     />
   );
 }
@@ -269,6 +281,8 @@ export interface DocumentTabStripViewProps {
   onRowsShown?: (tabIds: string[]) => void;
   /** The tree panel's Delete / Shift+Delete (prune / close only this). */
   onCloseTab?: (tabId: string, mode: "prune" | "lift_children") => void;
+  /** The + button: the new-tab picker (prefix+c), one path with the key. */
+  onNewTab: () => void;
 }
 
 /** The presentational strip: every state, no store, no router. */
@@ -289,6 +303,7 @@ export function DocumentTabStripView({
   onVisitChild,
   onRowsShown,
   onCloseTab,
+  onNewTab,
 }: DocumentTabStripViewProps) {
   const toggleRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -311,10 +326,13 @@ export function DocumentTabStripView({
       onToggleTree();
     };
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "tabs.tree.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented,
+    }, onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      removeKeyboardOwner();
     };
   }, [treePanelOpen, onToggleTree]);
 
@@ -442,6 +460,20 @@ export function DocumentTabStripView({
             opens as window
           </span>
         ) : null}
+
+        {/* New tab (prefix+c): the picker's button half. It sits after the
+            tabs, where a browser puts it, and takes the SAME toggle as the
+            key, so a click and prefix+c can never drift apart. */}
+        <button
+          type="button"
+          data-new-tab
+          onClick={onNewTab}
+          aria-label="New tab (prefix c)"
+          title="New tab (prefix c)"
+          className="shrink-0 ml-auto flex items-center px-2 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+        >
+          <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </div>
 
       {treePanelOpen ? (

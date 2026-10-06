@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -115,12 +116,14 @@ def distillation_for(
     *,
     db_path: str | None = None,
     events_dir: str | None = None,
+    con: Any | None = None,
 ) -> Distillation:
     """Read the insight + question nodes an investigation distilled, with
     their *current* text + grounding. Read-only. Nodes whose event was
     recorded but whose row no longer exists (deleted) are skipped — the
     log is history, the row is truth. This is an unscoped internal read;
-    caller-facing reads must use ``readable_distillation_for``."""
+    caller-facing reads must use ``readable_distillation_for``. A supplied
+    connection remains open and avoids a second handle inside a write scope."""
     node_ids, escalations = _node_ids_from_trajectory(
         investigation_id, events_dir=events_dir
     )
@@ -130,8 +133,7 @@ def distillation_for(
     insights: list[DistilledNode] = []
     questions: list[DistilledNode] = []
     unavailable_count = 0
-    con = connect_read(db_path or graph_db_path())
-    try:
+    with nullcontext(con) if con is not None else connect_read(db_path or graph_db_path()) as con:
         for nid in node_ids:
             row = con.execute(
                 "SELECT node_type, canonical_label, metadata FROM nodes WHERE node_id = ?",
@@ -165,8 +167,6 @@ def distillation_for(
                 ))
             else:
                 unavailable_count += 1
-    finally:
-        con.close()
     return Distillation(
         insights=insights, questions=questions, unavailable_count=unavailable_count
     )
@@ -178,6 +178,7 @@ def readable_distillation_for(
     owner_user_id: str,
     db_path: str | None = None,
     events_dir: str | None = None,
+    con: Any | None = None,
 ) -> Distillation:
     """Return only products whose node and source the caller may inspect.
 
@@ -194,13 +195,17 @@ def readable_distillation_for(
     rather than authorize a mixed-owner product from its visible subset.
     The unscoped ``distillation_for`` remains an internal graph read, not an
     authorization decision. Neither function validates source spans.
+    A supplied connection is reused for both the node read and source guard;
+    the caller retains its ownership and transaction scope.
     """
     from substrate.books.serve_guard import LinkBackMissingError, serve_full_text_guarded
     from substrate.rights import T3BodyServeError
 
-    view = distillation_for(investigation_id, db_path=db_path, events_dir=events_dir)
+    view = distillation_for(
+        investigation_id, db_path=db_path, events_dir=events_dir, con=con
+    )
     readable: set[str] = set()
-    with connect_read(db_path or graph_db_path()) as con:
+    with nullcontext(con) if con is not None else connect_read(db_path or graph_db_path()) as con:
         for node in [*view.insights, *view.questions]:
             if not node.source_document_id:
                 continue

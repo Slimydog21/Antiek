@@ -36,6 +36,7 @@ import math
 
 from services.html_projection import tokens
 from services.html_projection.gate import ScriptViolation
+from services.html_projection.widgets._coerce import to_float, to_int
 
 # The PACKAGE, resolved to its ``sketch_svg`` re-export at call time. The
 # package binds the function over its own submodule of the same name, and it
@@ -64,7 +65,7 @@ PALETTE: tuple[str, ...] = (
 
 def _num(value: object) -> float | None:
     try:
-        parsed = float(value)  # type: ignore[arg-type]
+        parsed = to_float(value)
     except (TypeError, ValueError):
         return None
     # Non-finite values would fail the skill's data validation (a loud
@@ -74,7 +75,7 @@ def _num(value: object) -> float | None:
 
 def _int(value: object, default: int, low: int, high: int) -> int:
     try:
-        parsed = int(value)  # type: ignore[call-overload]
+        parsed = to_int(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
@@ -88,7 +89,7 @@ def _placeholder() -> str:
     )
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_values = data.get("data")
     values: list[float] = []
     if isinstance(raw_values, list):

@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 /**
  * CompanionPane — the C4 companion right pane: AI agents as tabs.
  *
@@ -302,10 +303,13 @@ function OverflowMenu({
       triggerRef.current?.focus();
     };
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "companion.overflow.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !ref.current?.closest("[hidden]") && (!topModal() || !!topModal()?.contains(ref.current)),
+    }, onKey);
     return () => {
       document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
     };
   }, [open, searchable]);
 

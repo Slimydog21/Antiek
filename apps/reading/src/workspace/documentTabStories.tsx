@@ -170,6 +170,7 @@ export function StoryStrip({
           }}
           onToggleTree={() => setOpen((o) => !o)}
           onFocusSubtree={setFocus}
+          onNewTab={() => {}}
           onVisitChild={() => {
             if (!tree.active_tab_id) return;
             const r = visitChild(tree, tree.active_tab_id);

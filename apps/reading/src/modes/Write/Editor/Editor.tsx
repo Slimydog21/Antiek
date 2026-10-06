@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -141,8 +142,11 @@ export function WriteEditor({
         nextUpdateIsRevert.current = true;
       }
     };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    const removeKeyboardOwner = registerKeyboardOwner(window, {
+      id: "write.undo-observer", scope: "observer", capture: true,
+      eligible: (e) => (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z",
+    }, onKey);
+    return () => removeKeyboardOwner();
   }, []);
 
   return <EditorContent editor={editor} className={className} />;
