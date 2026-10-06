@@ -49,6 +49,10 @@ describe("Library return in the Read scene", () => {
     const views = mount("/read/doc-book-ef687fdce87b52ae");
     fireEvent.click(views.getByRole("button", { name: label }));
     expect(screen.getByLabelText("Current route").textContent).toBe(path);
-    expect(views.getByRole("button", { name: label }).getAttribute("aria-current")).toBe("page");
+    if (path === "/documents") {
+      expect(screen.queryByRole("navigation", { name: "Read views" })).toBeNull();
+    } else {
+      expect(views.getByRole("button", { name: label }).getAttribute("aria-current")).toBe("page");
+    }
   });
 });
