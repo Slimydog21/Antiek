@@ -2,6 +2,7 @@ import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import { LemonButton } from "../../components/lemon/LemonButton";
 
 import type {
   BookHtmlConversionResultResponse,
@@ -103,7 +104,9 @@ export default function Library() {
   const [page, setPage] = useState(1);
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const requestGeneration = useRef(0);
+  const catalogPanelRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Active research, the signal documentsByTheme ranks the shelf to (M1).
   // Best-effort: a failed/empty fetch falls the feed back to recency, honestly.
@@ -243,11 +246,21 @@ export default function Library() {
   useEffect(() => {
     const controller = new AbortController();
     void reload(controller.signal);
+    return () => controller.abort();
+  }, [reload, reloadKey]);
+
+  useEffect(() => {
     // Switching shelves clears any active curation.
     setCuratedOrder(null);
     setCuratePrompt("");
-    return () => controller.abort();
   }, [reload]);
+
+  const retryCatalog = () => {
+    const panel = catalogPanelRef.current;
+    if (!panel?.isConnected) return;
+    panel.focus({ preventScroll: true });
+    setReloadKey((key) => key + 1);
+  };
 
   const onCurate = useCallback(async (prompt: string) => {
     setCurateBusy(true);
@@ -1510,10 +1523,22 @@ export default function Library() {
             </p>
           )}
 
-          <div id="library-catalog-panel" role="tabpanel" aria-labelledby={`library-tab-${status}`}>
+          <div
+            ref={catalogPanelRef}
+            id="library-catalog-panel"
+            role="tabpanel"
+            tabIndex={-1}
+            aria-labelledby={`library-tab-${status}`}
+            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun focus-visible:outline-offset-4"
+          >
           {error && (
-            <ErrorBanner>
-              {error}
+            <ErrorBanner className="flex items-center justify-between gap-3">
+              <span>{error}</span>
+              {catalogFailed && !loading && (
+                <LemonButton type="button" size="sm" variant="tertiary" onClick={retryCatalog}>
+                  Retry catalog
+                </LemonButton>
+              )}
             </ErrorBanner>
           )}
 
