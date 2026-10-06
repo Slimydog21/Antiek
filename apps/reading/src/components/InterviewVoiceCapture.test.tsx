@@ -89,6 +89,38 @@ describe("Speak recording completion", () => {
     expect(screen.getByRole("button", { name: /try recording again/i })).toBeTruthy();
   });
 
+  it.each(["aborted", "resolved"] as const)("does not notify a retired host when a pending refusal body is %s", async (outcome) => {
+    let resolveBody!: (value: unknown) => void;
+    let rejectBody!: (reason: DOMException) => void;
+    const body = new Promise<unknown>((resolve, reject) => {
+      resolveBody = resolve;
+      rejectBody = reject;
+    });
+    const readBody = vi.fn(() => body);
+    apiFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      if (outcome === "aborted") {
+        init.signal?.addEventListener("abort", () => rejectBody(new DOMException("Body read aborted", "AbortError")));
+      }
+      return { ok: false, status: 503, json: readBody };
+    });
+    const onUploaded = vi.fn();
+    const onUploadError = vi.fn();
+    const view = await start({ buildUploadUrl: () => "/speak/invite/test/voice", onUploaded, onUploadError });
+    fireEvent.click(screen.getByText("Stop & upload"));
+    act(flush);
+    await waitFor(() => expect(readBody).toHaveBeenCalledOnce());
+    const init: RequestInit = apiFetch.mock.calls[0][1];
+    expect(init.signal?.aborted).toBe(false);
+    await act(async () => {
+      view.unmount();
+      if (outcome === "resolved") resolveBody({ detail: "late transcription refusal" });
+    });
+    expect(init.signal?.aborted).toBe(true);
+    expect(onUploadError).not.toHaveBeenCalled();
+    expect(onUploaded).not.toHaveBeenCalled();
+    expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
   it("releases the microphone if the browser cannot create a recorder", async () => {
     vi.stubGlobal("MediaRecorder", class { constructor() { throw new Error("Unsupported audio format"); } });
     await start({ buildUploadUrl: () => "/speak/invite/test/voice" });

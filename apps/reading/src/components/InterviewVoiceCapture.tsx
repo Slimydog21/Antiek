@@ -222,6 +222,7 @@ export default function InterviewVoiceCapture({
         } catch {
           // keep the status-only detail
         }
+        if (!mountedRef.current || uploadAbortRef.current !== controller) return;
         if (onUploadError) onUploadError(resp.status, detail);
         throw new Error(`Upload failed: ${detail}`);
       }
