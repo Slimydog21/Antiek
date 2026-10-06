@@ -20,7 +20,7 @@ import {
  *
  * GRACEFUL DEGRADATION: the route is built by the parallel Unit A in the same
  * worktree but may not be registered in `create_app` yet (it 404s until wired).
- * A 404 (or a network failure) is surfaced as an honest, recoverable state via
+ * A 404 is surfaced as an honest, recoverable state via
  * `routeAbsent` — the view shows "the catalog isn't available yet", NEVER a
  * blank shelf masquerading as an empty corpus (honesty over a false-empty).
  */
@@ -53,6 +53,7 @@ export interface UseLibraryResult {
  *  can distinguish "not wired yet" from "empty corpus" and from a real error. */
 export async function fetchLibraryPage(
   args: UseLibraryArgs,
+  signal?: AbortSignal,
 ): Promise<LibraryPage> {
   try {
     return await fetchLibraryCatalog({
@@ -60,7 +61,7 @@ export async function fetchLibraryPage(
       search: args.search,
       page: args.page,
       page_size: args.pageSize ?? 20,
-    });
+    }, signal);
   } catch (error) {
     if (error instanceof LibraryCatalogHttpError && error.status === 404) {
       throw new Error("library_route_absent", { cause: error });
@@ -85,6 +86,7 @@ export function useLibrary(args: UseLibraryArgs): UseLibraryResult {
 
   useEffect(() => {
     const token = ++reqRef.current;
+    const controller = new AbortController();
     setLoading(true);
     // Never render results or rights claims from the previous query beneath a
     // newly selected filter/search/page while its request is in flight.
@@ -92,14 +94,14 @@ export function useLibrary(args: UseLibraryArgs): UseLibraryResult {
     setTotal(0);
     setError(null);
     setRouteAbsent(false);
-    fetchLibraryPage({ filter, search, page, pageSize })
+    fetchLibraryPage({ filter, search, page, pageSize }, controller.signal)
       .then((data) => {
-        if (token !== reqRef.current) return; // a newer request superseded us
+        if (controller.signal.aborted || token !== reqRef.current) return; // a newer request superseded us
         setWorks(data.works);
         setTotal(data.total);
       })
       .catch((e: unknown) => {
-        if (token !== reqRef.current) return;
+        if (controller.signal.aborted || token !== reqRef.current) return;
         setWorks([]);
         setTotal(0);
         if (e instanceof Error && e.message === "library_route_absent") {
@@ -109,8 +111,9 @@ export function useLibrary(args: UseLibraryArgs): UseLibraryResult {
         }
       })
       .finally(() => {
-        if (token === reqRef.current) setLoading(false);
+        if (!controller.signal.aborted && token === reqRef.current) setLoading(false);
       });
+    return () => controller.abort();
   }, [filter, search, page, pageSize, reloadKey]);
 
   return { works, total, page, pageSize, loading, error, routeAbsent, reload };

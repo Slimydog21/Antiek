@@ -7,8 +7,9 @@ Runs five checks against a live Antiek API base URL:
   2. ``OPTIONS /auth/request`` with ``Origin`` — Layer A: CORS preflight
      for the Pages → API cross-origin login submit.
   3. ``POST /auth/request`` with JSON — Layer B: policy path completes
-     with enumeration guard ``{"sent": true}`` (dry-run email defaults
-     to a non-allowlisted address so no mail is sent).
+     with ``sent: true`` and usable attempt/claim fields (dry-run email
+     defaults to a non-allowlisted address so no mail is sent). Attempt
+     credentials are validated but never included in probe output.
   4. ``GET /auth/passkey/status`` without a session cookie — Layer B: the
      passkey discovery route is public and does not leak credential counts.
   5. ``GET /auth/me`` without session cookie — Layer B: middleware returns
@@ -193,11 +194,24 @@ def stage_auth_request(base_url: str, origin: str, email: str) -> StageResult:
         )
 
     parsed = _json_body(body)
-    ok = code == 200 and parsed == {"sent": True}
+    # The browser needs both fields to call /auth/claim, whose bounds are
+    # 16..200 characters. Additive response fields do not invalidate a login.
+    ok = (
+        code == 200
+        and isinstance(parsed, dict)
+        and parsed.get("sent") is True
+        and all(
+            isinstance(parsed.get(field), str) and 16 <= len(parsed[field]) <= 200
+            for field in ("attempt_id", "claim_secret")
+        )
+    )
     detail = (
-        "sent:true (enumeration guard; dry-run email is non-allowlisted)"
+        "sent:true with usable login attempt fields (values withheld; enumeration guard)"
         if ok
-        else f"expected 200 {{\"sent\": true}}, got http={code} body={parsed!r}"
+        else (
+            "expected 200 with sent:true and usable login attempt fields; "
+            f"got http={code} (response values withheld)"
+        )
     )
     return StageResult("auth_request_dry_run", "B", ok, code, detail)
 
