@@ -37,7 +37,7 @@ import os
 import sys
 import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from substrate.attribution.compute import AttributionResult
     from substrate.auth import SessionClaims
     from substrate.billing.aggregator import BillingAggregate
+    from substrate.byot_usage.actions import OwnedWrestlingJob
     from substrate.ip_holders import IpHolder
     from substrate.notebooks import Notebook
 
@@ -93,6 +94,14 @@ from substrate.schemas import (  # noqa: E402
 
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
+from .frame_write_health import frame_write_health_for  # noqa: E402
+from .health_status import (  # noqa: E402
+    CHECK_ERROR,
+    CHECK_FRAME_WRITE,
+    STATUS_DEGRADED,
+    HealthStatusReport,
+    compute_health_status,
+)
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
@@ -131,7 +140,23 @@ class EmittedEventResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    # COMPUTED (interfaces/research/api/health_status.py), not a literal:
+    # "degraded" when any measured sub-check is red (today: the
+    # frame-telemetry write path, whose refusal for 84.6% of writes over
+    # 28h went invisible behind the old unconditional "ok" — prod
+    # incident 2026-10-02/03), and "ok" when every measured check is
+    # green OR nothing is measured (the liveness fallback). The HTTP
+    # code stays 200 either way — the transport claim and the health
+    # claim are different axes, and uptime monitors consume the
+    # transport one. Read status_checks to tell "ok: measured and
+    # green" from "ok: nothing measured".
     status: str
+    # Per-contributing-check verdict: "ok" / "degraded" /
+    # "not_measured" / "error" (sensor unreadable, which also degrades
+    # status — fail closed, same rule as /ops/provider-ratio).
+    status_checks: dict[str, str] = Field(default_factory=dict)
+    # Human-readable reason when status is "degraded"; None when "ok".
+    status_detail: str | None = None
     param_version: str
     schema_version: int
     subscriber_count: int
@@ -222,6 +247,16 @@ class HealthResponse(BaseModel):
     # Last admitted replay worker phase only; even "current" is not a reader
     # availability or recovery guarantee. An empty dict means no admitted phase.
     note_taker_replay: dict[str, Any] = {}
+    # Write-path health for POST /api/ad/frame-telemetry (prod incident
+    # 2026-10-02/03: 84.6% of flushes refused for 28h while this endpoint
+    # reported "ok" — every field above measured liveness, none measured
+    # whether a write can land). Rolling 15-minute window of attempts and
+    # retryable-503 refusals, recorded in-memory by the route (never a DuckDB
+    # handle). ``alert_recommended`` is computed here against the threshold
+    # derived in frame_write_health.py so the 5-minute ops probe only has to
+    # forward it — the same shape as /ops/provider-ratio. Empty window:
+    # attempts 0 and refusal_rate null, never a fabricated 0%.
+    frame_write: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -2249,6 +2284,15 @@ def create_app(
     app.state.duckdb_health = _probe_graph_duckdb()
     app.state.turbopuffer_health = _probe_turbopuffer()
 
+    # Write-path health recorder for the frame-telemetry route. In-memory
+    # rolling window — constructing it touches nothing on disk. Read by
+    # /health; written only by the route itself. See
+    # interfaces/research/api/frame_write_health.py for the threshold
+    # derivation (measured healthy 3.1% vs incident 84.6%).
+    from interfaces.research.api.frame_write_health import FrameWriteHealth
+
+    app.state.frame_write_health = FrameWriteHealth()
+
     # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
     # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
     # the first /health request (memoized via app.state._flywheel_probed) rather
@@ -2264,6 +2308,8 @@ def create_app(
     app.state.knowledge_reuse_count = 0
 
     if register_wrestling:
+        from .owned_wrestling import register_owned_wrestling_routes
+        register_owned_wrestling_routes(app, bus, db_path=wrestling_db_path)
         # Imported lazily so tests that don't touch wrestling don't pay
         # the dispatch / context_pack import cost.
         from .cross_doc import register_handlers as _register_cross_doc
@@ -2417,9 +2463,26 @@ def create_app(
         # Resolve-only (which + identity snapshot of a small file); never a
         # spawn, never raises — see _probe_prime_lane.
         prime_lane = _probe_prime_lane()
+        # The one value that used to be an unconditional literal: computed
+        # from live sub-checks (today the frame-telemetry write path), so a
+        # sustained write-refusal storm reds this field instead of reporting
+        # "ok" for 28 hours. See health_status.py for the contributor
+        # mapping and why startup-frozen snapshots are excluded.
+        status_report = compute_health_status(app)
+        try:
+            frame_write_report = asdict(frame_write_health_for(app).snapshot())
+        except Exception:
+            frame_write_report = {}
+            status_report = HealthStatusReport(
+                status=STATUS_DEGRADED,
+                checks={**status_report.checks, CHECK_FRAME_WRITE: CHECK_ERROR},
+                detail=status_report.detail or "frame_write details unavailable",
+            )
         return HealthResponse(
             drw_gather_mode=_resolved_gather_mode(),
-            status="ok",
+            status=status_report.status,
+            status_checks=status_report.checks,
+            status_detail=status_report.detail,
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
@@ -2499,6 +2562,10 @@ def create_app(
             note_taker_replay=_public_note_taker_replay(
                 getattr(app.state, "note_taker_recovery", {})
             ),
+            # O(window) read of an in-memory deque — never opens a handle,
+            # so /health stays responsive exactly when the write lock is
+            # contended (which is when this field matters).
+            frame_write=frame_write_report,
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -2520,6 +2587,13 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if ((envelope.policy_id or "").startswith("owned-wrestling/")
+            or _owned_investigation_job(envelope.investigation_id) is not None
+            or envelope.investigation_id.startswith("ownw-")):
+            raise HTTPException(
+                status_code=403,
+                detail="Owned wrestling events are server-owned; use POST /books/{document_id}/wrestle.",
+            )
         if action_value == "investigation.start_requested":
             raise HTTPException(
                 status_code=403,
@@ -2784,11 +2858,45 @@ def create_app(
 
         return render_well_known_manifest(CANONICAL_TOOLS)
 
+    def _owned_investigation_job(investigation_id: str) -> OwnedWrestlingJob | None:
+        # This issuer alone creates owned jobs, always under the reserved
+        # stable namespace. Keep ordinary event reads off the money journal.
+        if not investigation_id.startswith("ownw-"):
+            return None
+        from substrate.byot_usage.ledger import ByotUsageLedger
+
+        try:
+            return ByotUsageLedger().owned_wrestling_for_investigation(investigation_id)
+        except ValueError:
+            if investigation_id.startswith("ownw-"):
+                raise HTTPException(status_code=404, detail="investigation_not_found") from None
+            return None
+
+    def _require_owned_trajectory_reader(request: Request, investigation_id: str) -> None:
+        job = _owned_investigation_job(investigation_id)
+        if job is None:
+            if investigation_id.startswith("ownw-"):
+                raise HTTPException(status_code=404, detail="investigation_not_found")
+            return
+        from .owner_byot_dispatch import (
+            OwnerByotDispatchUnavailable,
+            authenticated_distinct_owner,
+        )
+
+        try:
+            owner = authenticated_distinct_owner(request)
+        except OwnerByotDispatchUnavailable:
+            owner = None
+        if owner != job.owner_user_id:
+            raise HTTPException(status_code=404, detail="investigation_not_found")
+
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(
         investigation_id: str,
+        request: Request,
         limit: Annotated[int | None, Query(ge=1, le=10_000)] = None,
     ) -> dict[str, Any]:
+        _require_owned_trajectory_reader(request, investigation_id)
         rows = trajectory(investigation_id)
         if limit is not None:
             rows = rows[-limit:]
@@ -2833,10 +2941,17 @@ def create_app(
 
     @app.get("/trajectory")
     async def get_trajectory_collection(
+        request: Request,
         limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
     ) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
         for investigation_id in _iter_event_log_investigation_ids():
+            try:
+                _require_owned_trajectory_reader(request, investigation_id)
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
             for row in trajectory(investigation_id):
                 if "investigation_id" not in row:
                     row = {**row, "investigation_id": investigation_id}
@@ -2935,6 +3050,20 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # This issuer is ordinary Loop One work. The owned book issuer has
+        # already reserved its stream and approval in the money journal.
+        if investigation_id.startswith("ownw-"):
+            raise HTTPException(status_code=409, detail="owned_investigation_reserved")
+        from substrate.byot_usage.ledger import ByotUsageLedger
+
+        try:
+            bound_owned_job = ByotUsageLedger().owned_wrestling_for_investigation(
+                investigation_id
+            )
+        except ValueError:
+            bound_owned_job = None
+        if bound_owned_job is not None:
+            raise HTTPException(status_code=409, detail="owned_investigation_reserved")
         # Meter 1 ACU for this start (gated, idempotent on investigation_id)
         # BEFORE anything is claimed, appended or broadcast. A failed charge
         # (503/429) must mean no run, never an unmetered run behind a 503.
@@ -3086,6 +3215,7 @@ def create_app(
     )
     async def get_investigation_status(
         investigation_id: str,
+        request: Request,
     ) -> InvestigationStatusResponse:
         """Phase-progression + terminal-verdict summary for one
         investigation. Distinguishes ``not_found`` (no events at all)
@@ -3093,6 +3223,7 @@ def create_app(
         from terminal states ``completed`` / ``failed``."""
         from substrate.schemas import ActionType
 
+        _require_owned_trajectory_reader(request, investigation_id)
         rows = trajectory(investigation_id)
         if not rows:
             return InvestigationStatusResponse(
@@ -5181,8 +5312,35 @@ def create_app(
             # the event bus, and never sees 101.
             await ws.close(code=1008)
             return
+        owner_user_id: str | None = None
+        session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+        if session_value:
+            try:
+                from substrate.auth import verify_session_cookie
+
+                from .owner_byot_dispatch import authenticated_distinct_owner
+
+                claims = verify_session_cookie(session_value)
+                if claims is not None:
+                    owner_user_id = authenticated_distinct_owner(Request({
+                        "type": "http",
+                        "state": {
+                            "auth_method": "antiek_session_cookie",
+                            "user_id": claims.user_id,
+                            "user_email": claims.email,
+                        },
+                    }))
+            except Exception:
+                owner_user_id = None
+        if investigation_id is not None:
+            job = _owned_investigation_job(investigation_id)
+            if ((job is not None and job.owner_user_id != owner_user_id)
+                or (job is None and investigation_id.startswith("ownw-"))):
+                await ws.close(code=1008)
+                return
         await ws.accept()
-        sub = await bus.subscribe(ws, investigation_id=investigation_id)
+        sub = await bus.subscribe(ws, investigation_id=investigation_id,
+                                  owner_user_id=owner_user_id)
         try:
             while True:
                 try:

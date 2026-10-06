@@ -2448,6 +2448,7 @@ def register_book_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=404, detail="book_not_found")
 
         authorized_dispatch = None
+        retrieval_owner: str | None = None
         selected_choice: UserModelChoice | None = None
         operation_id: str | None = None
         if (req.model_choice is None) != (req.operation_id is None):
@@ -2470,6 +2471,7 @@ def register_book_routes(app: FastAPI) -> None:
                 selected_owner = authenticated_distinct_owner(request)
             except OwnerByotDispatchUnavailable:
                 raise HTTPException(status_code=409, detail="owner_model_unavailable") from None
+            retrieval_owner = selected_owner
             def _dispatch_selected(prompt: str) -> Any:
                 # Re-read the resource authority at the last execution seam;
                 # the earlier read was existence/UX only and grants nothing.
@@ -2560,6 +2562,7 @@ def register_book_routes(app: FastAPI) -> None:
                     # §9.0: privileged ONLY for the authenticated owner (resolved
                     # server-side); non-owner / unauth callers stay gated.
                     policy_tag=_owner_read_policy_tag(request),
+                    owner_user_id=retrieval_owner,
                     authorized_dispatch=authorized_dispatch,
                 )
             except HTTPException:
@@ -2658,6 +2661,8 @@ def register_book_routes(app: FastAPI) -> None:
         row = ledger.operation(owner, operation_id)
         if row is None:
             raise HTTPException(status_code=404, detail="model_operation_not_found")
+        if row.action_id is not None:
+            raise HTTPException(status_code=409, detail="model_operation_belongs_to_action")
         return owner, ledger, row
 
     def _model_operation_status(request: Request, operation_id: str) -> ModelOperationStatus:

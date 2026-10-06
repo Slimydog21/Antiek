@@ -15,7 +15,8 @@
  * as a dependency:
  *   1. `<span class="file">…</span>` chips (the milestone "files it touches"),
  *   2. inline `<code>…</code>` references that look like a repo path.
- * For each extracted path it runs `git cat-file -e origin/main:<path>`.
+ * Literal paths use `git cat-file -e <main-sha>:<path>`. Globs match tracked
+ * filenames from `git ls-tree` at the same pinned origin/main revision.
  *   - A path prefixed `NEW:` / `NEW-to-build` is a DECLARED-NEW deliverable:
  *     it is reported as NEW and never fails the lint (the sprint builds it).
  *   - A bare path that resolves on `origin/main` is PASS.
@@ -34,6 +35,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type RefVerdict = "PASS" | "FAIL" | "NEW" | "ADVISORY-ABSENT";
@@ -78,6 +80,12 @@ const REPO_DIR_PREFIXES = [
   "scripts/",
   "tests/",
   "specs/",
+  // `services/` is ABSENT from the repository. Listing it here does not make it
+  // real - it makes a `services/...` .file chip VERIFIABLE, so the fictional
+  // services/mcp_server/* tree is reported as fiction instead of being silently
+  // rejected as a non-path. Without this, tightening the chip guard (above) would
+  // have hidden the single worst piece of fiction in the corpus.
+  "services/",
 ];
 
 /** Strip a leading NEW:/NEW-to-build marker; report whether one was present. */
@@ -142,7 +150,18 @@ export function extractRefsFromHtml(html: string): ExtractedRef[] {
   const fileChip = /<span\s+class="file"\s*>([\s\S]*?)<\/span>/gi;
   for (let m: RegExpExecArray | null; (m = fileChip.exec(html)); ) {
     const inner = decodeEntities(m[1]).trim();
-    if (inner) raw.push({ raw: inner, origin: "file-chip" });
+    // A `.file` chip is meant to be a PATH. Prose inside a chip - "(per branch)",
+    // "call sites", "see each wave's brief in ..." - is not a dependency claim and
+    // must not be reported as missing. The <code> branch below already applies this
+    // guard; the chip branch did not, which is where 93 of 161 reported "fiction"
+    // entries came from.
+    if (inner) {
+      // Guard the PATH, not the raw chip text: a chip may carry the `NEW:`
+      // deliverable framing, whose space would otherwise reject a legitimate
+      // declaration. parseNewPrefix strips that framing first.
+      const { path } = parseNewPrefix(inner);
+      if (path && looksLikeRepoPath(path)) raw.push({ raw: inner, origin: "file-chip" });
+    }
   }
 
   // 2. inline <code>…</code> repo paths — advisory.
@@ -178,17 +197,47 @@ export function extractPathsFromHtml(html: string): string[] {
   return extractRefsFromHtml(html).map((r) => r.raw);
 }
 
-/** Resolve a single path against origin/main. */
+// Present-parent/zero-match semantics are UNDETERMINED. Fail closed until an
+// explicit scope-versus-dependency contract settles that case; no parent bypass.
+const UNMATCHED_GLOB_RESOLVES = false;
+
+/** Pin origin/main once and lazily load its tracked files, never the worktree. */
+export function createOriginMainResolver(cwd: string): (path: string) => boolean {
+  const revision = execFileSync("git", ["rev-parse", "--verify", "origin/main^{commit}"], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+  let trackedFiles: string[] | undefined;
+
+  return (path) => {
+    if (/[*?\[\]{}]|[+@!]\(/.test(path)) {
+      trackedFiles ??= execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", revision], {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      }).split("\0").filter(Boolean);
+      return trackedFiles.some((file) => posix.matchesGlob(file, path))
+        ? true
+        : UNMATCHED_GLOB_RESOLVES;
+    }
+
+    try {
+      execFileSync("git", ["cat-file", "-e", `${revision}:${path}`], {
+        cwd,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/** Resolve one literal path or glob against the current origin/main. */
 export function existsOnOriginMain(path: string, cwd: string): boolean {
-  try {
-    execFileSync("git", ["cat-file", "-e", `origin/main:${path}`], {
-      cwd,
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return createOriginMainResolver(cwd)(path);
 }
 
 /**
@@ -250,10 +299,14 @@ export interface LintFileReport {
 }
 
 /** Lint one HTML file against origin/main. Only chip-origin FAILs gate. */
-export function lintHtmlFile(file: string, cwd: string): LintFileReport {
+export function lintHtmlFile(
+  file: string,
+  cwd: string,
+  resolver = createOriginMainResolver(cwd),
+): LintFileReport {
   const html = readFileSync(file, "utf8");
   const refs = extractRefsFromHtml(html);
-  const results = lintRefs(refs, (p) => existsOnOriginMain(p, cwd));
+  const results = lintRefs(refs, resolver);
   return { file, results, failed: results.some((r) => r.verdict === "FAIL") };
 }
 
@@ -282,7 +335,8 @@ function main(argv: string[]): number {
     return 2;
   }
   const cwd = findRepoRoot(process.cwd());
-  const reports = files.map((f) => lintHtmlFile(f, cwd));
+  const resolver = createOriginMainResolver(cwd);
+  const reports = files.map((f) => lintHtmlFile(f, cwd, resolver));
 
   if (json) {
     console.log(JSON.stringify(reports, null, 2));

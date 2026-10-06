@@ -243,6 +243,45 @@ def test_talk_to_book_cannot_cite_withheld_region(db):
     assert all("WITHHELDSECRET" not in p for p in provider.prompts)
 
 
+@pytest.mark.parametrize(
+    ("stored_owner", "request_owner", "policy_tag", "grounded"),
+    [
+        ("reader-a", "reader-a", "operator_only", True),
+        ("reader-a", "reader-b", "operator_only", False),
+        ("reader-a", None, "operator_only", False),
+        ("reader-a", "reader-a", "attribution_eligible", False),
+        ("__operator__", None, "operator_only", True),
+    ],
+)
+def test_talk_to_book_personal_context_matches_authenticated_owner(
+    db, stored_owner, request_owner, policy_tag, grounded,
+):
+    from substrate.books.book_qa import answer_book_question
+
+    _book_with_pages(db, "owned-book", content_class="personal_reading")
+    with connect_write(db, purpose="owned-book-fixture") as writer:
+        writer.execute(
+            "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
+            [stored_owner, "owned-book"],
+        )
+    provider = register_fake("Page one covers quantum mechanics.")
+    with connect_read(db) as reader:
+        result = answer_book_question(
+            reader, document_id="owned-book", question="quantum mechanics",
+            model=StubEmbedding(), investigation_id="read-owned-book",
+            config=_config_for("thought_partner"), policy_tag=policy_tag,
+            owner_user_id=request_owner,
+        )
+    assert result.grounded is grounded
+    if grounded:
+        assert result.context_chunk_count == 2
+        assert provider.prompts and result.citations
+        assert all(c.document_id == "owned-book" for c in result.citations)
+    else:
+        assert result.context_chunk_count == 0 and result.citations == []
+        assert provider.prompts == []
+
+
 def test_talk_to_book_no_extractable_text_fails_gracefully(db):
     """A scanned-image PDF has no chunks. The turn returns an honest 'no
     readable text' answer WITHOUT dispatching a model (no hallucination)."""

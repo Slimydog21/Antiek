@@ -93,46 +93,58 @@
   <div class="wp-id">WP-12.2</div>
   <h3>Bundle-size budget enforcement</h3>
   <div class="meta">
-    <span><strong>Files:</strong> <code>vite.config.ts</code>, <code>scripts/check_bundle.ts</code> (new), CI</span>
+    <span><strong>Files:</strong> <code>apps/reading/vite.config.ts</code>, <code>apps/reading/scripts/check_bundle.ts</code>, CI</span>
     <span><strong>Effort:</strong> 0.5 d</span>
   </div>
   <p>
     A post-build script that asserts main-chunk gzipped size ≤ 700 KB
-    (programme-wide commitment). Per-chunk budgets:
+    (programme-wide commitment). Enforced budgets
+    (<code>apps/reading/scripts/check_bundle.ts</code>, run by
+    <code>npm run build:check</code>):
   </p>
   <ul>
-    <li><code>main.js</code> ≤ 700 KB gzipped</li>
-    <li><code>workspace.js</code> ≤ 60 KB gzipped (lazy chunk)</li>
-    <li><code>lemon.js</code> ≤ 14 KB gzipped (lazy chunk)</li>
-    <li><code>notebook.js</code> ≤ 120 KB gzipped (lazy chunk, includes TipTap)</li>
-    <li><code>pdfviewer.js</code> ≤ 40 KB gzipped (lazy chunk; <code>pdf.worker</code> separate)</li>
+    <li><code>index</code> (entry chunk) ≤ 700 KB gzipped</li>
+    <li><code>lemon</code> (design-system primitives, split via <code>manualChunks</code>) ≤ 60 KB gzipped</li>
   </ul>
-
-  <pre><code>// scripts/check_bundle.ts
-import { gzipSync } from "node:zlib";
-import { readFileSync, readdirSync } from "node:fs";
-
-const budgets: Record&lt;string, number&gt; = {
-  "main": 700_000,
-  "workspace": 60_000,
-  "lemon": 14_000,
-  "notebook": 120_000,
-  "pdfviewer": 40_000,
-};
-
-const dist = "dist/assets";
-const files = readdirSync(dist).filter(f =&gt; f.endsWith(".js"));
-let fail = false;
-for (const [name, budget] of Object.entries(budgets)) {
-  const f = files.find(x =&gt; x.startsWith(name + "-"));
-  if (!f) { console.warn(`No file for chunk ${name}`); continue; }
-  const gz = gzipSync(readFileSync(`${dist}/${f}`)).length;
-  const over = gz &gt; budget;
-  console.log(`${name}: ${(gz/1024).toFixed(1)} KB ${over ? "✗ OVER" : "✓"}`);
-  if (over) fail = true;
-}
-process.exit(fail ? 1 : 0);
-</code></pre>
+  <p>
+    <strong>Correction (2026-10-03).</strong> This WP originally specified five
+    budgets: <code>main.js</code> ≤ 700 KB, <code>workspace.js</code> ≤ 60 KB,
+    <code>lemon.js</code> ≤ 14 KB, <code>notebook.js</code> ≤ 120 KB,
+    <code>pdfviewer.js</code> ≤ 40 KB. Two of those numbers did not survive
+    contact with the build, and the gate — not this page — was right:
+  </p>
+  <ul>
+    <li>
+      <code>lemon</code> ≤ 14 KB is unhittable for the built chunk. Measured
+      2026-10-03 on <code>origin/main</code>: the chunk gzips to 51.8 KB while
+      the ten primitive sources gzip to ~11.4 KB — Vite chunk metadata and
+      React interop boilerplate add ~40 KB that no source diet removes. The
+      gate re-budgeted at 60 KB, which keeps the ceiling measurable and
+      passing with ~7 KB headroom; the value is pinned by
+      <code>apps/reading/scripts/bundle_budget.test.ts</code>. The 14 KB
+      intent (primitive sources stay cheap) still holds and is inspectable
+      in the sources themselves.
+    </li>
+    <li>
+      <code>workspace</code>, <code>notebook</code> and
+      <code>pdfviewer</code> budgets name chunks the build does not emit:
+      <code>apps/reading/vite.config.ts</code> defines exactly one
+      <code>manualChunks</code> entry (<code>lemon</code>), and the shipped
+      gate fails a budget whose chunk is missing rather than skipping it, so
+      carrying those three names would red every build. The notebook
+      (TipTap) and pdf.worker payloads ship as auto-split lazy chunks whose
+      sizes are recorded in <code>docs/ui_redesign_posthog/RETRO.md</code>;
+      they are not separately budgeted.
+    </li>
+  </ul>
+  <p>
+    The shipped script is the source of truth:
+    <code>apps/reading/scripts/check_bundle.ts</code> (budget resolution
+    unit-tested in <code>apps/reading/scripts/bundle_budget.test.ts</code>,
+    failure behaviour pinned in <code>tests/test_bundle_budget_can_fail.py</code>).
+    Unlike the sketch this page originally embedded, it fails the build when a
+    budgeted chunk is missing, not only when one is over budget.
+  </p>
 </div>
 
 <!-- WP-12.3 -->

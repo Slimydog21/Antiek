@@ -56,17 +56,19 @@ class _Subscriber:
     frame and increment ``dropped`` for the client to see in a future
     diagnostic endpoint."""
 
-    __slots__ = ("ws", "investigation_id", "queue", "dropped")
+    __slots__ = ("ws", "investigation_id", "owner_user_id", "queue", "dropped")
 
     def __init__(
         self,
         ws: WebSocket,
         *,
         investigation_id: str | None,
+        owner_user_id: str | None = None,
         max_queue: int = 256,
     ):
         self.ws = ws
         self.investigation_id = investigation_id
+        self.owner_user_id = owner_user_id
         self.queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=max_queue)
         self.dropped: int = 0
 
@@ -114,6 +116,7 @@ class EventBroadcaster:
     # research_owner_dispatch). Carries the FastAPI app needed to revalidate
     # credential authority for owner-bound BYOT launches.
     _owner_model_app: object | None = None
+    owner_audience_for_investigation: Callable[[str], str | None] | None = None
 
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
@@ -128,8 +131,10 @@ class EventBroadcaster:
         ws: WebSocket,
         *,
         investigation_id: str | None = None,
+        owner_user_id: str | None = None,
     ) -> _Subscriber:
-        sub = _Subscriber(ws, investigation_id=investigation_id)
+        sub = _Subscriber(ws, investigation_id=investigation_id,
+                          owner_user_id=owner_user_id)
         async with self._lock:
             self._subscribers.add(sub)
         return sub
@@ -189,12 +194,33 @@ class EventBroadcaster:
         Snapshot subscribers and handlers under the lock so concurrent
         register/subscribe calls don't race the dispatch."""
         action_type = _action_type_str(event.action_type)
+        audience_owner: str | None = None
+        lookup = self.owner_audience_for_investigation
+        if lookup is not None and (
+            event.investigation_id.startswith("ownw-")
+            or (event.policy_id or "").startswith("owned-wrestling/")
+        ):
+            try:
+                audience_owner = lookup(event.investigation_id)
+            except Exception:
+                # Server-owned IDs never fall through to the public audience.
+                if event.investigation_id.startswith("ownw-"):
+                    audience_owner = ""
+                else:
+                    raise
+        if (audience_owner is None and
+            (event.investigation_id.startswith("ownw-")
+             or (event.policy_id or "").startswith("owned-wrestling/"))):
+            audience_owner = ""
         async with self._lock:
             sub_snapshot = tuple(self._subscribers)
             handler_snapshot = tuple(self._handlers.get(action_type, ()))
 
         # WS subscribers — direct (queue.put_nowait is non-blocking).
-        await asyncio.gather(*(s.offer(event) for s in sub_snapshot))
+        await asyncio.gather(*(
+            s.offer(event) for s in sub_snapshot
+            if audience_owner is None or s.owner_user_id == audience_owner
+        ))
 
         # Python handlers — background tasks so a slow handler doesn't
         # block the broadcast or the POST that triggered it. Tasks are

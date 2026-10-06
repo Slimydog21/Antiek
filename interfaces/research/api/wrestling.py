@@ -314,6 +314,12 @@ def make_distillation_handler(
         if not isinstance(event.payload, DistillationRequestedPayload):
             return  # defensive — handler is keyed on action_type but check anyway
 
+        if event.policy_id.startswith("owned-wrestling/"):
+            from .owned_wrestling import consume
+
+            await consume(event, broadcaster=broadcaster, db_path=resolved_db)
+            return
+
         request = event.payload
 
         region_text = _resolve_region_text(
