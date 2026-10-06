@@ -1437,7 +1437,14 @@ async def invitee_voice(
     def _precheck_sync() -> bool:
         try:
             with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
-                return _invite_read_or_404(_pre, token) is not None
+                invite = _invite_read_or_404(_pre, token)
+                if invite is None:
+                    return False
+                consent_mod.require_consent(
+                    _pre, invite.interview_id, ConsentScope.RECORD,
+                    action="transcribe_voice",
+                )
+                return True
         except FileNotFoundError:
             # No DB file yet means no invite can exist. Map to the same 404
             # rather than letting the writer create the database for an
@@ -1501,6 +1508,11 @@ async def invitee_voice(
         # write-side check exactly as before.
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
+            # Recheck after admission: consent may have been revoked while
+            # the body arrived. Never send unconsented audio to the provider.
+            consent_mod.require_consent(
+                con, interview_id, ConsentScope.RECORD, action="transcribe_voice",
+            )
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
         # — and off the loop, since Whisper is CPU-bound for seconds.
         with _translate():
@@ -1510,6 +1522,11 @@ async def invitee_voice(
                 transcriber=_INVITEE_TRANSCRIBER,
                 language=language,
             )
+            if not text.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="This recording yielded no words. Please try again or type your memory.",
+                )
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,

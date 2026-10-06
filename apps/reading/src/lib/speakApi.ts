@@ -298,6 +298,20 @@ export async function makeContributionInvitePath(id: string): Promise<string> {
   return `/speak/invite/${encodeURIComponent(token)}`;
 }
 
+async function actionFailure(resp: Response): Promise<Error> {
+  const status = `HTTP ${resp.status}`;
+  try {
+    const body: unknown = await resp.json();
+    if (typeof body === "object" && body !== null && "detail" in body
+        && typeof body.detail === "string" && body.detail.trim()) {
+      return new Error(`${status}: ${body.detail}`);
+    }
+  } catch {
+    // A proxy error page may be HTML. The HTTP status still identifies failure.
+  }
+  return new Error(status);
+}
+
 /**
  * The "what everyone agrees on" view. Runs the corroboration pass and maps
  * each cluster onto the honest vocabulary (corroborated / single /
@@ -310,7 +324,7 @@ export async function whatEveryoneAgreesOn(id: string): Promise<AgreementPoint[]
     headers: { "Content-Type": "application/json" },
     body: "{}",
   });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.ok) throw await actionFailure(resp);
   const data = await resp.json();
   const clusters: Record<string, unknown>[] = Array.isArray(data.clusters) ? data.clusters : [];
   return clusters.map((c) => ({
@@ -338,7 +352,7 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ public: isPublic }),
   });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.ok) throw await actionFailure(resp);
   const data = await resp.json();
   const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
   return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
