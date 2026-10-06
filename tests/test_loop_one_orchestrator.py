@@ -404,22 +404,17 @@ async def _post_start(
     ac, *, investigation_id: str, question: str,
     topic_slug: str | None = "psi-quantum-demo",
 ) -> None:
-    payload = {
-        "action_type": "investigation.start_requested",
-        "question": question,
-        "context": "",
-        "topic_slug": topic_slug,
-        "max_sub_questions": 4,
-    }
     r = await ac.post(
-        "/events/typed",
+        "/investigations",
         json={
             "investigation_id": investigation_id,
-            "payload": payload,
-            "role": "operator",
+            "question": question,
+            "context": "",
+            "topic_slug": topic_slug,
+            "max_sub_questions": 4,
         },
     )
-    assert r.status_code == 201, r.text
+    assert r.status_code == 202, r.text
 
 
 async def _await_terminal(investigation_id: str, *, timeout: float = 10.0):

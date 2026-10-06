@@ -468,6 +468,77 @@ def test_meta_check_rejects_stubbed_always_pass_guard(tmp_path: Path) -> None:
         stub.unlink(missing_ok=True)
 
 
+def test_a_prose_non_vacuity_does_not_make_an_always_pass_guard_detectable(
+    tmp_path: Path,
+) -> None:
+    """THE LIMITATION, ASSERTED RATHER THAN DESCRIBED.
+
+    `substrate/invariants/README.md` used to claim that a guard "stubbed-to-always-pass
+    reddens the meta-check", citing `broken-stub` as its proof. **Neither half held.**
+
+    `broken-stub` declares no `[non_vacuity]` table, so it reddens on missing proof:
+
+        assert inv.non_vacuity is None
+        with pytest.raises(AssertionError, match="non_vacuity"):
+            _check_guarded(inv)
+
+    And a guard whose body is `assert True` satisfies every assertion
+    `_check_guarded` makes about a `pytest`-kind guard -- `not was_xfail` and `passed` --
+    so adding a well-formed prose proof makes it load and pass.
+
+    **This test asserts the hole rather than pretending it is covered.** If someone adds
+    real vacuity detection, this test fails and should be replaced by one that asserts
+    the always-pass guard is REJECTED. Until then, the honest statement is: for a
+    `pytest`-kind guard, non-vacuity is prose plus "it runs green".
+    """
+    # The guard path in a declaration resolves against REPO_ROOT, not tmp_path, so this
+    # stub has to exist in the real tests/ directory. `broken-stub` writes to tmp_path and
+    # gets away with it only because it fails on the missing non_vacuity proof BEFORE the
+    # file-existence assertion is reached -- which is itself the proof that it reddens for
+    # the wrong reason.
+    stub = REPO_ROOT / "tests" / "_meta_tmp_always_pass_guard_prose.py"
+    stub.write_text(
+        "def test_always_pass():\n    assert True  # stub: passes on anything\n",
+        encoding="utf-8",
+    )
+    try:
+        _write_decl(
+            tmp_path,
+            "always-pass-with-prose",
+            """
+            [invariant]
+            id = "always-pass-with-prose"
+            status = "guarded"
+            statement = "A guard that asserts True and cannot fail on broken code."
+            guard = "tests/_meta_tmp_always_pass_guard_prose.py::test_always_pass"
+            assertion = "nothing - it asserts True"
+
+            [non_vacuity]
+            method = "fail_before_pass_after"
+            detail = "We once observed this failing before the fix, then passing after it."
+            """,
+        )
+        (inv,) = load_registry(tmp_path)
+
+        # It LOADS: the prose proof satisfies the well-formedness gate.
+        assert inv.non_vacuity is not None
+        assert inv.non_vacuity.method == "fail_before_pass_after"
+        assert inv.non_vacuity.detail, "prose proof present"
+
+        # And it PASSES the guarded check, because the guard runs green and is not
+        # xfail-marked. The always-pass body is invisible to both assertions.
+        _check_guarded(inv)
+
+        # Stated as the finding: the ONLY thing distinguishing this entry from a real
+        # one is the text in `detail`, which nothing verifies.
+        assert inv.non_vacuity.bite_test == "", (
+            "a pytest-kind guard carries no bite_test, so nothing RUNS to prove its "
+            "teeth -- that is the limitation this test exists to record"
+        )
+    finally:
+        stub.unlink(missing_ok=True)
+
+
 def test_meta_check_rejects_vacuous_section_14_4_guard(tmp_path: Path) -> None:
     """Rigor #3 (the headline proof) — register §14.4 with a deliberately-VACUOUS
     guard (a test that passes against a SYNTHETIC config and never loads the real

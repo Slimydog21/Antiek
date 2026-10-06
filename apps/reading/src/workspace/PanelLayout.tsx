@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "./keyboardOwnership";
 import { Suspense, lazy, useCallback, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
@@ -203,8 +204,11 @@ export function PanelLayout({ mainSlot }: Props) {
       if (escOverlayOpen()) return;
       setFullscreenPane(null);
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "pane.fullscreen.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !(e.target instanceof Element && (isTextEditing(e.target) || e.target.closest("[role=dialog], [role=alertdialog]"))) && !escOverlayOpen(),
+    }, onKeyDown);
+    return () => removeKeyboardOwner();
   }, [fullscreenPane, setFullscreenPane]);
 
   // Tier `sm` (< 768px) is the phone layout: one column, the route view

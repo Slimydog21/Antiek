@@ -21,13 +21,14 @@ import math
 
 from services.html_projection import tokens
 from services.html_projection.escape import escape_text
+from services.html_projection.widgets._coerce import to_float, to_int
 
 MAX_CATEGORIES = 8
 
 
 def _num(value: object) -> float:
     try:
-        parsed = float(value)
+        parsed = to_float(value)
     except (TypeError, ValueError):
         return 0.0
     # Non-finite (nan/inf) -> 0 (no contribution to the total).
@@ -36,7 +37,7 @@ def _num(value: object) -> float:
 
 def _int(value: object, default: int, low: int, high: int) -> int:
     try:
-        parsed = int(value)
+        parsed = to_int(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
@@ -46,7 +47,7 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_categories = data.get("categories")
     categories = raw_categories if isinstance(raw_categories, list) else []
     rows: list[tuple[str, float]] = []
