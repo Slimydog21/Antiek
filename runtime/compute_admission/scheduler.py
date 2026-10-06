@@ -7,71 +7,32 @@ import socket
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
-from typing import Annotated
+from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
-from pydantic import StringConstraints
-
-from .policy import ComputePolicy, Identifier, StrictModel, WorkloadPolicy
+from .backends import BillingFailure, CredentialFailure, adapter_registry
+from .capacity import CapacitySnapshot, capacity_refusal, host_capacity
+from .ledger import JsonlLedger, LedgerEvent, LedgerUnavailable
+from .models import (
+    TERMINAL_STATES,
+    BackendKind,
+    DataLocality,
+    Decision,
+    ExecutionReport,
+    JobContext,
+    JobEnvelope,
+    JobOutput,
+    JobRequest,
+    JobState,
+    OutcomeCode,
+    ReasonCode,
+)
+from .policy import ComputePolicy, WorkloadPolicy
 
 ENABLE_ENV = "ANTIEK_COMPUTE_LAYER_ENABLED"
-
-
-class OutcomeCode(StrEnum):
-    ADMITTED = "admitted"
-    QUEUED = "queued"
-    REFUSED_POLICY = "refused_policy"
-    LEASE_HELD = "lease_held"
-    ROUTE_BLOCKED = "route_blocked"
-    BUDGET_BLOCKED = "budget_blocked"
-
-
-class JobState(StrEnum):
-    QUEUED = "queued"
-    ADMITTED = "admitted"
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    REFUSED = "refused"
-    CREDENTIAL_BLOCKED = "credential_blocked"
-    BILLING_BLOCKED = "billing_blocked"
-
-
-class CredentialFailure(RuntimeError):
-    """The selected route cannot authenticate. Do not retry or fall back."""
-
-
-class BillingFailure(RuntimeError):
-    """The selected route cannot bill. Do not retry or fall back."""
-
-
-class JobRequest(StrictModel):
-    tenant_id: Identifier
-    project_id: Identifier
-    idempotency_key: Identifier
-    lane_key: Identifier
-    workload_class: Identifier
-    inputs_digest: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
-
-
-class JobEnvelope(JobRequest):
-    job_id: str
-
-
-@dataclass(frozen=True)
-class Decision:
-    job: JobEnvelope
-    code: OutcomeCode
-    state: JobState
-    reason: str
-    policy_version: str
-    route_alias: str | None
-    attempts: int
-    retryable: bool = field(default=False, init=False)
 
 
 @dataclass(frozen=True)
@@ -90,23 +51,6 @@ class LeaseSnapshot:
     holder_alive: bool
 
 
-@dataclass(frozen=True)
-class ExecutionReport:
-    decision: Decision
-    value: object = None
-
-
-@dataclass(frozen=True)
-class JobContext:
-    job: JobEnvelope
-    heartbeat: Callable[[], bool]
-
-
-class InProcessBackend:
-    def execute(self, task: Callable[[JobContext], object], context: JobContext) -> object:
-        return task(context)
-
-
 @dataclass
 class _Lease:
     job_id: str
@@ -120,7 +64,7 @@ class _Lease:
 class _Job:
     decision: Decision
     workload: WorkloadPolicy | None
-    value: object = None
+    output: JobOutput | None = None
 
 
 class AdmissionScheduler:
@@ -129,6 +73,8 @@ class AdmissionScheduler:
         policy: ComputePolicy,
         *,
         enabled: bool | None = None,
+        ledger_path: Path | None = None,
+        capacity_probe: Callable[[Path], CapacitySnapshot | None] = host_capacity,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._policy = policy.model_copy(deep=True)
@@ -137,16 +83,20 @@ class AdmissionScheduler:
             if enabled is not None
             else os.environ.get(ENABLE_ENV, "0").lower() in {"1", "true", "yes"}
         )
+        self._ledger = JsonlLedger(ledger_path) if ledger_path is not None else None
+        self._broken = False
+        self._closed = False
+        self._capacity_probe = capacity_probe
         self._clock = clock
         self._lock = threading.RLock()
         self._instance_id = str(uuid4())
         self._node = socket.gethostname()
         self._pid = os.getpid()
-        self._backend = InProcessBackend()
+        self._backends = adapter_registry()
         self._jobs: dict[str, _Job] = {}
-        self._idempotency: dict[tuple[str, str, str], str] = {}
+        self._idempotency: dict[tuple[str, str, str, str], str] = {}
         self._leases: dict[tuple[str, str, str], _Lease] = {}
-        self._route_blocks: dict[tuple[str, str], JobState] = {}
+        self._route_blocks: dict[tuple[str, str], ReasonCode] = {}
         self._used_slots: dict[str, int] = {}
         self._reserved_acu: dict[str, int] = {}
         self._spent_acu: dict[str, int] = {}
@@ -154,52 +104,71 @@ class AdmissionScheduler:
     def submit(self, request: JobRequest) -> Decision:
         self._check_process()
         with self._lock:
-            key = (request.tenant_id, request.project_id, request.idempotency_key)
+            self._check_ledger()
+            key = (
+                request.owner_user_id,
+                request.tenant_id,
+                request.project_id,
+                request.idempotency_key,
+            )
             previous_id = self._idempotency.get(key)
+            conflict = previous_id is not None
             if previous_id is not None:
                 previous = self._jobs[previous_id].decision
                 if previous.job.model_dump(exclude={"job_id"}) == request.model_dump():
                     return previous
-                return Decision(
-                    previous.job,
-                    OutcomeCode.REFUSED_POLICY,
-                    JobState.REFUSED,
-                    "idempotency_conflict",
-                    previous.policy_version,
-                    previous.route_alias,
-                    previous.attempts,
-                )
             envelope = JobEnvelope(**request.model_dump(), job_id=str(uuid4()))
             workload = self._policy.classes.get(request.workload_class)
             decision = Decision(
                 envelope,
                 OutcomeCode.QUEUED,
-                JobState.QUEUED,
-                "pool_full",
+                JobState.REQUESTED,
+                ReasonCode.REQUESTED,
                 self._policy.policy_version,
                 workload.backend if workload else None,
                 0,
             )
             self._jobs[envelope.job_id] = _Job(decision, workload)
-            self._idempotency[key] = envelope.job_id
-            reason = self._policy_refusal(request, workload)
-            if reason:
+            if not conflict:
+                self._idempotency[key] = envelope.job_id
+            if not self._enabled:
+                return self._set(
+                    envelope.job_id,
+                    OutcomeCode.REFUSED_POLICY,
+                    JobState.REFUSED,
+                    ReasonCode.DISABLED,
+                )
+            if self._ledger is None:
+                return self._set(
+                    envelope.job_id,
+                    OutcomeCode.REFUSED_POLICY,
+                    JobState.REFUSED,
+                    ReasonCode.LEDGER_UNBOUND,
+                )
+            self._emit(decision, None)
+            reason = (
+                ReasonCode.IDEMPOTENCY_CONFLICT
+                if conflict
+                else self._policy_refusal(request, workload)
+            )
+            if reason is not None:
                 return self._set(
                     envelope.job_id, OutcomeCode.REFUSED_POLICY, JobState.REFUSED, reason
                 )
             lane = self._lane(envelope)
             if lane in self._leases:
                 return self._set(
-                    envelope.job_id, OutcomeCode.LEASE_HELD, JobState.REFUSED, "lane_owned"
+                    envelope.job_id, OutcomeCode.LEASE_HELD, JobState.REFUSED, ReasonCode.LANE_OWNED
                 )
             now = datetime.now(UTC)
             self._leases[lane] = _Lease(envelope.job_id, now, now, self._clock())
             return self._consider(envelope.job_id)
 
     def advance(self, job_id: str) -> Decision:
-        """Controller admission of an existing queued job, never a new attempt."""
+        """Reconsider an existing queued job without creating an execution attempt."""
         self._check_process()
         with self._lock:
+            self._check_ledger()
             if self._jobs[job_id].decision.state != JobState.QUEUED:
                 return self._jobs[job_id].decision
             return self._consider(job_id)
@@ -243,130 +212,203 @@ class AdmissionScheduler:
     def cancel(self, job_id: str) -> bool:
         self._check_process()
         with self._lock:
+            self._check_ledger()
             decision = self._jobs[job_id].decision
             if decision.state not in {JobState.QUEUED, JobState.ADMITTED}:
                 return False
-            self._release(job_id)
-            self._set(job_id, decision.code, JobState.CANCELLED, "cancelled_before_start")
+            self._set(job_id, decision.code, JobState.CANCELLED, ReasonCode.CANCELLED)
             return True
 
     def run(self, job_id: str, task: Callable[[JobContext], object]) -> ExecutionReport:
         self._check_process()
         with self._lock:
+            self._check_ledger()
             job = self._jobs[job_id]
             decision = job.decision
             if decision.state != JobState.ADMITTED:
-                return ExecutionReport(decision, job.value)
+                return ExecutionReport(decision, job.output.value if job.output else None)
             assert job.workload is not None
             route = job.workload.backend
-            # A route may fail after another job was admitted but before it starts.
-            blocked = self._route_blocks.get((decision.job.tenant_id, route))
+            blocked = self._route_refusal(job)
             if blocked is not None:
-                self._release(job_id)
                 return ExecutionReport(
-                    self._set(job_id, OutcomeCode.ROUTE_BLOCKED, JobState.REFUSED, blocked.value)
+                    self._set(job_id, OutcomeCode.ROUTE_BLOCKED, JobState.REFUSED, blocked)
                 )
-            tenant = decision.job.tenant_id
-            self._reserved_acu[tenant] -= job.workload.acu_units
-            self._spent_acu[tenant] = self._spent_acu.get(tenant, 0) + job.workload.acu_units
-            self._set(job_id, OutcomeCode.ADMITTED, JobState.RUNNING, "started", attempts=1)
+            headroom = self._headroom()
+            if headroom is not None:
+                return ExecutionReport(
+                    self._set(job_id, OutcomeCode.QUEUED, JobState.QUEUED, headroom)
+                )
+            self._set(
+                job_id, OutcomeCode.ADMITTED, JobState.RUNNING, ReasonCode.STARTED, attempts=1
+            )
             lease = self._leases[self._lane(decision.job)]
             lease.thread = threading.current_thread()
             self.heartbeat(job_id)
         context = JobContext(decision.job, lambda: self.heartbeat(job_id))
+        backend = self._backends[self._policy.backends[route].kind]
         try:
-            value = self._backend.execute(task, context)
+            value = backend.execute(task, context)
+            output = value if isinstance(value, JobOutput) else JobOutput(value=value)
         except BaseException as exc:
             with self._lock:
-                state = JobState.FAILED
+                state, reason, code = JobState.FAILED, ReasonCode.FAILED, OutcomeCode.ADMITTED
                 if isinstance(exc, CredentialFailure):
-                    state = JobState.CREDENTIAL_BLOCKED
+                    state, reason = JobState.CREDENTIAL_BLOCKED, ReasonCode.CREDENTIAL_BLOCKED
                 elif isinstance(exc, BillingFailure):
-                    state = JobState.BILLING_BLOCKED
-                if state in {JobState.CREDENTIAL_BLOCKED, JobState.BILLING_BLOCKED}:
-                    self._route_blocks[(tenant, route)] = state
-                self._release(job_id)
-                code = (
-                    OutcomeCode.ADMITTED if state == JobState.FAILED else OutcomeCode.ROUTE_BLOCKED
-                )
-                result = self._set(job_id, code, state, state.value)
+                    state, reason = JobState.BILLING_BLOCKED, ReasonCode.BILLING_BLOCKED
+                if state != JobState.FAILED:
+                    self._route_blocks[(decision.job.tenant_id, route)] = reason
+                    code = OutcomeCode.ROUTE_BLOCKED
+                result = self._set(job_id, code, state, reason)
             if not isinstance(exc, Exception):
                 raise
             return ExecutionReport(result)
         with self._lock:
-            job.value = value
-            self._release(job_id)
+            job.output = output
             return ExecutionReport(
-                self._set(job_id, OutcomeCode.ADMITTED, JobState.SUCCEEDED, "completed"), value
+                self._set(job_id, OutcomeCode.ADMITTED, JobState.SUCCEEDED, ReasonCode.COMPLETED),
+                output.value,
             )
 
-    def _policy_refusal(self, request: JobRequest, workload: WorkloadPolicy | None) -> str | None:
-        if not self._enabled:
-            return "compute_layer_disabled"
+    def close(self) -> None:
+        self._check_process(allow_closed=True)
+        with self._lock:
+            if self._closed:
+                return
+            if any(job.decision.state == JobState.RUNNING for job in self._jobs.values()):
+                raise RuntimeError("cannot close a scheduler with a running task")
+            try:
+                for job_id, job in self._jobs.items():
+                    if job.decision.state in {JobState.ADMITTED, JobState.QUEUED}:
+                        if self._broken:
+                            self._release(job_id)
+                        else:
+                            self._set(
+                                job_id, job.decision.code, JobState.CANCELLED, ReasonCode.CANCELLED
+                            )
+            finally:
+                self._closed = True
+                if self._ledger is not None:
+                    self._ledger.close()
+
+    def _policy_refusal(
+        self, request: JobRequest, workload: WorkloadPolicy | None
+    ) -> ReasonCode | None:
         if workload is None or not workload.enabled:
-            return "workload_disabled_or_unknown"
+            return ReasonCode.WORKLOAD_DISABLED
         tenant = self._policy.tenants.get(request.tenant_id)
         if tenant is None or request.project_id not in tenant.projects:
-            return "tenant_or_project_unallocated"
+            return ReasonCode.UNALLOCATED
+        if request.owner_user_id not in tenant.owner_user_ids:
+            return ReasonCode.OWNER_UNALLOCATED
+        backend = self._policy.backends[workload.backend]
+        if tenant.data_locality == DataLocality.ANTIEK_USER and backend.region != "eu":
+            return ReasonCode.RESIDENCY
+        if tenant.data_locality == DataLocality.MINI_ONLY and backend.kind not in {
+            BackendKind.IN_PROCESS,
+            BackendKind.MINI_NODE,
+        }:
+            return ReasonCode.MINI_REQUIRED
+        if tenant.data_locality == DataLocality.CLOUD_OK_NO_RETENTION:
+            return ReasonCode.RETENTION_UNPROVEN
+        gates = self._policy.gates
+        if (
+            gates.disk_path is None
+            or gates.min_free_memory_percent is None
+            or gates.min_free_disk_bytes is None
+        ):
+            return ReasonCode.GATES_UNBOUND
         return None
 
-    def _check_process(self) -> None:
-        # A fork copies locks and lease state; it cannot become a second controller.
+    def _check_process(self, *, allow_closed: bool = False) -> None:
+        # Forked copies must not become additional lease controllers.
         if os.getpid() != self._pid:
             raise RuntimeError("compute scheduler cannot be used from a different process")
+        if self._closed and not allow_closed:
+            raise RuntimeError("compute scheduler is closed")
+
+    def _check_ledger(self) -> None:
+        if self._broken:
+            raise LedgerUnavailable("compute ledger failed; scheduler execution is held")
 
     @staticmethod
     def _lane(job: JobEnvelope) -> tuple[str, str, str]:
         return job.tenant_id, job.project_id, job.lane_key
 
+    def _route_refusal(self, job: _Job) -> ReasonCode | None:
+        assert job.workload is not None
+        blocked = self._route_blocks.get((job.decision.job.tenant_id, job.workload.backend))
+        if blocked is not None:
+            return blocked
+        backend = self._policy.backends[job.workload.backend]
+        return None if self._backends[backend.kind].available else ReasonCode.STUB
+
+    def _headroom(self) -> ReasonCode | None:
+        gates = self._policy.gates
+        assert (
+            gates.disk_path is not None
+            and gates.min_free_memory_percent is not None
+            and gates.min_free_disk_bytes is not None
+        )
+        return capacity_refusal(
+            self._capacity_probe(Path(gates.disk_path)),
+            gates.min_free_memory_percent,
+            gates.min_free_disk_bytes,
+            gates.max_memory_pressure,
+        )
+
     def _consider(self, job_id: str) -> Decision:
         job = self._jobs[job_id]
         decision, workload = job.decision, job.workload
         assert workload is not None
-        tenant = decision.job.tenant_id
-        blocked = self._route_blocks.get((tenant, workload.backend))
+        blocked = self._route_refusal(job)
         if blocked is not None:
-            self._release(job_id)
-            return self._set(job_id, OutcomeCode.ROUTE_BLOCKED, JobState.REFUSED, blocked.value)
-        budget = self._policy.tenants[tenant].session_budget_acu
+            return self._set(job_id, OutcomeCode.ROUTE_BLOCKED, JobState.REFUSED, blocked)
+        tenant = decision.job.tenant_id
         committed = self._reserved_acu.get(tenant, 0) + self._spent_acu.get(tenant, 0)
-        if committed + workload.acu_units > budget:
-            self._release(job_id)
+        if committed + workload.acu_units > self._policy.tenants[tenant].session_budget_acu:
             return self._set(
-                job_id, OutcomeCode.BUDGET_BLOCKED, JobState.REFUSED, "session_acu_exhausted"
+                job_id, OutcomeCode.BUDGET_BLOCKED, JobState.REFUSED, ReasonCode.BUDGET_EXHAUSTED
             )
+        headroom = self._headroom()
+        if headroom is not None:
+            return self._set(job_id, OutcomeCode.QUEUED, JobState.QUEUED, headroom)
         used = self._used_slots.get(workload.pool, 0)
         if used + workload.slot_cost > self._policy.pools[workload.pool].slots:
-            return decision
-        self._used_slots[workload.pool] = used + workload.slot_cost
-        self._reserved_acu[tenant] = self._reserved_acu.get(tenant, 0) + workload.acu_units
-        self.heartbeat(job_id)
-        return self._set(
-            job_id, OutcomeCode.ADMITTED, JobState.ADMITTED, "local_capacity_available"
+            return self._set(job_id, OutcomeCode.QUEUED, JobState.QUEUED, ReasonCode.POOL_FULL)
+        result = self._set(
+            job_id, OutcomeCode.ADMITTED, JobState.ADMITTED, ReasonCode.CAPACITY_AVAILABLE
         )
+        self.heartbeat(job_id)
+        return result
+
+    def _unreserve(self, job: _Job) -> None:
+        assert job.workload is not None
+        self._used_slots[job.workload.pool] -= job.workload.slot_cost
+        if job.decision.state == JobState.ADMITTED:
+            self._reserved_acu[job.decision.job.tenant_id] -= job.workload.acu_units
 
     def _release(self, job_id: str) -> None:
         job = self._jobs[job_id]
-        decision, workload = job.decision, job.workload
-        lane = self._lane(decision.job)
+        lane = self._lane(job.decision.job)
         lease = self._leases.get(lane)
         if lease is not None and lease.job_id == job_id:
             del self._leases[lane]
-        if workload is not None and decision.state in {JobState.ADMITTED, JobState.RUNNING}:
-            self._used_slots[workload.pool] -= workload.slot_cost
-            if decision.state == JobState.ADMITTED:
-                self._reserved_acu[decision.job.tenant_id] -= workload.acu_units
+        if job.decision.state in {JobState.ADMITTED, JobState.RUNNING}:
+            self._unreserve(job)
 
     def _set(
         self,
         job_id: str,
         code: OutcomeCode,
         state: JobState,
-        reason: str,
+        reason: ReasonCode,
         *,
-        attempts: int | None = None,
+        attempts: Literal[0, 1] | None = None,
     ) -> Decision:
-        old = self._jobs[job_id].decision
+        job = self._jobs[job_id]
+        old = job.decision
         new = Decision(
             old.job,
             code,
@@ -376,5 +418,72 @@ class AdmissionScheduler:
             old.route_alias,
             old.attempts if attempts is None else attempts,
         )
-        self._jobs[job_id].decision = new
+        if new == old:
+            return old
+        try:
+            self._emit(new, old.state)
+        except LedgerUnavailable:
+            self._release(job_id)
+            job.decision = (
+                new
+                if state in TERMINAL_STATES
+                else Decision(
+                    old.job,
+                    OutcomeCode.REFUSED_POLICY,
+                    JobState.REFUSED,
+                    ReasonCode.LEDGER_FAILED,
+                    old.policy_version,
+                    old.route_alias,
+                    old.attempts,
+                )
+            )
+            raise
+        if state in TERMINAL_STATES:
+            self._release(job_id)
+        elif old.state == JobState.ADMITTED and state == JobState.QUEUED:
+            self._unreserve(job)
+        elif state == JobState.ADMITTED:
+            assert job.workload is not None
+            self._used_slots[job.workload.pool] = (
+                self._used_slots.get(job.workload.pool, 0) + job.workload.slot_cost
+            )
+            tenant = old.job.tenant_id
+            self._reserved_acu[tenant] = self._reserved_acu.get(tenant, 0) + job.workload.acu_units
+        elif state == JobState.RUNNING:
+            assert job.workload is not None
+            tenant = old.job.tenant_id
+            self._reserved_acu[tenant] -= job.workload.acu_units
+            self._spent_acu[tenant] = self._spent_acu.get(tenant, 0) + job.workload.acu_units
+        job.decision = new
         return new
+
+    def _emit(self, decision: Decision, previous: JobState | None) -> None:
+        if not self._enabled or self._ledger is None:
+            return
+        job = self._jobs[decision.job.job_id]
+        workload = job.workload
+        backend = self._policy.backends[workload.backend] if workload else None
+        output = job.output
+        try:
+            self._ledger.append(
+                LedgerEvent(
+                    **decision.job.model_dump(),
+                    event_id=str(uuid4()),
+                    timestamp=datetime.now(UTC),
+                    policy_version=decision.policy_version,
+                    state=decision.state,
+                    prev_state=previous,
+                    admission_code=decision.code,
+                    reason=decision.reason,
+                    attempt=decision.attempts,
+                    backend=workload.backend if workload else None,
+                    region=backend.region if backend else None,
+                    pool=workload.pool if workload else None,
+                    acu_units=workload.acu_units if workload else 0,
+                    trace_ref=output.trace_ref if output else None,
+                    artifact_refs=output.artifact_refs if output else (),
+                )
+            )
+        except LedgerUnavailable:
+            self._broken = True
+            raise

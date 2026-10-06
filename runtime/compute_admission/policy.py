@@ -1,4 +1,4 @@
-"""The version-one YAML contract, restricted to in-process execution."""
+"""Versioned placement and admission policy, without provider prices."""
 
 from __future__ import annotations
 
@@ -7,18 +7,16 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
-Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")]
+from .models import BackendKind, DataLocality, Identifier, StrictModel, WorkloadClass
+
 PositiveInt = Annotated[int, Field(gt=0)]
 
 
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
-
 class BackendPolicy(StrictModel):
-    kind: Literal["in_process"]
+    kind: BackendKind = Field(strict=False)
+    region: Literal["eu", "us", "unknown"]
     price_usd_per_unit: None
 
 
@@ -35,13 +33,30 @@ class WorkloadPolicy(StrictModel):
 
 
 class TenantPolicy(StrictModel):
+    owner_user_ids: list[Identifier] = Field(min_length=1)
     projects: list[Identifier] = Field(min_length=1)
     session_budget_acu: Annotated[int, Field(ge=0)]
+    data_locality: DataLocality = Field(strict=False)
 
     @model_validator(mode="after")
     def unique_projects(self) -> Self:
-        if len(set(self.projects)) != len(self.projects):
-            raise ValueError("tenant projects must be unique")
+        if len(set(self.projects)) != len(self.projects) or len(set(self.owner_user_ids)) != len(
+            self.owner_user_ids
+        ):
+            raise ValueError("tenant projects and owners must be unique")
+        return self
+
+
+class CapacityPolicy(StrictModel):
+    disk_path: str | None
+    min_free_memory_percent: Annotated[float, Field(ge=0, le=100)] | None
+    min_free_disk_bytes: Annotated[int, Field(ge=0)] | None
+    max_memory_pressure: Literal[1, 2, 4]
+
+    @model_validator(mode="after")
+    def absolute_disk_path(self) -> Self:
+        if self.disk_path is not None and not Path(self.disk_path).is_absolute():
+            raise ValueError("capacity disk_path must be explicitly absolute")
         return self
 
 
@@ -63,9 +78,12 @@ class ComputePolicy(StrictModel):
     ]
     backends: dict[Identifier, BackendPolicy] = Field(min_length=1)
     pools: dict[Identifier, PoolPolicy] = Field(min_length=1)
-    classes: dict[Identifier, WorkloadPolicy] = Field(min_length=1)
+    classes: dict[Annotated[WorkloadClass, Field(strict=False)], WorkloadPolicy] = Field(
+        min_length=1
+    )
     tenants: dict[Identifier, TenantPolicy]
     leases: LeasePolicy
+    gates: CapacityPolicy
 
     @model_validator(mode="after")
     def known_routes(self) -> Self:

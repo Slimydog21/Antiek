@@ -1,8 +1,21 @@
 schema_version: antiek.compute_policy.v1
-policy_version: 1.0.0
+policy_version: 1.1.0
 backends:
   local:
     kind: in_process
+    region: unknown
+    price_usd_per_unit: null
+  modal:
+    kind: modal
+    region: eu
+    price_usd_per_unit: null
+  prime_sandboxes:
+    kind: prime_sandboxes
+    region: us
+    price_usd_per_unit: null
+  mini_node:
+    kind: mini_node
+    region: unknown
     price_usd_per_unit: null
 pools:
   local:
@@ -24,3 +37,8 @@ tenants: {}
 leases:
   heartbeat_interval_s: 10
   stale_after_s: 30
+gates:
+  disk_path: null
+  min_free_memory_percent: null
+  min_free_disk_bytes: null
+  max_memory_pressure: 1
