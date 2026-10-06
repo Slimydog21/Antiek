@@ -301,7 +301,7 @@ def test_health_route_keeps_http_200_when_real_sensor_is_unreadable(monkeypatch)
     body = response.json()
     assert body["status"] == STATUS_DEGRADED
     assert body["status_checks"][CHECK_FRAME_WRITE] == CHECK_ERROR
-    assert body["frame_write"] is None
+    assert body["frame_write"] == {}
 
 
 # ── integration against the REAL PR #3663 recorder ───────────────────

@@ -2472,7 +2472,7 @@ def create_app(
         try:
             frame_write_report = asdict(frame_write_health_for(app).snapshot())
         except Exception:
-            frame_write_report = None
+            frame_write_report = {}
             status_report = HealthStatusReport(
                 status=STATUS_DEGRADED,
                 checks={**status_report.checks, CHECK_FRAME_WRITE: CHECK_ERROR},
