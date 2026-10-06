@@ -325,6 +325,7 @@ class DurableNoteTakerReplay:
         events_dir: str | None = None,
         threshold: int = 5,
         checkpoint: Callable[[str, str], None] | None = None,
+        owned_investigation_guard: Callable[[str], bool] | None = None,
     ) -> None:
         if threshold < 1:
             raise ValueError("threshold must be positive")
@@ -333,6 +334,11 @@ class DurableNoteTakerReplay:
         self.events_dir = events_dir or default_events_dir()
         self.threshold = threshold
         self.checkpoint = checkpoint
+        self.owned_investigation_guard = owned_investigation_guard
+
+    def _owned_source(self, investigation_id: str) -> bool:
+        return (self.owned_investigation_guard(investigation_id)
+                if self.owned_investigation_guard is not None else False)
 
     def _check(self, name: str, window_id: str) -> None:
         if self.checkpoint:
@@ -346,6 +352,8 @@ class DurableNoteTakerReplay:
             init_database_at_path(self.db_path)
 
     def catch_up(self, investigation_id: str) -> list[str]:
+        if self._owned_source(investigation_id):
+            return []
         absolute_db_path = os.path.abspath(self.db_path)
         key = (absolute_db_path, investigation_id)
         with _locks_guard:
@@ -363,8 +371,13 @@ class DurableNoteTakerReplay:
         return delivered
 
     def _catch_up_locked(self, investigation_id: str) -> list[str]:
+        if self._owned_source(investigation_id):
+            return []
         _assert_complete_tail(investigation_id, self.events_dir)
         physical = list(iter_physical_events(investigation_id, events_dir=self.events_dir))
+        if any((row.get("policy_id") or "").startswith("owned-wrestling/")
+               for row in physical):
+            return []
         qualifying: list[dict[str, Any]] = []
         observed: dict[str, str] = {}
         for event in physical:
@@ -583,6 +596,8 @@ class DurableNoteTakerReplay:
         return lambda: self.dispatcher(request)
 
     def _advance(self, investigation_id: str, ordinal: int) -> list[str]:
+        if self._owned_source(investigation_id):
+            return []
         # Terminal / no-op states: read-only (idle catch_up must not thrash writer).
         with connect_read(self.db_path) as con:
             row = con.execute(
@@ -621,6 +636,8 @@ class DurableNoteTakerReplay:
                     "(expected discovery to mark ownership lost)"
                 )
             self._check("after_calling_commit", window_id)
+            if self._owned_source(investigation_id):
+                return []
             try:
                 result = call()
                 self._check("after_provider_return", window_id)

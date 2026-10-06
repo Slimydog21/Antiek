@@ -120,6 +120,14 @@ class CredentialMetadata:
     owner_user_id: str | None = None
 
 
+@dataclass(frozen=True)
+class GuardedCredential:
+    """Facts decrypted from one authenticated record while its guard is held."""
+
+    metadata: CredentialMetadata
+    secret: SecretStr
+
+
 class CredentialIntegrityError(ValueError):
     """Stored credential bytes no longer match their authenticated identity."""
 
@@ -210,6 +218,37 @@ def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
         os.chmod(path, _KEY_FILE_MODE)
         _fsync_directory(path.parent)
         return key
+
+
+def prepare_current_master_key(
+    *, key_bytes: bytes | None = None, key_file: str | None = None,
+) -> bytes:
+    """Prepare an existing key before a combined authority handoff; never repair it."""
+    if key_bytes is not None:
+        if len(key_bytes) != _KEY_SIZE:
+            raise ValueError(f"master key must be {_KEY_SIZE} bytes")
+        return key_bytes
+    path = Path(key_file or _default_key_file())
+    with _STORE_LOCK, _artifact_lock(str(path), exclusive=False):
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or (hasattr(os, "getuid") and info.st_uid != os.getuid())
+            or stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE):
+            raise CredentialIntegrityError("master key file is not private and regular")
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            opened = os.fstat(fd)
+            if ((opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)
+                or not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1
+                or stat.S_IMODE(opened.st_mode) != _KEY_FILE_MODE):
+                raise CredentialIntegrityError("master key file changed during preparation")
+            with os.fdopen(fd, "rb", closefd=False) as handle:
+                data = handle.read(_KEY_SIZE + 1)
+        finally:
+            os.close(fd)
+        if len(data) != _KEY_SIZE:
+            raise CredentialIntegrityError("master key size is invalid")
+        return data
 
 
 def _read_artifact(artifact_path: str) -> dict[str, object]:
@@ -378,26 +417,9 @@ def store_credential_with_metadata(
     )
 
 
-def load_credential(
-    cred_id: str,
-    *,
-    artifact_path: str | None = None,
-    key_bytes: bytes | None = None,
-    key_file: str | None = None,
-) -> SecretStr:
-    """Decrypt the credential for ``cred_id`` and return it as a redacting
-    :class:`SecretStr` (the plaintext is reachable only via ``.reveal()``).
-
-    Raises ``KeyError`` if ``cred_id`` is unknown. The decrypted plaintext is
-    NEVER logged / emitted by this function — it is handed back wrapped.
-    """
-    artifact = artifact_path or _default_artifact_path()
-    artifact_file = Path(artifact)
-    if not artifact_file.exists() and not artifact_file.is_symlink():
-        raise KeyError(f"unknown cred_id: {cred_id}")
-    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
-        data = _read_artifact(artifact)
-    rec = data.get(cred_id)
+def _credential_from_record(
+    cred_id: str, rec: object, master: bytes,
+) -> GuardedCredential:
     if not isinstance(rec, dict) or rec.get("cred_id") != cred_id:
         raise KeyError(f"unknown cred_id: {cred_id}")
     try:
@@ -413,7 +435,6 @@ def load_credential(
             raise CredentialIntegrityError("credential owner metadata is invalid")
         if not isinstance(binding_version, int) or isinstance(binding_version, bool):
             raise CredentialIntegrityError("credential binding version is invalid")
-        master = _load_master_key(key_bytes, key_file)
         if binding_version in (2, 3):
             key = _bound_key(
                 master,
@@ -435,7 +456,62 @@ def load_credential(
         if isinstance(exc, CredentialIntegrityError):
             raise
         raise CredentialIntegrityError("credential integrity check failed") from exc
-    return SecretStr(plaintext)
+    return GuardedCredential(
+        metadata=CredentialMetadata(
+            cred_id=cred_id, account_handle=account_handle,
+            pipeline_kind=pipeline_kind, binding_version=binding_version,
+            artifact_fingerprint=_artifact_fingerprint(rec),
+            owner_user_id=owner_user_id,
+        ),
+        secret=SecretStr(plaintext),
+    )
+
+
+@contextmanager
+def guard_current_credential(
+    cred_id: str, *, prepared_master_key: bytes,
+    artifact_path: str | None = None,
+) -> Iterator[GuardedCredential]:
+    """Hold the selected ciphertext writer guard through the caller's claim.
+
+    The key must have been prepared before the combined source/registry handoff.
+    No public store accessor or key-file repair runs inside this context.
+    """
+    if len(prepared_master_key) != _KEY_SIZE:
+        raise ValueError(f"master key must be {_KEY_SIZE} bytes")
+    artifact = artifact_path or _default_artifact_path()
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        path = Path(artifact)
+        if not path.exists():
+            raise KeyError(f"unknown cred_id: {cred_id}")
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or (hasattr(os, "getuid") and info.st_uid != os.getuid())
+            or stat.S_IMODE(info.st_mode) != _KEY_FILE_MODE):
+            raise CredentialIntegrityError("credential artifact is not private and regular")
+        record = _read_artifact(artifact).get(cred_id)
+        yield _credential_from_record(cred_id, record, prepared_master_key)
+
+
+def load_credential(
+    cred_id: str,
+    *,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
+) -> SecretStr:
+    """Decrypt one credential for ordinary callers, preserving legacy behavior."""
+    artifact = artifact_path or _default_artifact_path()
+    artifact_file = Path(artifact)
+    if not artifact_file.exists() and not artifact_file.is_symlink():
+        raise KeyError(f"unknown cred_id: {cred_id}")
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        data = _read_artifact(artifact)
+    record = data.get(cred_id)
+    if not isinstance(record, dict) or record.get("cred_id") != cred_id:
+        raise KeyError(f"unknown cred_id: {cred_id}")
+    master = _load_master_key(key_bytes, key_file)
+    return _credential_from_record(cred_id, record, master).secret
 
 
 def delete_credential(
