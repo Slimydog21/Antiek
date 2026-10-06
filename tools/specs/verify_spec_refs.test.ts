@@ -327,7 +327,7 @@ describe("chip extraction: prose is not a path, absent paths still are", () => {
     "see each wave&#x27;s brief in the design workflow script",
     "(worktree setup only)",
   ])("rejects prose inside a .file chip: %s", (prose) => {
-    const refs = extractRefsFromHtml(decodeEntitiesish(prose));
+    const refs = extractRefsFromHtml(chip(decodeEntitiesish(prose)));
     expect(refs.map((r) => r.raw)).toEqual([]);
   });
 

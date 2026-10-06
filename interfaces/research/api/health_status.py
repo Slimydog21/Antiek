@@ -111,17 +111,25 @@ def _frame_write_verdict(app: object) -> tuple[str, str | None]:
         )
     try:
         snap = snapshot()
+        attempts = getattr(snap, "attempts", None)
+        alert = getattr(snap, "alert_recommended", None)
+        reason = getattr(snap, "alert_reason", None)
     except Exception as exc:
         return (
             CHECK_ERROR,
             f"frame_write snapshot raised {type(exc).__name__}: {exc}; "
             "the write-path sensor is unreadable",
         )
-    attempts = getattr(snap, "attempts", None)
-    if not attempts:  # None or 0 — no traffic in the window, nothing measured
+    if (
+        type(attempts) is not int
+        or attempts < 0
+        or type(alert) is not bool
+        or (reason is not None and not isinstance(reason, str))
+    ):
+        return CHECK_ERROR, "frame_write snapshot is malformed; the write-path sensor is unreadable"
+    if attempts == 0:
         return CHECK_NOT_MEASURED, None
-    if bool(getattr(snap, "alert_recommended", False)):
-        reason = getattr(snap, "alert_reason", None)
+    if alert:
         return CHECK_DEGRADED, reason or "frame-telemetry write path is refusing writes"
     return CHECK_OK, None
 

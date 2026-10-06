@@ -236,6 +236,23 @@ def test_malformed_sensor_fails_closed():
     assert report.checks[CHECK_FRAME_WRITE] == CHECK_ERROR
 
 
+@pytest.mark.parametrize("snapshot", [
+    SimpleNamespace(),
+    SimpleNamespace(attempts=1),
+    SimpleNamespace(attempts=0),
+    SimpleNamespace(attempts=-1, alert_recommended=False, alert_reason=None),
+    SimpleNamespace(attempts=True, alert_recommended=False, alert_reason=None),
+    SimpleNamespace(attempts=1, alert_recommended="false", alert_reason=None),
+    SimpleNamespace(attempts=1, alert_recommended=True, alert_reason={}),
+])
+def test_malformed_returned_snapshot_fails_closed(snapshot):
+    recorder = SimpleNamespace(snapshot=lambda: snapshot)
+    report = compute_health_status(_app_with(recorder))
+    assert report.status == STATUS_DEGRADED
+    assert report.checks[CHECK_FRAME_WRITE] == CHECK_ERROR
+    assert "malformed" in report.detail
+
+
 # ── the /health route end to end ─────────────────────────────────────
 
 
