@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 
 import { recordAdImpressions } from "../../api/books";
+import type { AdFillView } from "./AdBorder";
 import { useReaderImpressions } from "./useReaderImpressions";
 
 vi.mock("../../api/books", async (original) => ({
@@ -11,8 +12,8 @@ vi.mock("../../api/books", async (original) => ({
 
 let clock = 0;
 let hidden = false;
-const slots = [{ slotId: "top", fill: { kind: "house", house: null } }]
-  satisfies Parameters<ReturnType<typeof useReaderImpressions>["observePage"]>[1];
+const houseFill = { kind: "house", house: null } satisfies AdFillView;
+const slots = [{ slotId: "top", fill: houseFill }];
 
 beforeEach(() => {
   clock = 0;
