@@ -35,7 +35,10 @@ from substrate.research_artifact import (  # noqa: E402
     restore_source_merge_review,
 )
 from substrate.research_artifact.build_body import build_body_for_reader  # noqa: E402
-from substrate.research_artifact.export import export_research_artifact_for_owner  # noqa: E402
+from substrate.research_artifact.export import (  # noqa: E402
+    ExportResult,
+    export_research_artifact_for_owner,
+)
 from substrate.research_artifact.paths import (  # noqa: E402
     artifact_path_for,
     read_importable_artifact,
@@ -154,7 +157,7 @@ def _source_merge_retired() -> JSONResponse:
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
 async def post_export_artifact(investigation_id: str, request: Request) -> ExportOut:
     owner_user_id = _reader_owner_id(request)
-    def _sync_export():
+    def _sync_export() -> ExportResult:
         return export_research_artifact_for_owner(
             investigation_id, db_path=_db(), owner_user_id=owner_user_id,
         )

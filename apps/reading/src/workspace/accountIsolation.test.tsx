@@ -128,7 +128,7 @@ describe("trusted account workspace boundaries", () => {
     const a = renderHook(() => useTalkThread("same-id"));
     let turn = "";
     act(() => { turn = a.result.current.startTurn("A prompt"); });
-    act(() => { a.result.current.completeTurn(turn, "A answer", [], true, null, "unavailable", { authority: "user_model", requested_provider_id: "a-provider", requested_model_id: "a-model", actual_provider_id: "a-provider", actual_model_id: "a-model", authority_digest: "a-digest" }); });
+    act(() => { a.result.current.completeTurn(turn, "A answer", [], true, null, "unavailable", { authority: "owner_byot", requested_provider_id: "a-provider", requested_model_id: "a-model", actual_provider_id: "a-provider", actual_model_id: "a-model", authority_digest: "a-digest" }); });
     const old = a.result.current;
     a.unmount();
     setWorkspaceOwner(null);

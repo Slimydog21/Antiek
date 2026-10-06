@@ -14,6 +14,7 @@ from substrate.auth.accounts import (
     account_for_session,
     account_for_verified_email,
     account_registry_active,
+    account_store_path,
     legacy_account_for_session,
 )
 
@@ -180,3 +181,17 @@ def test_concurrent_verified_account_creation_keeps_one_subject(stores):
     assert all(account == accounts[0] for account in accounts)
     persisted = json.loads(root.joinpath("accounts.json").read_text())
     assert sum(row["email"] == "new@example.test" for row in persisted["accounts"]) == 1
+
+
+def test_account_store_uses_the_hardened_writable_state_directory(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTIEK_ACCOUNT_STORE", raising=False)
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "read-only-home"))
+    state = tmp_path / "admitted-state"
+    monkeypatch.setenv("ANTIEK_STATE_DIR", str(state))
+    assert account_store_path() == state / "auth/accounts.json"
+    account = account_for_verified_email("state-account@example.test")
+    assert account_for_session(account.user_id, account.email) == account
+    assert not (tmp_path / "read-only-home/auth/accounts.json").exists()
+    configured = tmp_path / "explicit/accounts.json"
+    monkeypatch.setenv("ANTIEK_ACCOUNT_STORE", str(configured))
+    assert account_store_path() == configured

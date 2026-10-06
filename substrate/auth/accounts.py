@@ -61,7 +61,8 @@ def account_store_path() -> Path:
     configured = os.environ.get("ANTIEK_ACCOUNT_STORE", "").strip()
     if configured:
         return Path(configured).expanduser()
-    base = os.environ.get("ANTIEK_HOME", "").strip()
+    # The hardened service admits writes in ANTIEK_STATE_DIR, not its home.
+    base = os.environ.get("ANTIEK_STATE_DIR", "").strip() or os.environ.get("ANTIEK_HOME", "").strip()
     return (Path(base).expanduser() if base else Path.home() / ".antiek") / "auth/accounts.json"
 
 
