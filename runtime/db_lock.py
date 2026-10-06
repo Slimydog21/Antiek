@@ -51,6 +51,7 @@ writers wait). Cite: #3121 coexist; #3164/#3165 fill contention.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import contextlib
 import errno
@@ -1228,10 +1229,41 @@ ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
 )
 
 
+# How long a read waits for another process to release the file before it
+# surfaces ReadLockTimeout. The wait existed but nothing used it: 199 of 202
+# production read sites inherited the old fail-at-once default (only
+# speak_routes.py, this module, and async_interview.py opted in), so a read
+# that merely lost a race with a write answered 503 + Retry-After instead of
+# waiting a few hundred milliseconds and succeeding. Tuneable so an operator
+# can trade latency for availability without a code change.
+_DEFAULT_LOCK_WAIT_S = float(os.environ.get("ANTIEK_READ_LOCK_WAIT_S", "2.0"))
+
+
+def _on_event_loop() -> bool:
+    """True when a call is running ON the event loop rather than beside it.
+
+    This is the whole reason the wait was opt-in. ``runtime/db_lock.py`` warns
+    that routes opting into the synchronous wait must not run on the loop, and
+    with uvicorn pinned to one worker (CLAUDE.md invariant 1) a blocking wait
+    there stalls every other request. So the safe default was chosen over the
+    useful one, and 199 call sites were left to remember an argument they
+    mostly did not know about.
+
+    Detect the context instead of asking call sites to declare it. Starlette
+    runs a sync route in its threadpool, where no loop is running in this
+    thread and a wait costs nothing but this request's latency.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
 def connect_read(
     db_path: str,
     *,
-    external_lock_timeout_s: float = 0.0,
+    external_lock_timeout_s: float | None = None,
 ) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
@@ -1263,6 +1295,13 @@ def connect_read(
 
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
+    if external_lock_timeout_s is None:
+        # None means "decide from the context this is actually running in":
+        # on the loop, never wait (fail fast, exactly as before, so no route
+        # can stall the loop by omission); off the loop, a threadpool worker
+        # or a script, wait a bounded time. An explicit float still wins, so
+        # the three opted-in sites and their tests are unaffected.
+        external_lock_timeout_s = 0.0 if _on_event_loop() else _DEFAULT_LOCK_WAIT_S
     if not math.isfinite(external_lock_timeout_s) or external_lock_timeout_s < 0:
         raise ValueError("external_lock_timeout_s must be finite and nonnegative")
 

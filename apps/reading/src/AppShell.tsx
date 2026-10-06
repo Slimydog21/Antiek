@@ -10,6 +10,8 @@ import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PrefixChip } from "./components/hotkeys/PrefixChip";
+import { NewTabPicker } from "./workspace/NewTabPicker";
+import { ProjectPicker } from "./workspace/ProjectPicker";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { useViewportTier } from "./workspace/useViewportTier";
@@ -216,6 +218,14 @@ export function AppShell({ children }: Props) {
       {/* MS-01 — the quiet "prefix armed" chip, shown while the keymap's
           prefix waits for its next key. */}
       <PrefixChip />
+
+      {/* D2 — the two summoned pickers, mounted ONCE here like the key
+          sheet: the new-tab picker (prefix+c, and the document strip's +
+          button) and the account-project picker (prefix+shift+p, and the
+          sidebar's project row). Each self-subscribes to its keymap event
+          and lazy-loads its content on first open. */}
+      <NewTabPicker />
+      <ProjectPicker />
     </div>
   );
 }

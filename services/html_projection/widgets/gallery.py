@@ -47,9 +47,12 @@ color:{tokens.LEMON_NEUTRALS[3]};margin-bottom:{tokens.LEMON_SPACING[3]};}}
 """
 
 
-def _render(kind: str, data: dict) -> str:
+def _render(kind: str, data: dict[str, object]) -> str:
     mod = importlib.import_module(f"services.html_projection.widgets.{kind}")
-    return mod.render(data)
+    rendered: object = mod.render(data)
+    if not isinstance(rendered, str):
+        raise TypeError(f"widget {kind!r} returned {type(rendered).__name__}, expected str")
+    return rendered
 
 
 def build_gallery() -> str:

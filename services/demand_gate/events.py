@@ -17,6 +17,7 @@ events through the builders here so the gate is unbypassable.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 # The four measurement events + the round-trip detector's event + the two
@@ -65,7 +66,7 @@ _FORBIDDEN_CONTENT_FIELDS = frozenset(
 )
 
 
-def assert_no_content(event: dict) -> None:
+def assert_no_content(event: Mapping[str, object]) -> None:
     """Privacy gate: a demand-gate event carries only counts/choices/ids/hashes
     — never artifact content. Rejects any forbidden content key OR any field
     outside the allowlist (an unrecognised field could carry content)."""
@@ -94,8 +95,8 @@ def build_export_offered(
     formats: tuple[str, ...],
     *,
     emitted_at: datetime | None = None,
-) -> dict:
-    e = {
+) -> dict[str, str | list[str]]:
+    e: dict[str, str | list[str]] = {
         "action_type": EXPORT_OFFERED,
         "user_id": user_id,
         "surface": surface,
@@ -106,7 +107,7 @@ def build_export_offered(
     return e
 
 
-def build_export_taken(user_id: str, surface: str, format: str) -> dict:
+def build_export_taken(user_id: str, surface: str, format: str) -> dict[str, str]:
     e = {
         "action_type": EXPORT_TAKEN,
         "user_id": user_id,
@@ -117,7 +118,7 @@ def build_export_taken(user_id: str, surface: str, format: str) -> dict:
     return e
 
 
-def build_share_link_taken(user_id: str, surface: str) -> dict:
+def build_share_link_taken(user_id: str, surface: str) -> dict[str, str]:
     e = {"action_type": SHARE_LINK_TAKEN, "user_id": user_id, "surface": surface}
     assert_no_content(e)
     return e
@@ -131,8 +132,8 @@ def build_re_import_detected(
     *,
     exported_by: tuple[str, ...] = (),
     emitted_at: datetime | None = None,
-) -> dict:
-    e = {
+) -> dict[str, str | list[str]]:
+    e: dict[str, str | list[str]] = {
         "action_type": RE_IMPORT_DETECTED,
         "document_id": document_id,
         "classification": classification,

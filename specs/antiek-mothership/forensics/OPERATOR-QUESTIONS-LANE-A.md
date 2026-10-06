@@ -1,0 +1,12 @@
+# Open operator questions (lane A's list)
+
+Each item needs the operator's decision. Each has a default that lane A follows until the operator rules, and none of those defaults spends money or crosses a signed decision. Newest first. Answered items move to `../DECISIONS.md`.
+
+| # | Question | Default until ruled | Blocks | Source |
+|---|---|---|---|---|
+| Q-6 | **Ad frames inside the cockpit.** AppShell mounts four house-ad frames on every page, including the Write canvas and the reader, and the rails clip at 1440 (frontend crawl A-11). Should ad frames appear inside the cockpit's working surfaces (Write, research panes), or only on reading and browsing pages? | No new placements. The clipping is fixed, and existing placements stay until ruled. | A-11 fix scope; A12 homes | `specs/antiek-frontend-forensic-20260927/ground/AUTH-CRAWL-main-d61e5256.md` A-11 |
+| Q-5 | **Ads on non-book documents.** May house ads and impression accrual run on servable web pages and papers (`is_book: false`), or only on books? | Off for non-books: no ad rail, no accrual. | A18(7) ad rails; LB-35 | `cockpit/LB-35-SPEC-2026-09-27.md` Q1 |
+| Q-4 | **Source merges on prod.** Does prod hold any `source_merge.committed` without a later `.restored`? Agents cannot read the prod DB, so this is an operator check. | Restore is API-only. If yes, lane B builds LB-33b (a receipts read), and lane A brings back "Restore the original" per document. If none remain, restore also retires with a 410. | LB-33b | DECISIONS 2026-09-27; PR #3533 |
+| Q-3 | **A standing autonomy envelope (lane B's O-11).** It is one expiring, revocable, capped consent per agent, which is an exception to D4's per-flag consent. | Per-flag consent under D4, and nothing standing is written. Ruling 10 already keeps spawning off. | A24(4); LB-28 | DECISIONS 2026-09-27 |
+| Q-2 | **Overturn any delegated decision?** These are D-P (one project across modes), D-A (an agent is a promoted thread with attached-only reach) and D-M (a model-written merge draft, adopted verbatim). | As decided. | none | DECISIONS 2026-09-27; `FABLE-PANEL-DELEGATED-DECISIONS-2026-09-27.md` |
+| Q-1 | **Overturn any lane-A default?** These are 1–8: an empty Writing project; the book's context; Converse as a product with a door; a Speak redraft as a revision; Speak's three sections; no agent memory proposals; C3 standing ("command F" is prefix+f); and when voice sends, including the 1.5 s grace. | As decided. | none | DECISIONS 2026-09-27 |

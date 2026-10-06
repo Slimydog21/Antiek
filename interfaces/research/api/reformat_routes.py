@@ -44,6 +44,8 @@ class ReformatOut(BaseModel):
     contribution_classes: list[str]
     mostly_generated: bool
     reclassed_verbatim: int
+    #: Research-supplement claims reclassed for lack of a distilled product.
+    reclassed_research: int = 0
     null_source_share: float
 
 
@@ -133,6 +135,7 @@ def register_reformat_routes(app: FastAPI) -> None:
             contribution_classes=result.contribution_classes,
             mostly_generated=result.mostly_generated,
             reclassed_verbatim=result.reclassed_verbatim,
+            reclassed_research=result.reclassed_research,
             null_source_share=result.null_source_share,
         )
 
@@ -230,7 +233,12 @@ def register_reformat_routes(app: FastAPI) -> None:
                 "source_document_id": record.source_document_id,
                 "source_title": source_title,
                 "prompt": record.prompt,
+                # The responder, not the request: model/provider are the
+                # dispatch route receipt; the requested label is in
+                # params.requested_model. provider null = no dispatch
+                # receipt (the injectable seam), never a guess.
                 "model": record.model,
+                "provider": record.provider,
                 "params": json_loads(record.params_json),
                 "mostly_generated": record.mostly_generated,
                 "created_at": record.created_at,

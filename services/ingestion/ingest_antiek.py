@@ -33,7 +33,7 @@ class IngestResult:
     that it enters any LLM context as quoted data, not instructions."""
 
     ok: bool
-    doc_model: dict | None
+    doc_model: dict[str, object] | None
     quarantined: bool
     reason: str | None
     framing: str = "quoted_payload"
@@ -43,7 +43,7 @@ class IngestResult:
     roundtrip: str | None = None
     # The detector's typed event (actor, exporters, time) — kept, not discarded,
     # so a caller can append it to the event log the verdict reads.
-    roundtrip_event: dict | None = None
+    roundtrip_event: dict[str, str | list[str] | None] | None = None
 
 
 def ingest_antiek(
