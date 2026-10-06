@@ -289,6 +289,21 @@ def test_health_route_stays_ok_on_healthy_baseline():
     assert body["status_checks"][CHECK_FRAME_WRITE] == CHECK_OK
 
 
+def test_health_route_keeps_http_200_when_real_sensor_is_unreadable(monkeypatch):
+    from interfaces.research.api.frame_write_health import FrameWriteHealth
+
+    def unreadable(self):
+        raise RuntimeError("sensor unavailable")
+
+    monkeypatch.setattr(FrameWriteHealth, "snapshot", unreadable)
+    response = TestClient(create_app()).get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == STATUS_DEGRADED
+    assert body["status_checks"][CHECK_FRAME_WRITE] == CHECK_ERROR
+    assert body["frame_write"] is None
+
+
 # ── integration against the REAL PR #3663 recorder ───────────────────
 
 

@@ -95,7 +95,13 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .frame_write_health import frame_write_health_for  # noqa: E402
-from .health_status import compute_health_status  # noqa: E402
+from .health_status import (  # noqa: E402
+    CHECK_ERROR,
+    CHECK_FRAME_WRITE,
+    STATUS_DEGRADED,
+    HealthStatusReport,
+    compute_health_status,
+)
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 from .public_replay_health import _public_note_taker_replay  # noqa: E402
 
@@ -2463,6 +2469,15 @@ def create_app(
         # "ok" for 28 hours. See health_status.py for the contributor
         # mapping and why startup-frozen snapshots are excluded.
         status_report = compute_health_status(app)
+        try:
+            frame_write_report = asdict(frame_write_health_for(app).snapshot())
+        except Exception:
+            frame_write_report = None
+            status_report = HealthStatusReport(
+                status=STATUS_DEGRADED,
+                checks={**status_report.checks, CHECK_FRAME_WRITE: CHECK_ERROR},
+                detail=status_report.detail or "frame_write details unavailable",
+            )
         return HealthResponse(
             drw_gather_mode=_resolved_gather_mode(),
             status=status_report.status,
@@ -2550,9 +2565,7 @@ def create_app(
             # O(window) read of an in-memory deque — never opens a handle,
             # so /health stays responsive exactly when the write lock is
             # contended (which is when this field matters).
-            frame_write=asdict(
-                frame_write_health_for(app).snapshot()
-            ),
+            frame_write=frame_write_report,
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
