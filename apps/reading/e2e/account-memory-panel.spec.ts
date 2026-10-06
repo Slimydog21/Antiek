@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { devLogin } from "./_dev-login";
+
 /**
  * account-memory-panel.spec.ts — SPR-11 Task 6's proof, against a REAL backend.
  *
@@ -31,9 +33,7 @@ function uniqueSubject(): string {
 
 /** Sign in for real and land on the panel. */
 async function signInAndOpenPanel(page: Page): Promise<void> {
-  await page.goto(
-    `${API_BASE}/auth/dev-login?token=${DEV_LOGIN_TOKEN}&next=${encodeURIComponent("/memory")}`,
-  );
+  await devLogin(page, { apiBase: API_BASE, next: "/memory", fixtureToken: DEV_LOGIN_TOKEN });
   await expect(page).toHaveURL(/\/memory$/);
   await expect(page.getByTestId("memory-panel")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Account memory" })).toBeVisible();
