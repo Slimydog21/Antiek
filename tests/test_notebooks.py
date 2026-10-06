@@ -104,7 +104,7 @@ def test_list_notebooks_filtered_by_investigation(db):
     nb1 = create_notebook(db, title="A", investigation_id="inv-1")
     nb2 = create_notebook(db, title="B", investigation_id="inv-1")
     nb3 = create_notebook(db, title="C", investigation_id="inv-2")
-    listed = list_notebooks(db, investigation_id="inv-1")
+    listed = list_notebooks(db, owner_user_id="__operator__", investigation_id="inv-1")
     ids = {nb.notebook_id for nb in listed}
     assert ids == {nb1, nb2}
     assert nb3 not in ids
@@ -126,3 +126,9 @@ def test_block_content_json_round_trips(db):
     assert nb is not None
     assert nb.blocks[0].block_id == block_id
     assert nb.blocks[0].content_json == content
+
+
+@pytest.mark.parametrize("owner", ["", "   "])
+def test_notebook_list_blank_owner_is_not_readable(db, owner):
+    create_notebook(db, title="Unknown owner", owner_user_id=owner)
+    assert list_notebooks(db, owner_user_id=owner) == []

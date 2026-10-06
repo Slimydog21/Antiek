@@ -27,10 +27,10 @@ test.describe("FEEL-S2 — floating panel cascade", () => {
     await loadWorkspaceDemo(page);
     await page.getByTestId("feel-three-stack").click();
 
-    const regions = page.locator('[role="region"]');
-    await expect(regions).toHaveCount(3, { timeout: 8_000 });
+    const panels = page.getByRole("region", { name: /^Stack [123]$/ });
+    await expect(panels).toHaveCount(3, { timeout: 8_000 });
 
-    const boxes = await regions.evaluateAll((nodes) =>
+    const boxes = await panels.evaluateAll((nodes) =>
       nodes.map((n) => {
         const r = n.getBoundingClientRect();
         return { x: Math.round(r.x), y: Math.round(r.y) };
@@ -53,7 +53,7 @@ test.describe("FEEL-S2 — floating panel cascade", () => {
     // live in a `shadowRank` helper out here and every run died with
     // `ReferenceError: shadowRank is not defined` -- undetected because no
     // workflow ever executed this spec. Keep the ranking inline.
-    const stacks = await regions.evaluateAll((nodes) =>
+    const stacks = await panels.evaluateAll((nodes) =>
       nodes.map((n) => {
         const cls =
           typeof n.className === "string"

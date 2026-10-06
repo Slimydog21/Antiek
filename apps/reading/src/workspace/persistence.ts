@@ -335,8 +335,8 @@ export function clearCustomHotkeys(): void {
 // snapshot is per-scope + high-churn. Coupling them would rewrite the preset
 // into every scope key on every panel move. One global key, its own
 // schemaVersion, owned by the cockpit chrome. Stored at
-// `antiek.workspace.layout-preset`; absent/invalid reads as "docked", so a
-// stored preset never surprises an operator who never chose one.
+// `antiek.workspace.layout-preset`; absent/invalid reads use the cockpit.
+// An explicit stored choice, including docked, survives the default change.
 
 const LAYOUT_PRESET_KEY = LS_PREFIX + "layout-preset";
 
@@ -345,7 +345,7 @@ const LAYOUT_PRESET_KEY = LS_PREFIX + "layout-preset";
  *  describes the default in prose can be built from it rather than restating
  *  it -- the key sheet did the latter and told the operator the opposite
  *  (PR #3586). */
-export const LAYOUT_PRESET_DEFAULT: LayoutPreset = "docked";
+export const LAYOUT_PRESET_DEFAULT: LayoutPreset = "omarchy-inset";
 
 /** The versioned envelope written to localStorage. */
 export interface PersistedLayoutPreset {
@@ -353,25 +353,26 @@ export interface PersistedLayoutPreset {
   preset: LayoutPreset;
 }
 
-/** Read the persisted preset. "docked" on miss, parse error, version
- *  mismatch, or an unknown value — the default is the failure mode. */
+/** Read the persisted choice, or the default on missing/invalid storage. */
 export function readLayoutPreset(): LayoutPreset {
   if (typeof window === "undefined") return LAYOUT_PRESET_DEFAULT;
   try {
     const raw = window.localStorage.getItem(LAYOUT_PRESET_KEY);
     if (!raw) return LAYOUT_PRESET_DEFAULT;
-    const parsed = JSON.parse(raw) as PersistedLayoutPreset;
-    if (typeof parsed !== "object" || parsed === null || parsed.schemaVersion !== 1) {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || !("schemaVersion" in parsed) || parsed.schemaVersion !== 1) {
       if (typeof console !== "undefined") {
         // eslint-disable-next-line no-console
         console.warn(
           "[antiek/persistence] ignoring layout-preset with mismatched schemaVersion:",
-          (parsed as PersistedLayoutPreset | null)?.schemaVersion,
+          typeof parsed === "object" && parsed !== null && "schemaVersion" in parsed ? parsed.schemaVersion : undefined,
         );
       }
       return LAYOUT_PRESET_DEFAULT;
     }
-    return parsed.preset === "omarchy-inset" ? "omarchy-inset" : "docked";
+    return "preset" in parsed && (parsed.preset === "omarchy-inset" || parsed.preset === "docked")
+      ? parsed.preset
+      : LAYOUT_PRESET_DEFAULT;
   } catch {
     return LAYOUT_PRESET_DEFAULT;
   }
@@ -390,11 +391,85 @@ export function writeLayoutPreset(preset: LayoutPreset): void {
   }
 }
 
-/** Delete the preset blob (back to "docked" on next load). */
+/** Delete the preset blob (back to the default on next load). */
 export function clearLayoutPreset(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(LAYOUT_PRESET_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Selected account project — the D2 project level (ADDITIVE: a SEPARATE
+// global-scoped, versioned blob, deliberately NOT folded into the layout
+// PersistedSnapshot, for the same reason as the layout preset above)
+// ─────────────────────────────────────────────────────────────────────
+//
+// The tab trees are filed per project (tabTreeStore): the adapter's load
+// and save take the project id, so which project is selected decides which
+// trees the cockpit shows. The selection itself is global + route-agnostic
+// + low-churn operator state, exactly like the layout preset, so it gets
+// the same shape: one global key, its own schemaVersion. Stored at
+// `antiek.workspace.tab-project`; absent/invalid reads as null, which the
+// store reads as the default project, so a stored id never surprises an
+// operator who never chose one.
+
+const TAB_PROJECT_KEY = LS_PREFIX + "tab-project";
+
+/** The versioned envelope written to localStorage. */
+export interface PersistedTabProject {
+  schemaVersion: 1;
+  /** The selected write_folders project_id; null is never written (clear
+   *  instead), so a stored value is always a real id. */
+  projectId: string;
+}
+
+/** Read the persisted selection. Null on miss, parse error, version
+ *  mismatch, or an empty value — the default project is the failure mode. */
+export function readTabProject(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TAB_PROJECT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedTabProject;
+    if (typeof parsed !== "object" || parsed === null || parsed.schemaVersion !== 1) {
+      if (typeof console !== "undefined") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[antiek/persistence] ignoring tab-project with mismatched schemaVersion:",
+          (parsed as PersistedTabProject | null)?.schemaVersion,
+        );
+      }
+      return null;
+    }
+    return typeof parsed.projectId === "string" && parsed.projectId.length > 0
+      ? parsed.projectId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Write the selection blob. Silent on quota errors. */
+export function writeTabProject(projectId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      TAB_PROJECT_KEY,
+      JSON.stringify({ schemaVersion: 1, projectId } satisfies PersistedTabProject),
+    );
+  } catch {
+    // Quota exceeded / storage disabled — silent; in-memory state stands.
+  }
+}
+
+/** Delete the selection blob (back to the default project on next load). */
+export function clearTabProject(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(TAB_PROJECT_KEY);
   } catch {
     // ignore
   }

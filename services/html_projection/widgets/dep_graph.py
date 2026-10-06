@@ -46,7 +46,7 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def render(data: dict) -> str:
+def render(data: dict[str, object]) -> str:
     raw_nodes = data.get("nodes")
     node_items = raw_nodes if isinstance(raw_nodes, list) else []
     all_nodes: list[dict[str, object]] = []
@@ -128,6 +128,8 @@ def render(data: dict) -> str:
     gap_y = 34
     ranks = sorted({rank[node_id] for node_id in ids})
     positions: dict[str, tuple[float, float]] = {}
+    x: float
+    y: float
     for r_index, r_value in enumerate(ranks):
         rank_ids = [node_id for node_id in ids if rank[node_id] == r_value]
         for offset, node_id in enumerate(rank_ids):
