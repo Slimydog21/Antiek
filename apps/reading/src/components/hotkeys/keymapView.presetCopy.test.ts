@@ -7,11 +7,9 @@ import { LAYOUT_PRESET_DEFAULT, readLayoutPreset } from "../../workspace/persist
  * The key sheet's layout row must not contradict the layout default.
  *
  * The shipped copy said "The cockpit's two tall panes are the default; docked
- * puts the panels back at the edges". `readLayoutPreset()` returns "docked" on a
- * miss, a parse error, a schema-version mismatch or an unknown value, and
- * `WorkspaceStore.ts` seeds its `layoutPreset` from that reader - so a fresh
- * workspace really does start docked, and the sheet told the operator the
- * opposite.
+ * puts the panels back at the edges" while `readLayoutPreset()` still returned
+ * "docked" on a miss. The default now follows the cockpit decision, and the
+ * sheet must continue to describe whichever preset the reader actually uses.
  *
  * ── WHY THIS FILE IS SHAPED THE WAY IT IS ─────────────────────────────────
  * [1] The first revision asserted vocabulary ("must contain 'docked'", "must not
@@ -33,8 +31,8 @@ describe("key-sheet copy is a function of the layout default", () => {
     expect(readLayoutPreset()).toBe(LAYOUT_PRESET_DEFAULT);
   });
 
-  it("the default is still docked - pinned, because a change here changes prose", () => {
-    expect(LAYOUT_PRESET_DEFAULT).toBe("docked");
+  it("the default is the cockpit, as the layout note describes", () => {
+    expect(LAYOUT_PRESET_DEFAULT).toBe("omarchy-inset");
   });
 
   it("the note is exactly the template applied to the real default", () => {

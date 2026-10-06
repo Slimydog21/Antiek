@@ -1,3 +1,4 @@
+import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 /**
  * ThreadIsland — the research-thread island component (island SPR-02). ONE
  * component, TWO render states driven by local view state:
@@ -140,10 +141,13 @@ export default function ThreadIsland({
     function onDocMouseDown(e: MouseEvent) {
       if (cardRef.current && !cardRef.current.contains(e.target as Node)) collapse();
     }
-    document.addEventListener("keydown", onKey);
+    const removeKeyboardOwner = registerKeyboardOwner(document, {
+      id: "reader.island.escape", scope: "overlay",
+      eligible: (e) => e.key === "Escape",
+    }, onKey);
     document.addEventListener("mousedown", onDocMouseDown);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      removeKeyboardOwner();
       document.removeEventListener("mousedown", onDocMouseDown);
     };
   }, [expanded, collapse]);

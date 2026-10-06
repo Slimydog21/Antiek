@@ -30,7 +30,7 @@ from __future__ import annotations
 
 # ── Golden size-shapes: {kind: {shape: data}} ──
 
-FIXTURES: dict[str, dict[str, dict]] = {
+FIXTURES: dict[str, dict[str, dict[str, object]]] = {
     "stat_chip": {
         # empty: both required fields absent -> visible placeholder, no crash.
         "empty": {},
@@ -198,7 +198,7 @@ _XSS = '<script>alert(1)</script>'
 _IMG = '"><img src=x onerror=alert(1)>'
 _JS_URL = "javascript:alert(document.cookie)"
 
-HOSTILE_FIXTURES: list[tuple[str, dict]] = [
+HOSTILE_FIXTURES: list[tuple[str, dict[str, object]]] = [
     ("stat_chip", {"label": _XSS, "value": _IMG, "delta": _XSS}),
     ("bar_chart", {"bars": [{"label": _XSS, "value": 5},
                             {"label": _IMG, "value": 9}], "unit": _XSS}),

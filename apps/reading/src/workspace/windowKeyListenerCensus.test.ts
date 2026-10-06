@@ -1,258 +1,117 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
-
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-/**
- * Global keyboard handlers: a closed, declared, mechanically-checked set.
- *
- * `components/hotkeys/keymap.ts` says "Every key the app answers to is a row in
- * KEYMAP; nothing else may define a binding." In practice many modules attach
- * their own listener to `window`, `globalThis` or `document` for a keyboard
- * event. This file does not migrate them — moving a dropdown's Escape, a
- * fullscreen exit, a menu's arrows and an editor's undo detector onto one
- * dispatcher is a design change with real regression risk. It makes the set
- * closed and declared, so growth is a decision rather than drift.
- *
- * ── THE COUNT GREW EVERY TIME THE SCAN GOT HONEST ──────────────────────────
- * A September 2026 audit matched the literal `window.addEventListener("keydown"`
- * and reported THREE modules. The review built on it said SEVEN. A critic then
- * defeated the seven-row gate by planting four spellings it missed — a template
- * literal, a const event name, `globalThis`, and `onkeydown =` — and, having
- * planted them, showed the seven rows were also partly FALSE.
- *
- * This scan reads any `addEventListener` on a global receiver whose event name
- * mentions a key, stripping TypeScript assertions first (`"x" as keyof Y` is a
- * type, not an event — a naive /key/ test counts `keyof` and inflates the set).
- * With that rule the real extent is EIGHTEEN files and nineteen registrations,
- * not seven. The earlier numbers were artefacts of a weak matcher.
- *
- * ── ASSERTED vs COMMENTARY ────────────────────────────────────────────────
- * Only mechanically-derivable facts are asserted: which files, how many
- * registrations each, and whether any registration is capture-phase. An earlier
- * revision asserted a prose "reason" per module and only checked it was longer
- * than 20 characters; a critic read the handlers and found four of seven false
- * (the palette was said to handle arrows — it handles Escape; the editor was
- * said to "beat the dispatcher" — it only sets a flag on Cmd/Ctrl+Z). Prose a
- * test cannot verify will rot, so the commentary below is labelled and not
- * asserted.
- */
-
 const SRC = join(__dirname, "..");
-const SKIP = /(\.test\.|\.spec\.|\.stories\.)/;
-const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs)$/;
-
-/** A registration on a global receiver, first argument captured. */
-const GLOBAL_ADD = /(window|globalThis|document)\s*\.\s*addEventListener\(\s*([^;]{0,200}?)\)/g;
-/** A global assignment spelling that installs a handler without addEventListener. */
-const GLOBAL_ONKEYDOWN = /(window|globalThis|document)\s*\.\s*onkey\w+\s*=/g;
-
-interface Row {
-  registrations: number;
-  capture: boolean;
+function files(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? files(path)
+      : /\.[cm]?[jt]sx?$/.test(path) && !/\.(test|spec|stories)\./.test(path) ? [path] : [];
+  });
 }
 
-/**
- * The declared set: every module with a global keyboard registration, the number
- * it installs, and whether it is capture-phase. Counted on origin/main.
- */
-const DECLARED: Record<string, Row> = {
-  "components/CommandPalette.tsx": { registrations: 1, capture: false },
-  "components/ModelPicker.tsx": { registrations: 1, capture: false },
-  "components/lemon/LemonDropdown.tsx": { registrations: 1, capture: false },
-  "components/lemon/LemonModal.tsx": { registrations: 1, capture: false },
-  "components/lemon/LemonSelect.tsx": { registrations: 1, capture: false },
-  "modes/Notebook/SlashMenu.tsx": { registrations: 1, capture: false },
-  "modes/Reading/index.tsx": { registrations: 1, capture: false },
-  "modes/Reading/island/ThreadIsland.tsx": { registrations: 1, capture: false },
-  "modes/Write/Editor/Editor.tsx": { registrations: 1, capture: true },
-  "modes/Write/WriteHome.tsx": { registrations: 1, capture: false },
-  "modes/shared/FloatMenu/FloatMenu.tsx": { registrations: 1, capture: false },
-  "workspace/CompanionPane.tsx": { registrations: 1, capture: false },
-  "workspace/DocumentTabStrip.tsx": { registrations: 1, capture: false },
-  "workspace/PanelLayout.tsx": { registrations: 1, capture: false },
-  "workspace/PanelLayoutPanel.tsx": { registrations: 1, capture: false },
-  "workspace/TabPathHeader.tsx": { registrations: 1, capture: false },
-  "workspace/WriteOutlinePane.tsx": { registrations: 1, capture: false },
-  // THE dispatcher: a capture pass for the prefix and scope arbitration, a
-  // bubble pass for chords. The only module that should own global keys.
-  "workspace/shortcuts.ts": { registrations: 2, capture: true },
-};
-
-/**
- * COMMENTARY, NOT ASSERTED — read from the handlers, and corrected after a
- * critic showed the previous version of this list was wrong on four rows.
- *
- *   shortcuts.ts          the dispatcher (2 registrations: capture + bubble)
- *   CommandPalette.tsx    Escape only, while `open`
- *   ModelPicker.tsx       Escape only, while `open` (document-level)
- *   LemonDropdown.tsx     Escape/dismiss while open
- *   LemonModal.tsx        Escape only, gated on `open && !forceUserAction`
- *                         and on topModal() being this dialog
- *   LemonSelect.tsx       Escape/dismiss while open
- *   SlashMenu.tsx         ArrowDown/ArrowUp/Enter/Escape; no internal open gate
- *   Reading/index.tsx     reader-level keyboard handling
- *   ThreadIsland.tsx      island-level keyboard handling
- *   Editor.tsx            capture-phase and PASSIVE: sets nextUpdateIsRevert on
- *                         Cmd/Ctrl+Z so the next onUpdate is flagged reverted.
- *                         It prevents nothing.
- *   WriteHome.tsx         screen-level keyboard handling
- *   FloatMenu.tsx         Escape only, gated on `selection`, yields to topModal()
- *   CompanionPane.tsx     Escape for the overflow menu, yields to topModal()
- *   DocumentTabStrip.tsx  tab-strip keyboard handling
- *   PanelLayout.tsx       Escape to leave fullscreen, guarded by escOverlayOpen()
- *   PanelLayoutPanel.tsx  Escape only, gated on a floating focused panel; skips
- *                         text inputs and contenteditable
- *   TabPathHeader.tsx     header keyboard handling
- *   WriteOutlinePane.tsx  outline-pane keyboard handling
- */
-
-/**
- * Local `const NAME = <literal>` bindings, so an event name held in a variable
- * is still read. A critic planted `const EVENT = "keydown"` and the earlier
- * matcher, which only looked at the first argument, saw the identifier `EVENT`
- * and scored nothing.
- */
-function localStringBindings(source: string): Map<string, string> {
-  const out = new Map<string, string>();
-  // one level of literal initialiser: a string, a no-substitution template, or a
-  // concatenation of those.
-  const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/g;
-  for (const m of source.matchAll(re)) {
-    const name = m[1];
-    const init = m[2];
-    const parts = [...init.matchAll(/[`'"]([^`'"]*)[`'"]/g)].map((x) => x[1]);
-    if (parts.length === 0) continue;
-    // reject a template with substitutions: the value is not statically known
-    if (/\$\{/.test(init)) continue;
-    out.set(name, parts.join(""));
-  }
-  return out;
-}
-
-/**
- * Does this first argument name a keyboard event? Three routes, because two
- * spellings are not enough: the raw text (catches `"key" + "down"`), the string
- * literals inside it, and — through the file's own const bindings — an
- * identifier that resolves to one.
- */
-function mentionsAKey(argText: string, bindings: Map<string, string>): boolean {
-  const head = argText.split(/\s+as\s+/)[0].trim();
-  if (/key/i.test(head)) return true;
-  for (const m of head.matchAll(/[`'"]([^`'"]+)[`'"]/g)) {
-    if (/key/i.test(m[1])) return true;
-  }
-  const ident = /^([A-Za-z_$][\w$]*)/.exec(head);
-  if (!ident) return false;
-  const resolved = bindings.get(ident[1]);
-  if (resolved !== undefined) return /key/i.test(resolved);
-  return /key/i.test(ident[1]);
-}
-
-/** Every global keyboard registration in a source string. */
-function registrationsIn(source: string): number {
-  const bindings = localStringBindings(source);
-  let n = 0;
-  for (const m of source.matchAll(GLOBAL_ADD)) {
-    if (mentionsAKey(m[2], bindings)) n += 1;
-  }
-  n += [...source.matchAll(GLOBAL_ONKEYDOWN)].length;
-  return n;
-}
-
-function isCapture(source: string): boolean {
-  const bindings = localStringBindings(source);
-  for (const m of source.matchAll(GLOBAL_ADD)) {
-    if (!mentionsAKey(m[2], bindings)) continue;
-    if (/,\s*true\s*$/.test(m[2].trim())) return true;
-  }
-  return false;
-}
-
-function sourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "node_modules") continue;
-      sourceFiles(full, out);
-    } else if (SOURCE_EXT.test(entry) && !SKIP.test(entry)) {
-      out.push(full);
+/** AST plus native target types, rather than a spelling census. Element/React
+ * handlers are explicitly outside the global registration population. */
+export function undeclaredRegistrations(sources: string[]): string[] {
+  const program = ts.createProgram(sources, { allowJs: true, jsx: ts.JsxEmit.ReactJSX, skipLibCheck: true });
+  const checker = program.getTypeChecker();
+  const errors: string[] = [];
+  for (const path of sources) {
+    const file = program.getSourceFile(path);
+    if (!file) continue;
+    const rel = relative(SRC, path);
+    const nativeSeam = rel === "workspace/keyboardOwnership.ts";
+    function globalTarget(node: ts.Node, visited = new Set<ts.Node>()): boolean {
+      if (visited.has(node)) return false;
+      visited.add(node);
+      const text = node.getText(file);
+      if (["window", "document", "globalThis"].includes(text)) return true;
+      const symbol = checker.getSymbolAtLocation(node);
+      const declaration = symbol?.valueDeclaration;
+      if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+        && /\.content(Document|Window)$/.test(declaration.initializer.getText(file))) return false;
+      if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer && globalTarget(declaration.initializer, visited)) return true;
+      return /\b(Window|Document|typeof globalThis)\b/.test(checker.typeToString(checker.getTypeAtLocation(node)));
     }
-  }
-  return out;
-}
-
-function census() {
-  const rows = new Map<string, Row>();
-  const all = sourceFiles(SRC);
-  for (const full of all) {
-    const source = readFileSync(full, "utf8");
-    const registrations = registrationsIn(source);
-    if (registrations > 0) {
-      rows.set(relative(SRC, full), { registrations, capture: isCapture(source) });
+    function literal(node: ts.Expression): string | undefined {
+      if (ts.isAsExpression(node) || ts.isParenthesizedExpression(node)) return literal(node.expression);
+      if (ts.isStringLiteralLike(node)) return node.text;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = literal(node.left), right = literal(node.right);
+        if (left !== undefined && right !== undefined) return left + right;
+      }
+      const type = checker.getTypeAtLocation(node);
+      return type.isStringLiteral() ? type.value : undefined;
     }
+    function fail(node: ts.Node, detail: string) {
+      errors.push(`${path}:${file!.getLineAndCharacterOfPosition(node.getStart(file)).line + 1} ${detail}`);
+    }
+    function visit(node: ts.Node) {
+      if (!nativeSeam && (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && globalTarget(node.expression)) {
+        const name = ts.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression && literal(node.argumentExpression);
+        if (name === "addEventListener" && !(ts.isCallExpression(node.parent) && node.parent.expression === node)) {
+          fail(node, "undeclared-keyboard-registration: global listener reference escapes the checked registration seam");
+        }
+      }
+      if (!nativeSeam && ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer && globalTarget(node.initializer)) {
+        if (node.name.elements.some((el) => (el.propertyName ?? el.name).getText(file) === "addEventListener")) fail(node, "undeclared-keyboard-registration: destructured global listener");
+      }
+      if (!nativeSeam && ts.isCallExpression(node)) {
+        const fn = node.expression;
+        if ((ts.isPropertyAccessExpression(fn) || ts.isElementAccessExpression(fn)) && globalTarget(fn.expression)) {
+          const name = ts.isPropertyAccessExpression(fn) ? fn.name.text : fn.argumentExpression && literal(fn.argumentExpression);
+          if (name === "addEventListener") {
+            const event = node.arguments[0] && literal(node.arguments[0]);
+            if (event === undefined || /^key(down|up|press)$/.test(event)) fail(node, `undeclared-keyboard-registration ${event ?? "dynamic event"}; use registerKeyboardOwner with id/scope/eligible`);
+          }
+        }
+        if (ts.isIdentifier(fn) && fn.text === "registerKeyboardOwner") {
+          const meta = node.arguments[1];
+          if (!meta || !ts.isObjectLiteralExpression(meta)) fail(node, "keyboard owner requires explicit id/scope/eligible metadata");
+          else for (const name of ["id", "scope", "eligible"]) {
+            if (!meta.properties.some((p) => p.name?.getText(file) === name)) fail(node, `keyboard owner missing ${name}`);
+          }
+        }
+      }
+      if (!nativeSeam && ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        const lhs = node.left;
+        if ((ts.isPropertyAccessExpression(lhs) || ts.isElementAccessExpression(lhs)) && globalTarget(lhs.expression)) {
+          const name = ts.isPropertyAccessExpression(lhs) ? lhs.name.text : lhs.argumentExpression && literal(lhs.argumentExpression);
+          if (name && /^onkey/.test(name)) fail(node, `undeclared-keyboard-registration ${name}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(file);
   }
-  return { rows, scanned: all.length };
+  return errors;
 }
 
-describe("global keyboard handlers: a closed, declared, checked set", () => {
-  it("the scan is not vacuous and walks essentially the whole tree", () => {
-    const { scanned, rows } = census();
-    // A first revision asserted >200 against a 553-file tree (36%), which a walk
-    // that silently loses a subtree would still satisfy. Measured, then set.
-    expect(scanned).toBeGreaterThan(500);
-    expect(rows.size).toBeGreaterThan(0);
-    expect(rows.has("workspace/shortcuts.ts")).toBe(true);
+describe("declared global keyboard registrations", () => {
+  it("rejects undeclared native registration, including aliases and property assignment", () => {
+    expect(undeclaredRegistrations(files(SRC))).toEqual([]);
+  }, 20_000);
+  it.each([
+    'window.addEventListener("keydown", () => {});',
+    'const root: any = window; const event = "key" + "down"; root["addEvent" + "Listener"](event, () => {});',
+    'globalThis["on" + "keydown"] = () => {};',
+    'const listen = window.addEventListener.bind(window); listen("keydown", () => {});',
+    'const { addEventListener: listen } = window; listen("keydown", () => {});',
+  ])("rejects undeclared spelling %s", (source) => {
+    const dir = mkdtempSync(join(SRC, ".keyboard-census-"));
+    const file = join(dir, "probe.ts");
+    try {
+      writeFileSync(file, source);
+      expect(undeclaredRegistrations([file]).join("\n")).toContain("undeclared-keyboard-registration");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it("the matcher catches every spelling a critic planted - the whole set", () => {
-    // [1] the four the FIRST critic planted, [2] the const-binding class the
-    // SECOND critic planted and this file previously missed, [3] a concatenation,
-    // which carries no literal event name at all. A test named "catches every
-    // spelling" has to be true as MEASURED, so the count is asserted below rather
-    // than the cases being spot-checked.
-    const planted = [
-      'window.addEventListener("keydown", h);',
-      "globalThis.addEventListener(`key${suffix}`, h);",
-      "document.addEventListener(KEYDOWN_EVENT, h);",
-      "window.onkeydown = h;",
-      'const EVENT = "keydown";\nwindow.addEventListener(EVENT, h);',
-      'document.addEventListener("key" + "down", h);',
-    ];
-    const caught = planted.filter((line) => registrationsIn(line) > 0);
-    expect(caught).toHaveLength(planted.length);
-    for (const line of planted) {
-      expect(registrationsIn(line), `missed: ${line}`).toBeGreaterThan(0);
+  it("the dispatcher installs exactly one prefix owner and one direct owner", () => {
+    const source = readFileSync(join(SRC, "workspace/shortcuts.ts"), "utf8");
+    for (const id of ["workspace.prefix", "workspace.direct"]) {
+      expect(source.split(`id: "${id}"`).length - 1, `owner ${id}: dispatcher installation missing or duplicated`).toBe(1);
     }
-    // ...and the matcher is not simply matching everything.
-    expect(registrationsIn('window.addEventListener("resize", h);')).toBe(0);
-    expect(registrationsIn("window.addEventListener(ON_RESIZE, h);")).toBe(0);
-    expect(registrationsIn('const EVENT = "resize"; window.addEventListener(EVENT, h);')).toBe(0);
-    // A TypeScript assertion is a type, not an event name. `keyof` is the trap
-    // that made an earlier revision of this scan over-count.
-    expect(registrationsIn('window.addEventListener("antiek:palette:toggle" as keyof WindowEventMap, h);')).toBe(0);
-    // An element-level handler is not a global binding.
-    expect(registrationsIn("el.onkeydown = h;")).toBe(0);
-  });
-
-  it("exactly the declared modules register a global keyboard handler", () => {
-    const { rows } = census();
-    expect([...rows.keys()].sort()).toEqual(Object.keys(DECLARED).sort());
-  });
-
-  it("each module registers the declared number of times, and the declared phase", () => {
-    const { rows } = census();
-    for (const [file, expected] of Object.entries(DECLARED)) {
-      expect(rows.get(file), `${file} missing`).toEqual(expected);
-    }
-  });
-
-  it("the set is the size this scan measures — growth is a decision, not a drift", () => {
-    const { rows } = census();
-    // 18 files, 19 registrations. A nineteenth file must be declared in the PR
-    // that adds it, with its count and phase.
-    expect(rows.size).toBe(18);
-    const total = [...rows.values()].reduce((a, r) => a + r.registrations, 0);
-    expect(total).toBe(19);
   });
 });

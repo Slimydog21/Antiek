@@ -300,6 +300,7 @@ describe("BookReader", () => {
     spinResearchMock.mockReset();
     navigateMock.mockReset();
     useWorkspace.getState().reset();
+    useWorkspace.getState().setLayoutPreset("docked");
     resetReadingStateBus();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
@@ -950,6 +951,7 @@ describe("BookReader in the cockpit (repair round 1)", () => {
     listBooksMock.mockReset();
     window.sessionStorage.clear();
     useWorkspace.getState().reset();
+    useWorkspace.getState().setLayoutPreset("docked");
     resetReadingStateBus();
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
