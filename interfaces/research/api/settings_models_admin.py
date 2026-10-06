@@ -117,10 +117,15 @@ from runtime.research_runner.provider_route_authority import (
     RouteExecutionStatus,
     canonical_provider_endpoint,
 )
-from substrate.dispatch.base import Provider, ProviderError, RawProviderResponse
+from substrate.dispatch.base import Provider, ProviderError
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
-from substrate.dispatch.router import get_provider, register_provider
+from substrate.dispatch.providers.wire_request import BuiltProviderRequest
+from substrate.dispatch.router import (
+    get_provider,
+    provider_registration_guard,
+    register_provider,
+)
 
 _ENV_REGISTRY_PATH = "ANTIEK_USER_MODELS_PATH"
 _ENV_HOME = "ANTIEK_HOME"
@@ -369,6 +374,21 @@ def _load_registry() -> dict[str, UserModelRecord]:
         return _load_registry_unlocked()
 
 
+@contextmanager
+def current_user_model_record(model_id: str) -> Iterator[UserModelRecord | None]:
+    """Read one current record while holding its actual cross-process writer guard."""
+    with _registry_guard(exclusive=False):
+        path = _registry_path()
+        if path.exists() or path.is_symlink():
+            info = path.lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or (hasattr(os, "getuid") and info.st_uid != os.getuid())
+                or stat.S_IMODE(info.st_mode) != _PRIVATE_FILE_MODE):
+                raise UserModelRegistryIntegrityError("current user-model registry is invalid")
+        record = _load_registry_unlocked().get(model_id)
+        yield record.model_copy(deep=True) if record is not None else None
+
+
 def _write_registry_unlocked(registry: dict[str, UserModelRecord]) -> None:
     path = _registry_path()
     _ensure_directory(path.parent)
@@ -567,16 +587,17 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         self._user_model_authority_fingerprint = _record_fingerprint(record)
         self._provider_catalog_id = record.provider_catalog_id
 
-    def call(
+    def build_request(
         self,
         *,
         model: str,
         prompt: str,
         max_tokens: int,
         temperature: float,
+        api_key: str,
         extra_body: Mapping[str, Any] | None = None,
-    ) -> RawProviderResponse:
-        """Send a catalog variant as the provider knows it: its wire model name
+    ) -> BuiltProviderRequest:
+        """Build a catalog variant as the provider knows it: its wire model name
         plus its mode switch, so a legacy or mode-split id keeps the behaviour
         it was chosen and priced for. Custom endpoints send ``model`` as is."""
         wire_model = model
@@ -594,11 +615,12 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
                     body["thinking"] = {"type": variant.thinking}
         if extra_body:
             body.update(extra_body)
-        return super().call(
+        return super().build_request(
             model=wire_model,
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            api_key=api_key,
             extra_body=body or None,
         )
 
@@ -660,30 +682,29 @@ def reload_user_providers(app: FastAPI) -> set[str]:
         if migrated:
             _write_registry_unlocked(registry)
             metadata = _credential_metadata()
-    registered: set[str] = set()
-    fingerprints: dict[str, str] = {}
-    for record_id, record in registry.items():
-        # Defense in depth at the authority boundary: even if a future registry
-        # reader becomes more permissive, boot reload may only register names
-        # that CREATE could have minted.
-        if record_id != record.id or not _record_identity_matches_owner(record):
-            continue
-        if not record.enabled or not _credential_matches_record(record, metadata):
-            continue
-        adapter = _make_provider(record)
-        register_provider(adapter)
-        registered.add(record.id)
-        fingerprints[record.id] = _record_fingerprint(record)
-    seam = _seam_names(app)
-    stale = {
-        name
-        for name in seam
-        if name.startswith(_ID_PREFIX) and not (name in registry and registry[name].enabled)
-    }
-    seam.difference_update(stale)
-    seam.update(registered)
-    app.state.user_model_registration_fingerprints = fingerprints
-    return registered
+        with provider_registration_guard():
+            registered: set[str] = set()
+            fingerprints: dict[str, str] = {}
+            for record_id, record in registry.items():
+                # Boot reload may only publish names that CREATE could have minted.
+                if record_id != record.id or not _record_identity_matches_owner(record):
+                    continue
+                if not record.enabled or not _credential_matches_record(record, metadata):
+                    continue
+                adapter = _make_provider(record)
+                register_provider(adapter)
+                registered.add(record.id)
+                fingerprints[record.id] = _record_fingerprint(record)
+            seam = _seam_names(app)
+            stale = {
+                name
+                for name in seam
+                if name.startswith(_ID_PREFIX) and not (name in registry and registry[name].enabled)
+            }
+            seam.difference_update(stale)
+            seam.update(registered)
+            app.state.user_model_registration_fingerprints = fingerprints
+            return registered
 
 
 # ---------------------------------------------------------------------------
@@ -1297,24 +1318,23 @@ async def post_user_model(request: Request) -> UserModelRow:
         registry[record_id] = record
         _write_registry_unlocked(registry)
 
-        # Registration and app-local authority update remain inside the same
-        # transaction, so a concurrent delete cannot resurrect a stale seam.
-        adapter = _make_provider(record)
-        register_provider(adapter)
-        seam = _seam_names(request.app)
-        seam.add(record_id)
-        fingerprints = _registration_fingerprints(request.app)
-        fingerprints[record_id] = _record_fingerprint(record)
-
         metadata = _credential_metadata()
         present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
-        return _row(
-            record,
-            app=request.app,
-            present=present,
-            seam=seam,
-            fingerprints=fingerprints,
-        )
+        # Publish adapter and app-local facts as one process snapshot.
+        with provider_registration_guard():
+            adapter = _make_provider(record)
+            register_provider(adapter)
+            seam = _seam_names(request.app)
+            seam.add(record_id)
+            fingerprints = _registration_fingerprints(request.app)
+            fingerprints[record_id] = _record_fingerprint(record)
+            return _row(
+                record,
+                app=request.app,
+                present=present,
+                seam=seam,
+                fingerprints=fingerprints,
+            )
 
 
 @user_models_router.post("/resolve", response_model=UserModelRouteResponse)
@@ -1353,8 +1373,9 @@ def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteRe
         del registry[user_model_id]
         _write_registry_unlocked(registry)
         credential_removed = delete_credential(record.cred_ref)
-        _seam_names(request.app).discard(user_model_id)
-        _registration_fingerprints(request.app).pop(user_model_id, None)
+        with provider_registration_guard():
+            _seam_names(request.app).discard(user_model_id)
+            _registration_fingerprints(request.app).pop(user_model_id, None)
     notes = [
         "credential resolution for this id now refuses and its encrypted BYOK record was removed"
     ]

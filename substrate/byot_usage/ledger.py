@@ -37,7 +37,7 @@ __all__ = [
     "SettlementEvidenceError",
 ]
 
-_SCHEMA_VERSION: Final = 5
+_SCHEMA_VERSION: Final = 6
 _BUSY_TIMEOUT_MS: Final = 30_000
 
 
@@ -162,7 +162,7 @@ class ByotUsageLedger(_OwnerActionAccounting):
             row = con.execute(
                 "SELECT value FROM byot_usage_meta WHERE key = 'schema_version'"
             ).fetchone()
-            if row is not None and row[0] not in ("1", "2", "3", "4", "5"):
+            if row is not None and row[0] not in ("1", "2", "3", "4", "5", "6"):
                 raise ValueError("unsupported BYOT usage schema version")
             con.execute(
                 "CREATE TABLE IF NOT EXISTS byot_key_usage ("

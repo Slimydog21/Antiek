@@ -144,6 +144,19 @@ class AttemptProposal:
 
 
 @dataclass(frozen=True, slots=True)
+class CanonicalInputBinding:
+    logical_digest: str
+    policy_digest: str
+    version: str = "owned-canonical-http.v1"
+
+    def __post_init__(self) -> None:
+        _digest(self.logical_digest)
+        _digest(self.policy_digest)
+        if self.version != "owned-canonical-http.v1":
+            raise ValueError("canonical input version is unsupported")
+
+
+@dataclass(frozen=True, slots=True)
 class FinalSendFacts:
     request_digest: str
     authority_digest: str
@@ -152,6 +165,7 @@ class FinalSendFacts:
     body_authority_digest: str
     claim_nonce_digest: str
     action_epoch: int
+    canonical_input: CanonicalInputBinding | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -160,6 +174,8 @@ class FinalSendFacts:
         ):
             _digest(value)
         checked_int(self.action_epoch)
+        if self.canonical_input is not None and type(self.canonical_input) is not CanonicalInputBinding:
+            raise ValueError("canonical input binding is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,6 +371,12 @@ ACTION_SCHEMA = (
     " WHERE action_id IS NOT NULL AND dispatch_event_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS byot_outbox_pending ON"
     " byot_action_outbox(acknowledged_at,sequence)",
+    "CREATE TABLE IF NOT EXISTS byot_canonical_input ("
+    " owner_user_id TEXT NOT NULL, operation_id TEXT NOT NULL,"
+    " version TEXT NOT NULL, logical_digest TEXT NOT NULL, policy_digest TEXT NOT NULL,"
+    " PRIMARY KEY(owner_user_id,operation_id),"
+    " FOREIGN KEY(owner_user_id,operation_id)"
+    " REFERENCES byot_operation_journal(owner_user_id,operation_id))",
     "CREATE TABLE IF NOT EXISTS byot_owned_wrestling_job ("
     " owner_user_id TEXT NOT NULL, action_id TEXT NOT NULL,"
     " investigation_id TEXT NOT NULL UNIQUE, document_id TEXT NOT NULL,"
@@ -664,7 +686,7 @@ class _OwnerActionAccounting:
     def claim_owned_wrestling_execution(
         self, owner: str, action_id: str, *, token: str, operation_id: str,
     ) -> OwnedWrestlingJob | None:
-        """Elect one worker; settled output alone permits safe reconstruction."""
+        """Elect one worker; a retained verified result permits reconstruction."""
         _identity(token)
         _identity(operation_id)
         with self._action_transaction() as con:
@@ -679,7 +701,7 @@ class _OwnerActionAccounting:
                     " WHERE owner_user_id=? AND operation_id=? AND action_id=?",
                     (owner, operation_id, action_id),
                 ).fetchone()
-                if attempt != ("settled",):
+                if attempt not in (("settlement_pending",), ("settled",)):
                     return None
             else:
                 return None
@@ -845,6 +867,7 @@ class _OwnerActionAccounting:
 
     def allocate_action_attempt(
         self, owner: str, action_id: str, proposal: AttemptProposal,
+        *, canonical_input: CanonicalInputBinding | None = None,
     ) -> ActionAttemptSnapshot:
         from substrate.byot_usage.ledger import OperationConflict
 
@@ -852,12 +875,16 @@ class _OwnerActionAccounting:
         _identity(action_id)
         if type(proposal) is not AttemptProposal:
             raise ValueError("attempt proposal is invalid")
+        if canonical_input is not None and type(canonical_input) is not CanonicalInputBinding:
+            raise ValueError("canonical input binding is invalid")
         with self._action_transaction() as con:
             action = self._require_action(con, owner, action_id)
             existing = self._attempt(con, owner, proposal.operation_id)
             if existing is not None:
                 if existing.proposal != proposal or existing.operation.action_id != action_id:
                     raise OperationConflict("attempt identity cannot be rebound")
+                if self._canonical_input(con, owner, proposal.operation_id) != canonical_input:
+                    raise OperationConflict("canonical input cannot be rebound")
                 return existing
             if action.state != "open" or action.epoch != proposal.action_epoch:
                 raise OperationConflict("action is not open at this epoch")
@@ -900,7 +927,31 @@ class _OwnerActionAccounting:
                 )
             except sqlite3.IntegrityError:
                 raise OperationConflict("attempt identity is already in use") from None
+            if canonical_input is not None:
+                con.execute(
+                    "INSERT INTO byot_canonical_input("
+                    "owner_user_id,operation_id,version,logical_digest,policy_digest)"
+                    " VALUES(?,?,?,?,?)",
+                    (owner, proposal.operation_id, canonical_input.version,
+                     canonical_input.logical_digest, canonical_input.policy_digest),
+                )
             return self._require_attempt(con, owner, proposal.operation_id)
+
+    @staticmethod
+    def _canonical_input(
+        con: sqlite3.Connection, owner: str, operation: str,
+    ) -> CanonicalInputBinding | None:
+        row = con.execute(
+            "SELECT logical_digest,policy_digest,version FROM byot_canonical_input"
+            " WHERE owner_user_id=? AND operation_id=?", (owner, operation),
+        ).fetchone()
+        return CanonicalInputBinding(*row) if row is not None else None
+
+    def canonical_input_binding(self, owner: str, operation: str) -> CanonicalInputBinding | None:
+        _identity(owner)
+        _identity(operation)
+        with self._action_transaction(write=False) as con:
+            return self._canonical_input(con, owner, operation)
 
     def claim_action_attempt(
         self, owner: str, attempt_id: str, facts: FinalSendFacts,
@@ -915,6 +966,8 @@ class _OwnerActionAccounting:
             attempt = self._require_attempt(con, owner, attempt_id)
             action = self._require_action(con, owner, attempt.operation.action_id or "")
             proposal = attempt.proposal
+            if self._canonical_input(con, owner, attempt_id) != facts.canonical_input:
+                raise OperationConflict("canonical input differs from allocation")
             if (facts.authority_digest != proposal.authority_digest
                 or facts.route_digest != proposal.route_digest
                 or facts.rate_limit_digest != proposal.rate_limit_digest

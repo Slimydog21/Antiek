@@ -22,8 +22,10 @@ import hashlib
 import importlib
 import logging
 import os
+import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -212,6 +214,33 @@ class DispatchConfig:
 
 
 _PROVIDER_REGISTRY: dict[str, Provider] = {}
+_PROVIDER_REGISTRATION_LOCK = threading.RLock()
+_PROVIDER_REGISTRATION_GENERATION = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderRegistrationSnapshot:
+    provider: Provider
+    generation: int
+
+
+@contextmanager
+def provider_registration_guard() -> Iterator[None]:
+    """Serialize a multi-field publication with register/reset/get writers."""
+    with _PROVIDER_REGISTRATION_LOCK:
+        yield
+
+
+@contextmanager
+def current_provider_registration(name: str) -> Iterator[ProviderRegistrationSnapshot]:
+    """Hold the selected live adapter and its process generation through claim."""
+    with _PROVIDER_REGISTRATION_LOCK:
+        provider = _PROVIDER_REGISTRY.get(name)
+        if provider is None:
+            raise KeyError(f"Provider {name!r} is not registered")
+        yield ProviderRegistrationSnapshot(provider, _PROVIDER_REGISTRATION_GENERATION)
+
+
 _RouteOverrideKind = Literal["none", "manual", "fallback"]
 _RouteReasonCode = Literal[
     "primary",
@@ -225,21 +254,28 @@ _RouteReasonCode = Literal[
 
 def register_provider(provider: Provider) -> None:
     """Register a provider adapter. Idempotent — re-registering replaces."""
-    _PROVIDER_REGISTRY[provider.name] = provider
+    global _PROVIDER_REGISTRATION_GENERATION
+    with _PROVIDER_REGISTRATION_LOCK:
+        _PROVIDER_REGISTRY[provider.name] = provider
+        _PROVIDER_REGISTRATION_GENERATION += 1
 
 
 def get_provider(name: str) -> Provider:
-    if name not in _PROVIDER_REGISTRY:
-        raise KeyError(
-            f"Provider {name!r} is not registered. Known: "
-            f"{sorted(_PROVIDER_REGISTRY)}"
-        )
-    return _PROVIDER_REGISTRY[name]
+    with _PROVIDER_REGISTRATION_LOCK:
+        if name not in _PROVIDER_REGISTRY:
+            raise KeyError(
+                f"Provider {name!r} is not registered. Known: "
+                f"{sorted(_PROVIDER_REGISTRY)}"
+            )
+        return _PROVIDER_REGISTRY[name]
 
 
 def reset_provider_registry() -> None:
     """For tests only. Production code never calls this."""
-    _PROVIDER_REGISTRY.clear()
+    global _PROVIDER_REGISTRATION_GENERATION
+    with _PROVIDER_REGISTRATION_LOCK:
+        _PROVIDER_REGISTRY.clear()
+        _PROVIDER_REGISTRATION_GENERATION += 1
 
 
 # ---------------------------------------------------------------------------

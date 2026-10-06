@@ -23,7 +23,7 @@ from interfaces.research.api import (
     owner_byot_dispatch,
     settings_models_admin,
 )
-from runtime.byok.store import CredentialMetadata
+from runtime.byok.store import store_credential_with_metadata
 from runtime.db_lock import connect_write
 from substrate.auth.magic_link import mint_session_cookie
 from substrate.books.owned_wrestling_sources import (
@@ -32,41 +32,34 @@ from substrate.books.owned_wrestling_sources import (
     write_immutable_artifact,
 )
 from substrate.byot_usage.ledger import ByotUsageLedger
-from substrate.dispatch import (
-    NormalizedUsage,
-    RawProviderResponse,
-    register_provider,
-    reset_provider_registry,
-)
+from substrate.dispatch import canonical_http, register_provider, reset_provider_registry
 from substrate.event_log import trajectory
 from substrate.graph import ensure_initialized, insert_chunk, insert_document
 from substrate.schemas import Event
 
 BODY = "A private sentence with one unique book passage."
-CHOICE = {"authority": "user_model", "provider_id": "user-owned-model",
-          "model_id": "deepseek-flash"}
+_RECORD_ID = settings_models_admin._owner_id_prefix("owner-a") + "fixture"
+CHOICE = {"authority": "user_model", "provider_id": _RECORD_ID,
+          "model_id": "deepseek-flash-nothink"}
 
 
-class _Provider:
-    name = "user-owned-model"
-
-    def __init__(self, fingerprint: str):
-        self._user_model_authority_fingerprint = fingerprint
+class _Provider(settings_models_admin._UserOpenAICompatProvider):
+    def __init__(self, record):
+        super().__init__(record)
         self.calls: list[str] = []
         self.after_call = None
 
-    def call(self, *, model, prompt, max_tokens, temperature):
-        self.calls.append(prompt)
+    def respond(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append(json.loads(request.content)["messages"][0]["content"])
         if self.after_call is not None:
             self.after_call()
-        return RawProviderResponse(
-            text='{"rendered_text":"Private answer","claims":[]}',
-            raw_usage={"input_tokens": 8, "output_tokens": 9},
-            finish_reason="stop", latency_ms=1, request_id="owned-fixture",
-        )
-
-    def normalize_usage(self, raw_usage):
-        return NormalizedUsage(raw_usage["input_tokens"], raw_usage["output_tokens"])
+        return httpx.Response(200, json={
+            "id": "owned-fixture", "object": "chat.completion", "model": "deepseek-flash",
+            "choices": [{"index": 0, "message": {"role": "assistant",
+                "content": '{"rendered_text":"Private answer","claims":[]}'},
+                "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 9, "total_tokens": 17},
+        })
 
 
 def _work(action_id: str = "action-a") -> dict:
@@ -109,7 +102,7 @@ def _delivery_outbox_ack(joined, action_id: str = "action-a") -> str | None:
 
 
 @pytest.fixture
-def joined(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def joined(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request):
     db = str(tmp_path / "graph.duckdb")
     journal = tmp_path / "money.sqlite3"
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
@@ -131,30 +124,40 @@ def joined(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                      chunk_id="chunk-owned", text=BODY, token_count=9)
         con.execute("INSERT INTO book_assets(document_id) VALUES (?)", ["book-a"])
 
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credential.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    metadata = store_credential_with_metadata(
+        _RECORD_ID, "synthetic-owned-fixture-key", pipeline_kind="model_provider",
+        owner_user_id="owner-a",
+    )
+    protocol = getattr(request, "param", "deepseek")
+    model_id = ("deepseek-flash-nothink" if protocol == "deepseek"
+                else "claude-haiku-4-5-20251001")
     record = settings_models_admin.UserModelRecord(
-        id="user-owned-model", owner_user_id="owner-a",
-        provider_kind="openai_compat", provider_catalog_id="deepseek",
-        model_id="deepseek-flash", display_name="Fixture model",
-        base_url="https://api.deepseek.com", cred_ref="fixture-credential",
-        cred_fingerprint="a" * 64,
+        id=_RECORD_ID, owner_user_id="owner-a",
+        provider_kind="openai_compat" if protocol == "deepseek" else "anthropic",
+        provider_catalog_id=protocol,
+        model_id=model_id, display_name="Fixture model",
+        base_url="https://api.deepseek.com" if protocol == "deepseek" else "https://api.anthropic.com",
+        cred_ref=metadata.cred_id,
+        cred_fingerprint=metadata.artifact_fingerprint,
     )
-    metadata = CredentialMetadata(
-        cred_id=record.cred_ref, account_handle=record.id,
-        pipeline_kind="model_provider", binding_version=3,
-        artifact_fingerprint="a" * 64, owner_user_id="owner-a",
-    )
+    with settings_models_admin._registry_guard(exclusive=True):
+        settings_models_admin._write_registry_unlocked({record.id: record})
     fingerprint = settings_models_admin._record_fingerprint(record)
-    monkeypatch.setattr(settings_models_admin, "_load_registry", lambda: {record.id: record})
-    monkeypatch.setattr(settings_models_admin, "_credential_metadata",
-                        lambda: {metadata.cred_id: metadata})
     real_auth = owner_byot_dispatch.authenticated_distinct_owner
     monkeypatch.setattr(owner_byot_dispatch, "authenticated_distinct_owner",
                         lambda request: request.headers["x-test-owner"])
     monkeypatch.setattr(owned_wrestling, "authenticated_distinct_owner",
                         lambda request: request.headers["x-test-owner"])
     reset_provider_registry()
-    provider = _Provider(fingerprint)
+    provider = (_Provider(record) if protocol == "deepseek"
+                else settings_models_admin._make_provider(record))
     register_provider(provider)
+    if protocol == "deepseek":
+        monkeypatch.setattr(canonical_http, "_new_inner_transport",
+                            lambda: httpx.MockTransport(provider.respond))
     note_calls: list[str] = []
     monkeypatch.setattr(note_taking, "dispatch", lambda prompt, role, **_kw: (
         note_calls.append(role) or SimpleNamespace(text='{"notes": []}')
@@ -162,10 +165,12 @@ def joined(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     bus = EventBroadcaster()
     app = create_app(broadcaster=bus, cors_origins=[], wrestling_db_path=db,
                      register_providers=False)
+    app.state.registered_providers = {record.id}
     app.state.user_model_registration_fingerprints = {record.id: fingerprint}
     yield SimpleNamespace(app=app, bus=bus, db=db, ledger=ByotUsageLedger(journal),
                           provider=provider, note_calls=note_calls, tmp_path=tmp_path,
-                          real_auth=real_auth)
+                          real_auth=real_auth, protocol=protocol,
+                          choice={**CHOICE, "model_id": model_id})
     reset_provider_registry()
 
 
@@ -386,6 +391,172 @@ async def test_concurrent_duplicate_observes_one_elected_provider_send(joined):
     await joined.bus.wait_for_handlers()
     assert len(joined.provider.calls) == 1
     assert joined.ledger.owned_wrestling_job("owner-a", "action-a").state == "delivered"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["settlement", "dispatch_event"])
+async def test_verified_result_recovery_after_journal_or_event_interruption(
+    joined, monkeypatch, failure,
+):
+    if failure == "settlement":
+        original = ByotUsageLedger.settle_action_attempt
+        def interrupted(*args, **kwargs):
+            raise RuntimeError("fixture interrupted settlement")
+        monkeypatch.setattr(ByotUsageLedger, "settle_action_attempt", interrupted)
+    else:
+        original = owner_byot_dispatch.emit_typed
+        def interrupted(*args, **kwargs):
+            raise RuntimeError("fixture interrupted dispatch event publication")
+        monkeypatch.setattr(owner_byot_dispatch, "emit_typed", interrupted)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=joined.app),
+                                 base_url="http://test") as client:
+        accepted = await client.post("/books/book-a/wrestle", json=_work(),
+                                     headers={"x-test-owner": "owner-a"})
+    assert accepted.status_code == 202
+    await joined.bus.wait_for_handlers()
+    job = joined.ledger.owned_wrestling_job("owner-a", "action-a")
+    assert job is not None and job.state == "running"
+    operation_id = owned_wrestling._stable_id("owcanon-", "owner-a", "action-a")
+    operation = joined.ledger.operation("owner-a", operation_id)
+    assert operation is not None
+    assert operation.state == ("settlement_pending" if failure == "settlement" else "settled")
+    assert len(joined.provider.calls) == 1 and _delivery_rows(joined) == []
+    if failure == "settlement":
+        monkeypatch.setattr(ByotUsageLedger, "settle_action_attempt", original)
+    else:
+        monkeypatch.setattr(owner_byot_dispatch, "emit_typed", original)
+    await owned_wrestling.consume(_request_event(joined),
+                                 broadcaster=joined.bus, db_path=joined.db)
+    assert joined.ledger.owned_wrestling_job("owner-a", "action-a").state == "delivered"
+    settled = joined.ledger.operation("owner-a", operation_id)
+    assert settled is not None and settled.state == "settled"
+    assert len(joined.provider.calls) == 1 and len(_delivery_rows(joined)) == 1
+    rows = trajectory(job.investigation_id)
+    assert len([row for row in rows if row["action_type"] == "dispatch.call"]) == 1
+    assert joined.ledger.action("owner-a", "action-a").state == "closed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("joined", ["deepseek", "anthropic"], indirect=True)
+@pytest.mark.parametrize("field", ["rendered_text", "claim_text"])
+@pytest.mark.parametrize("fenced", [False, True])
+async def test_escaped_credential_never_reaches_owned_artifact_or_delivery(
+    joined, monkeypatch, field, fenced,
+):
+    secret = "synthetic-owned-fixture-key"
+    escaped = "".join(f"\\u{ord(char):04x}" for char in secret)
+    text = ('{"rendered_text":"' + escaped + '","claims":[]}' if field == "rendered_text"
+            else '{"rendered_text":"Safe answer","claims":[{"text":"' + escaped
+                 + '","confidence":"high"}]}')
+    if fenced:
+        text = "Answer follows. ```json\n" + text + "\n```"
+    sends = []
+
+    def reflect(request):
+        sends.append(request)
+        if joined.protocol == "deepseek":
+            payload = {"id": "escaped-fixture", "object": "chat.completion",
+                "model": "deepseek-flash", "choices": [{"index": 0,
+                "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 9, "total_tokens": 17}}
+        else:
+            payload = {"id": "escaped-fixture", "type": "message", "role": "assistant",
+                "model": joined.choice["model_id"], "content": [{"type": "text", "text": text}],
+                "stop_reason": "end_turn", "usage": {"input_tokens": 8, "output_tokens": 9}}
+        return httpx.Response(200, json=payload)
+
+    monkeypatch.setattr(canonical_http, "_new_inner_transport",
+                        lambda: httpx.MockTransport(reflect))
+    work = {**_work(), "canonical_model": joined.choice, "prime_model": joined.choice}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=joined.app),
+                                 base_url="http://test") as client:
+        accepted = await client.post("/books/book-a/wrestle", json=work,
+                                     headers={"x-test-owner": "owner-a"})
+    assert accepted.status_code == 202
+    await joined.bus.wait_for_handlers()
+    job = joined.ledger.owned_wrestling_job("owner-a", "action-a")
+    assert job is not None and job.state == "unresolved"
+    operation = joined.ledger.operation(
+        "owner-a", owned_wrestling._stable_id("owcanon-", "owner-a", "action-a"),
+    )
+    assert operation is not None and operation.state == "unknown"
+    assert operation.result_text is None and operation.actual_cents is None
+    assert len(sends) == 1 and _delivery_rows(joined) == []
+    assert secret not in json.dumps(trajectory(job.investigation_id))
+    assert not list(joined.tmp_path.rglob("result-*"))
+    await owned_wrestling.consume(_request_event(joined),
+                                 broadcaster=joined.bus, db_path=joined.db)
+    assert len(sends) == 1 and _delivery_rows(joined) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_phase", ["initial", "after_append"])
+async def test_dispatch_event_read_interruption_recovers_one_settled_answer(
+    joined, monkeypatch, read_phase,
+):
+    original = owner_byot_dispatch.iter_physical_events
+    reads = 0
+
+    def interrupted(investigation_id):
+        nonlocal reads
+        reads += 1
+        if reads == (1 if read_phase == "initial" else 2):
+            raise TimeoutError("fixture event lock timeout")
+        return original(investigation_id)
+
+    monkeypatch.setattr(owner_byot_dispatch, "iter_physical_events", interrupted)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=joined.app),
+                                 base_url="http://test") as client:
+        accepted = await client.post("/books/book-a/wrestle", json=_work(),
+                                     headers={"x-test-owner": "owner-a"})
+    assert accepted.status_code == 202
+    await joined.bus.wait_for_handlers()
+    job = joined.ledger.owned_wrestling_job("owner-a", "action-a")
+    assert job is not None and job.state == "running"
+    operation_id = owned_wrestling._stable_id("owcanon-", "owner-a", "action-a")
+    settled = joined.ledger.operation("owner-a", operation_id)
+    assert settled is not None and settled.state == "settled"
+    assert len(joined.provider.calls) == 1 and _delivery_rows(joined) == []
+    monkeypatch.setattr(owner_byot_dispatch, "iter_physical_events", original)
+    await owned_wrestling.consume(_request_event(joined),
+                                 broadcaster=joined.bus, db_path=joined.db)
+    assert joined.ledger.owned_wrestling_job("owner-a", "action-a").state == "delivered"
+    assert joined.ledger.operation("owner-a", operation_id) == settled
+    assert len(joined.provider.calls) == 1 and len(_delivery_rows(joined)) == 1
+    assert len([row for row in trajectory(job.investigation_id)
+                if row["action_type"] == "dispatch.call"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_conflicting_dispatch_event_is_not_treated_as_transient_read(joined, monkeypatch):
+    original = owner_byot_dispatch.iter_physical_events
+
+    def conflicting(investigation_id):
+        rows = list(original(investigation_id))
+        for row in rows:
+            if row["action_type"] == "dispatch.call":
+                row = json.loads(json.dumps(row))
+                row["payload"]["model"] = "different-model"
+            yield row
+
+    monkeypatch.setattr(owner_byot_dispatch, "iter_physical_events", conflicting)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=joined.app),
+                                 base_url="http://test") as client:
+        accepted = await client.post("/books/book-a/wrestle", json=_work(),
+                                     headers={"x-test-owner": "owner-a"})
+    assert accepted.status_code == 202
+    await joined.bus.wait_for_handlers()
+    job = joined.ledger.owned_wrestling_job("owner-a", "action-a")
+    assert job is not None and job.state == "unresolved"
+    operation = joined.ledger.operation(
+        "owner-a", owned_wrestling._stable_id("owcanon-", "owner-a", "action-a"),
+    )
+    assert operation is not None and operation.state == "settled"
+    assert len(joined.provider.calls) == 1 and _delivery_rows(joined) == []
+    monkeypatch.setattr(owner_byot_dispatch, "iter_physical_events", original)
+    await owned_wrestling.consume(_request_event(joined),
+                                 broadcaster=joined.bus, db_path=joined.db)
+    assert len(joined.provider.calls) == 1 and _delivery_rows(joined) == []
 
 
 @pytest.mark.asyncio

@@ -531,10 +531,84 @@ def test_operator_lineup_never_reroutes_an_owner_paid_call(
 
 
 def _action_dispatch_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    from interfaces.research.api.owner_byot_dispatch import approved_owner_action_route
-    from substrate.byot_usage.actions import OwnerActionDecision
+    import httpx
 
-    app, record, _, provider, house = _authority_fixture(monkeypatch)
+    from interfaces.research.api.owner_byot_dispatch import approved_owner_action_route
+    from runtime.byok.store import store_credential_with_metadata
+    from substrate.byot_usage.actions import OwnerActionDecision
+    from substrate.dispatch import canonical_http
+    from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    record_id = models_admin._owner_id_prefix("owner-a") + "action-fixture"
+    metadata = store_credential_with_metadata(
+        record_id, "sk-test-only-action-key-abcdefghijklmnopqrstuvwxyz",
+        pipeline_kind="model_provider", owner_user_id="owner-a",
+    )
+    record = models_admin.UserModelRecord(
+        id=record_id, owner_user_id="owner-a", provider_kind="openai_compat",
+        provider_catalog_id="deepseek", model_id="deepseek-flash-nothink",
+        display_name="Owner action fixture", base_url="https://api.deepseek.com",
+        cred_ref=metadata.cred_id, cred_fingerprint=metadata.artifact_fingerprint,
+    )
+    with models_admin._registry_guard(exclusive=True):
+        models_admin._write_registry_unlocked({record.id: record})
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "owner-a"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
+    app.state.registered_providers = {record.id}
+    app.state.user_model_registration_fingerprints = {
+        record.id: models_admin._record_fingerprint(record),
+    }
+    provider = models_admin._UserOpenAICompatProvider(record)
+    provider.calls = []
+    provider.response_usage = {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5}
+    provider.wire_failure = None
+    provider.source_digest = "a" * 64
+    house = OpenAICompatProvider(
+        name="house", base_url="https://house.fixture.invalid",
+        api_key="sk-test-only-house-key",
+    )
+    house.calls = []
+    register_provider(provider)
+    register_provider(house)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        target = provider if request.url.host == "api.deepseek.com" else house
+        target.calls.append({
+            "model": body["model"], "prompt": body["messages"][0]["content"],
+            "max_tokens": body["max_tokens"], "temperature": body.get("temperature"),
+        })
+        if provider.wire_failure is not None:
+            provider.wire_failure()
+        response = {
+            "id": "owner-action-fixture", "object": "chat.completion",
+            "model": body["model"], "choices": [{
+                "index": 0, "message": {"role": "assistant", "content": "owner answer"},
+                "finish_reason": "stop",
+            }],
+        }
+        if provider.response_usage is not None:
+            response["usage"] = provider.response_usage
+        return httpx.Response(200, request=request, json=response)
+
+    monkeypatch.setattr(canonical_http, "_new_inner_transport", lambda: httpx.MockTransport(respond))
+
+    @contextmanager
+    def source_guard():
+        yield provider.source_digest
+
     ledger = ByotUsageLedger(tmp_path / "action-usage.sqlite3")
     choice = models_admin.UserModelChoice(
         authority="user_model", provider_id=record.id, model_id=record.model_id,
@@ -550,7 +624,8 @@ def _action_dispatch_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         document_id="doc-a", choice=choice, prompt="private book prompt",
         investigation_id="read-doc-a", logical_operation_id="action-canonical",
         resource_authority_digest="a" * 64,
-        resource_authority_revalidator=lambda: "a" * 64,
+        resource_authority_revalidator=lambda: provider.source_digest,
+        resource_authority_guard=source_guard,
         config=_config(), usage_ledger=ledger, owner_action=action.ref,
     )
     return ledger, action, provider, house, kwargs
@@ -614,6 +689,12 @@ def test_settled_action_replay_requires_current_body_admission(
     current = dict(kwargs, resource_authority_revalidator=current_body)
     if guarded:
         current.update(resource_authority_guard=body_guard)
+    else:
+        @contextmanager
+        def revalidated_body_guard():
+            yield current["resource_authority_revalidator"]()
+
+        current.update(resource_authority_guard=revalidated_body_guard)
     with pytest.raises(OwnerByotDispatchUnavailable):
         dispatch_talk_to_book_byot(**current)
     assert checked == [True]
@@ -626,8 +707,15 @@ def test_action_resource_change_cancels_only_unsent_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
+    builder = provider.build_request
+
+    def changed_source_builder(**build_kwargs):
+        provider.source_digest = "c" * 64
+        return builder(**build_kwargs)
+
+    monkeypatch.setattr(provider, "build_request", changed_source_builder)
     with pytest.raises(OwnerByotDispatchUnavailable):
-        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=lambda: "c" * 64))
+        dispatch_talk_to_book_byot(**kwargs)
     row = ledger.operation("owner-a", "action-canonical")
     assert row is not None and row.state == "cancelled"
     assert provider.calls == [] and house.calls == []
@@ -640,14 +728,14 @@ def test_action_provider_failure_retains_unknown_and_refuses_resend(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     ledger, action, provider, _, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
-    monkeypatch.setattr(provider, "call", lambda **kw: (_ for _ in ()).throw(RuntimeError("secret")))
+    provider.wire_failure = lambda: (_ for _ in ()).throw(RuntimeError("secret"))
     with pytest.raises(OwnerByotOutcomeUnknown, match="^owner_byot_outcome_unknown$"):
         dispatch_talk_to_book_byot(**kwargs)
     row = ledger.operation("owner-a", "action-canonical")
     assert row is not None and row.state == "unknown"
     current = ledger.action("owner-a", action.ref.action_id)
     assert current is not None and current.reserved_cents == row.reserved_cents
-    monkeypatch.setattr(provider, "call", lambda **kw: pytest.fail("blind resend"))
+    provider.wire_failure = lambda: pytest.fail("blind resend")
     with pytest.raises(OwnerByotDispatchUnavailable):
         dispatch_talk_to_book_byot(**kwargs)
 
@@ -657,8 +745,9 @@ def test_action_distinguishes_unknown_usage_from_reported_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reported: bool,
 ) -> None:
     ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
-    monkeypatch.setattr(
-        provider, "normalize_usage", lambda raw: NormalizedUsage(0, 0, reported=reported),
+    provider.response_usage = (
+        {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        if reported else None
     )
     if reported:
         dispatch_talk_to_book_byot(**kwargs)
@@ -683,9 +772,10 @@ def test_action_with_unknown_cache_pricing_retains_liability_without_settlement(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     ledger, action, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
-    monkeypatch.setattr(
-        provider, "normalize_usage", lambda raw: NormalizedUsage(2, 3, cache_unknown=True),
-    )
+    provider.response_usage = {
+        "prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5,
+        "prompt_tokens_details": {"cached_tokens": None},
+    }
     with pytest.raises(OwnerByotOutcomeUnknown):
         dispatch_talk_to_book_byot(**kwargs)
     row = ledger.operation("owner-a", "action-canonical")
@@ -716,7 +806,9 @@ def test_action_without_current_resource_check_refuses_before_allocation(
 ) -> None:
     ledger, _, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
     with pytest.raises(OwnerByotDispatchUnavailable):
-        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=None))
+        dispatch_talk_to_book_byot(**dict(
+            kwargs, resource_authority_revalidator=None, resource_authority_guard=None,
+        ))
     assert ledger.operation("owner-a", "action-canonical") is None
     assert provider.calls == [] and house.calls == []
 
@@ -726,12 +818,15 @@ def test_action_record_limit_change_before_claim_refuses_provider_io(
 ) -> None:
     ledger, _, provider, house, kwargs = _action_dispatch_fixture(monkeypatch, tmp_path)
 
-    def lower_limit() -> str:
-        ledger.set_limit(provider.name, "owner-a", 0)
-        return "a" * 64
+    builder = provider.build_request
 
+    def lower_limit_builder(**build_kwargs):
+        ledger.set_limit(provider.name, "owner-a", 0)
+        return builder(**build_kwargs)
+
+    monkeypatch.setattr(provider, "build_request", lower_limit_builder)
     with pytest.raises(OwnerByotDispatchUnavailable):
-        dispatch_talk_to_book_byot(**dict(kwargs, resource_authority_revalidator=lower_limit))
+        dispatch_talk_to_book_byot(**kwargs)
     assert provider.calls == [] and house.calls == []
     row = ledger.operation("owner-a", "action-canonical")
     assert row is not None and row.state == "cancelled"

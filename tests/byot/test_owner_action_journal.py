@@ -16,6 +16,7 @@ from substrate.byot_usage.actions import (
     MAX_MONEY,
     ApprovedOwnerRoute,
     AttemptProposal,
+    CanonicalInputBinding,
     FinalSendFacts,
     OwnerActionDecision,
     VerifiedAttemptFacts,
@@ -76,6 +77,73 @@ def settled(ledger: ByotUsageLedger, attempt: AttemptProposal, cents: int = 10) 
     ledger.settle_action_attempt("owner", attempt.operation_id)
 
 
+def test_canonical_input_is_atomic_and_separate_from_wire_claim(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.begin_action(decision())
+    attempt = proposal()
+    binding = CanonicalInputBinding("1" * 64, "2" * 64)
+    ledger.allocate_action_attempt("owner", "action", attempt, canonical_input=binding)
+    assert ledger.canonical_input_binding("owner", "attempt") == binding
+    assert ledger.owner_usage("owner").held_cents == 100
+    for other in (None, replace(binding, logical_digest="3" * 64)):
+        with pytest.raises(OperationConflict, match="cannot be rebound"):
+            ledger.allocate_action_attempt("owner", "action", attempt, canonical_input=other)
+        with pytest.raises(OperationConflict, match="differs from allocation"):
+            ledger.claim_action_attempt(
+                "owner", "attempt", replace(send_facts(attempt), canonical_input=other),
+            )
+    assert ledger.action_attempt("owner", "attempt").operation.state == "allocated"
+    claimed = ledger.claim_action_attempt(
+        "owner", "attempt", replace(send_facts(attempt), canonical_input=binding),
+    )
+    assert claimed.won and claimed.attempt.request_digest == "f" * 64
+    assert claimed.attempt.request_digest != binding.logical_digest
+    assert ledger.canonical_input_binding("owner", "attempt") == binding
+    assert ledger.owner_usage("owner").held_cents == 100
+
+
+def test_canonical_binding_failure_rolls_back_new_operation(tmp_path: Path) -> None:
+    path = tmp_path / "usage.sqlite3"
+    ledger = ByotUsageLedger(path)
+    ledger.begin_action(decision())
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "CREATE TRIGGER reject_input BEFORE INSERT ON byot_canonical_input"
+            " BEGIN SELECT RAISE(ABORT,'private injected binding failure'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="binding failure"):
+        ledger.allocate_action_attempt(
+            "owner", "action", proposal(),
+            canonical_input=CanonicalInputBinding("1" * 64, "2" * 64),
+        )
+    assert ledger.operation("owner", "attempt") is None
+    assert ledger.canonical_input_binding("owner", "attempt") is None
+    assert ledger.action("owner", "action").reserved_cents == 0
+    assert ledger.owner_usage("owner").held_cents == 100
+
+
+def test_v5_request_digest_remains_legacy_after_canonical_upgrade(tmp_path: Path) -> None:
+    path = tmp_path / "usage.sqlite3"
+    ledger = ByotUsageLedger(path)
+    ledger.begin_action(decision())
+    attempt = proposal()
+    sent(ledger, attempt)
+    before = ledger.action_attempt("owner", "attempt")
+    with sqlite3.connect(path) as con:
+        con.execute("DROP TABLE byot_canonical_input")
+        con.execute("UPDATE byot_usage_meta SET value='5' WHERE key='schema_version'")
+    upgraded = ByotUsageLedger(path)
+    assert upgraded.action_attempt("owner", "attempt") == before
+    assert upgraded.canonical_input_binding("owner", "attempt") is None
+    with pytest.raises(OperationConflict, match="differs from allocation"):
+        upgraded.claim_action_attempt(
+            "owner", "attempt", replace(
+                send_facts(attempt), canonical_input=CanonicalInputBinding("1" * 64, "2" * 64),
+            ),
+        )
+    assert upgraded.action_attempt("owner", "attempt") == before
+
+
 def _seed_v3(path: Path) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
     with sqlite3.connect(path) as con:
         con.executescript("""
@@ -111,7 +179,7 @@ def test_v3_migration_preserves_every_legacy_state_and_result(tmp_path: Path) ->
         migrated = con.execute("SELECT * FROM byot_operation_journal ORDER BY operation_id").fetchall()
         assert [row[:14] for row in migrated] == operations
         assert all(row[14] is None for row in migrated)
-        assert con.execute("SELECT value FROM byot_usage_meta WHERE key='schema_version'").fetchone() == ("5",)
+        assert con.execute("SELECT value FROM byot_usage_meta WHERE key='schema_version'").fetchone() == ("6",)
         journal_id = con.execute("SELECT value FROM byot_usage_meta WHERE key='journal_id'").fetchone()
     assert ledger.key_usage("legacy", "owner").held_cents == 28  # type: ignore[union-attr]
     ByotUsageLedger(path)

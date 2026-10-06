@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
@@ -21,17 +22,12 @@ from interfaces.research.api.owner_byot_dispatch import (
     dispatch_talk_to_book_byot,
 )
 from interfaces.research.api.settings_models_admin import UserModelChoice
-from runtime.byok.store import CredentialMetadata
+from runtime.byok.store import store_credential_with_metadata
 from substrate.books import owned_wrestling_sources as sources
 from substrate.byot_usage.actions import ApprovedOwnerRoute, OwnerActionDecision
 from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
 from substrate.constants import ANTIEK_PARAM_VERSION
-from substrate.dispatch import (
-    NormalizedUsage,
-    RawProviderResponse,
-    register_provider,
-    reset_provider_registry,
-)
+from substrate.dispatch import canonical_http, register_provider, reset_provider_registry
 from substrate.dispatch.router import DispatchConfig, TierConfig, TierPricing
 from substrate.event_log import trajectory
 from substrate.schemas import DistillationRequestedPayload, Event
@@ -130,7 +126,7 @@ def test_original_v5_owned_job_layout_upgrades_and_admits_new_work(tmp_path: Pat
         ).fetchall()][-1] == "updated_at"
         assert con.execute(
             "SELECT value FROM byot_usage_meta WHERE key='schema_version'"
-        ).fetchone() == ("5",)
+        ).fetchone() == ("6",)
 
     upgraded = ByotUsageLedger(path)
     assert upgraded.owned_wrestling_job("owner-a", "action-a") == first
@@ -499,39 +495,38 @@ def test_actual_canonical_dispatch_event_links_pack_and_request(
 ) -> None:
     """The owner dispatcher forwards both links to the real dispatch event."""
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credential.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
     reset_provider_registry()
+    record_id = models_admin._owner_id_prefix("owner-a") + "real-dispatch-fixture"
+    metadata = store_credential_with_metadata(
+        record_id, "synthetic-real-dispatch-key", pipeline_kind="model_provider",
+        owner_user_id="owner-a",
+    )
     record = models_admin.UserModelRecord(
-        id="user-owner-model", owner_user_id="owner-a",
+        id=record_id, owner_user_id="owner-a",
         provider_kind="openai_compat", provider_catalog_id="deepseek",
-        model_id="deepseek-flash", display_name="Owner model",
-        base_url="https://api.deepseek.com", cred_ref="cred-owner",
-        cred_fingerprint="a" * 64,
+        model_id="deepseek-flash-nothink", display_name="Owner model",
+        base_url="https://api.deepseek.com", cred_ref=metadata.cred_id,
+        cred_fingerprint=metadata.artifact_fingerprint,
     )
-    metadata = CredentialMetadata(
-        cred_id="cred-owner", account_handle=record.id,
-        pipeline_kind="model_provider", binding_version=3,
-        artifact_fingerprint="a" * 64, owner_user_id="owner-a",
-    )
+    with models_admin._registry_guard(exclusive=True):
+        models_admin._write_registry_unlocked({record.id: record})
     fingerprint = models_admin._record_fingerprint(record)
     app = FastAPI()
     app.state.user_model_registration_fingerprints = {record.id: fingerprint}
+    app.state.registered_providers = {record.id}
 
-    class Provider:
-        name = record.id
-        _user_model_authority_fingerprint = fingerprint
-
-        def call(self, *, model, prompt, max_tokens, temperature):
-            return RawProviderResponse(
-                text="canonical text", raw_usage={"input_tokens": 2, "output_tokens": 3},
-                finish_reason="stop", latency_ms=1, request_id="owned-wrestling-test",
-            )
-
-        def normalize_usage(self, raw_usage):
-            return NormalizedUsage(raw_usage["input_tokens"], raw_usage["output_tokens"])
-
-    register_provider(Provider())
-    monkeypatch.setattr(models_admin, "_load_registry", lambda: {record.id: record})
-    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {metadata.cred_id: metadata})
+    register_provider(models_admin._UserOpenAICompatProvider(record))
+    monkeypatch.setattr(canonical_http, "_new_inner_transport", lambda: httpx.MockTransport(
+        lambda request: httpx.Response(200, json={
+            "id": "owned-wrestling-test", "object": "chat.completion", "model": "deepseek-flash",
+            "choices": [{"index": 0, "finish_reason": "stop",
+                "message": {"role": "assistant", "content": "canonical text"}}],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        }),
+    ))
     choice = UserModelChoice(
         authority="user_model", provider_id=record.id, model_id=record.model_id,
     )
@@ -551,6 +546,7 @@ def test_actual_canonical_dispatch_event_links_pack_and_request(
             investigation_id="ownw-real", logical_operation_id="owcanon-real",
             resource_authority_digest="b" * 64,
             resource_authority_revalidator=lambda: "b" * 64,
+            resource_authority_guard=lambda: nullcontext("b" * 64),
             config=config, usage_ledger=ledger, role="synthesizer",
             action="wrestling.distillation", owner_action=action.ref,
             context_pack_event_id="context-pack-real", parent_event_id="owreq-real",

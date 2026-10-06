@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
+from typing import TypedDict
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -20,20 +22,34 @@ from interfaces.research.api.account_memory_identity import (
     OPERATOR_STORAGE_SENTINEL,
     derive_owner_from_verified_email,
 )
+from runtime.byok.store import guard_current_credential, prepare_current_master_key
 from runtime.research_runner.byot_provider_catalog import (
     get_model_variant,
     get_provider_preset,
 )
 from runtime.research_runner.provider_route_authority import canonical_provider_endpoint
 from substrate.byot_usage.actions import (
+    ActionAttemptSnapshot,
     ApprovedOwnerRoute,
     AttemptProposal,
+    CanonicalInputBinding,
     FinalSendFacts,
     OwnerActionRef,
     VerifiedAttemptFacts,
 )
 from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
+from substrate.constants import ANTIEK_PARAM_VERSION
 from substrate.dispatch.base import NormalizedUsage
+from substrate.dispatch.canonical_http import (
+    AdmittedCanonicalPolicy,
+    CanonicalClaimLost,
+    CanonicalExchange,
+    CanonicalHttpRefused,
+    execute_owned_http,
+    validate_owned_response_text,
+)
+from substrate.dispatch.providers.anthropic import AnthropicProvider
+from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.request_authority import (
     DispatchAuthority,
     DispatchAuthorityRefused,
@@ -49,8 +65,12 @@ from substrate.dispatch.router import (
     DispatchConfig,
     DispatchResult,
     TierPricing,
+    current_provider_registration,
     dispatch,
+    normalize_finish_reason,
 )
+from substrate.event_log import emit_typed, iter_physical_events
+from substrate.schemas import EVENT_SCHEMA_VERSION, DispatchCallPayload, Event
 
 _AUTHENTICATED_METHODS = frozenset({
     "antiek_session_cookie",
@@ -67,6 +87,16 @@ _AUTHENTICATED_METHODS = frozenset({
 _HUMAN_VERIFIED_METHODS = frozenset({"antiek_session_cookie", "cloudflare_access_email"})
 
 _ACTION = "read.talk_to_book"
+
+
+class _OwnedResultMetadata(TypedDict):
+    version: str
+    response_digest: str
+    response_id_digest: str
+    input_tokens: int
+    output_tokens: int
+    finish_reason: str | None
+    latency_ms: int
 
 
 class OwnerByotDispatchUnavailable(RuntimeError):
@@ -147,6 +177,18 @@ def dispatch_talk_to_book_byot(
     Surface E / AISidecar / Dialogue since the role unify — an owner-paid
     rung is not a second partner personality. Loop One callers pass their
     own role explicitly."""
+    if owner_action is not None:
+        return _dispatch_owned_canonical(
+            app=app, request_owner_user_id=request_owner_user_id,
+            resource_owner_user_id=resource_owner_user_id, document_id=document_id,
+            choice=choice, prompt=prompt, investigation_id=investigation_id,
+            logical_operation_id=logical_operation_id,
+            resource_authority_digest=resource_authority_digest,
+            resource_authority_guard=resource_authority_guard,
+            config=config, usage_ledger=usage_ledger, role=role, action=action,
+            owner_action=owner_action, context_pack_event_id=context_pack_event_id,
+            parent_event_id=parent_event_id,
+        )
     try:
         authority, exact_config, frozen_route = _freeze_current_authority(
             app=app,
@@ -404,6 +446,552 @@ def _canonical_request_digest(
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _owned_policy(
+    record: models_admin.UserModelRecord, model_id: str,
+    exact_config: DispatchConfig, role: str, prompt: str, credential_fingerprint: str,
+    generation: int,
+) -> AdmittedCanonicalPolicy:
+    """Admit two exact catalog rows independently of the adapter's builder."""
+    if not (
+        (record.provider_catalog_id == "deepseek"
+         and record.provider_kind == "openai_compat"
+         and model_id == "deepseek-flash-nothink")
+        or (record.provider_catalog_id == "anthropic"
+            and record.provider_kind == "anthropic"
+            and model_id == "claude-haiku-4-5-20251001")
+    ):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    catalog_id = record.provider_catalog_id
+    if catalog_id is None:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    preset = get_provider_preset(catalog_id)
+    if (record.base_url or preset.default_base_url) != preset.default_base_url:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    variant = get_model_variant(preset, model_id)
+    if (record.provider_catalog_id == "deepseek"
+        and (variant.request_model_id != "deepseek-flash"
+             or variant.thinking != "disabled")):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    if (record.provider_catalog_id == "anthropic"
+        and (variant.request_model_id != "claude-haiku-4-5-20251001"
+             or variant.thinking is not None)):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    tier = exact_config.tiers[exact_config.role_tiers[role]]
+    rates = {rate.unit.value: rate.usd_per_unit for rate in variant.rates}
+    if (tier.provider != record.id or tier.model != model_id
+        or type(tier.max_tokens) is not int or type(tier.temperature) is not float
+        or set(rates) != {"input_token", "output_token"}):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    return AdmittedCanonicalPolicy(
+        protocol=record.provider_kind,
+        provider_id=record.id,
+        catalog_model=model_id,
+        wire_model=variant.request_model_id,
+        endpoint=preset.default_base_url + preset.chat_completions_path,
+        prompt=prompt,
+        output_limit=tier.max_tokens,
+        temperature=tier.temperature,
+        thinking="disabled" if record.provider_catalog_id == "deepseek" else None,
+        input_rate=rates["input_token"], output_rate=rates["output_token"],
+        price_snapshot=variant.snapshot,
+        credential_fingerprint=credential_fingerprint,
+        registration_generation=generation,
+    )
+
+
+@contextmanager
+def _current_owned_sender(
+    *, app: FastAPI, owner: str, resolved: models_admin.OwnerModelAuthority,
+    prompt: str, role: str, source_digest: str,
+    source_guard: Callable[[], AbstractContextManager[str]],
+    prepared_master_key: bytes, config: DispatchConfig | None,
+    exact_config: DispatchConfig, authority: DispatchAuthority,
+) -> Iterator[tuple[AdmittedCanonicalPolicy, OpenAICompatProvider | AnthropicProvider, str]]:
+    """Take graph -> registry -> credential -> registration, then yield claim facts."""
+    with source_guard() as current_source:
+        if current_source != source_digest:
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+        with models_admin.current_user_model_record(resolved.record.id) as record:
+            if (record is None or not record.enabled or record != resolved.record
+                or record.owner_user_id != owner or record.cred_ref != resolved.credential_id
+                or record.cred_fingerprint != resolved.credential_fingerprint):
+                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+            with guard_current_credential(
+                record.cred_ref, prepared_master_key=prepared_master_key,
+            ) as credential:
+                metadata = credential.metadata
+                if (metadata.cred_id != record.cred_ref
+                    or metadata.binding_version != 3
+                    or metadata.owner_user_id != owner
+                    or metadata.pipeline_kind != "model_provider"
+                    or metadata.account_handle != record.id
+                    or metadata.artifact_fingerprint != record.cred_fingerprint):
+                    raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                with current_provider_registration(record.id) as registration:
+                    provider = registration.provider
+                    expected_type = (
+                        models_admin._UserOpenAICompatProvider
+                        if record.provider_kind == "openai_compat"
+                        else models_admin._UserAnthropicProvider
+                    )
+                    seam = getattr(app.state, "registered_providers", None)
+                    fingerprints = getattr(app.state, "user_model_registration_fingerprints", None)
+                    record_fingerprint = models_admin._record_fingerprint(record)
+                    if (not isinstance(provider, expected_type)
+                        or not isinstance(seam, set) or record.id not in seam
+                        or not isinstance(fingerprints, dict)
+                        or fingerprints.get(record.id) != record_fingerprint
+                        or getattr(provider, "_user_model_id", None) != record.id
+                        or getattr(provider, "_cred_ref", None) != record.cred_ref
+                        or getattr(provider, "_user_model_authority_fingerprint", None)
+                           != record_fingerprint):
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                    if (record.provider_kind == "anthropic"
+                        and getattr(provider, "_enable_prompt_caching", None) is not False):
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                    projected, budget_digest, current_config = _budget_and_exact_config(
+                        record=record, model_id=resolved.model_id, prompt=prompt,
+                        role=role, config=config, canonical_final=True,
+                    )
+                    budget_digest = hashlib.sha256(
+                        f"{budget_digest}:{source_digest}".encode("ascii")
+                    ).hexdigest()
+                    payer = authority.fallback_manifest[0].payer
+                    if (not isinstance(payer, OwnerByotPayer)
+                        or payer.budget_envelope_digest != budget_digest
+                        or current_config != exact_config):
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                    policy = _owned_policy(
+                        record, resolved.model_id, exact_config, role, prompt,
+                        metadata.artifact_fingerprint, registration.generation,
+                    )
+                    if policy.reserved_cents != projected:
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                    if not isinstance(provider, (OpenAICompatProvider, AnthropicProvider)):
+                        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                    yield policy, provider, credential.secret.reveal()
+
+
+def _owned_input_binding(
+    *, policy: AdmittedCanonicalPolicy, authority: DispatchAuthority,
+    owner_action: OwnerActionRef, source_digest: str,
+    investigation_id: str, document_id: str, logical_operation_id: str,
+    role: str, context_pack_event_id: str | None, parent_event_id: str | None,
+    exact_config: DispatchConfig,
+) -> CanonicalInputBinding:
+    tier_name = exact_config.role_tiers[role]
+    tier = exact_config.tiers[tier_name]
+    logical = hashlib.sha256(json.dumps({
+        "version": "owned-canonical-http.v1", "policy_digest": policy.input_digest(),
+        "authority_digest": authority.digest(), "owner": owner_action.owner_user_id,
+        "action_id": owner_action.action_id, "action_epoch": owner_action.epoch,
+        "source_digest": source_digest, "document_id": document_id,
+        "investigation_id": investigation_id, "operation_id": logical_operation_id,
+        "role": role, "tier": tier_name, "provider": tier.provider,
+        "model": tier.model, "max_tokens": tier.max_tokens,
+        "temperature": tier.temperature,
+        "context_pack_event_id": context_pack_event_id,
+        "parent_event_id": parent_event_id,
+    }, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    return CanonicalInputBinding(logical, policy.input_digest())
+
+
+def _owned_call_id(owner: str, operation: str) -> str:
+    return "ocall-" + hashlib.sha256(f"{owner}\0{operation}".encode()).hexdigest()[:32]
+
+
+def _owned_result_metadata(exchange: CanonicalExchange) -> _OwnedResultMetadata:
+    return {
+        "version": "owned-canonical-http.v1",
+        "response_digest": exchange.response_digest,
+        "response_id_digest": hashlib.sha256(exchange.provider_response_id.encode()).hexdigest(),
+        "input_tokens": exchange.input_tokens, "output_tokens": exchange.output_tokens,
+        "finish_reason": normalize_finish_reason(exchange.parsed.finish_reason),
+        "latency_ms": exchange.parsed.latency_ms,
+    }
+
+
+def _owned_result_evidence(
+    metadata_json: str, text: str, request_digest: str, nonce: str,
+    policy_digest: str, cost_micro_usd: int,
+) -> str:
+    return hashlib.sha256(json.dumps({
+        "metadata": metadata_json, "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "request_digest": request_digest, "claim_nonce_digest": nonce,
+        "policy_digest": policy_digest, "cost_micro_usd": cost_micro_usd,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _owned_result_from_attempt(
+    attempt: ActionAttemptSnapshot, policy: AdmittedCanonicalPolicy,
+) -> tuple[_OwnedResultMetadata, str]:
+    raw = attempt.result_reference
+    operation = attempt.operation
+    if (raw is None or operation.result_text is None
+        or operation.evidence_sha256 is None or operation.actual_cents is None
+        or attempt.request_digest is None or attempt.claim_nonce_digest is None
+        or attempt.cost_micro_usd is None):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    try:
+        metadata = json.loads(raw)
+    except (TypeError, ValueError):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+    if (type(metadata) is not dict
+        or set(metadata) != {"version", "response_digest", "response_id_digest",
+                             "input_tokens", "output_tokens", "finish_reason", "latency_ms"}
+        or metadata["version"] != "owned-canonical-http.v1"
+        or any(type(metadata[key]) is not str or len(metadata[key]) != 64
+               for key in ("response_digest", "response_id_digest"))
+        or any(type(metadata[key]) is not int or metadata[key] < 0
+               for key in ("input_tokens", "output_tokens", "latency_ms"))
+        or metadata["finish_reason"] not in {"stop", "length"}
+        or operation.actual_cents != (attempt.cost_micro_usd + 9999) // 10000
+        or operation.evidence_sha256 != _owned_result_evidence(
+            raw, operation.result_text, attempt.request_digest,
+            attempt.claim_nonce_digest, policy.input_digest(), attempt.cost_micro_usd,
+        )):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    return _OwnedResultMetadata(
+        version=metadata["version"], response_digest=metadata["response_digest"],
+        response_id_digest=metadata["response_id_digest"],
+        input_tokens=metadata["input_tokens"], output_tokens=metadata["output_tokens"],
+        finish_reason=metadata["finish_reason"], latency_ms=metadata["latency_ms"],
+    ), operation.result_text
+
+
+def _owned_dispatch_event(
+    *, owner: str, operation: str, investigation_id: str,
+    parent_event_id: str | None, context_pack_event_id: str | None,
+    role: str, tier: str, policy: AdmittedCanonicalPolicy,
+    metadata: _OwnedResultMetadata, cost_micro_usd: int,
+) -> str:
+    event_id = _owned_call_id(owner, operation)
+    policy_id = f"{policy.provider_id}/{policy.catalog_model}"
+    payload = DispatchCallPayload.model_validate({
+        "provider": policy.provider_id, "model": policy.catalog_model,
+        "tier": tier, "target_role": role,
+        "input_tokens": metadata["input_tokens"],
+        "output_tokens": metadata["output_tokens"],
+        "cost_usd": cost_micro_usd / 1_000_000,
+        "latency_ms": metadata["latency_ms"],
+        "verification_required": False, "fallback_chain_index": 0,
+        "prompt_hash": "sha256:" + hashlib.sha256(policy.prompt.encode()).hexdigest()[:12],
+        "finish_reason": metadata["finish_reason"],
+        "context_pack_event_id": context_pack_event_id,
+    })
+
+    def exact_row() -> bool:
+        try:
+            physical_rows = list(iter_physical_events(investigation_id))
+        except Exception:
+            raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+        rows = [row for row in physical_rows
+                if row.get("event_id") == event_id]
+        if len(rows) > 1:
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+        if not rows:
+            return False
+        event = Event.model_validate(rows[0])
+        if (event.investigation_id != investigation_id
+            or event.parent_event_id != parent_event_id or event.role != role
+            or event.policy_id != policy_id
+            or event.param_version != ANTIEK_PARAM_VERSION
+            or event.schema_version != EVENT_SCHEMA_VERSION
+            or event.phase is not None or event.synthesis_id is not None
+            or event.document_id is not None
+            or event.payload.model_dump(mode="json") != payload.model_dump(mode="json")):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+        return True
+
+    if not exact_row():
+        try:
+            emitted = emit_typed(
+                investigation_id, payload, event_id=event_id,
+                idempotent=True, strict_write=True, parent_event_id=parent_event_id,
+                role=role, policy_id=policy_id,
+            )
+        except Exception:
+            raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+        if emitted != event_id or not exact_row():
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    return event_id
+
+
+def _owned_dispatch_result(
+    *, attempt: ActionAttemptSnapshot, policy: AdmittedCanonicalPolicy,
+    metadata: _OwnedResultMetadata, text: str, tier: str,
+    event_id: str, replayed: bool,
+) -> DispatchResult:
+    cost_micro_usd = attempt.cost_micro_usd
+    if cost_micro_usd is None:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    return DispatchResult(
+        text=text,
+        usage=NormalizedUsage(metadata["input_tokens"], metadata["output_tokens"]),
+        cost_usd=cost_micro_usd / 1_000_000,
+        latency_ms=metadata["latency_ms"],
+        provider=policy.provider_id, model=policy.catalog_model,
+        tier=tier, finish_reason="replayed" if replayed else str(metadata["finish_reason"]),
+        fallback_chain_index=0, event_id=event_id,
+    )
+
+
+def _dispatch_owned_canonical(
+    *, app: FastAPI, request_owner_user_id: str, resource_owner_user_id: str,
+    document_id: str, choice: models_admin.UserModelChoice, prompt: str,
+    investigation_id: str, logical_operation_id: str,
+    resource_authority_digest: str | None,
+    resource_authority_guard: Callable[[], AbstractContextManager[str]] | None,
+    config: DispatchConfig | None, usage_ledger: ByotUsageLedger | None,
+    role: str, action: str, owner_action: OwnerActionRef,
+    context_pack_event_id: str | None, parent_event_id: str | None,
+) -> tuple[DispatchResult, DispatchAuthority]:
+    """One owned allocation and final byte claim; never enters ordinary router."""
+    if (owner_action.owner_user_id != request_owner_user_id
+        or resource_owner_user_id != request_owner_user_id
+        or resource_authority_digest is None or resource_authority_guard is None):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    try:
+        authority, exact_config, resolved = _freeze_current_authority(
+            app=app, request_owner_user_id=request_owner_user_id,
+            resource_owner_user_id=resource_owner_user_id, document_id=document_id,
+            choice=choice, prompt=prompt, logical_operation_id=logical_operation_id,
+            resource_authority_digest=resource_authority_digest, config=config,
+            role=role, action=action, canonical_final=True,
+        )
+        rung = authority.fallback_manifest[0]
+        payer = rung.payer
+        if (not isinstance(rung.credential, OwnerCredentialBinding)
+            or not isinstance(payer, OwnerByotPayer)):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+        master = prepare_current_master_key()
+        def current_sender() -> AbstractContextManager[
+            tuple[AdmittedCanonicalPolicy, OpenAICompatProvider | AnthropicProvider, str]
+        ]:
+            return _current_owned_sender(
+                app=app, owner=request_owner_user_id, resolved=resolved, prompt=prompt,
+                role=role, source_digest=resource_authority_digest,
+                source_guard=resource_authority_guard, prepared_master_key=master,
+                config=config, exact_config=exact_config, authority=authority,
+            )
+
+        with current_sender() as (policy, provider, secret):
+            pass
+        if policy.reserved_cents != rung.projected_max_cents:
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+        ledger = usage_ledger or ByotUsageLedger()
+        route = _approved_action_route(resolved)
+        existing = ledger.action_attempt(request_owner_user_id, logical_operation_id)
+        original_epoch = (existing.proposal.action_epoch if existing is not None
+                          else owner_action.epoch)
+        input_binding = _owned_input_binding(
+            policy=policy, authority=authority,
+            owner_action=OwnerActionRef(request_owner_user_id, owner_action.action_id,
+                                        original_epoch),
+            source_digest=resource_authority_digest,
+            investigation_id=investigation_id, document_id=document_id,
+            logical_operation_id=logical_operation_id, role=role,
+            context_pack_event_id=context_pack_event_id,
+            parent_event_id=parent_event_id, exact_config=exact_config,
+        )
+        proposal = AttemptProposal(
+            operation_id=logical_operation_id,
+            user_model_id=rung.credential.user_model_id,
+            provider_id=rung.provider_id, model_id=rung.model_id,
+            route_digest=route.route_digest,
+            authority_digest=authority.digest(),
+            rate_limit_digest=payer.budget_envelope_digest,
+            reserved_cents=policy.reserved_cents,
+            action_epoch=original_epoch,
+        )
+        if existing is not None:
+            if (existing.proposal != proposal
+                or existing.operation.action_id != owner_action.action_id
+                or ledger.canonical_input_binding(
+                    request_owner_user_id, logical_operation_id,
+                ) != input_binding):
+                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+            attempt = existing
+        else:
+            attempt = ledger.allocate_action_attempt(
+                request_owner_user_id, owner_action.action_id, proposal,
+                canonical_input=input_binding,
+            )
+        tier_name = exact_config.role_tiers[role]
+        if attempt.operation.state in {"settlement_pending", "settled"}:
+            with current_sender() as (current_policy, current_provider, current_secret):
+                if (current_policy.digest() != policy.digest()
+                    or current_provider is not provider
+                    or not hmac.compare_digest(current_secret, secret)):
+                    raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+                metadata, text = _owned_result_from_attempt(attempt, policy)
+                validate_owned_response_text(text, current_secret)
+                if attempt.operation.state == "settlement_pending":
+                    try:
+                        attempt = ledger.settle_action_attempt(
+                            request_owner_user_id, logical_operation_id,
+                        )
+                    except Exception:
+                        observed = ledger.action_attempt(request_owner_user_id,
+                                                         logical_operation_id)
+                        if observed is None or observed.operation.state != "settled":
+                            raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+                        attempt = observed
+            event_id = _owned_dispatch_event(
+                owner=request_owner_user_id, operation=logical_operation_id,
+                investigation_id=investigation_id, parent_event_id=parent_event_id,
+                context_pack_event_id=context_pack_event_id, role=role, tier=tier_name,
+                policy=policy, metadata=metadata,
+                cost_micro_usd=attempt.cost_micro_usd or 0,
+            )
+            return _owned_dispatch_result(
+                attempt=attempt, policy=policy, metadata=metadata, text=text,
+                tier=tier_name, event_id=event_id, replayed=True,
+            ), authority
+        if attempt.operation.state != "allocated":
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+
+        nonce = hashlib.sha256(uuid4().bytes).hexdigest()
+        claimed = False
+
+        def final_claim(final_request_digest: str) -> str:
+            nonlocal claimed
+            with current_sender() as (current_policy, current_provider, current_secret):
+                if (current_policy.digest() != policy.digest()
+                    or current_provider is not provider
+                    or not hmac.compare_digest(current_secret, secret)):
+                    raise CanonicalHttpRefused("current_authority_changed")
+                facts = FinalSendFacts(
+                    request_digest=final_request_digest,
+                    authority_digest=authority.digest(),
+                    route_digest=route.route_digest,
+                    rate_limit_digest=payer.budget_envelope_digest,
+                    body_authority_digest=resource_authority_digest,
+                    claim_nonce_digest=nonce, action_epoch=original_epoch,
+                    canonical_input=input_binding,
+                )
+                try:
+                    won = ledger.claim_action_attempt(
+                        request_owner_user_id, logical_operation_id, facts,
+                    )
+                except Exception:
+                    try:
+                        observed = ledger.action_attempt(
+                            request_owner_user_id, logical_operation_id,
+                        )
+                    except Exception:
+                        raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+                    if observed is None:
+                        raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+                    if (observed is not None and observed.operation.state == "sent"
+                        and observed.request_digest == final_request_digest
+                        and observed.claim_nonce_digest == nonce):
+                        claimed = True
+                        return nonce
+                    if observed is not None and observed.operation.state == "allocated":
+                        raise CanonicalHttpRefused("claim_refused") from None
+                    raise CanonicalClaimLost("claim_lost") from None
+                if not won.won:
+                    raise CanonicalClaimLost("claim_lost")
+                claimed = True
+                return nonce
+
+        try:
+            exchange = execute_owned_http(policy, provider, secret, final_claim)
+        except CanonicalClaimLost:
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+        except OwnerByotOutcomeUnknown:
+            raise
+        except Exception:
+            try:
+                current = ledger.action_attempt(request_owner_user_id, logical_operation_id)
+            except Exception:
+                if claimed:
+                    raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+                raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+            if claimed and current is not None and current.operation.state == "sent":
+                ledger.mark_action_attempt_unknown(request_owner_user_id,
+                                                   logical_operation_id)
+                raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+            if not claimed and current is not None and current.operation.state == "allocated":
+                with suppress(OperationConflict):
+                    ledger.cancel_action_attempt(request_owner_user_id,
+                                                 logical_operation_id,
+                                                 expected_epoch=original_epoch)
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+
+        try:
+            metadata = _owned_result_metadata(exchange)
+            metadata_json = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+            evidence = _owned_result_evidence(
+                metadata_json, exchange.parsed.text, exchange.request_digest,
+                exchange.claim_nonce_digest, policy.input_digest(), exchange.cost_micro_usd,
+            )
+            facts = VerifiedAttemptFacts(
+                provider_id=policy.provider_id, model_id=policy.catalog_model,
+                provider_attempt_event_id=_owned_call_id(request_owner_user_id,
+                                                         logical_operation_id),
+                evidence_sha256=evidence, request_digest=exchange.request_digest,
+                cost_micro_usd=exchange.cost_micro_usd, result_reference=metadata_json,
+                result_text=exchange.parsed.text,
+            )
+        except Exception:
+            ledger.mark_action_attempt_unknown(request_owner_user_id, logical_operation_id)
+            raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+        try:
+            attempt = ledger.record_action_attempt_result(
+                request_owner_user_id, logical_operation_id, facts,
+            )
+        except Exception:
+            observed = ledger.action_attempt(request_owner_user_id, logical_operation_id)
+            if observed is None or observed.operation.state not in {
+                "settlement_pending", "settled",
+            }:
+                if observed is not None and observed.operation.state == "sent":
+                    ledger.mark_action_attempt_unknown(request_owner_user_id,
+                                                       logical_operation_id)
+                raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+            attempt = ledger.record_action_attempt_result(
+                request_owner_user_id, logical_operation_id, facts,
+            )
+        if attempt.operation.state != "settled":
+            try:
+                attempt = ledger.settle_action_attempt(request_owner_user_id,
+                                                       logical_operation_id)
+            except Exception:
+                observed = ledger.action_attempt(request_owner_user_id,
+                                                 logical_operation_id)
+                if observed is not None and observed.operation.state == "settlement_pending":
+                    try:
+                        observed = ledger.settle_action_attempt(
+                            request_owner_user_id, logical_operation_id,
+                        )
+                    except Exception:
+                        observed = ledger.action_attempt(request_owner_user_id,
+                                                         logical_operation_id)
+                if observed is None or observed.operation.state != "settled":
+                    raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown") from None
+                attempt = observed
+        event_id = _owned_dispatch_event(
+            owner=request_owner_user_id, operation=logical_operation_id,
+            investigation_id=investigation_id, parent_event_id=parent_event_id,
+            context_pack_event_id=context_pack_event_id, role=role, tier=tier_name,
+            policy=policy, metadata=metadata,
+            cost_micro_usd=exchange.cost_micro_usd,
+        )
+        return _owned_dispatch_result(
+            attempt=attempt, policy=policy, metadata=metadata,
+            text=exchange.parsed.text, tier=tier_name, event_id=event_id,
+            replayed=False,
+        ), authority
+    except OwnerByotDispatchUnavailable:
+        raise
+    except (CanonicalHttpRefused, OperationConflict):
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+    except Exception:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
+
+
 def _claim_canonical_attempt(
     ledger: ByotUsageLedger, owner: str, operation: str,
     action: OwnerActionRef | None, authority: DispatchAuthority,
@@ -439,6 +1027,7 @@ def _freeze_current_authority(
     config: DispatchConfig | None,
     role: str = "user_agent",
     action: str = _ACTION,
+    canonical_final: bool = False,
 ) -> tuple[DispatchAuthority, DispatchConfig, models_admin.OwnerModelAuthority]:
     validated = models_admin.UserModelChoice.model_validate(choice.model_dump(mode="json"))
     try:
@@ -460,7 +1049,7 @@ def _freeze_current_authority(
     projected_cents, budget_digest, exact_config = _budget_and_exact_config(
         record=record, model_id=resolved.model_id,
         prompt=prompt, role=role,
-        config=config,
+        config=config, canonical_final=canonical_final,
     )
     if resource_authority_digest is not None:
         budget_digest = hashlib.sha256(
@@ -505,6 +1094,7 @@ def _budget_and_exact_config(
     *, record: models_admin.UserModelRecord | None, prompt: str,
     config: DispatchConfig | None, role: str = "user_agent",
     model_id: str | None = None,
+    canonical_final: bool = False,
 ) -> tuple[int, str, DispatchConfig]:
     if record is None or record.provider_catalog_id is None:
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
@@ -526,7 +1116,10 @@ def _budget_and_exact_config(
     base = loaded.tiers[tier_name]
     # Conservative local reservation: one input token per UTF-8 byte. This is
     # a local spend ceiling, not a claim about the provider's hard token limit.
-    input_tokens = max(1, len(prompt.encode("utf-8")))
+    input_tokens = (
+        len(prompt.encode("utf-8")) + len(variant.request_model_id.encode()) + 64
+        if canonical_final else max(1, len(prompt.encode("utf-8")))
+    )
     rates = {rate.unit.value: rate.usd_per_unit for rate in variant.rates}
     projected_usd = (
         Decimal(input_tokens) * rates["input_token"]
@@ -541,6 +1134,8 @@ def _budget_and_exact_config(
         "provider_id": record.id,
         "rate_snapshot": variant.snapshot,
     }
+    if canonical_final:
+        envelope["version"] = "owned-canonical-http.v1"
     digest = hashlib.sha256(
         json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()

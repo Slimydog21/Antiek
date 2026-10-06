@@ -61,6 +61,7 @@ try:
         response_contains_secret,
         usage_counts_reported,
     )
+    from .wire_request import BuiltProviderRequest
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -72,6 +73,9 @@ except ImportError:  # pragma: no cover
         optional_count,
         response_contains_secret,
         usage_counts_reported,
+    )
+    from dispatch.providers.wire_request import (  # type: ignore[no-redef,import-not-found]
+        BuiltProviderRequest,
     )
 
 
@@ -161,15 +165,15 @@ class AnthropicProvider:
             self._client = httpx.Client(timeout=self._timeout_s)
         return self._client
 
-    def call(
+    def build_request(
         self,
         *,
         model: str,
         prompt: str,
         max_tokens: int,
         temperature: float,
-    ) -> RawProviderResponse:
-        api_key = self._resolve_api_key()
+        api_key: str,
+    ) -> BuiltProviderRequest:
         url = self.base_url + "/v1/messages"
         headers = {
             "x-api-key": api_key,
@@ -198,13 +202,29 @@ class AnthropicProvider:
         }
         if model not in _ADAPTIVE_THINKING_MODELS:
             body["temperature"] = temperature
+        return BuiltProviderRequest(url=url, headers=headers, body=body, model=model)
+
+    def call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> RawProviderResponse:
+        api_key = self._resolve_api_key()
+        built = self.build_request(
+            model=model, prompt=prompt, max_tokens=max_tokens,
+            temperature=temperature, api_key=api_key,
+        )
+        model = built.model
 
         client = self._ensure_client()
         t_start = time.monotonic()
         resp: httpx.Response | None = None
         sanitized_transport_error: str | None = None
         try:
-            resp = client.post(url, json=body, headers=headers)
+            resp = client.post(built.url, json=built.body, headers=built.headers)
         except httpx.TimeoutException as e:
             if self._expose_error_body:
                 raise ProviderError(
@@ -235,7 +255,17 @@ class AnthropicProvider:
             )
         assert resp is not None
         latency_ms = int((time.monotonic() - t_start) * 1000)
+        return self.parse_response(resp, model=model, api_key=api_key, latency_ms=latency_ms)
 
+    def parse_response(
+        self,
+        response: httpx.Response,
+        *,
+        model: str,
+        api_key: str,
+        latency_ms: int,
+    ) -> RawProviderResponse:
+        resp = response
         if resp.status_code != 200:
             detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(

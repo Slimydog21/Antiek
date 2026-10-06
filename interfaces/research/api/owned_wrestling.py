@@ -479,8 +479,8 @@ async def _consume_elected(
         operation_id=operation_id,
     )
     if claimed is None:
-        # A running claim is not evidence that its owner died. Only a settled
-        # canonical result can be reconstructed by a new worker without a send.
+        # A running claim is not evidence that its owner died. Only a verified
+        # canonical result can be reconstructed by an elected worker without a send.
         return
     job = claimed
 
@@ -619,9 +619,11 @@ async def _consume_elected(
             ledger.close_action(job.owner_user_id, job.action_id,
                                 expected_epoch=current_action.epoch)
     except OwnerByotOutcomeUnknown:
-        ledger.transition_owned_wrestling(job.owner_user_id, job.action_id,
-                                           expected="running", state="unresolved",
-                                           execution_token=execution_token)
+        attempt = ledger.operation(job.owner_user_id, operation_id)
+        if attempt is None or attempt.state not in {"settlement_pending", "settled"}:
+            ledger.transition_owned_wrestling(job.owner_user_id, job.action_id,
+                                               expected="running", state="unresolved",
+                                               execution_token=execution_token)
         raise
     except (OwnedSourceUnavailable, OwnerByotDispatchUnavailable):
         current = ledger.owned_wrestling_job(job.owner_user_id, job.action_id)
