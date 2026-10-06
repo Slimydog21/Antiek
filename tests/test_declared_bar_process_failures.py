@@ -17,13 +17,22 @@ def _mock_tool(
     tool: str,
     status: int,
     stdout: str = "",
+    *,
+    version_status: int = 0,
+    version_stream: str = "stdout",
 ) -> list[list[str]]:
     calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         if argv[-1] == "--version":
-            return subprocess.CompletedProcess(argv, 0, f"{tool} {db._pinned_version(tool)}\n", "")
+            version = f"{tool} {db._pinned_version(tool)}\n"
+            return subprocess.CompletedProcess(
+                argv,
+                version_status,
+                version if version_stream == "stdout" else "",
+                version if version_stream == "stderr" else "",
+            )
         return subprocess.CompletedProcess(argv, status, stdout, "synthetic tool failure")
 
     monkeypatch.setattr(db.subprocess, "run", fake_run)
@@ -100,3 +109,60 @@ def test_unparseable_findings_still_fail(
     _mock_tool(monkeypatch, tool, 1, "unparseable output")
     with pytest.raises(RuntimeError, match="unreadable report"):
         _run_tool(tool, tmp_path)
+
+
+@pytest.mark.parametrize("tool", ["ruff", "mypy"])
+@pytest.mark.parametrize("status", [-9, 1, 2])
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_failed_version_probe_never_launches_lint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tool: str,
+    status: int,
+    stream: str,
+) -> None:
+    calls = _mock_tool(
+        monkeypatch, tool, 0, version_status=status, version_stream=stream
+    )
+    with pytest.raises(RuntimeError, match=f"{tool} version probe exited {status}"):
+        _run_tool(tool, tmp_path)
+    assert calls == [[tool, "--version"]]
+
+
+@pytest.mark.parametrize("tool", ["ruff", "mypy"])
+@pytest.mark.parametrize("status", [-9, 1, 2])
+@pytest.mark.parametrize(
+    ("mode", "existing_baseline"),
+    [("capture", False), ("capture", True), ("enforce", True)],
+)
+def test_failed_version_probe_leaves_baseline_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    tool: str,
+    status: int,
+    mode: str,
+    existing_baseline: bool,
+) -> None:
+    calls = _mock_tool(monkeypatch, tool, 0, version_status=status)
+    baseline = tmp_path / "baseline.json"
+    if existing_baseline:
+        write_baseline(baseline, lint=f"declared_bar_{tool}", violations=[])
+    before = baseline.read_bytes() if existing_baseline else None
+
+    assert db.main([mode, tool, "--baseline-file", str(baseline)]) == 2
+    assert calls == [[tool, "--version"]]
+    assert f"{tool} version probe exited {status}" in capsys.readouterr().err
+    if existing_baseline:
+        assert baseline.read_bytes() == before
+    else:
+        assert not baseline.exists()
+
+
+@pytest.mark.parametrize("tool", ["ruff", "mypy"])
+def test_successful_version_probe_can_report_pin_on_stderr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tool: str
+) -> None:
+    calls = _mock_tool(monkeypatch, tool, 0, version_stream="stderr")
+    assert _run_tool(tool, tmp_path) == []
+    assert len(calls) == 2

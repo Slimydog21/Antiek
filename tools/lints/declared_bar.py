@@ -270,6 +270,11 @@ def _assert_pinned_version(binary: str, tool: str) -> None:
         # The caller's own invocation raises a better-targeted RuntimeError
         # for a missing binary; do not pre-empt it with a worse message.
         return
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{tool} version probe exited {proc.returncode} (tool failure). "
+            f"stderr: {(proc.stderr or '').strip()[:400]!r}"
+        )
     out = ((proc.stdout or "") + " " + (proc.stderr or "")).strip()
     match = re.search(r"(\d+\.\d+(?:\.\d+)?)", out)
     found = match.group(1) if match else out[:60] or "<unknown>"
