@@ -4,11 +4,10 @@
  * adapter. An fs walk of apps/reading/src excluding tests and stories.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const SRC = fileURLToPath(new URL("../../", import.meta.url));
+const SRC = typeof __dirname === "string" ? resolve(__dirname, "../../") : resolve(process.cwd(), "src");
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -40,10 +39,14 @@ describe("writer census", () => {
     expect(grep(/\b(writeTabProject|clearTabProject)\(/)).toEqual(["workspace/persistence.ts", "workspace/tabTreeStore.ts"]);
   });
 
-  it('the `kind: "investigation"` node-source literal lives only in adapters/preBackend.ts under contracts/', () => {
+  it('the `kind: "investigation"` node-source CONSTRUCTOR lives only in adapters/preBackend.ts under contracts/', () => {
+    // The type union in tree.ts declares the member with a `;` separator;
+    // only an object literal (`,` or `}` after the value) constructs one.
     const under = files.filter((f) => rel(f).startsWith("workspace/contracts/"));
-    const hits = under.filter((f) => /\bkind:\s*"investigation"/.test(readFileSync(f, "utf8"))).map(rel);
+    const hits = under.filter((f) => /\bkind:\s*"investigation"\s*[,}]/.test(readFileSync(f, "utf8"))).map(rel);
     expect(hits).toEqual(["workspace/contracts/adapters/preBackend.ts"]);
+    const tree = readFileSync(join(SRC, "workspace/contracts/tree.ts"), "utf8");
+    expect(/\bkind:\s*"investigation";/.test(tree)).toBe(true);
   });
 
   it("the contracts module never calls setWorkspaceOwner", () => {
@@ -51,9 +54,10 @@ describe("writer census", () => {
     expect(under.filter((f) => /setWorkspaceOwner\(/.test(readFileSync(f, "utf8"))).map(rel)).toEqual([]);
   });
 
-  it("index.ts re-exports no adapter name", () => {
+  it("index.ts re-exports no adapter module", () => {
     const index = readFileSync(join(SRC, "workspace/contracts/index.ts"), "utf8");
-    expect(index).not.toMatch(/adapters/);
+    const specs = [...index.matchAll(/^\s*export\s[\s\S]*?from\s+["']([^"']+)["']/gm)].map((m) => m[1]).sort();
+    expect(specs).toEqual(["./anchor", "./openers", "./selection", "./tree", "./treeStore"]);
     expect(index).not.toMatch(/preBackend|PreBackend/);
   });
 });

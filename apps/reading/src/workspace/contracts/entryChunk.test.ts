@@ -4,11 +4,13 @@
  * imports a lazy contract module.
  */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
-const read = (rel: string) => readFileSync(new URL(rel, `file://${here}`), "utf8");
+// vitest runs from apps/reading (the gate line cds there); `__dirname` is
+// preferred when the runner provides it.
+const here = typeof __dirname === "string" ? __dirname : resolve(process.cwd(), "src/workspace/contracts");
+const read = (rel: string) => readFileSync(resolve(here, rel), "utf8");
 
 /** Every static import statement with its specifier and whether it is type-only. */
 function imports(src: string): { spec: string; typeOnly: boolean; line: string }[] {
