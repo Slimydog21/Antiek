@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -12,10 +14,14 @@ from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
+import cbor2
 import pytest
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
 from nacl.public import PrivateKey
 
 from runtime.byok.store import load_credential, store_credential
+from substrate.auth import accounts, passkeys
 from tools import critical_state_backup as backup
 from tools.critical_backup_crypto import MAGIC, encrypt_file
 
@@ -142,6 +148,66 @@ def test_full_encrypted_restore_recovers_actual_committed_wal_ledger(
             assert restored.execute("PRAGMA quick_check").fetchall() == [("ok",)]
     finally:
         writer.close()
+
+
+def test_offline_restored_accounts_and_public_passkey_retain_actual_auth_contract(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_ACCOUNT_STORE", str(sources.accounts))
+    monkeypatch.setenv("ANTIEK_PASSKEY_STORE", str(sources.passkeys))
+    sources.accounts.unlink()  # Replace the opaque byte-copy fixture with actual app stores.
+    original = accounts.account_for_verified_email(
+        "original@example.test", legacy_operator_email="original@example.test",
+    )
+    alice = accounts.account_for_verified_email("alice@example.test")
+    private = ec.generate_private_key(ec.SECP256R1())
+    numbers = private.public_key().public_numbers()
+    public = cbor2.dumps({
+        1: 2, 3: -7, -1: 1, -2: numbers.x.to_bytes(32, "big"), -3: numbers.y.to_bytes(32, "big"),
+    })
+
+    def b64(value: bytes) -> str:
+        return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+    credential = passkeys.PasskeyCredential(
+        credential_id=b64(b"isolated-recovery-key"), public_key=b64(public), sign_count=5,
+        transports=("internal",), device_type="single_device", backed_up=False,
+        label="Isolated recovery authenticator", created_at=1, user_id=alice.user_id, email=alice.email,
+    )
+    with passkeys._store_lock:
+        passkeys._write_credentials_unlocked([credential])
+    data, encrypted_key, identity = bundle(tmp_path, sources)
+    recovered = tmp_path / "offline-auth-recovery"
+    backup.restore(data, encrypted_key, identity, recovered)
+    monkeypatch.setenv("ANTIEK_ACCOUNT_STORE", str(recovered / "critical-state/state/auth/accounts.json"))
+    monkeypatch.setenv("ANTIEK_PASSKEY_STORE", str(recovered / "critical-state/state/auth/passkeys.json"))
+    assert accounts.account_for_session(original.user_id, original.email) == original
+    assert accounts.legacy_account_for_session(original.email) is None
+    monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", original.email)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", original.email)
+    assert accounts.legacy_account_for_session(original.email) == original
+    assert accounts.account_for_session(alice.user_id, alice.email) == alice
+    assert alice.legacy_owner is None and original.legacy_owner == "__operator__"
+    assert passkeys.list_credentials() == [credential]
+    monkeypatch.setenv("ANTIEK_WEBAUTHN_RP_ID", "recovery.test")
+    monkeypatch.setenv("ANTIEK_WEBAUTHN_ORIGINS", "https://recovery.test")
+    options = passkeys.authentication_options()
+    client_data = json.dumps({
+        "type": "webauthn.get", "challenge": options["challenge"],
+        "origin": "https://recovery.test", "crossOrigin": False,
+    }, separators=(",", ":")).encode()
+    auth_data = hashlib.sha256(b"recovery.test").digest() + b"\x05" + (6).to_bytes(4, "big")
+    signature = private.sign(auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+    assertion = {
+        "id": credential.credential_id, "rawId": credential.credential_id, "type": "public-key",
+        "response": {"clientDataJSON": b64(client_data), "authenticatorData": b64(auth_data),
+                     "signature": b64(signature), "userHandle": None}, "clientExtensionResults": {},
+    }
+    verified = passkeys.complete_authentication(ceremony_id=options["ceremony_id"], credential=assertion)
+    assert verified.user_id == alice.user_id and verified.email == alice.email and verified.sign_count == 6
+    assert passkeys.list_credentials() == [verified]
+    with pytest.raises(passkeys.PasskeyError):
+        passkeys.complete_authentication(ceremony_id=options["ceremony_id"], credential=assertion)
 
 
 @pytest.mark.parametrize("collision", ["accounts-passkeys", "accounts-byok", "system-config"])
