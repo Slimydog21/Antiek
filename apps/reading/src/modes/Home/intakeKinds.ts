@@ -65,10 +65,12 @@ const URL_RE = /^https?:\/\/\S+$/i;
 
 export function classifyFile(file: Pick<File, "name" | "type">): IntakeKind {
   const { name, type } = file;
-  if (TEXT_EXT.test(name) || type.startsWith("text/")) return "text-file";
+  // Refused kinds are checked first, by name OR MIME: a photo.png that a
+  // picker reports as text/plain must still never be read (MiMo SPR-03 #1).
   if (type.startsWith("image/") || IMAGE_EXT.test(name)) return "image";
   if (type === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
   if (DOCX_MIME.has(type) || DOCX_EXT.test(name)) return "docx";
+  if (TEXT_EXT.test(name) || type.startsWith("text/")) return "text-file";
   return "unsupported";
 }
 

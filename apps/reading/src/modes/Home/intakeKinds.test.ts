@@ -32,6 +32,16 @@ describe("intakeKinds — classification", () => {
     expect(classifyFile(file(name, type))).toBe(kind);
   });
 
+  it.each([
+    ["photo.png", "text/plain", "image"],
+    ["paper.pdf", "text/plain", "pdf"],
+    ["draft.docx", "text/plain", "docx"],
+    ["notes.txt", "image/png", "image"],
+    ["notes.txt", "application/pdf", "pdf"],
+  ] as const)("a refused kind wins over text: %s (%s) → %s", (name, type, kind) => {
+    expect(classifyFile(file(name, type))).toBe(kind);
+  });
+
   it("a bare http(s) URL is a url; anything else is not", () => {
     expect(classifyText("https://example.org/a")).toBe("url");
     expect(classifyText("  http://x.y/z  ")).toBe("url");

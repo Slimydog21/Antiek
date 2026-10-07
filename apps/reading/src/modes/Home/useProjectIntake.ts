@@ -201,7 +201,12 @@ export function useProjectIntake(options: ProjectIntakeOptions = {}) {
       return null;
     }
     const id = await onSubmit();
-    if (!id) return null;
+    if (!id) {
+      // The project exists but the run did not start; say so rather than
+      // let a retry mint a second project silently.
+      setProjectError("The project was created, but the research didn’t start. Your words are still here.");
+      return null;
+    }
     try {
       await addProjectMember(projectId, { member_kind: "investigation", member_id: id });
     } catch {

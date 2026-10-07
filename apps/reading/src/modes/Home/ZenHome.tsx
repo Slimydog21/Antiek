@@ -101,6 +101,9 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
 
   const [staged, setStaged] = useState<Staged[]>([]);
   const [notices, setNotices] = useState<string[]>([]);
+  // Sticky while the box is full, so an overlapping batch's notice cannot
+  // overwrite the cap announcement.
+  const [capHit, setCapHit] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
@@ -109,6 +112,9 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
   // State updates land on the next render, so two mod+Enter presses in one
   // tick would both see `sending === false`. The ref closes that window.
   const sendingRef = useRef(false);
+  // Slots taken by staged items plus reads still in flight. Reserved
+  // synchronously so two overlapping drops cannot both see room for six.
+  const slotsRef = useRef(0);
 
   const working = busy || sending;
 
@@ -119,10 +125,11 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
   }, [question, setQuestion, setPromptDerived]);
 
   const stageUrl = useCallback((url: string, replaceQuestion = false) => {
-    if (staged.length >= MAX_ATTACHMENTS) {
-      setNotices([CAP_COPY]);
+    if (slotsRef.current >= MAX_ATTACHMENTS) {
+      setCapHit(true);
       return;
     }
+    slotsRef.current += 1;
     setStaged((s) => [...s, { id: nextId.current++, kind: "url", name: url, url }]);
     setNotices([`Attached ${url}.`]);
     if (replaceQuestion) {
@@ -131,13 +138,12 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
     } else {
       deriveIfEmpty(url);
     }
-  }, [staged.length, deriveIfEmpty, setQuestion, setPromptDerived]);
+  }, [deriveIfEmpty, setQuestion, setPromptDerived]);
 
   const addFiles = useCallback(async (files: File[]) => {
     const lines: string[] = [];
     const refused: string[] = [];
-    const accepted: Staged[] = [];
-    let room = MAX_ATTACHMENTS - staged.length;
+    const toRead: File[] = [];
     let capped = false;
     for (const file of files) {
       const kind = classifyFile(file);
@@ -146,32 +152,45 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
         // Refused: the File is dropped here — never read, never uploaded.
         // TODO(ffx-nav-backend-intake): an accepted image/pdf/docx row stages
         // here once useProjectIntake can send it to the published route.
-        if (!acceptance.accepted && !lines.includes(acceptance.copy)) lines.push(acceptance.copy);
-        if (acceptance.accepted && !lines.includes(REFUSED_UNTIL_INTAKE_COPY)) lines.push(REFUSED_UNTIL_INTAKE_COPY);
+        const copy = acceptance.accepted ? REFUSED_UNTIL_INTAKE_COPY : acceptance.copy;
+        if (!lines.includes(copy)) lines.push(copy);
         refused.push(file.name);
         continue;
       }
-      if (room <= 0) {
+      if (slotsRef.current >= MAX_ATTACHMENTS) {
         capped = true;
         continue;
       }
-      room -= 1;
-      accepted.push({ id: nextId.current++, kind: "text-file", name: file.name, text: await file.text() });
+      slotsRef.current += 1; // reserved before any await
+      toRead.push(file);
+    }
+    const accepted: Staged[] = [];
+    const unreadable: string[] = [];
+    for (const file of toRead) {
+      try {
+        accepted.push({ id: nextId.current++, kind: "text-file", name: file.name, text: await file.text() });
+      } catch {
+        slotsRef.current -= 1;
+        unreadable.push(file.name);
+      }
     }
     if (accepted.length > 0) {
       setStaged((s) => [...s, ...accepted]);
       lines.unshift(`Attached ${accepted.map((a) => a.name).join(", ")}.`);
       deriveIfEmpty(accepted[0].name);
     }
+    for (const name of unreadable) lines.push(`Couldn’t read ${name}.`);
     if (refused.length > 0) lines.push(`Not attached: ${refused.join(", ")}.`);
-    if (capped) lines.push(CAP_COPY);
+    if (capped) setCapHit(true);
     setNotices(lines);
-  }, [staged.length, deriveIfEmpty]);
+  }, [deriveIfEmpty]);
 
   const unstage = useCallback((id: number) => {
     const item = staged.find((s) => s.id === id);
     if (!item) return;
     const rest = staged.filter((s) => s.id !== id);
+    slotsRef.current -= 1;
+    setCapHit(false);
     setStaged(rest);
     setNotices([`Removed ${item.name}.`]);
     if (rest.length === 0 && promptDerived) {
@@ -196,6 +215,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
       for (const item of staged) {
         const ok = item.kind === "url" ? await absorbUrl(item.url) : await absorbText(item.text, item.name);
         if (!ok) return; // the failure is on screen; the rest stay staged
+        slotsRef.current -= 1;
         setStaged((s) => s.filter((x) => x.id !== item.id));
       }
       await submitProject();
@@ -368,6 +388,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
 
         <div role="status" aria-live="polite" className="min-h-[1.25rem] px-3 pt-2 text-sm font-sans text-ink dark:text-bright">
           {notices.map((line) => <p key={line}>{line}</p>)}
+          {capHit && <p>{CAP_COPY}</p>}
         </div>
 
         {attach.kind === "failed" && (

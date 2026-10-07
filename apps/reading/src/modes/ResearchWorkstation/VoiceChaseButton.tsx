@@ -140,7 +140,10 @@ export default function VoiceChaseButton({
           variant="tertiary"
           size="sm"
           disabled={disabled || phase === "transcribing"}
-          onClick={() => void recorder.start()}
+          onClick={() => {
+            cancelledRef.current = false; // a cancel whose stop was a no-op must not eat this take
+            void recorder.start();
+          }}
         >
           {phase === "transcribing" ? "Listening…" : idleLabel}
         </LemonButton>

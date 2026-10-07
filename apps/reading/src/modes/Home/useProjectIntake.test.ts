@@ -51,6 +51,7 @@ import { NAVIGATE_GRACE_MS, derivePromptFor, useProjectIntake } from "./useProje
 type Call = { url: string; method: string; body: string | null };
 let calls: Call[] = [];
 let responder: (url: string, method: string) => Response;
+let lastBody: { title?: string } | null = null;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -80,7 +81,9 @@ function defaultResponder(url: string, method: string): Response {
     return jsonResponse(200, { status: "ok", title: "A Linked Page", document_id: "d1" });
   }
   if (url.endsWith("/voice-notes/ingest")) {
-    return jsonResponse(200, { document_id: "d2", title: "notes.md" });
+    // Echo the posted title, as the server does, so tests pin the contract
+    // (the response title wins) rather than the stub.
+    return jsonResponse(200, { document_id: "d2", title: lastBody?.title ?? "untitled" });
   }
   if (url.endsWith("/projects") && method === "POST") return jsonResponse(200, PROJECT_ROW);
   if (url.endsWith("/members") && method === "POST") return jsonResponse(200, { status: "added" });
@@ -102,6 +105,7 @@ beforeEach(() => {
       const url = String(input);
       const method = init?.method ?? "GET";
       calls.push({ url, method, body: typeof init?.body === "string" ? init.body : null });
+      lastBody = typeof init?.body === "string" ? (JSON.parse(init.body) as { title?: string }) : null;
       return responder(url, method);
     }),
   );
@@ -192,9 +196,9 @@ describe("useProjectIntake — M1 extraction", () => {
   it("attachment-only: derived prompt is submitted when the box was empty", async () => {
     const { result } = renderHook(() => useProjectIntake(), { wrapper });
     await act(async () => { await result.current.absorbText("some passage", "passage.txt"); });
-    expect(result.current.question).toBe(derivePromptFor("notes.md"));
+    expect(result.current.question).toBe(derivePromptFor("passage.txt"));
     await act(async () => { await result.current.onSubmit(); });
-    expect(JSON.parse(posts("/investigations")[0].body ?? "{}").question).toBe(derivePromptFor("notes.md"));
+    expect(JSON.parse(posts("/investigations")[0].body ?? "{}").question).toBe(derivePromptFor("passage.txt"));
   });
 
   it("navigates to /inv/:id after the 1.5 s grace when no event has streamed", async () => {
@@ -269,6 +273,17 @@ describe("useProjectIntake — M6 project creation", () => {
     expect(posts("/investigations")).toHaveLength(0);
     expect(result.current.question).toBe("Registry is down");
     expect(result.current.projectError).toMatch(/project/i);
+  });
+
+  it("contract live: a failed POST /investigations after the project exists says so", async () => {
+    responder = (url, method) =>
+      url.endsWith("/investigations") && method === "POST" ? jsonResponse(500, {}) : defaultResponder(url, method);
+    const { result } = renderHook(() => useProjectIntake({ projectSeedContract: true }), { wrapper });
+    act(() => result.current.editQuestion("Project then failure"));
+    await act(async () => { await result.current.submitProject(); });
+    expect(posts("/projects")).toHaveLength(1);
+    expect(result.current.projectError).toMatch(/project was created/i);
+    expect(result.current.question).toBe("Project then failure");
   });
 
   it("the research-starts beat fires once per started run", async () => {

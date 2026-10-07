@@ -215,6 +215,29 @@ describe("ZenHome — M3 drop zone", () => {
     expect(screen.getByText(CAP_COPY)).toBeTruthy();
   });
 
+  it("the cap holds across two drops that overlap while files are read", async () => {
+    renderZen();
+    const batch = (tag: string) => Array.from({ length: 6 }, (_, i) => new File([`t${i}`], `${tag}${i}.txt`, { type: "text/plain" }));
+    await act(async () => {
+      drop(box(), batch("a"));
+      drop(box(), batch("b"));
+    });
+    await screen.findByText("a5.txt");
+    expect(screen.getAllByRole("listitem")).toHaveLength(6);
+    expect(screen.queryByText("b0.txt")).toBeNull();
+    expect(screen.getByText(CAP_COPY)).toBeTruthy();
+  });
+
+  it("an unreadable file is reported and the readable ones still stage", async () => {
+    renderZen();
+    const bad = new File(["x"], "bad.txt", { type: "text/plain" });
+    vi.spyOn(bad, "text").mockRejectedValue(new Error("NotReadableError"));
+    await act(async () => { drop(box(), [new File(["ok"], "ok.txt", { type: "text/plain" }), bad]); });
+    await screen.findByText("ok.txt");
+    expect(screen.getByText("Couldn’t read bad.txt.")).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  });
+
   it("Escape with a staged attachment clears it and announces it", async () => {
     renderZen();
     await act(async () => { drop(box(), [new File(["x"], "a.txt", { type: "text/plain" })]); });
@@ -266,6 +289,18 @@ describe("ZenHome — M4 voice at the caret", () => {
     await act(async () => { rerender(<MemoryRouter><ZenHome /></MemoryRouter>); });
     expect(calls.some((c) => c.url.endsWith("/voice/transcribe"))).toBe(false);
     expect(recorderState.current.reset).toHaveBeenCalled();
+  });
+
+  it("a cancel whose stop was a no-op does not swallow the next take", async () => {
+    recorderState.current = { ...recorderState.current, state: "recording" };
+    const { rerender } = renderZen();
+    fireEvent.keyDown(window, { key: "Escape" }); // stop() is a mock no-op: no stopped state follows
+    recorderState.current = { ...recorderState.current, state: "idle", blob: null };
+    await act(async () => { rerender(<MemoryRouter><ZenHome /></MemoryRouter>); });
+    fireEvent.click(screen.getByRole("button", { name: "Voice" }));
+    recorderState.current = { ...recorderState.current, state: "stopped", blob: new Blob(["a"]) };
+    await act(async () => { rerender(<MemoryRouter><ZenHome /></MemoryRouter>); });
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/voice/transcribe"))).toBe(true));
   });
 
   it("a 503 shows the existing honest no-key copy", async () => {
