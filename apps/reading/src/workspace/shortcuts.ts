@@ -65,6 +65,7 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
+import { researchDoorRoute } from "../shell/workflowTaxonomy";
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -417,11 +418,14 @@ export function createActionHandlers(navigate: NavigateFunction) {
     const meta: ActionMeta = ACTIONS[id];
     if (!meta.productId) continue;
     doors[id] = () => {
-      if (meta.route) navigate(meta.route);
+      // The Research doors resolve at keypress time so the zen-home flag
+      // (SPR-03 M7) is honoured exactly as the NavRail click honours it.
+      const route = meta.productId === "research" && meta.route ? researchDoorRoute() : meta.route;
+      if (route) navigate(route);
       emitProductActivate({
         productId: meta.productId!,
         ...(meta.actionId ? { actionId: meta.actionId } : {}),
-        route: meta.route,
+        route,
         source: "hotkey",
       });
     };
