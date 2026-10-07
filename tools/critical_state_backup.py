@@ -124,7 +124,7 @@ def _write(path: Path, body: bytes) -> None:
             stream.write(body)
             stream.flush()
             os.fsync(stream.fileno())
-    except Exception:
+    except BaseException:
         current = path.lstat()
         if (info.st_dev, info.st_ino) == (current.st_dev, current.st_ino):
             path.unlink()
@@ -407,7 +407,7 @@ def snapshot(sources: SnapshotSources, destination: Path, escrow: Path) -> dict[
         }
         _write(destination / "manifest.json", json.dumps(manifest, sort_keys=True).encode())
         return manifest
-    except Exception as exc:
+    except BaseException as exc:
         cleanup_failed = False
         for cleanup in (lambda: shutil.rmtree(destination),
                         lambda: escrow.unlink(missing_ok=True) if inventory.escrow_created else None):
@@ -417,7 +417,7 @@ def snapshot(sources: SnapshotSources, destination: Path, escrow: Path) -> dict[
                 cleanup_failed = True
         if cleanup_failed:
             raise SnapshotError("critical-state snapshot failed; owned cleanup is incomplete") from None
-        if isinstance(exc, SnapshotError):
+        if not isinstance(exc, Exception) or isinstance(exc, SnapshotError):
             raise
         raise SnapshotError("critical-state snapshot failed") from None
 
@@ -488,7 +488,7 @@ def prepare(sources: SnapshotSources, destination: Path, escrow: Path, recipient
         temporary = destination / "manifest-complete.json"
         _write(temporary, json.dumps(manifest, sort_keys=True).encode())
         temporary.replace(destination / "manifest.json")
-    except Exception:
+    except BaseException as exc:
         cleanup_failed = False
         for cleanup in (lambda: shutil.rmtree(destination),
                         lambda: escrow.unlink(missing_ok=True), lambda: encrypted_key.unlink(missing_ok=True)):
@@ -498,6 +498,8 @@ def prepare(sources: SnapshotSources, destination: Path, escrow: Path, recipient
                 cleanup_failed = True
         if cleanup_failed:
             raise SnapshotError("critical preparation failed; owned cleanup is incomplete") from None
+        if not isinstance(exc, Exception):
+            raise
         raise SnapshotError("critical preparation failed; no complete encrypted snapshot") from None
 
 
@@ -638,8 +640,13 @@ def restore(encrypted_data: Path, encrypted_key: Path, identity: Path, destinati
             _verify_restored(destination, key, encrypted_key)
             phase = "separate key publication"
             _write(destination / "separate-byok-key/byok_master.key", key.read_bytes())
-    except Exception as exc:
-        shutil.rmtree(destination)
+    except BaseException as exc:
+        try:
+            shutil.rmtree(destination)
+        except OSError:
+            raise SnapshotError("offline restore failed; owned cleanup is incomplete") from None
+        if not isinstance(exc, Exception):
+            raise
         # Our own refusal messages are fixed/value-free. Native or dependency
         # error text may contain file contents, so expose only its class.
         reason = str(exc) if isinstance(exc, SnapshotError) else type(exc).__name__

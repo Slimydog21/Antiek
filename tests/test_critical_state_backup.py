@@ -500,3 +500,82 @@ def test_snapshot_limits_refuse_without_partial_coverage_or_key_debris(
         backup.snapshot(sources, tmp_path / "snapshot", tmp_path / "key")
     assert not (tmp_path / "snapshot").exists()
     assert not (tmp_path / "key").exists()
+
+
+@pytest.mark.parametrize("phase", ["snapshot", "escrow-write", "prepare", "restore"])
+def test_interruption_retires_owned_plaintext_and_preserves_live_sources(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, phase: str,
+) -> None:
+    """An interrupt must not leave a raw key or a partly restored private tree."""
+    destination, escrow = tmp_path / "interrupted", tmp_path / "interrupted-key"
+    unrelated = private_file(tmp_path / "unrelated", b"another recovery operation")
+    protected = (sources.byok_key, sources.byok_artifact, sources.accounts, sources.passkeys,
+                 *sources.system_files.values())
+    before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected}
+    observed: list[str] = []
+    if phase == "snapshot":
+        actual_read = backup._read
+
+        def interrupt_account_read(
+            path: Path, inventory: backup._Inventory, limit: int = backup._FILE_BYTES,
+        ) -> bytes:
+            if path == sources.accounts:
+                assert escrow.is_file()
+                assert destination.is_dir()
+                observed.append("raw-key-and-snapshot-acquired")
+                raise KeyboardInterrupt("synthetic snapshot interruption")
+            return actual_read(path, inventory, limit)
+
+        monkeypatch.setattr(backup, "_read", interrupt_account_read)
+    elif phase == "escrow-write":
+        actual_sync = os.fsync
+
+        def interrupt_escrow_sync(descriptor: int) -> None:
+            actual_sync(descriptor)
+            if escrow.exists() and os.fstat(descriptor).st_ino == escrow.stat().st_ino:
+                assert escrow.stat().st_size == 32
+                observed.append("raw-key-written-before-write-return")
+                raise KeyboardInterrupt("synthetic raw-key write interruption")
+
+        monkeypatch.setattr(os, "fsync", interrupt_escrow_sync)
+    elif phase == "prepare":
+        from tools import critical_backup_crypto
+
+        actual_encrypt = critical_backup_crypto.encrypt_file
+
+        def interrupt_after_encryption(
+            source: Path, target: Path, recipient: Path,
+        ) -> critical_backup_crypto.EncryptedObject:
+            actual_encrypt(source, target, recipient)
+            assert escrow.is_file() and target.is_file()
+            observed.append("raw-and-encrypted-key-acquired")
+            raise KeyboardInterrupt("synthetic encrypted-key handoff interruption")
+
+        monkeypatch.setattr(critical_backup_crypto, "encrypt_file", interrupt_after_encryption)
+    else:
+        data, encrypted_key, identity = bundle(tmp_path, sources)
+        actual_verify = backup._verify_restored
+
+        def interrupt_verified_restore(root: Path, key: Path, encrypted: Path) -> None:
+            actual_verify(root, key, encrypted)
+            assert (root / "critical-state/state/auth/accounts.json").is_file()
+            observed.append("authenticated-private-state-extracted")
+            raise KeyboardInterrupt("synthetic offline restore interruption")
+
+        monkeypatch.setattr(backup, "_verify_restored", interrupt_verified_restore)
+
+    with pytest.raises(KeyboardInterrupt):
+        if phase in {"snapshot", "escrow-write"}:
+            backup.snapshot(sources, destination, escrow)
+        elif phase == "prepare":
+            recipient, _ = keys(tmp_path)
+            backup.prepare(sources, destination, escrow, recipient)
+        else:
+            backup.restore(data, encrypted_key, identity, destination)
+    assert len(observed) == 1
+    assert not destination.exists()
+    assert not escrow.exists()
+    assert not Path(str(escrow) + ".enc").exists()
+    assert not list(tmp_path.glob(".critical-restore-*"))
+    assert unrelated.read_bytes() == b"another recovery operation"
+    assert {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected} == before

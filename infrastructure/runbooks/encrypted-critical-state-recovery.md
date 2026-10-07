@@ -45,6 +45,9 @@ Failed publication, including an interruption after the native link is acquired,
 retires only the new output inode. A file replaced by another writer is retained.
 If that owned cleanup itself fails, the helper refuses with an explicit incomplete
 cleanup error; reconcile the private staging state before continuing recovery.
+Snapshot, preparation and offline restore also clean their owned staging on a
+Python interruption, then re-raise it. Failed native cleanup remains incomplete;
+this does not guarantee cleanup after forced termination or host failure.
 
 ## Source inventory and configuration
 
