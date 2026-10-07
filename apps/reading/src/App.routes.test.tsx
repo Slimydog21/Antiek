@@ -48,9 +48,16 @@ vi.mock("./components/ad/AdBorderMount", () => ({ AdBorderMount: () => null }));
 import { locationSpy, mountApp } from "./journeys/harness";
 import { MODE_TAXONOMY } from "./shell/workflowTaxonomy";
 
-const ROUTES = [...new Set(MODE_TAXONOMY.filter((m) => m.route).map((m) => m.route!))];
-// Unauthenticated-only routes bounce an authenticated session on purpose.
-const PUBLIC_ONLY = new Set(["/login", "/speak/invite/:token"]);
+const ROUTE_ENTRIES = MODE_TAXONOMY.filter((m) => m.route).map((m) => m.route!);
+const ROUTES = [...new Set(ROUTE_ENTRIES)];
+// Routes that are for UNAUTHENTICATED visitors only and bounce (or re-route)
+// an authenticated session on purpose. /trust and /speak/browse are public
+// too, but they stay on their path for a signed-in user, so they ARE tested.
+const UNAUTHENTICATED_ONLY = new Set(["/login", "/speak/invite/:token"]);
+// The count the taxonomy carries today. Asserted as a literal so that adding
+// or removing a route changes this test on purpose, never silently (critique
+// F1: the previous version compared a Set to its own size — always true).
+const EXPECTED_UNIQUE_ROUTES = 44;
 const concrete = (r: string) => r.replace(/:[a-zA-Z]+/g, "test-id");
 
 beforeEach(() => {
@@ -60,12 +67,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("every MODE_TAXONOMY route resolves for an authenticated session", () => {
-  it("the table is exhaustive over the taxonomy", () => {
-    expect(ROUTES.length).toBe(new Set(MODE_TAXONOMY.filter((m) => m.route).map((m) => m.route)).size);
-    expect(ROUTES.length).toBeGreaterThan(30);
+  it("the table is exhaustive over the taxonomy (literal count; duplicates collapsed, nothing dropped)", () => {
+    expect(ROUTES.length).toBe(EXPECTED_UNIQUE_ROUTES);
+    // Every routed taxonomy entry is represented: no entry's route is outside
+    // the table, and the table has no route the taxonomy lacks.
+    for (const route of ROUTE_ENTRIES) expect(ROUTES).toContain(route);
+    for (const route of ROUTES) expect(ROUTE_ENTRIES).toContain(route);
+    for (const route of UNAUTHENTICATED_ONLY) expect(ROUTES).toContain(route);
   });
 
-  it.each(ROUTES.filter((r) => !PUBLIC_ONLY.has(r)))("%s stays on its route (no catch-all, no /login)", async (route) => {
+  it.each(ROUTES.filter((r) => !UNAUTHENTICATED_ONLY.has(r)))("%s stays on its route (no catch-all, no /login)", async (route) => {
     const path = concrete(route);
     mountApp(path);
     await waitFor(() => expect(locationSpy.pathname).not.toBe(""));

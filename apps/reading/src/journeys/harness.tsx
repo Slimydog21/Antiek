@@ -4,7 +4,7 @@
  *
  * The operator's sentence under test is "navigable by power users via
  * keyboard". A journey is a vitest+jsdom test that drives the REAL App
- * (router-less App.tsx inside a MemoryRouter; 53 lazy scenes under Suspense)
+ * (router-less App.tsx inside a MemoryRouter; 52 lazy scenes under Suspense)
  * with KeyboardEvents only. This module gives journeys three things:
  *
  *   mountApp(path)   — the App with a location spy, nothing mocked here.
@@ -173,7 +173,18 @@ export function noClick(): () => void {
     e.stopImmediatePropagation();
     e.preventDefault();
   };
-  for (const type of MOUSE_EVENTS) window.addEventListener(type, onMouse, true);
+  // Spelled out with string literals: workspace/windowKeyListenerCensus.test.ts
+  // walks every global addEventListener in src/ and refuses a dynamic event
+  // name (it cannot prove a loop variable is not "keydown"). Mouse and touch
+  // events are outside the keyboard-ownership seam, so literals pass.
+  window.addEventListener("click", onMouse, true);
+  window.addEventListener("dblclick", onMouse, true);
+  window.addEventListener("mousedown", onMouse, true);
+  window.addEventListener("mouseup", onMouse, true);
+  window.addEventListener("pointerdown", onMouse, true);
+  window.addEventListener("pointerup", onMouse, true);
+  window.addEventListener("contextmenu", onMouse, true);
+  window.addEventListener("touchstart", onMouse, true);
   return () => {
     for (const [name, fn] of saved) fe[name] = fn;
     for (const type of MOUSE_EVENTS) window.removeEventListener(type, onMouse, true);
