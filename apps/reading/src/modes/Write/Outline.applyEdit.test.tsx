@@ -6,6 +6,8 @@ import type { Editor } from "@tiptap/react";
 
 import type { SectionResponse } from "../../lib/api";
 import type { OutlineBlockView } from "./writeApi";
+import type { FloatMenuProps } from "../shared/FloatMenu/FloatMenu";
+import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 
 /**
  * Outline.applyEdit — the Cmd+K selection edit (CK-5) lands IN the editor.
@@ -25,11 +27,13 @@ const {
   updateSectionProseMock,
   editorHolder,
   selectionHolder,
+  operationHolder,
 } = vi.hoisted(() => ({
   getSectionBlocksMock: vi.fn(),
   updateSectionProseMock: vi.fn(),
   editorHolder: { current: null as { editor: unknown } | null },
-  selectionHolder: { current: null as { text: string; rect: object; provenance: object } | null },
+  selectionHolder: { current: null as FloatMenuSelection | null },
+  operationHolder: { current: null as FloatMenuSelection | null },
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -52,8 +56,11 @@ vi.mock("../shared/FloatMenu/useFloatMenuSelection", () => ({
 }));
 
 vi.mock("../shared/FloatMenu/FloatMenu", () => ({
-  default: (props: { onApplyEdit?: (t: string) => void }) => (
-    <button type="button" onClick={() => props.onApplyEdit?.("Sharper sentence.")}>
+  default: (props: Pick<FloatMenuProps, "onApplyEdit">) => (
+    <button type="button" onClick={() => {
+      const selection = operationHolder.current ?? selectionHolder.current;
+      if (selection) props.onApplyEdit?.("Sharper sentence.", selection);
+    }}>
       apply model edit
     </button>
   ),
@@ -113,6 +120,7 @@ beforeEach(() => {
     .mockResolvedValue({ status: "saved", section_id: "sec-1", claim_node_id: null, claim_event_id: null });
   editorHolder.current = null;
   selectionHolder.current = null;
+  operationHolder.current = null;
 });
 afterEach(() => { cleanup(); setSectionProseOwner(null); });
 
@@ -164,5 +172,25 @@ describe("Outline — Cmd+K apply edit lands in the editor (cockpit R3)", () => 
     expect(updateSectionProseMock).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+
+it("applies the captured passage after the live selection has cleared", async () => {
+  selectionHolder.current = { text: "Weak sentence.", rect: { top: 0, left: 0, width: 1, height: 1 }, provenance: {} };
+  operationHolder.current = selectionHolder.current;
+  const sections = [section("Weak sentence. Second sentence.")];
+  const { container, rerender } = render(
+    <Outline deliverableId="dlv-1" sections={sections} onChanged={vi.fn()} />,
+  );
+  await waitFor(() => expect(editorHolder.current).toBeTruthy());
+  selectionHolder.current = null;
+  rerender(<Outline deliverableId="dlv-1" sections={sections} onChanged={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "apply model edit" }));
+  expect(text(container)).toBe("Sharper sentence. Second sentence.");
+  await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalled(), { timeout: 3000 });
+  expect(updateSectionProseMock.mock.calls.at(-1)?.[1]).toMatchObject({
+    prose_text: "Sharper sentence. Second sentence.",
+    original_text: "Weak sentence. Second sentence.",
   });
 });

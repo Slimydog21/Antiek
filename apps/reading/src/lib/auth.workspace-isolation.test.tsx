@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_SESSION_CHANGE_KEY, AuthProvider, claimLogin, useAuth, type AuthContextValue } from "./auth";
-import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { useWorkspaceHydration } from "../workspace/useWorkspaceHydration";
 import { readScope } from "../workspace/persistence";
@@ -146,6 +146,42 @@ describe("owner confirmation holds completions without replacing same-account st
 });
 
 describe("AuthProvider retires private workspace bodies", () => {
+  it.each(["replace", "logout"])("refuses old-owner outbound callbacks during actual %s while preserving A's local partition", async (operation) => {
+    mount();
+    await screen.findByText("account-a", {}, { timeout: 10000 });
+    openA();
+    const owner = workspaceOwnerSession();
+    const outbound = vi.fn();
+    const observations: Array<{ subject: string | null; admitted: boolean }> = [];
+    const unsubscribe = beforeWorkspaceOwnerChange(() => {
+      observations.push({ subject: workspaceOwnerSession().subject, admitted: isWorkspaceOwnerSession(owner) });
+      if (isWorkspaceOwnerSession(owner)) outbound();
+    });
+    try {
+      if (operation === "replace") await refresh(async () => identity("account-b"));
+      else await act(async () => { await auth().signOut(); });
+      expect(observations).toEqual([{ subject: "account-a", admitted: false }]);
+      expect(outbound).not.toHaveBeenCalled();
+      expect(isWorkspaceOwnerSession(owner)).toBe(false);
+      expect(screen.queryByTestId("private-panels")?.textContent ?? "").not.toContain("A private");
+    } finally {
+      unsubscribe();
+    }
+    if (operation === "logout") {
+      authReply = async () => identity("account-a");
+      await act(async () => {
+        // Synthetic transport proof through the actual claim helper.
+        const proof = await claimLogin("unit-retirement-attempt", "unit-retirement-claim-secret", "1234");
+        expect(proof.status).toBe("authenticated");
+        await auth().refresh({ afterSignIn: true });
+      });
+    } else {
+      await refresh(async () => identity("account-a"));
+    }
+    expect(screen.getByTestId("private-panels").textContent).toContain("A private notebook");
+    expect(screen.getByTestId("private-panels").textContent).toContain("A private provider");
+  }, 15000);
+
   it("hides and suspends A on a cross-tab signal and only verified B retires its token", async () => {
     mount();
     await screen.findByText("account-a", {}, { timeout: 10000 });
