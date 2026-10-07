@@ -1,7 +1,8 @@
 """Persist verified account subjects without changing existing graph owners.
 
 The acct_ namespace matches account-memory/BYOT's existing email derivation.
-Only successful email or stored-passkey proof may call account creation.
+Verified email creates accounts. An explicitly bound, verified legacy session
+may retain the original operator; other session/passkey paths only resolve rows.
 Roles are resolved separately from deployment policy, never from this store.
 """
 
@@ -13,10 +14,12 @@ import json
 import os
 import secrets
 import stat
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from .magic_link import SESSION_TTL_SECONDS, SessionClaims
 
 _MAX_STORE_BYTES = 8 * 1024 * 1024
 
@@ -215,9 +218,9 @@ def account_for_email(email: str) -> Account | None:
 def legacy_account_for_session(email: str) -> Account | None:
     """Resolve an old operator session only after an explicit persisted binding.
 
-    This lookup never creates an account or migrates a credential. Email proof
-    must have established the alias first, and current deployment policy must
-    still name that exact retained email.
+    This lookup never creates an account or migrates a credential. Verified
+    original email or eligible original-session proof must have established
+    the alias first; current policy must still name that exact retained email.
     """
     normalized = _normalized_email(email)
     if normalized != legacy_operator_email():
@@ -227,3 +230,38 @@ def legacy_account_for_session(email: str) -> Account | None:
             (a for a in _read(path) if a.email == normalized and a.legacy_owner == "__operator__"),
             None,
         )
+
+
+def account_for_verified_legacy_session(
+    claims: SessionClaims, *, operator_emails: Collection[str],
+) -> Account | None:
+    """Retain the original operator after middleware verifies its old cookie.
+
+    The current issuer's ordinary sessions have a signed 30-day lifetime;
+    dev-login sessions have seven days. Missing or other lifetimes cannot
+    bootstrap an alias. This accepts Root's narrow existing-session proof,
+    not a new mailbox proof, bearer, callback token or configured email.
+    The caller must have completed HMAC/audience/TTL verification first.
+    """
+    if claims.user_id != "__operator__":
+        return None
+    expiry = claims.expires_at
+    if expiry is None or type(expiry) is not int or type(claims.issued_at) is not int:
+        return None
+    if expiry - claims.issued_at != SESSION_TTL_SECONDS:
+        return None
+    email = _normalized_email(claims.email)
+    if email != legacy_operator_email() or email not in operator_emails:
+        return None
+    with _locked_store() as path:
+        accounts = _read(path)
+        existing = next((a for a in accounts if a.email == email), None)
+        if existing is not None:
+            return existing if existing.legacy_owner == "__operator__" else None
+        if any(a.legacy_owner is not None for a in accounts):
+            return None
+        account = Account(_subject(email), email, "__operator__")
+        if any(a.user_id == account.user_id for a in accounts):
+            raise AccountStoreError("account identity unavailable")
+        _write(path, [*accounts, account])
+        return account
