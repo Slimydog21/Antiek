@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { transcribeAudio, ApiError } from "../../lib/api";
@@ -24,12 +24,45 @@ import AIActionFailure from "../../shared/AIActionFailure";
 type Props = {
   onTranscript: (transcript: string) => void;
   disabled?: boolean;
+  /** Idle button text. Defaults to the chase copy. */
+  idleLabel?: string;
+  /** FFX-KPA SPR-03 M4: Escape while recording cancels — the take is
+   *  discarded, nothing is sent to /voice/transcribe. Opt-in so the existing
+   *  hosts keep their behaviour. */
+  escapeCancels?: boolean;
+  /** Told when recording starts and ends, so a host can give Escape to the
+   *  recorder while it runs. */
+  onRecordingChange?: (recording: boolean) => void;
 };
 
 type Phase = "idle" | "transcribing" | "error";
 
-export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
+export default function VoiceChaseButton({
+  onTranscript,
+  disabled,
+  idleLabel = "● Say it instead",
+  escapeCancels = false,
+  onRecordingChange,
+}: Props) {
   const recorder = useVoiceRecorder();
+  const cancelledRef = useRef(false);
+  const recording = recorder.state === "recording";
+
+  useEffect(() => {
+    onRecordingChange?.(recording);
+  }, [recording, onRecordingChange]);
+
+  useEffect(() => {
+    if (!escapeCancels || !recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      cancelledRef.current = true;
+      recorder.stop();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [escapeCancels, recording, recorder.stop]);
   const [phase, setPhase] = useState<Phase>("idle");
   // null reason ⇒ the no-key case (AIActionFailure says so); a string ⇒ a
   // specific transient the engine reported.
@@ -38,6 +71,12 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
   // When a recording finishes, transcribe it and hand the text up.
   useEffect(() => {
     if (recorder.state !== "stopped" || !recorder.blob) return;
+    if (cancelledRef.current) {
+      // Escape-cancelled take: discard it without transcribing.
+      cancelledRef.current = false;
+      recorder.reset();
+      return;
+    }
     let cancelled = false;
     setPhase("transcribing");
     setFailure(null);
@@ -102,7 +141,7 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
           disabled={disabled || phase === "transcribing"}
           onClick={() => void recorder.start()}
         >
-          {phase === "transcribing" ? "Listening…" : "● Say it instead"}
+          {phase === "transcribing" ? "Listening…" : idleLabel}
         </LemonButton>
       )}
       {recorder.error && (
