@@ -20,6 +20,8 @@
 import { create } from "zustand";
 
 import { toast } from "../components/lemon/LemonToast";
+import type { DocumentAnchor } from "./contracts/anchor";
+import type { AgentScope } from "./contracts/tree";
 import { useWorkspace } from "./WorkspaceStore";
 
 export type AgentTabKind = "research-thread" | "dialogue";
@@ -36,6 +38,10 @@ export interface AgentTabDescriptor {
   documentId?: string;
   /** Activation order. */
   seq: number;
+  /** SPR-06 M5 (additive): how the opener scoped this agent. Absent for existing callers. */
+  scope?: AgentScope;
+  /** SPR-06 M5 (additive): the passage the agent was opened from. Absent for existing callers. */
+  anchor?: DocumentAnchor;
 }
 
 export interface OpenAgentTabInput {
@@ -43,6 +49,8 @@ export interface OpenAgentTabInput {
   title?: string;
   investigationId?: string;
   documentId?: string;
+  scope?: AgentScope;
+  anchor?: DocumentAnchor;
 }
 
 import { COMPANION_PANEL_ID } from "./companionVisibility";
@@ -151,7 +159,11 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
     const id = agentTabId(input);
     const existing = get().tabs.find((t) => t.id === id);
     if (existing) {
-      set({ activeTabId: id });
+      const patch = { ...(input.scope ? { scope: input.scope } : {}), ...(input.anchor ? { anchor: input.anchor } : {}) };
+      set((s) => ({
+        activeTabId: id,
+        ...(Object.keys(patch).length ? { tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : {}),
+      }));
     } else {
       const seq = get().seq + 1;
       const tab: AgentTabDescriptor = {
@@ -160,9 +172,14 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         title:
           input.title?.trim() ||
           (input.kind === "research-thread" ? "research" : "dialogue"),
-        investigationId: input.investigationId,
-        documentId: input.documentId,
+        // SPR-06 decision 9: absent means absent. A caller that passes no
+        // id gets no key (JSON- and toEqual-identical to the earlier
+        // `undefined`-valued keys; no reader of the descriptor distinguishes).
+        ...(input.investigationId !== undefined ? { investigationId: input.investigationId } : {}),
+        ...(input.documentId !== undefined ? { documentId: input.documentId } : {}),
         seq,
+        ...(input.scope ? { scope: input.scope } : {}),
+        ...(input.anchor ? { anchor: input.anchor } : {}),
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id, seq }));
     }

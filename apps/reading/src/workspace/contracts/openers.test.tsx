@@ -83,7 +83,9 @@ describe("O2 openAgentFromDocument descriptors", () => {
     useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "inv-c", documentId: "doc-c", title: "C" });
     expect(useCompanion.getState().tabs[0]).toEqual({ id: "agent:thread:inv-c", kind: "research-thread", title: "C", investigationId: "inv-c", documentId: "doc-c", seq: 1 });
     useCompanion.getState().openAgentTab({ kind: "dialogue" });
-    expect(useCompanion.getState().tabs[1]).toEqual({ id: "agent:dialogue", kind: "dialogue", title: "dialogue", investigationId: undefined, documentId: undefined, seq: 2 });
+    expect(useCompanion.getState().tabs[1]).toEqual({ id: "agent:dialogue", kind: "dialogue", title: "dialogue", seq: 2 });
+    expect(Object.keys(useCompanion.getState().tabs[1]).sort()).toEqual(["id", "kind", "seq", "title"]);
+    expect(Object.keys(useCompanion.getState().tabs[0]).sort()).toEqual(["documentId", "id", "investigationId", "kind", "seq", "title"]);
   });
 });
 
