@@ -302,9 +302,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async (options?: { afterSignIn: true }) => {
     if (logoutPendingRef.current) return;
     const epoch = ++refreshEpochRef.current;
-    suspendWorkspaceOwner();
-    suspendSectionProseDispatch();
     setRevalidating(true);
+    try {
+      suspendWorkspaceOwner();
+      suspendSectionProseDispatch();
+    } catch (error) {
+      suspendSectionProseDispatch();
+      setRetirementFailed(true);
+      setState({ status: "unauthenticated" });
+      setRevalidating(false);
+      throw error;
+    }
     let answer: IdentityAnswer;
     try {
       answer = await fetchIdentity();
@@ -359,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         replaceWorkspaceOwner(subject);
         setReadingStateOwner(identity?.user_id ?? null);
         setSectionProseOwner(identity?.user_id ?? null);
-        resumeWorkspaceOwner();
+        resumeWorkspaceOwner(workspaceOwnerSession());
       } catch {
         suspendWorkspaceOwner();
         suspendSectionProseDispatch();
@@ -432,7 +440,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh().catch(() => { /* The local failure screen retains denied admission. */ });
   }, [refresh]);
 
   useEffect(() => {
@@ -441,7 +449,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (logoutPendingRef.current) return;
       // An untrusted notification proves no change. Hide and suspend the
       // mounted workspace until /auth/me confirms the current cookie owner.
-      void refresh();
+      void refresh().catch(() => { /* The local failure screen retains denied admission. */ });
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key === AUTH_SESSION_CHANGE_KEY && event.newValue !== event.oldValue) invalidate();
