@@ -87,12 +87,18 @@ export function WorkspaceWindow({
       // pre-mount element here (often the launcher's More key) would steal
       // focus back from that host — the failure the packet's own
       // productEntry.keyboard "entry after N windows" cases recorded. So the
-      // pre-mount restore applies only when no OTHER window owns focus (this
-      // window still being the store's focused id — e.g. an unmount without a
-      // store close — keeps the M8 restore).
+      // Rule (S04, "resolve the actual focused host first"): focus returns to
+      // the HOST you came from — a pane host, another window, a cockpit pane
+      // — even when the store has moved focus to the next-topmost window
+      // (paneFlowKeyboard: "returns to the connected opener"). A chrome
+      // control (the rail's More key, a launcher row) is not a host: then the
+      // retained window the store focused keeps focus (productEntry: "Back
+      // restores the retained topmost pane"). This window still being the
+      // focused id (an unmount without a store close) keeps the M8 restore.
       const owner = useWindows.getState().focusedId;
-      if (owner !== null && owner !== id) return;
       const prev = restoreFocusRef.current;
+      const prevIsHost = !!prev?.closest("[data-pane-host], [data-workspace-window], [data-pane]");
+      if (owner !== null && owner !== id && !prevIsHost) return;
       if (prev && typeof prev.focus === "function" && document.contains(prev)) {
         if (!prev.closest("[data-pane-flow-root]") || (!prev.closest("[hidden], [inert]") && !escOverlayOpen())) prev.focus();
       }

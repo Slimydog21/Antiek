@@ -1,3 +1,7 @@
+// Landing: these cases exercise the pane-flow arrangement, which is behind
+// antiek.flag.pane.flow (default OFF). The flag is set before any import
+// reads the keymap (vi.hoisted runs first).
+vi.hoisted(() => { try { window.localStorage.setItem("antiek.flag.pane.flow", "on"); } catch { /* storage unavailable */ } });
 import { useEffect, useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

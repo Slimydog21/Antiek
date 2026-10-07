@@ -23,6 +23,7 @@
  * Schema-version mismatch at hydration → log + ignore the snapshot.
  */
 
+import { isFeatureOn } from "../lib/featureFlags";
 import type { WorkspaceSnapshot } from "./panel.types";
 import type { LayoutPreset } from "./panel.types";
 import { accountStorageKey, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
@@ -556,6 +557,10 @@ export function migratePanePreferences(arrangementRaw: string | null, presetRaw:
 
 export function readPanePreferences(): { paneArrangement: PaneArrangement; layoutPreset: LayoutPreset } {
   if (typeof window === "undefined") return { paneArrangement: "legacy", layoutPreset: "docked" };
+  // Landing gate (antiek.flag.pane.flow, default OFF): with the flag off the
+  // arrangement is always legacy and the preset is main's persisted read —
+  // nothing a flag-off user sees changes, and no preference is rewritten.
+  if (!isFeatureOn("pane.flow")) return { paneArrangement: "legacy", layoutPreset: readLayoutPreset() };
   try {
     return migratePanePreferences(window.localStorage.getItem(DESKTOP_PANE_KEY),
       window.localStorage.getItem(LAYOUT_PRESET_KEY));

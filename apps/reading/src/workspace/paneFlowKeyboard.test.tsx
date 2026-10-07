@@ -1,3 +1,7 @@
+// Landing: these cases exercise the pane-flow arrangement, which is behind
+// antiek.flag.pane.flow (default OFF). The flag is set before any import
+// reads the keymap (vi.hoisted runs first).
+vi.hoisted(() => { try { window.localStorage.setItem("antiek.flag.pane.flow", "on"); } catch { /* storage unavailable */ } });
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -87,7 +91,13 @@ afterEach(() => {
 describe("actual dispatcher and connected host admission", () => {
   it("has one direct L row and complete canonical action handlers without duplicate chords", () => {
     expect(KEYMAP.filter((row) => row.chord === "ctrl+alt+l").map((row) => row.action)).toEqual(["layout.togglePreset"]);
-    expect(validateKeymap(KEYMAP, Object.keys(ACTIONS), { platforms: ["mac", "other"] })).toEqual([]);
+    // REWRITTEN at landing: main declares inbox.toggle unimplemented (blockedBy
+    // MS-03 M7) and binds no handler for it, so "every ACTIONS key is a
+    // handler" is a packet-era assumption; the handler set is every action
+    // whose rows are implemented — what createActionHandlers actually binds.
+    const implemented = Object.keys(ACTIONS).filter((action) =>
+      !KEYMAP.some((row) => row.action === action && row.status === "unimplemented"));
+    expect(validateKeymap(KEYMAP, implemented, { platforms: ["mac", "other"] })).toEqual([]);
   });
   it("moves through core, companion and actual windows, reveals them, and refuses both edges", () => {
     const core = node('[data-pane-host="core"]');

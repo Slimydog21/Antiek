@@ -3,6 +3,7 @@
  * keycap per key. Display only; the bindings live in keymap.ts. Kept apart
  * so it loads with the lazy key sheet, not in the entry chunk.
  */
+import { isFeatureOn } from "../../lib/featureFlags";
 import {
   MODIFIER_TOKENS,
   KEYMAP,
@@ -67,14 +68,28 @@ export function layoutPresetHelp(defaultPreset: LayoutPreset): string {
   return `Switches between docked and the cockpit inset (two tall panes). A workspace that has never chosen one starts ${defaultPreset}; this key switches to the other layout.`;
 }
 /** A caveat the sheet shows under an action's label. */
-export const NOTES: Partial<Record<ActionId, string>> = {
-  "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
+// Landing gate (antiek.flag.pane.flow): notes follow the rows.
+const LEGACY_PANE_NOTES: Partial<Record<ActionId, string>> = {
+  "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
+  "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",
+  "pane.fullscreen": "Esc or the same key restores both panes.",
+  // The shipped copy said the cockpit was already the default while the reader
+  // returned "docked". This is now the template applied to the real default, so
+  // the note cannot describe a preset the code does not start on.
+  "layout.togglePreset": layoutPresetHelp(LAYOUT_PRESET_DEFAULT),
+};
+const FLOW_PANE_NOTES: Partial<Record<ActionId, string>> = {
   "pane.focusLeft": "Previous pane in horizontal order; spatial left neighbor when tiled. The edge is a no-op. Text fields keep their keys.",
   "pane.focusRight": "Next pane in horizontal order; spatial right neighbor when tiled. Focus reveals the pane without reordering it.",
   "pane.reorderLeft": "Swap the focused pane with its previous logical neighbor. Content, focus and tile splits stay attached to the same hosts.",
   "pane.reorderRight": "Swap with the next logical neighbor. No operation at the edge, during a drag, or while a pane is zoomed.",
   "pane.fullscreen": "Zoom the actual focused host. The same key or an unclaimed Esc restores its arrangement; child overlays and editors keep priority.",
   "layout.togglePreset": "Switch the same desktop hosts between horizontal flow and tiles. A valid old preset stays in legacy mode until this command is used.",
+};
+
+export const NOTES: Partial<Record<ActionId, string>> = {
+  "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
+  ...(isFeatureOn("pane.flow") ? FLOW_PANE_NOTES : LEGACY_PANE_NOTES),
   "tab.next":
     "Acts on the focused pane: document tabs on the left, agent tabs (block tabs when writing) on the right. With neither pane focused, the left. Wraps.",
   "tab.prev": "The same pane rule as the next tab.",
