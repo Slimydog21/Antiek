@@ -614,10 +614,13 @@ def test_issued_accounts_corpus_search_denies_all_foreign_private_classes(accoun
     legacy = operator.get("/corpus/search?q=ownership")
     assert {hit["document_id"] for hit in legacy.json()["hits"]} == {"legacy-own", "shared-public"}
 
-def test_passkey_login_uses_verified_stored_account_not_first_operator(account_api, monkeypatch):
+@pytest.mark.parametrize("legacy_binding", [None, "foreign@example.test"])
+def test_passkey_login_uses_verified_stored_account_not_first_operator(
+    account_api, monkeypatch, legacy_binding
+):
     from types import SimpleNamespace
 
-    app, sender, _root = account_api
+    app, sender, root = account_api
     alice, _payload, _code = sign_in(app, sender, ALICE)
     alice_id = alice.get("/auth/me").json()["user_id"]
     record = SimpleNamespace(user_id=alice_id, email=ALICE)
@@ -632,13 +635,22 @@ def test_passkey_login_uses_verified_stored_account_not_first_operator(account_a
     assert identity["is_operator"] is False
     record.user_id = "__operator__"
     record.email = None
-    # There has been no email proof/persisted alias for the old operator.
-    assert (
-        TestClient(app)
-        .post("/auth/passkey/login/verify", json={"ceremony_id": "d" * 24, "credential": {}})
-        .status_code
-        == 400
+    # A verified legacy key cannot select the first configured operator without
+    # an explicit matching original-owner binding. Real verification is covered
+    # by test_legacy_operator_passkey_continuity.py.
+    if legacy_binding is None:
+        monkeypatch.delenv("ANTIEK_LEGACY_OPERATOR_EMAIL")
+    else:
+        monkeypatch.setenv("ANTIEK_LEGACY_OPERATOR_EMAIL", legacy_binding)
+    account_bytes = (root / "accounts.json").read_bytes()
+    anonymous = TestClient(app)
+    refused = anonymous.post(
+        "/auth/passkey/login/verify", json={"ceremony_id": "d" * 24, "credential": {}}
     )
+    assert refused.status_code == 400
+    assert "set-cookie" not in refused.headers
+    assert anonymous.get("/auth/me").status_code == 401
+    assert (root / "accounts.json").read_bytes() == account_bytes
 
 
 def test_disabling_signup_does_not_upgrade_retained_public_passkey(account_api, monkeypatch):
