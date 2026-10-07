@@ -491,3 +491,47 @@ describe("the outline pane's copy names no internal file (defect 11)", () => {
     expect(document.querySelector("[data-write-outline]")!.textContent).not.toMatch(/\.tsx?\b|TODO/);
   });
 });
+
+
+describe("outline mutations in both panes", () => {
+  it("adds a repository block to the left list and right tabs without navigating", async () => {
+    let added = false;
+    const block = {
+      outline_block_id: "b-new", section_id: "s-2", block_kind: "insight",
+      provenance_kind: "graph_node", node_id: "n-new", content: null,
+      node_label: "new repository claim", block_index: 1, is_user_originated: false,
+    };
+    searchRepositoryMock.mockResolvedValue([{
+      node_id: "n-new", label: "new repository claim", node_type: "claim",
+      source_tier: 2, document_id: "doc-new", document_title: "New source", score: 1,
+    }]);
+    listFoldersMock.mockResolvedValue([]);
+    getSectionBlocksMock.mockImplementation(async (id: string) =>
+      [...(BLOCKS[id] ?? []), ...(added && id === "s-2" ? [block] : [])],
+    );
+    getDeliverableMock.mockImplementation(async () => ({
+      ...DETAIL,
+      sections: DETAIL.sections.map((s) => ({
+        ...s, block_count: s.block_count + (added && s.section_id === "s-2" ? 1 : 0),
+      })),
+    }));
+    apiFetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (input.endsWith("/write/blocks") && init?.method === "POST") {
+        added = true;
+        return new Response(JSON.stringify({ outline_block_id: "b-new" }), { status: 201 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    await mountWritingCockpit();
+    fireEvent.click(await screen.findByRole("button", { name: /new repository claim New source/ }));
+    await waitFor(() => {
+      expect(document.querySelector('[data-section-card="s-2"] ol')?.textContent)
+        .toContain("new repository claim");
+    });
+    await waitFor(() => {
+      expect(within(screen.getByRole("tablist", { name: "Outline blocks" })).getAllByRole("tab"))
+        .toHaveLength(4);
+    });
+    expect(screen.getByRole("tab", { name: "new repository claim" })).toBeTruthy();
+  });
+});

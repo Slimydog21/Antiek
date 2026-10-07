@@ -31,7 +31,7 @@ import { useBranchTo } from "../../workspace/useBranchTo";
 import { useTabTrees } from "../../workspace/tabTreeStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
-import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
+import { WRITE_OUTLINE_PANEL_ID, useWriteOutline } from "../../workspace/writeOutlineStore";
 import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync";
 
 /** The block repository's id (the Blocks toggle controls it). */
@@ -118,6 +118,11 @@ export default function WriteHome() {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  const onOutlineChanged = useCallback(async () => {
+    useWriteOutline.getState().invalidate();
+    await refresh();
   }, [refresh]);
 
   // C5: seed the writing document tree — the full body as tab 1, one child
@@ -461,7 +466,7 @@ export default function WriteHome() {
               deliverableId={detail.deliverable_id}
               sections={detail.sections}
               scopeSectionId={scopedSectionId}
-              onChanged={refresh}
+              onChanged={onOutlineChanged}
               registerAddHandler={registerAddHandler}
               investigationId={detail.investigation_root_id}
             />

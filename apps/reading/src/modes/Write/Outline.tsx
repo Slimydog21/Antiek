@@ -333,13 +333,12 @@ function SectionCard({
   // the X-ray and the server agree (R3-M5: splicing the X-ray's copy alone
   // left the edit nowhere a reload or the next keystroke could keep it).
   const handleApplyEdit = useCallback(
-    (editedText: string) => {
+    (editedText: string, sel: FloatMenuSelection) => {
       if (proseSession.getSnapshot().generation.status === "generating") {
         toast.warn("Wait for the draft to finish before applying this edit.");
         return;
       }
-      const sel = selection;
-      if (!sel || !sel.text) return;
+      if (!sel.text) return;
       const ed = editorRef.current;
       const range = ed ? locateText(ed, sel.text) : null;
       if (!ed || !range) {
@@ -349,7 +348,7 @@ function SectionCard({
       ed.view.dispatch(ed.state.tr.insertText(editedText, range.from, range.to));
       window.getSelection()?.removeAllRanges();
     },
-    [selection, proseSession],
+    [proseSession],
   );
 
   const canGenerate = prose.dispatchAllowed && blocks.length > 0 && !generating;

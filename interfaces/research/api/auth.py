@@ -76,8 +76,8 @@ from substrate.auth.accounts import (
     account_for_email,
     account_for_session,
     account_for_verified_email,
+    account_for_verified_legacy_passkey,
     account_registry_active,
-    legacy_account_for_session,
     legacy_operator_email,
     open_signup_enabled,
 )
@@ -873,14 +873,23 @@ def register_auth_routes(
                     "message": "Antiek could not verify that passkey. Try again.",
                 },
             ) from exc
-        if account_registry_active():
+        retained_email = legacy_operator_email()
+        if credential.user_id == "__operator__" and retained_email is not None:
+            try:
+                account = await asyncio.to_thread(
+                    account_for_verified_legacy_passkey,
+                    credential,
+                    operator_emails=_resolve_allowlist(),
+                )
+            except AccountStoreError:
+                account = None
+            if account is None:
+                raise HTTPException(status_code=400, detail="passkey_verification_failed")
+            subject, email = account.user_id, account.email
+        elif account_registry_active():
             try:
                 if credential.user_id == "__operator__":
-                    retained_email = legacy_operator_email()
-                    account = (
-                        await asyncio.to_thread(legacy_account_for_session, retained_email)
-                        if retained_email is not None and retained_email in _resolve_allowlist() else None
-                    )
+                    account = None
                 elif isinstance(credential.email, str):
                     account = await asyncio.to_thread(
                         account_for_session, credential.user_id, credential.email,
