@@ -165,14 +165,17 @@ describe("composePreBackendTree", () => {
 
   it("(i) readLocalParents filters non-string values and is re-read on each call", () => {
     const key = unitAccountKey("antiek:investigation_tree");
-    window.localStorage.setItem(key, JSON.stringify({ "inv-orphan": "inv-root", bad: 3, worse: null }));
-    expect(readLocalParents()).toEqual({ "inv-orphan": "inv-root" });
+    window.localStorage.setItem(key, JSON.stringify({ "inv-member": "inv-root", bad: 3, worse: null }));
+    expect(readLocalParents()).toEqual({ "inv-member": "inv-root" });
     const first = composePreBackendTree(fixtureInputs({ localParents: readLocalParents() }));
-    expect(node(first, "inv-orphan")!.parentId).toBe("inv-root");
-    window.localStorage.setItem(key, JSON.stringify({ "inv-orphan": "inv-member" }));
-    expect(readLocalParents()).toEqual({ "inv-orphan": "inv-member" });
+    expect(node(first, "inv-member")!.parentId).toBe("inv-root");
+    window.localStorage.setItem(key, JSON.stringify({ "inv-member": "inv-orphan" }));
+    expect(readLocalParents()).toEqual({ "inv-member": "inv-orphan" });
     const second = composePreBackendTree(fixtureInputs({ localParents: readLocalParents() }));
-    expect(node(second, "inv-orphan")!.parentId).toBe("inv-member");
+    expect(node(second, "inv-member")!.parentId).toBe("inv-orphan");
+    // The substrate's own parent edge wins over the local map (inv-orphan → inv-gone stays an orphan).
+    const local = composePreBackendTree(fixtureInputs({ localParents: { "inv-orphan": "inv-root" } }));
+    expect(node(local, "inv-orphan")!.parentId).toBe("default");
     window.localStorage.removeItem(key);
     expect(readLocalParents()).toEqual({});
     // Substrate truth wins over the local map.
