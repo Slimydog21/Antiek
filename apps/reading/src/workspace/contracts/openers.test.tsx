@@ -186,3 +186,39 @@ describe("O5 CompanionAgents Open source document", () => {
     expect(seen[3]).toEqual({ documentId: "doc-9", origin: { from: "companion" } });
   });
 });
+
+describe("O6 anchor and documentId travel together on tab reuse", () => {
+  const summary: InvestigationSummary = {
+    investigation_id: "inv-1", question: "Q?", status: "completed", started_at: "2026-09-20T10:00:00Z",
+    completed_at: "2026-09-20T11:00:00Z", cost_usd_total: 0.5, parent_investigation_id: null,
+  };
+  it("reopening a thread from a passage in another book moves documentId with the anchor, and Open source document reaches the handler", () => {
+    useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "inv-1", documentId: "doc-1", title: "t" });
+    const a2: BookDocumentAnchor = { ...bookAnchor(), documentId: "doc-2" };
+    expect(openAgentFromDocument({ kind: "research-thread", scope: "cross-project", investigationId: "inv-1", anchor: a2 }))
+      .toEqual({ ok: true, viewId: "agent:thread:inv-1", reused: true });
+    expect(useCompanion.getState().tabs).toHaveLength(1);
+    const tab = useCompanion.getState().tabs[0];
+    expect(tab.anchor).toBe(a2);
+    expect(tab.documentId).toBe("doc-2");
+    const seen: OpenDocumentRequest[] = [];
+    setOpenDocumentHandler((req) => { seen.push(req); });
+    render(<MemoryRouter><ResearchThreadSurface tab={tab} summary={summary} /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Open source document →"));
+    expect(seen).toEqual([{
+      documentId: "doc-2",
+      origin: { from: "companion", investigationId: "inv-1", agentTabId: "agent:thread:inv-1", agentKind: "research" },
+      anchor: toBranchAnchor(a2),
+    }]);
+    // A deliverable anchor names no book: the anchor is replaced, documentId stays.
+    openAgentFromDocument({ kind: "research-thread", scope: "cross-project", investigationId: "inv-1", anchor: deliverable });
+    expect(useCompanion.getState().tabs[0].anchor).toBe(deliverable);
+    expect(useCompanion.getState().tabs[0].documentId).toBe("doc-2");
+    // Invariant over every tab: a book anchor's documentId is the tab's documentId.
+    useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "inv-2", documentId: "doc-9", anchor: bookAnchor() });
+    for (const t of useCompanion.getState().tabs) {
+      if (t.anchor?.space === "book") expect(t.documentId).toBe(t.anchor.documentId);
+    }
+    expect(useCompanion.getState().tabs[1].documentId).toBe("doc-1");
+  });
+});
