@@ -9,12 +9,17 @@
  * evaluation here — when an operator-created PostHog flag exists, the
  * owning sprint wires it through this same function so callers never change.
  */
-export type FeatureFlagName = "switcher.places";
+export type FeatureFlagName = "switcher.places" | "nav.switcher";
 
 const DEV_DEFAULTS: Record<FeatureFlagName, boolean> = {
   // SPR-02 (specs/antiek-keyboard-panes-agents-20261007): places sections
   // in the Switcher + the rail strip. Flipped to prod-ON in SPR-05.
   "switcher.places": true,
+  // SPR-04 M5 (specs/antiek-keyboard-panes-agents-20261007/sprint-04-geared-
+  // switcher.html): the geared switch in the Topbar (and the zen slot once
+  // #3749 lands). Ships dark like antiek.nav.zenhome: OFF in dev too, until
+  // J3b holds on the isolated stack; key antiek.flag.nav.switcher.
+  "nav.switcher": false,
 };
 
 export function featureFlagKey(name: FeatureFlagName): string {

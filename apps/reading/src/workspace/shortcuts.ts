@@ -79,6 +79,9 @@ export const SHORTCUT_EVENTS = {
   /** Toggle the account-project picker (prefix+shift+p / ctrl+alt+p;
    *  ProjectPicker). */
   PROJECT_SELECT_TOGGLE: "antiek:project-select:toggle",
+  /** SPR-04: toggle the geared switch (prefix+w / ctrl+alt+shift+w;
+   *  GearSwitchHost listens once, in the Topbar). */
+  GEAR_TOGGLE: "antiek:gear:toggle",
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -275,7 +278,7 @@ function cycleFocus(direction: 1 | -1) {
  * preset the keys are never dead: they cycle the dock areas through the
  * existing cycleFocus mechanics (left = previous, right = next).
  */
-function focusPane(side: "left" | "right") {
+export function focusPane(side: "left" | "right") {
   const ws = useWorkspace.getState();
   if (ws.layoutPreset !== "omarchy-inset") {
     cycleFocus(side === "left" ? -1 : 1);
@@ -399,9 +402,17 @@ export function toggleNewTabPicker(): void {
 }
 
 /** Toggle the account-project picker. Exported so the sidebar's project row
- *  and the prefix+shift+p key share one path. */
-export function toggleProjectPicker(): void {
-  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
+ *  and the prefix+shift+p key share one path. `focusId` (SPR-04 gear 1)
+ *  names the row the picker focuses once its list is up. */
+export function toggleProjectPicker(opts?: { focusId?: string }): void {
+  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE, { detail: opts ?? {} }));
+}
+
+/** Toggle the geared switch (SPR-04). Exported so the zen chip, the Topbar
+ *  chip and the prefix+w key share one path; GearSwitchHost (topbar) is the
+ *  one listener. No listener here, no contracts import (entry chunk). */
+export function toggleGearSwitch(): void {
+  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.GEAR_TOGGLE));
 }
 
 /**
