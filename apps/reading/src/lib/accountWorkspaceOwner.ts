@@ -29,8 +29,9 @@ export function workspaceOwnerAdmission(): WorkspaceOwnerAdmission {
 export function subscribeWorkspaceOwnerAdmission(
   listener: (admission: WorkspaceOwnerAdmission) => void,
 ): () => void {
-  admissionListeners.add(listener);
-  return () => { admissionListeners.delete(listener); };
+  const subscription = (snapshot: WorkspaceOwnerAdmission) => listener(snapshot);
+  admissionListeners.add(subscription);
+  return () => { admissionListeners.delete(subscription); };
 }
 
 function refuseNotificationMutation(): void {

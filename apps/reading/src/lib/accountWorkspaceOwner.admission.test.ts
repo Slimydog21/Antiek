@@ -154,6 +154,33 @@ describe("synchronous captured-session admission", () => {
     expect(alreadyDisposed).not.toHaveBeenCalled();
   });
 
+  it("does not deliver an old event to the same callback's new registration", () => {
+    const callback = vi.fn();
+    let dispose = () => {};
+    observe((event) => {
+      if (event.state !== "suspended") return;
+      dispose();
+      dispose = observe(callback);
+    });
+    dispose = observe(callback);
+    suspendWorkspaceOwner();
+    expect(callback).not.toHaveBeenCalled();
+    expect(resumeWorkspaceOwner(workspaceOwnerSession())).toBe(true);
+    expect(callback.mock.calls.map(([event]) => event.state)).toEqual(["ready"]);
+  });
+
+  it("retires only one subscription when two consumers share a callback", () => {
+    const callback = vi.fn();
+    const first = observe(callback);
+    observe(callback);
+    suspendWorkspaceOwner();
+    const suspended = callback.mock.calls.map(([event]) => event.state);
+    first();
+    expect(resumeWorkspaceOwner(workspaceOwnerSession())).toBe(true);
+    expect(callback.mock.calls.map(([event]) => event.state)).toEqual(["suspended", "suspended", "ready"]);
+    expect(suspended).toEqual(["suspended", "suspended"]);
+  });
+
   it("refuses an A confirmation during B suspension and after A-to-B-to-A", () => {
     const oldA = workspaceOwnerSession();
     setWorkspaceOwner("acct_observation_b");

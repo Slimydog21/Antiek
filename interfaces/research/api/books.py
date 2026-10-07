@@ -2882,33 +2882,40 @@ def register_book_routes(app: FastAPI) -> None:
         ``document_id`` optionally scopes to one document. The Library's typed
         query + file-drop bias both POST text here (file = a query SIGNAL, never
         ingested)."""
+        from starlette.concurrency import run_in_threadpool
+
+        from processing.embedding.cpu_inference import EmbeddingInferenceUnavailable
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
         from substrate.graph.search import SentenceTransformerEmbedding, search
 
         if not q.strip():
             return CorpusSearchResponse(query=q, hits=[], count=0)
-        try:
-            model = SentenceTransformerEmbedding()
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+        # Capture verified request ownership before leaving the event loop.
+        policy_tag = _owner_read_policy_tag(request)
+        owner_user_id = getattr(request.state, "account_subject", None)
+        account_owner_ids = _account_owner_ids(request) if owner_user_id else None
 
-        db = _resolve_db_path()
-        con = connect_read(db)
+        def search_in_worker() -> dict[str, Any]:
+            try:
+                model = SentenceTransformerEmbedding()
+            except (RuntimeError, OSError, ValueError) as exc:
+                raise EmbeddingInferenceUnavailable("embedding initialization failed") from exc
+            con = connect_read(_resolve_db_path())
+            try:
+                return search(
+                    con, q, model=model, top_k=max(1, limit), document_id=document_id,
+                    policy_tag=policy_tag,
+                    owner_user_id=owner_user_id,
+                    account_owner_ids=account_owner_ids,
+                )
+            finally:
+                con.close()
+
         try:
-            res = search(
-                con, q, model=model, top_k=max(1, limit), document_id=document_id,
-                # §9.0: privileged ONLY for the authenticated owner (resolved
-                # server-side); non-owner / unauth callers stay gated.
-                policy_tag=_owner_read_policy_tag(request),
-                owner_user_id=getattr(request.state, "account_subject", None),
-                account_owner_ids=(
-                    _account_owner_ids(request)
-                    if getattr(request.state, "account_subject", None) else None
-                ),
-            )
-        finally:
-            con.close()
+            res = await run_in_threadpool(search_in_worker)
+        except EmbeddingInferenceUnavailable as exc:
+            raise HTTPException(status_code=503, detail="embedding_unavailable") from exc
 
         hits: list[CorpusSearchHit] = []
         for r in res["results"]:
