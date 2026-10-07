@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import AppShell from "./AppShell";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { isFlagOn } from "./lib/flags";
 
 // ── WP-12.2 bundle budget (index chunk ceiling 700 KB gz) ──────────────
 // Every routed mode is code-split. Only the shell, the auth provider and
@@ -35,6 +36,7 @@ const CostConsent = lazy(() => import("./modes/Coordination/CostConsent"));
 const CreationStudio = lazy(() => import("./modes/CreationStudio"));
 const CrossGraphCitations = lazy(() => import("./modes/CrossGraphCitations"));
 const Home = lazy(() => import("./modes/Home/Home"));
+const ZenHome = lazy(() => import("./modes/Home/ZenHome"));
 const Library = lazy(() => import("./modes/Library"));
 const LibraryView = lazy(() => import("./components/library/LibraryView"));
 const Login = lazy(() => import("./modes/Login"));
@@ -123,6 +125,9 @@ function InterviewRedirect() {
 }
 
 function AuthenticatedRoutes() {
+  // FFX-KPA SPR-03 M7: the zen home ships dark. With the flag off /zen is not
+  // a route at all and falls to the "*" handler like any unknown path.
+  const zenHome = isFlagOn("antiek.nav.zenhome");
   return (
     <AppShell>
       <CommandPalette />
@@ -139,6 +144,8 @@ function AuthenticatedRoutes() {
             (StartResearch already serves it); see modes/Home/Home.tsx for
             the recorded, reversible routing decision. */}
         <Route path="/home" element={<Home />} />
+        {/* FFX-KPA SPR-03 — temporary; SPR-05 moves / here and retires it. */}
+        {zenHome && <Route path="/zen" element={<ZenHome />} />}
         <Route
           path="/link-monster"
           element={
