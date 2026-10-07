@@ -80,9 +80,14 @@
     antiek_previous_was_directory: false
     antiek_legacy_release_dir: >-
       {{ antiek_release_root }}/{{ 'legacy-' if antiek_previous_sha == antiek_target_sha else '' }}{{ antiek_previous_sha }}
+    # Set by `record the current release identity` when the public path is a
+    # symlink: the directory it resolved to (a SHA release, or legacy-<sha>
+    # after a rolled-back same-SHA first deploy).
+    antiek_previous_link_target: ""
     antiek_previous_release_dir: >-
       {{ antiek_legacy_release_dir if (antiek_previous_was_directory | bool)
-         else antiek_release_root ~ '/' ~ antiek_previous_sha }}
+         else (antiek_previous_link_target if (antiek_previous_link_target | length > 0)
+         else antiek_release_root ~ '/' ~ antiek_previous_sha) }}
     antiek_release_min_free_gb: 12
     antiek_release_retention_count: 4
     # The pre-migration DuckDB snapshot is ~940 MB per deploy and NOTHING
@@ -583,16 +588,34 @@
 
     - name: quiesce, migrate, cut over, and verify
       block:
+        # Three lines: the previous release's bare SHA, the directory a rollback
+        # points the public path back at (symlink case only), and the kind.
+        # After a failed same-SHA first deploy the rescue points the public path
+        # at <release root>/legacy-<sha>; the SHA is still the bare SHA (it is
+        # written into ANTIEK_BUILD_SHA and compared with /health build_sha), and
+        # the rollback target is the directory the host really has.
         - name: record the current release identity
           ansible.builtin.shell: |
             set -euo pipefail
             if [ -L "{{ antiek_public_dir }}" ]; then
-              basename "$(readlink "{{ antiek_public_dir }}")"
+              target=$(readlink -f "{{ antiek_public_dir }}")
+              name=$(basename "$target")
+              if [[ "$name" =~ ^legacy-[0-9a-f]{40}$ ]]; then
+                name="${name#legacy-}"
+              fi
+              if [[ ! "$name" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "Refusing: {{ antiek_public_dir }} points at $target, which is not a release named by a 40-hex SHA" >&2
+                exit 1
+              fi
+              echo "$name"
+              echo "$target"
               echo symlink
             elif [ -d "{{ antiek_public_dir }}" ]; then
               git -C "{{ antiek_public_dir }}" rev-parse HEAD
+              echo ""
               echo directory
             else
+              echo ""
               echo ""
               echo none
             fi
@@ -606,9 +629,26 @@
           register: current_release_lookup
           tags: [code]
 
+        # Checked on the registered output, BEFORE set_fact: a refusal here leaves
+        # antiek_previous_sha empty, so the rescue stops nothing and rolls nothing
+        # back. The value is written into ANTIEK_BUILD_SHA and compared with
+        # /health build_sha on rollback, so it must be a bare SHA or nothing.
+        - name: require the rollback identity to be empty or a bare 40-hex SHA
+          ansible.builtin.assert:
+            that:
+              - >-
+                (current_release_lookup.stdout_lines | first | default('') | trim) | length == 0
+                or (current_release_lookup.stdout_lines | first | default('') | trim) is match('^[0-9a-f]{40}$')
+            fail_msg: >-
+              The previous release identity
+              '{{ current_release_lookup.stdout_lines | first | default('') }}' is not a
+              40-hex SHA; refusing before anything is stopped.
+          tags: [code]
+
         - name: set the rollback release identity
           ansible.builtin.set_fact:
             antiek_previous_sha: "{{ (current_release_lookup.stdout_lines | first | default('')) | trim }}"
+            antiek_previous_link_target: "{{ (current_release_lookup.stdout_lines[1:-1] | first | default('')) | trim }}"
             antiek_previous_was_directory: "{{ (current_release_lookup.stdout_lines | last | default('')) == 'directory' }}"
           tags: [code]
 

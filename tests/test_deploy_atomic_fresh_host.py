@@ -16,6 +16,7 @@ against a scratch directory tree, the way the arXiv continuation tests do.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,6 +33,7 @@ SHA_A = "a" * 40
 def _jinja() -> Environment:
     env = Environment()
     env.filters["bool"] = lambda value: str(value).strip().lower() in {"true", "1", "yes"}
+    env.tests["match"] = lambda value, pattern: re.match(pattern, str(value)) is not None
     return env
 
 
@@ -48,7 +50,12 @@ def _render(template: str, context: dict[str, Any]) -> str:
 
 
 def _context(
-    root: Path, public: Path, target: str, previous: str, was_directory: bool
+    root: Path,
+    public: Path,
+    target: str,
+    previous: str,
+    was_directory: bool,
+    link_target: str = "",
 ) -> dict[str, Any]:
     """Resolve the play's own variable templates in the order Ansible would."""
     variables = _play()["vars"]
@@ -58,6 +65,7 @@ def _context(
         "antiek_target_sha": target,
         "antiek_previous_sha": previous,
         "antiek_previous_was_directory": was_directory,
+        "antiek_previous_link_target": link_target,
     }
     for name in ("antiek_release_dir", "antiek_legacy_release_dir", "antiek_previous_release_dir"):
         ctx[name] = _render(variables[name], ctx).strip()
@@ -133,30 +141,52 @@ def gnu_path(tmp_path: Path) -> str:
 
 
 def _run(
-    task_name: str, ctx: dict[str, Any], home: Path, path: str
+    task_name: str,
+    ctx: dict[str, Any],
+    home: Path,
+    path: str,
+    *,
+    task_environment: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    """Run a task's shell body the way root runs it on a setup-fresh host.
+
+    The scratch repositories belong to the test user, so git's ownership check
+    would never fire. GIT_TEST_ASSUME_DIFFERENT_OWNER=1 makes git treat every
+    repository as another user's (root reading antiek's clone), so a git read
+    succeeds only through the task's own command-scope safe.directory.
+    """
     task = _task(task_name)
     script = _render(task["ansible.builtin.shell"], ctx)
     env = _git_env(home)
     env["PATH"] = path
-    for key, value in (task.get("environment") or {}).items():
-        env[key] = _render(str(value), ctx)
+    env["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1"
+    if task_environment:
+        for key, value in (task.get("environment") or {}).items():
+            env[key] = _render(str(value), ctx)
     return subprocess.run(
         ["/bin/bash", "-c", script], env=env, capture_output=True, text=True, check=False
     )
 
 
-def _record(ctx: dict[str, Any], home: Path, path: str) -> tuple[str, bool]:
-    """Run the record task, then the set_fact templates on its registered result."""
+def _registered(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    """Ansible's command module strips trailing newlines before splitting stdout_lines."""
+    return {"stdout_lines": result.stdout.rstrip("\r\n").splitlines()}
+
+
+def _record(ctx: dict[str, Any], home: Path, path: str) -> tuple[str, bool, str]:
+    """Run the record task, the assert and the set_fact templates on its registered result."""
     result = _run("record the current release identity", ctx, home, path)
     assert result.returncode == 0, result.stderr
-    registered = {"stdout_lines": result.stdout.splitlines()}
+    registered = {"current_release_lookup": _registered(result)}
+    (condition,) = _task("require the rollback identity to be empty or a bare 40-hex SHA")[
+        "ansible.builtin.assert"
+    ]["that"]
+    assert _jinja().compile_expression(condition.strip())(**registered) is True
     facts = _task("set the rollback release identity")["ansible.builtin.set_fact"]
-    previous = _render(facts["antiek_previous_sha"], {"current_release_lookup": registered})
-    was_directory = _render(
-        facts["antiek_previous_was_directory"], {"current_release_lookup": registered}
-    )
-    return previous, was_directory == "True"
+    previous = _render(facts["antiek_previous_sha"], registered)
+    was_directory = _render(facts["antiek_previous_was_directory"], registered)
+    link_target = _render(facts["antiek_previous_link_target"], registered)
+    return previous, was_directory == "True", link_target
 
 
 def _fresh_host(tmp_path: Path) -> tuple[Path, Path, Path, str]:
@@ -219,8 +249,8 @@ def test_same_sha_setup_clone_cuts_over_and_rolls_back_to_the_clone(
     (candidate / ".release-receipt").write_text("ok\n", encoding="utf-8")
 
     probe = _context(root, public, sha, "", False)
-    previous, was_directory = _record(probe, home, gnu_path)
-    assert (previous, was_directory) == (sha, True)
+    previous, was_directory, link_target = _record(probe, home, gnu_path)
+    assert (previous, was_directory, link_target) == (sha, True, "")
 
     ctx = _context(root, public, sha, previous, was_directory)
     assert ctx["antiek_legacy_release_dir"] == f"{root}/legacy-{sha}"
@@ -242,7 +272,7 @@ def test_older_setup_clone_keeps_the_sha_named_move_and_rollback(
     home, root, public, old = _fresh_host(tmp_path)
     target = SHA_A if old != SHA_A else "b" * 40
     (root / target).mkdir()
-    previous, was_directory = _record(_context(root, public, target, "", False), home, gnu_path)
+    previous, was_directory, _ = _record(_context(root, public, target, "", False), home, gnu_path)
     ctx = _context(root, public, target, previous, was_directory)
     assert ctx["antiek_legacy_release_dir"] == f"{root}/{old}"
     assert _run("make the one public API/SPA cutover", ctx, home, gnu_path).returncode == 0
@@ -263,9 +293,11 @@ def test_symlinked_public_path_is_unchanged_by_the_legacy_handling(
     target = "c" * 40
     (root / target).mkdir()
     public.symlink_to(root / SHA_A)
-    previous, was_directory = _record(_context(root, public, target, "", False), home, gnu_path)
-    assert (previous, was_directory) == (SHA_A, False)
-    ctx = _context(root, public, target, previous, was_directory)
+    previous, was_directory, link_target = _record(
+        _context(root, public, target, "", False), home, gnu_path
+    )
+    assert (previous, was_directory, link_target) == (SHA_A, False, f"{root}/{SHA_A}")
+    ctx = _context(root, public, target, previous, was_directory, link_target)
     assert ctx["antiek_previous_release_dir"] == f"{root}/{SHA_A}"
     assert _run("make the one public API/SPA cutover", ctx, home, gnu_path).returncode == 0
     assert os.readlink(public) == str(root / target)
@@ -297,3 +329,108 @@ def test_a_genuine_collision_still_refuses(tmp_path: Path, gnu_path: str) -> Non
     assert result.returncode == 1
     assert "refusing to overwrite legacy release" in result.stderr
     assert (public / "README").is_file() and not public.is_symlink()
+
+
+def test_after_a_rolled_back_same_sha_deploy_the_next_record_is_the_bare_sha(
+    tmp_path: Path, gnu_path: str
+) -> None:
+    """A failed same-SHA first deploy leaves the public path on legacy-<sha>. The next deploy's
+    rollback identity must still be the bare SHA (ANTIEK_BUILD_SHA, /health build_sha, the
+    snapshot-prune guard all compare against it), and its rollback target must be the legacy
+    directory the host really has, not <root>/<sha>."""
+    home, root, public, sha = _fresh_host(tmp_path)
+    (root / sha).mkdir()
+    previous, was_directory, link_target = _record(
+        _context(root, public, sha, "", False), home, gnu_path
+    )
+    first = _context(root, public, sha, previous, was_directory, link_target)
+    assert _run("make the one public API/SPA cutover", first, home, gnu_path).returncode == 0
+    assert _run("restore the previous release pointer", first, home, gnu_path).returncode == 0
+    legacy = root / f"legacy-{sha}"
+    assert os.readlink(public) == str(legacy)
+
+    retry = "d" * 40 if sha != "d" * 40 else "e" * 40
+    (root / retry).mkdir()
+    previous, was_directory, link_target = _record(
+        _context(root, public, retry, "", False), home, gnu_path
+    )
+    assert (previous, was_directory, link_target) == (sha, False, str(legacy))
+    second = _context(root, public, retry, previous, was_directory, link_target)
+    assert second["antiek_previous_release_dir"] == str(legacy)
+    assert _run("make the one public API/SPA cutover", second, home, gnu_path).returncode == 0
+    assert os.readlink(public) == str(root / retry)
+    assert _run("restore the previous release pointer", second, home, gnu_path).returncode == 0
+    assert os.readlink(public) == str(legacy)
+    assert (legacy / "README").is_file()
+
+
+def test_a_symlink_to_a_non_release_name_refuses_before_any_identity_is_set(
+    tmp_path: Path, gnu_path: str
+) -> None:
+    """Anything but <sha> or legacy-<sha> behind the public path is refused by the record task,
+    and the assert on the raw registered line would refuse it again before set_fact."""
+    home = tmp_path / "home"
+    home.mkdir()
+    root = tmp_path / "opt" / "antiek-releases"
+    public = tmp_path / "opt" / "antiek"
+    (root / "hand-made").mkdir(parents=True)
+    public.symlink_to(root / "hand-made")
+    result = _run(
+        "record the current release identity",
+        _context(root, public, SHA_A, "", False),
+        home,
+        gnu_path,
+    )
+    assert result.returncode == 1
+    assert "not a release named by a 40-hex SHA" in result.stderr
+    assert result.stdout == ""
+    (condition,) = _task("require the rollback identity to be empty or a bare 40-hex SHA")[
+        "ansible.builtin.assert"
+    ]["that"]
+    check = _jinja().compile_expression(condition.strip())
+    for bad in (f"legacy-{SHA_A}", "hand-made", SHA_A[:39]):
+        assert check(current_release_lookup={"stdout_lines": [bad, "", "symlink"]}) is False
+    assert check(current_release_lookup={"stdout_lines": ["", "", "none"]}) is True
+
+
+def _assumes_different_owner(tmp_path: Path) -> bool:
+    repo = tmp_path / "owner-probe"
+    _clone_at_one_commit(repo, tmp_path)
+    env = _git_env(tmp_path)
+    env["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1"
+    return (
+        subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"], env=env, capture_output=True
+        ).returncode
+        != 0
+    )
+
+
+def test_root_style_git_reads_need_the_task_safe_directory(tmp_path: Path, gnu_path: str) -> None:
+    """D1, behaviourally: under a different owner, every git-reading task fails without its own
+    environment and succeeds with it, so a wrong safe.directory path fails here."""
+    if not _assumes_different_owner(tmp_path):
+        pytest.skip("this git does not honour GIT_TEST_ASSUME_DIFFERENT_OWNER")
+    home, root, public, sha = _fresh_host(tmp_path)
+    (root / sha).mkdir()
+    ctx = _context(root, public, sha, sha, True)
+
+    bare = _run("record the current release identity", ctx, home, gnu_path, task_environment=False)
+    assert bare.returncode == 128 and "dubious ownership" in bare.stderr
+    assert _run("record the current release identity", ctx, home, gnu_path).returncode == 0
+
+    bare = _run("restore the previous release pointer", ctx, home, gnu_path, task_environment=False)
+    assert bare.returncode != 0 and "dubious ownership" in bare.stderr
+    assert _run("restore the previous release pointer", ctx, home, gnu_path).returncode == 0
+
+    public.rename(ctx["antiek_legacy_release_dir"])
+    bare = _run(
+        "restore an interrupted first legacy public-directory move",
+        ctx,
+        home,
+        gnu_path,
+        task_environment=False,
+    )
+    assert bare.returncode != 0 and "dubious ownership" in bare.stderr
+    moved = _run("restore an interrupted first legacy public-directory move", ctx, home, gnu_path)
+    assert moved.returncode == 0, moved.stderr
