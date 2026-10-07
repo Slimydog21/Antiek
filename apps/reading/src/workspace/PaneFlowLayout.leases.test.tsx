@@ -1,6 +1,7 @@
 import { useLayoutEffect, useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPortal } from "react-dom";
 
 import { PaneFlowLayout, paneEventTarget, usePaneFlowFrame } from "./PaneFlowLayout";
 import { COMPANION_PANE, CORE_PANE, paneKey } from "./paneFlowGeometry";
@@ -295,12 +296,18 @@ describe("actual frame and controller registration ownership", () => {
     expect(paneEventTarget(eventAt(unknown))).toBeNull();
   });
 
-  it("does not give an outside-provider frame a lease by moving its DOM under a live root", () => {
+  it("does not give an outside-provider frame a lease by placing its DOM under a live root", () => {
+    // REWRITTEN at landing: the packet moved a React-rendered node with
+    // root.append(), which React later reconciles with a NotFoundError — the
+    // case failed on the packet's own head (d2d642e23) too. The same
+    // situation, legally: the outside frame is rendered by a SEPARATE React
+    // tree and portalled INTO the live root, so DOM-wise it sits under the
+    // root while React- and provider-wise it belongs to nobody's flow.
     render(<PaneFlowLayout><ControlledFrame name="core" target={CORE_PANE} /></PaneFlowLayout>);
-    render(<ControlledFrame name="outside" target={CORE_PANE} />);
     const root = element("core").closest("[data-pane-flow-root]");
     if (!(root instanceof HTMLElement)) throw new Error("Missing actual root");
-    root.append(element("outside"));
+    render(createPortal(<ControlledFrame name="outside" target={CORE_PANE} />, root));
+    expect(element("outside").closest("[data-pane-flow-root]")).toBe(root);
     act(() => { useWorkspace.getState().togglePaneZoom(CORE_PANE); });
     expect(frame("outside").restoreZoom()).toBe(false);
     expect(useWorkspace.getState().paneZoom).toEqual(CORE_PANE);
