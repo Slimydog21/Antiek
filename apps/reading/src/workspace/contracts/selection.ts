@@ -147,8 +147,20 @@ useTabTrees.subscribe((s, p) => {
   }
 });
 
-/** projectId === id || subProjectId === id || agentId === id. A boolean
- *  selector, so a row re-renders only when its own answer flips. */
-export function useIsSelected(id: string): boolean {
-  return useSelection((s) => s.selection.projectId === id || s.selection.subProjectId === id || s.selection.agentId === id);
+/** The row's place in the tree. Pre-backend the id spaces overlap: a
+ *  research agent's id IS its investigation id, which is also a sub-project
+ *  node's id, so a raw-id check would light a sibling sub-project row off
+ *  the selected path (the rendered selection would no longer be a prefix
+ *  of one tree path). The role keeps the three fields apart. */
+export type SelectionRole = "project" | "subproject" | "agent";
+
+/** The one row selector SPR-04 consumes: `selection[role] === id`. A
+ *  boolean selector, so a row re-renders only when its own answer flips. */
+export function useIsSelected(id: string, role: SelectionRole): boolean {
+  return useSelection((s) => {
+    if (role === "project") return s.selection.projectId === id;
+    if (role === "subproject") return s.selection.subProjectId === id;
+    if (role === "agent") return s.selection.agentId === id;
+    return false; // an untyped caller with no role lights nothing, never a sibling row
+  });
 }
