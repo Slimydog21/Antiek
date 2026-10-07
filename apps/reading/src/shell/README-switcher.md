@@ -80,8 +80,32 @@ field is on `ProjectInput`, and `projectRows` names the parent in the subtitle.
 | `rankPlaceRows(rows, text)` | within-section ranking; current-first on empty text |
 | `groupBySection(rows)` | render groups |
 
-## Not done in this PR (SPR-02 M4–M5)
+## The rail strip and the key (SPR-02 M4–M5)
 
-The rail strip (`NavRail` icon variant behind the same flag) and the keymap rows
-for `switcher.open.<section>` are the next PR; both depend on nothing here but
-were split to keep this diff reviewable.
+With the flag on, the bottom dock (`shell/NavRail.tsx`) folds into its existing
+compact five-key layout at every width: the four doors + More, captions kept
+(SPR-07's "no caption-less bar control" rule stands), keycap chips and the
+Home/Search keys dropped (`⌘O` and `prefix+g` still reach them), height 48 px
+(`data-rail-strip="true"`). More — by click and by the `door.more` hotkey —
+opens the Switcher narrowed to Scenes (`in:scenes`) instead of the products
+drawer; `ProductsLauncher` stays mounted and untouched. The sprint page's
+"40 px icons-only" wording was NOT followed: icon-only bar controls were the
+v1 complaint SPR-07 fixed, and 48 px keeps the caption legible.
+
+One keymap row: `switcher.open` = `prefix+shift+o` / `ctrl+alt+shift+o` opens
+the Switcher at `in:open` (herdr's goto, narrowed to what is open). `shift+o`
+because `prefix+o` is `tab.visitChild`. The toggle event carries
+`detail.query`; the palette honours it only with places on, so the key degrades
+to the plain Switcher when the flag is off. No `in:agents` key: that section is
+absent on main, and a key to an absent section would be a hidden
+non-consumption.
+
+## Input types and the frozen contract (index.html D5)
+
+`ProjectInput` / `AgentInput` are this module's exported, structural inputs.
+When Undertaker v4 freezes `workspace/contracts/{tree,selection}.ts`, these
+become aliases of (or are replaced by) its `ProjectNode` / `AgentNode`, so the
+places rows and the zen home's geared switcher read ONE source. `is:<status>`
+accepts exactly herdr's five words (`AGENT_STATUSES`) and gets a live source
+only from the monitoring lane's store (SPR-10); no status is invented before
+that.

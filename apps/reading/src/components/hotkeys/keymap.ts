@@ -90,6 +90,7 @@ export const ACTIONS = {
   "tab.reopen": { label: "Tab: reopen the last closed tab in the focused pane" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
   "project.select": { label: "Project: choose the account project" },
+  "switcher.open": { label: "Switcher: open panes, windows and tabs (in:open)" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "door.research": { label: "Research", productId: "research", route: "/" },
@@ -227,6 +228,10 @@ export const KEYMAP: readonly KeymapRow[] = [
   // the implementation, pending ratification into the decision record.
   { id: "prefix-project-select", action: "project.select", status: "implemented", prefixKey: "shift+p", scope: "outside-text", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
   { id: "chord-project-select", action: "project.select", status: "implemented", chord: "ctrl+alt+p", scope: "anywhere", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
+  // SPR-02 M5 — the Switcher narrowed to the Open section. shift+o because
+  // prefix+o is tab.visitChild (herdr's "go to the toast" is a later unit).
+  { id: "prefix-switcher-open", action: "switcher.open", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+  { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
 ];
 
 /**

@@ -566,7 +566,23 @@ export default function CommandPalette() {
     // does. The palette used to toggle on ⌘K itself as well, so ⌘K from the
     // page body flipped it twice and nothing opened (MS-01 F1). Stories
     // rendered without AppShell open it by dispatching the same event.
-    const onToggle = () => setOpen((v) => !v);
+    const onToggle = (ev: Event) => {
+      // SPR-02 M5 — `detail.query` opens (never toggles) with a preset query
+      // (e.g. "in:open" from the switcher.open key, "in:scenes" from the
+      // rail's More). Ignored with places off: the words would be search text.
+      const detail: unknown = ev instanceof CustomEvent ? ev.detail : undefined;
+      const preset =
+        placesOn && detail && typeof detail === "object" && "query" in detail && typeof detail.query === "string"
+          ? detail.query
+          : null;
+      if (preset !== null) {
+        setQuery(preset);
+        setActiveIdx(0);
+        setOpen(true);
+        return;
+      }
+      setOpen((v) => !v);
+    };
     window.addEventListener(
       "antiek:palette:toggle" as keyof WindowEventMap,
       onToggle as EventListener,
@@ -592,7 +608,7 @@ export default function CommandPalette() {
       );
       removeKeyboardOwner();
     };
-  }, [open]);
+  }, [open, placesOn]);
 
   useEffect(() => {
     if (open) {
