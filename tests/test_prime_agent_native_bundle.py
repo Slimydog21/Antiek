@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from runtime.prime_agent.installation import (
     _snapshot_bundle,
     revalidate_prime_agent_installation,
     stage_verified_prime_agent,
+    verify_prime_agent_installation,
 )
 
 
@@ -363,6 +365,192 @@ class NativePrimeBundleTests(unittest.TestCase):
         destination = self.root / "staged"
         stage_verified_prime_agent(installation, destination)
         self.assertEqual(list(destination.iterdir()), [destination / "prime-agent"])
+
+
+class PublicPrimeVerifierReservationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name).resolve()
+        self.binary = self.root / "prime-agent"
+        self.binary.write_bytes(b"\xcf\xfa\xed\xfe" + b"reserved-native-fixture")
+        self.binary.chmod(0o700)
+        (self.root / "package.json").write_text('{"version":"0.9.8"}\n')
+        self.observed = self.binary.stat()
+        self.original_read = os.read
+        self.reads: list[tuple[int, int]] = []
+
+    def recorded_read(self, fd: int, count: int) -> bytes:
+        chunk = self.original_read(fd, count)
+        if os.fstat(fd).st_ino == self.observed.st_ino:
+            self.reads.append((count, len(chunk)))
+        return chunk
+
+    def mutated_read(self, mutate: Callable[[], object]) -> Callable[[int, int], bytes]:
+        changed = False
+
+        def read(fd: int, count: int) -> bytes:
+            nonlocal changed
+            if os.fstat(fd).st_ino == self.observed.st_ino and not changed:
+                changed = True
+                mutate()
+            return self.recorded_read(fd, count)
+
+        return read
+
+    def assert_public_refusal(self) -> None:
+        with patch.object(
+            installation_module,
+            "_probe",
+            side_effect=AssertionError("public verifier reached a probe before refusal"),
+        ) as probe:
+            with self.assertRaises(PrimeAgentUnavailable):
+                verify_prime_agent_installation(self.binary, environ={})
+            probe.assert_not_called()
+
+    def test_public_verifier_refuses_oversize_before_any_executable_read(self) -> None:
+        with (
+            patch.object(installation_module, "_MAX_BUNDLE_BYTES", self.observed.st_size - 1),
+            patch.object(installation_module.os, "read", self.recorded_read),
+        ):
+            self.assert_public_refusal()
+        self.assertEqual(self.reads, [])
+
+    def test_public_verifier_refuses_growth_between_lstat_and_open_before_read(self) -> None:
+        original_open = os.open
+        grown = False
+
+        def grow_before_open(path, flags, *args, **kwargs):
+            nonlocal grown
+            if Path(path) == self.binary and not grown:
+                grown = True
+                with self.binary.open("ab") as stream:
+                    stream.write(b"x" * 64)
+            return original_open(path, flags, *args, **kwargs)
+
+        with (
+            patch.object(installation_module.os, "open", grow_before_open),
+            patch.object(installation_module.os, "read", self.recorded_read),
+        ):
+            self.assert_public_refusal()
+        self.assertTrue(grown)
+        self.assertEqual(self.reads, [])
+
+    def test_public_verifier_growth_during_hash_cannot_read_past_reservation(self) -> None:
+        def grow() -> None:
+            with self.binary.open("ab") as stream:
+                stream.write(b"x" * 64)
+
+        with patch.object(installation_module.os, "read", self.mutated_read(grow)):
+            self.assert_public_refusal()
+        self.assertTrue(self.reads)
+        self.assertLessEqual(sum(received for _, received in self.reads), self.observed.st_size)
+        self.assertTrue(all(requested <= self.observed.st_size for requested, _ in self.reads))
+
+    def test_public_verifier_refuses_short_read_before_probe(self) -> None:
+        with patch.object(
+            installation_module.os,
+            "read",
+            self.mutated_read(lambda: self.binary.write_bytes(b"")),
+        ):
+            self.assert_public_refusal()
+        self.assertEqual(sum(received for _, received in self.reads), 0)
+
+    def test_public_verifier_refuses_path_replacement_during_hash_before_probe(self) -> None:
+        replacement = self.root / "replacement"
+        replacement.write_bytes(self.binary.read_bytes())
+        replacement.chmod(0o700)
+        with patch.object(
+            installation_module.os,
+            "read",
+            self.mutated_read(lambda: replacement.replace(self.binary)),
+        ):
+            self.assert_public_refusal()
+        self.assertNotEqual(self.binary.stat().st_ino, self.observed.st_ino)
+
+    def test_public_verifier_refuses_same_size_metadata_change_before_probe(self) -> None:
+        def replace_bytes() -> None:
+            self.binary.write_bytes(b"\xcf\xfa\xed\xfe" + b"x" * (self.observed.st_size - 4))
+            os.utime(
+                self.binary,
+                ns=(self.observed.st_atime_ns, self.observed.st_mtime_ns + 1_000_000),
+            )
+
+        with patch.object(installation_module.os, "read", self.mutated_read(replace_bytes)):
+            self.assert_public_refusal()
+        self.assertEqual(self.binary.stat().st_size, self.observed.st_size)
+
+    def test_public_verifier_refuses_existing_fifo_without_opening_it(self) -> None:
+        self.binary.unlink()
+        os.mkfifo(self.binary, 0o700)
+        with patch.object(
+            installation_module.os,
+            "open",
+            side_effect=AssertionError("nonregular executable was opened"),
+        ):
+            self.assert_public_refusal()
+
+    def test_public_verifier_regular_to_fifo_race_uses_nonblocking_open(self) -> None:
+        original_open = os.open
+        replaced = False
+
+        def replace_before_open(path, flags, *args, **kwargs):
+            nonlocal replaced
+            if Path(path) == self.binary and not replaced:
+                replaced = True
+                self.binary.unlink()
+                os.mkfifo(self.binary, 0o700)
+                # The old source must fail this control without actually blocking.
+                if not flags & os.O_NONBLOCK:
+                    raise AssertionError("replacement FIFO would be opened in blocking mode")
+            return original_open(path, flags, *args, **kwargs)
+
+        with (
+            patch.object(installation_module.os, "open", replace_before_open),
+            patch.object(installation_module.os, "read", self.recorded_read),
+        ):
+            self.assert_public_refusal()
+        self.assertTrue(replaced)
+        self.assertEqual(self.reads, [])
+
+    def test_public_verifier_regular_to_symlink_race_uses_no_follow_open(self) -> None:
+        outside = self.root / "outside"
+        outside.write_bytes(self.binary.read_bytes())
+        outside.chmod(0o700)
+        original_open = os.open
+        seen_flags = []
+
+        def replace_before_open(path, flags, *args, **kwargs):
+            if Path(path) == self.binary and not seen_flags:
+                seen_flags.append(flags)
+                self.binary.unlink()
+                self.binary.symlink_to(outside)
+            return original_open(path, flags, *args, **kwargs)
+
+        with (
+            patch.object(installation_module.os, "open", replace_before_open),
+            patch.object(installation_module.os, "read", self.recorded_read),
+        ):
+            self.assert_public_refusal()
+        self.assertTrue(seen_flags[0] & os.O_NOFOLLOW)
+        self.assertEqual(self.reads, [])
+
+    def test_public_verifier_admits_unchanged_standalone_at_existing_ceiling(self) -> None:
+        (self.root / "package.json").unlink()
+
+        def probe(_installation, args, *, environ):
+            if args == ("--version",):
+                return "prime-agent 0.9.8"
+            return " ".join(sorted(installation_module._PRINT_FLAGS | installation_module._RPC_FLAGS))
+
+        with (
+            patch.object(installation_module, "_MAX_BUNDLE_BYTES", self.observed.st_size),
+            patch.object(installation_module, "_probe", probe),
+        ):
+            installation = verify_prime_agent_installation(self.binary, environ={})
+        self.assertEqual(installation.version, (0, 9, 8))
+        self.assertEqual(installation.identity.size, self.observed.st_size)
+        self.assertIsNone(installation.bundle_root)
 
 
 if __name__ == "__main__":

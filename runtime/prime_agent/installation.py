@@ -622,14 +622,21 @@ def _snapshot_binary(binary: Path, *, require_executable: bool = True) -> PrimeA
     """Open once, compare lstat/fstat, enforce ownership/mode, and hash that fd."""
     try:
         path_stat = binary.lstat()
-        fd = os.open(binary, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+        if not stat.S_ISREG(path_stat.st_mode):
+            raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
+        if path_stat.st_size > _MAX_BUNDLE_BYTES:
+            raise PrimeAgentUnavailable("prime-agent bundle exceeds verification bounds")
+        fd = os.open(
+            binary,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0),
+        )
     except OSError as exc:
         raise PrimeAgentUnavailable("prime-agent executable could not be inspected") from exc
     try:
         opened_stat = os.fstat(fd)
         if not stat.S_ISREG(path_stat.st_mode) or not stat.S_ISREG(opened_stat.st_mode):
             raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
-        if (path_stat.st_dev, path_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
+        if _native_metadata(path_stat) != _native_metadata(opened_stat):
             raise PrimeAgentUnavailable("prime-agent executable changed while being inspected")
         if opened_stat.st_uid not in {0, os.geteuid()}:
             raise PrimeAgentUnavailable(
@@ -641,19 +648,32 @@ def _snapshot_binary(binary: Path, *, require_executable: bool = True) -> PrimeA
             stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         ):
             raise PrimeAgentUnavailable("prime-agent executable is not executable")
-        return _identity_from_fd(fd)
+        identity = _identity_from_fd(fd, observed=opened_stat)
+        if _native_metadata(binary.lstat()) != _native_metadata(opened_stat):
+            raise PrimeAgentUnavailable("prime-agent executable changed while being inspected")
+        return identity
+    except OSError as exc:
+        raise PrimeAgentUnavailable("prime-agent executable could not be inspected") from exc
     finally:
         os.close(fd)
 
 
-def _identity_from_fd(fd: int) -> PrimeAgentBinaryIdentity:
+def _identity_from_fd(
+    fd: int, *, observed: os.stat_result | None = None
+) -> PrimeAgentBinaryIdentity:
     opened_stat = os.fstat(fd)
     if not stat.S_ISREG(opened_stat.st_mode):
         raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
+    if observed is not None and _native_metadata(opened_stat) != _native_metadata(observed):
+        raise PrimeAgentUnavailable("prime-agent executable changed before read")
+    if opened_stat.st_size > _MAX_BUNDLE_BYTES:
+        raise PrimeAgentUnavailable("prime-agent bundle exceeds verification bounds")
     os.lseek(fd, 0, os.SEEK_SET)
     digest = sha256()
-    while chunk := os.read(fd, 128 * 1024):
+    for chunk in _native_chunks(fd, opened_stat.st_size):
         digest.update(chunk)
+    if _native_metadata(os.fstat(fd)) != _native_metadata(opened_stat):
+        raise PrimeAgentUnavailable("prime-agent executable changed during read")
     os.lseek(fd, 0, os.SEEK_SET)
     return PrimeAgentBinaryIdentity(
         device=opened_stat.st_dev,
