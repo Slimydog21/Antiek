@@ -6,6 +6,7 @@ import { LemonModal } from "../components/lemon/LemonModal";
 import { PanelLayout } from "./PanelLayout";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { disablePersistence, useWorkspace } from "./WorkspaceStore";
+import { readKeyboardOwnership } from "./keyboardOwnership";
 
 // The real panel frame, title, store and Escape owners remain mounted. No book,
 // provider, reader or persisted document is supplied by this mechanical fixture.
@@ -277,17 +278,22 @@ describe("floating panel Escape ownership", () => {
     expect(closeCalls).toEqual(["a"]);
   });
 
-  it.each(["unmount", "focus", "mode"])("removes the exact admitted listener after %s", (retirement) => {
-    const added = vi.spyOn(window, "addEventListener"), removed = vi.spyOn(window, "removeEventListener");
+  // REWRITTEN at landing (pane-flow packet → main): main registers the panel's
+  // Escape through workspace/keyboardOwnership.ts, which wraps the handler and
+  // (in dev) adds one shared capture observer, so a raw window.addEventListener
+  // spy no longer sees the panel's own listener. The contract is the same —
+  // exactly one admitted owner while the floating panel is focused, none after
+  // it retires — asserted through the seam's registry instead.
+  it.each(["unmount", "focus", "mode"])("retires the exact admitted Escape owner after %s", (retirement) => {
+    const owners = () => readKeyboardOwnership().registrations.filter((r) => r.id === "panel.floating.escape");
     const { view } = mount();
-    const registration = added.mock.calls.find(([type]) => type === "keydown");
-    if (!registration) throw new Error("No panel Escape listener registered");
+    expect(owners()).toHaveLength(1);
     if (retirement === "unmount") view.unmount();
     else act(() => {
       if (retirement === "focus") useWorkspace.setState({ focusedPanelId: null });
       else state().setMode("a", "docked-left");
     });
-    expect(removed).toHaveBeenCalledWith("keydown", registration[1]);
+    expect(owners()).toHaveLength(0);
     kept(dispatch(document.body));
   });
 
@@ -301,7 +307,12 @@ describe("floating panel Escape ownership", () => {
     expect(closeCalls).toEqual(["a"]);
     expect(state().panels.a).toBeUndefined();
     expect(state().fullscreenPane).toBe("left");
-    expect(dispatch(document.body).defaultPrevented).toBe(true);
+    // REWRITTEN at landing: main's fullscreen Escape owner (PanelLayout,
+    // id pane.fullscreen.escape) restores the panes without claiming the
+    // event (no preventDefault), so the contract asserted here is the
+    // restore itself — the next Escape after the close restores fullscreen,
+    // and the close is not repeated (S04: the actual focused host owns F/Esc).
+    dispatch(document.body);
     expect(state().fullscreenPane).toBeNull();
     expect(closeCalls).toEqual(["a"]);
   });
