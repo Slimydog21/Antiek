@@ -106,6 +106,9 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nextId = useRef(1);
+  // State updates land on the next render, so two mod+Enter presses in one
+  // tick would both see `sending === false`. The ref closes that window.
+  const sendingRef = useRef(false);
 
   const working = busy || sending;
 
@@ -178,7 +181,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
   }, [staged, promptDerived, setQuestion, setPromptDerived]);
 
   const submitBox = useCallback(async () => {
-    if (working) return;
+    if (working || sendingRef.current) return;
     const text = question.trim();
     // A bare URL is material, not a question: attach it and show the derived
     // prompt for confirmation instead of asking "https://…".
@@ -187,6 +190,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
       return;
     }
     if (text.length < 3) return;
+    sendingRef.current = true;
     setSending(true);
     try {
       for (const item of staged) {
@@ -196,6 +200,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
       }
       await submitProject();
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }, [working, question, staged, stageUrl, absorbUrl, absorbText, submitProject]);

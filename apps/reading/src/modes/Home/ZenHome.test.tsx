@@ -325,6 +325,18 @@ describe("ZenHome — M6 submit", () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-9"), { timeout: 4000 });
   });
 
+  it("two mod+Enter presses in one tick send one ingest and one POST", async () => {
+    renderZen();
+    await act(async () => { drop(box(), [new File(["x"], "a.txt", { type: "text/plain" })]); });
+    await screen.findByText("a.txt");
+    await act(async () => {
+      fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+      fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    });
+    await waitFor(() => expect(writes().some((c) => c.url.endsWith("/investigations"))).toBe(true));
+    expect(writes().map((c) => new URL(c.url, "http://x").pathname)).toEqual(["/voice-notes/ingest", "/investigations"]);
+  });
+
   it("a bare URL in the box becomes a URL attachment with a derived prompt, not a question", async () => {
     renderZen();
     fireEvent.change(box(), { target: { value: "https://example.org/paper" } });
