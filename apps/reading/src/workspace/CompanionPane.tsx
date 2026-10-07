@@ -30,6 +30,7 @@ import { AGENT_TAB_KINDS } from "./companionRegistry";
 import { sourceDocumentOf, tabVisible, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
 import { useSelection } from "./contracts/selection";
+import { agentTabDomId } from "./agentTabDomId";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { topModal } from "./escapeOverlay";
 
@@ -183,9 +184,7 @@ export default function CompanionPane() {
 /** The agent surface the tabs control. */
 const COMPANION_PANEL_DOM_ID = "companion-agent-panel";
 
-export function agentTabDomId(tabId: string): string {
-  return `agenttab-${tabId.replace(/[^A-Za-z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(36)}_`)}`;
-}
+export { agentTabDomId };
 
 /** SPR-07: the active tab belongs to a project other than the selected
  *  one. The tab is hidden, never deleted; the operator may switch to that

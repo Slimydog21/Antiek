@@ -1,7 +1,7 @@
 /** agentThread.test.ts — SPR-07 invariant 8: failed turns never enter the wire history; at most the last 8 done turns. */
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { HISTORY_CAP, historyFor, useAgentThreads } from "./agentThread";
+import { HISTORY_CAP, historyFor, useAgentThreads } from "./agentThreadStore";
 
 const key = "agent:pane:p:proj-1";
 const store = () => useAgentThreads.getState();

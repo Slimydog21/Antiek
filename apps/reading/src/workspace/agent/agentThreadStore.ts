@@ -1,5 +1,5 @@
 /**
- * agentThread.ts — the pane's own thread store (SPR-07 M3).
+ * agentThreadStore.ts — the pane's own thread store (SPR-07 M3).
  *
  * NOT useThoughtPartnerThread: that hook is keyed per reading document and
  * shared with the sidecar, and its failTurn writes error text into the
@@ -10,6 +10,7 @@ import { create } from "zustand";
 
 import type { AiAction } from "../../components/ai/aiActions";
 import type { ThoughtPartnerShape } from "../../hooks/useThoughtPartnerThread";
+import type { OptionCard } from "./interviewMode";
 import { statusWordFor, type StatusWord, type TurnStatus } from "./statusWords";
 
 /** The client's cap: the server builds history straight from req.history (app.py:7211-7214). */
@@ -37,6 +38,8 @@ export interface AgentTurn {
   hidden?: boolean;
   error?: string | null;
   libraryRetrievalStatus?: string | null;
+  /** Interview mode: the @@options card the reply carried (parsed once, at completion). */
+  optionCard?: OptionCard;
 }
 
 export interface CompleteTurnInput {
@@ -44,6 +47,7 @@ export interface CompleteTurnInput {
   shape: ThoughtPartnerShape;
   actions: AiAction[];
   libraryRetrievalStatus?: string | null;
+  optionCard?: OptionCard;
 }
 
 interface AgentThreadState {
@@ -52,6 +56,8 @@ interface AgentThreadState {
   streamTurn: (key: string, id: string, partial: string) => void;
   completeTurn: (key: string, id: string, input: CompleteTurnInput) => void;
   failTurn: (key: string, id: string, error: string | null) => void;
+  /** A retry re-opens the failed turn in place (pending, no answer, no error). */
+  reopenTurn: (key: string, id: string) => void;
   clearThread: (key: string) => void;
   reset: () => void;
 }
@@ -86,7 +92,8 @@ export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
         [key]: (s.threads[key] ?? []).map((t) =>
           t.id === id
             ? { ...t, status: "done", answer: input.answer, shape: input.shape, actions: input.actions, endedAt: now(),
-                ...(input.libraryRetrievalStatus !== undefined ? { libraryRetrievalStatus: input.libraryRetrievalStatus } : {}) }
+                ...(input.libraryRetrievalStatus !== undefined ? { libraryRetrievalStatus: input.libraryRetrievalStatus } : {}),
+                ...(input.optionCard ? { optionCard: input.optionCard } : {}) }
             : t,
         ),
       },
@@ -95,6 +102,11 @@ export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
   failTurn: (key, id, error) =>
     set((s) => ({
       threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "failed", answer: null, error, endedAt: now() } : t)) },
+    })),
+
+  reopenTurn: (key, id) =>
+    set((s) => ({
+      threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "pending", answer: null, error: null, endedAt: undefined } : t)) },
     })),
 
   clearThread: (key) => set((s) => { const { [key]: _drop, ...rest } = s.threads; return { threads: rest }; }),

@@ -119,12 +119,15 @@ export function useContainerWidth(ref: RefObject<HTMLElement | null>): number {
 
 /** The inset right pane's width for PanelLayout: the preferred width
  *  clamped to the container, or null for the tier default. */
-export function usePaneWidth(i: { leftDockWidth: number; containerRef: RefObject<HTMLElement | null>; defaultWidth: number }): number {
+export function usePaneWidth(i: { leftDockWidth: number; containerRef: RefObject<HTMLElement | null>; defaultWidth: number }): { width: number; max: number } {
   const preferred = usePaneWidthStore((s) => s.preferred);
   const hydrated = usePaneWidthStore((s) => s.hydrated);
   const containerWidth = useContainerWidth(i.containerRef);
   useEffect(() => {
     if (!hydrated) usePaneWidthStore.getState().hydrate();
   }, [hydrated]);
-  return effectiveWidth({ preferred, containerWidth, leftDockWidth: i.leftDockWidth, defaultWidth: i.defaultWidth });
+  return {
+    width: effectiveWidth({ preferred, containerWidth, leftDockWidth: i.leftDockWidth, defaultWidth: i.defaultWidth }),
+    max: paneWidthMax(containerWidth, i.leftDockWidth),
+  };
 }

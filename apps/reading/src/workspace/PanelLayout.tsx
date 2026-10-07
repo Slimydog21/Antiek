@@ -1,5 +1,5 @@
 import { registerKeyboardOwner } from "./keyboardOwnership";
-import { Suspense, lazy, useCallback, useContext, useEffect, useRef } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { UNSAFE_LocationContext, useInRouterContext } from "react-router-dom";
@@ -19,6 +19,7 @@ import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
 import { WRITE_OUTLINE_PANEL_ID } from "./writeOutlineStore";
+import { usePaneWidth } from "./agent/paneWidthStore";
 
 // The document tab strip (D6) and the tab-tree model it renders load on
 // first show, not with the entry chunk, which has a hard gzip budget (npm
@@ -27,6 +28,11 @@ import { WRITE_OUTLINE_PANEL_ID } from "./writeOutlineStore";
 const DocumentTabStrip = lazy(() =>
   import("./DocumentTabStrip").then((m) => ({ default: m.DocumentTabStrip })),
 );
+
+// SPR-07: the keyboard-operable separator between the inset's panes. Lazy:
+// it reaches companionStore (the lazy chunk); the width store it reads is
+// entry-safe (agent/paneWidthStore.ts).
+const PaneResizer = lazy(() => import("./agent/PaneResizer"));
 
 /** The strip's own loading skeleton, drawn while its chunk loads, so the
  *  strip lands in place with no layout shift. The same markup as the loaded
@@ -113,6 +119,17 @@ export function PanelLayout({ mainSlot }: Props) {
   // router's location context: PanelLayout also renders without a router.
   const location = useContext(UNSAFE_LocationContext)?.location;
   const writing = location ? mothershipForPath(location.pathname, location.search) === "writing" : false;
+
+  // SPR-07: the inset right pane's preferred width (account-scoped blob) and
+  // the live drag preview. Hooks run before the tier-sm early return below.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [previewWidth, setPreviewWidth] = useState<number | null>(null);
+  const insetLeftDockWidth = layoutPreset === "omarchy-inset" && dockLeftIds.length > 0 && tier !== "md" ? DOCK_WIDTH : 0;
+  const paneWidth = usePaneWidth({
+    leftDockWidth: insetLeftDockWidth,
+    containerRef,
+    defaultWidth: tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH,
+  });
 
   // S11 (the docked preset) — at tier "lg" the two side docks can't both be
   // visible; if both have panels we collapse the right one (operator can
@@ -301,7 +318,8 @@ export function PanelLayout({ mainSlot }: Props) {
   const leftHidden = shownAlone === "right";
   const rightHidden = shownAlone === "left";
   const rightFull = shownAlone === "right";
-  const rightPaneWidth = tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH;
+  const rightPaneWidth = previewWidth ?? paneWidth.width;
+  const showResizer = inset && !fullscreenPane && !writing;
   const rightDockPanelIds = inset ? dockRightIds.filter((id) => !PANE_CONTENT_PANEL_IDS.has(id)) : dockRightIds;
   const leftDockWidth = inset
     ? dockLeftIds.length === 0 || tier === "md"
@@ -318,6 +336,7 @@ export function PanelLayout({ mainSlot }: Props) {
 
   return (
     <div
+      ref={containerRef}
       className="relative h-full w-full flex bg-transparent overflow-hidden"
       style={inset ? { padding: INSET_GAP, gap: INSET_GAP } : undefined}
       data-layout-preset={inset ? "omarchy-inset" : undefined}
@@ -360,10 +379,20 @@ export function PanelLayout({ mainSlot }: Props) {
         </div>
       </div>
 
+      {/* SPR-07: the separator sits between the two pane shells in the inset
+          only; never while a pane is fullscreen (no second pane to size),
+          never in writing (the outline keeps the right pane). */}
+      {showResizer ? (
+        <Suspense fallback={null}>
+          <PaneResizer width={rightPaneWidth} max={paneWidth.max} onPreview={setPreviewWidth} />
+        </Suspense>
+      ) : null}
+
       {/* RIGHT: the companion pane (inset) or a transparent wrapper (docked) */}
       <div
         {...(inset
           ? {
+              id: "cockpit-right-pane",
               "data-pane": "right",
               role: "region",
               // Named for what it holds (B3-7): the outline in writing, the
@@ -383,7 +412,7 @@ export function PanelLayout({ mainSlot }: Props) {
           inset
             ? rightHidden
               ? "hidden"
-              : `${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`
+              : `${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")} ${previewWidth !== null ? "transition-none" : dockTransition}`
             : "contents"
         }
       >
