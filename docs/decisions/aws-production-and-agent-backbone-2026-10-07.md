@@ -219,18 +219,27 @@ hosts and security primitives.
 
 ### 7. Beads: the dispatcher is the only writer
 
+The full beads decision (work plane, never knowledge plane; authority per
+surface; invariants; pin; what is deferred) is
+`docs/decisions/beads-agent-work-plane-2026-10-07.md`; this section is its
+compute research-lane scope as it bears on the backbone.
+
 `bd` 1.3.0 is installed and there are zero live workspaces [M,
 memory-beads]. Embedded Dolt is single-writer and machine-local [M, bd help
 and the beads-fleet skill]. So:
 
-- a bead id **is** the compute lane key (`compute run --bead ID`);
+- a bead id **names** the compute lane (`compute run --bead ID`); the
+  lane flock is the authority and the bead status is advisory;
 - the dispatcher on the Mini is the only process that writes beads,
-  serialised under its own flock (compute 1.6.0: `state/beads.lock`;
+  serialised under a flock (compute 1.6.0: `state/beads.lock`, which the
+  beads record moves into the workspace so maintenance jobs share it;
   admitted → `in_progress`, done → closed with the ledger reference,
   failed → blocked with a note);
 - lanes and lane hosts never run `bd` (topology D). Lane hosts get no `bd`
   binary and no `.beads` directory; results return through the
-  dispatcher's stage-out rsync and the dispatcher records them;
+  dispatcher's stage-out rsync and the dispatcher records them
+  (workspaces live at `~/.local/share/antiek-beads/<project>`, outside
+  every git index);
 - multiple writers only through Dolt server mode on a private network,
   later, as its own decision.
 
@@ -273,8 +282,16 @@ and the beads-fleet skill]. So:
   the mount, root access, hold and origin-TLS declaration, Ansible for
   everything above, the cutover runbook for the state. The restore
   rehearsal's D1/D2 defects (the first atomic deploy on a `setup.yml`-fresh
-  host) are worked around in the runbook, not fixed here; their owner is
-  the deploy lane.
+  host) are fixed in `deploy_atomic.yml` on this branch (per-task
+  `safe.directory` for root's git reads; a same-SHA setup clone moves to
+  `legacy-<sha>` and rollback follows it), with behaviour tests in
+  `tests/test_deploy_atomic_fresh_host.py`; D11 (password SSH) is closed by a
+  `setup.yml` drop-in and the cloud-init lines. The authoritative fresh-host
+  order is `aws-cutover.md` "Fresh-host sequence". Still owned by the deploy
+  lane: D5 (template keys), D6 (check-runs fallback in `require_green.sh`), D7
+  (SPA built in CI as an artifact; `deploy_backend.yml` is another lane's),
+  and a first-release mode for `deploy_atomic.yml` so `setup.yml` can stop
+  cloning code.
 - Deploy downtime per release is unchanged (the single-writer shape moves
   as-is).
 - The trust-centre processor list must change from Hetzner to AWS in the
@@ -286,6 +303,40 @@ and the beads-fleet skill]. So:
   "Antiek credentials stay on the Mini" governs Antiek *development* on the
   compute layer, not the production host, which holds its runtime
   credentials on AWS exactly as it did on Hetzner (critic C17).
+
+## Antiek runtime follow-ups (handoffs, not built in this lane)
+
+The durable-actors review (session `a880aa51`, `scratchpad/durable-actors/CRITIQUE.md`
+items 18-19 and "Ideas FIT missed" 10, which override `FIT.md`) found three
+runtime gaps that the AWS move does not change but that every deploy restart
+exercises (13 backend deploys on 2026-10-07). No active board claim owns
+these files on 2026-10-07; they are recorded here for the runtime owner who
+claims them.
+
+1. **Startup closes non-terminal trajectories.** `reconstruct_session`
+   defaults a started leaf to RUNNING (`orchestration/cascade_session.py:445`),
+   and the stranded poller skips trajectories with no open request
+   (`interfaces/research/api/stranded_dispatch_recovery.py:127`,
+   `if not open_stack: continue`), so a run killed between `*.delivered` and
+   the next `*.requested` is never closed [M]. With one uvicorn worker and
+   in-process runs, every non-terminal trajectory at startup is dead. Emit the
+   existing `investigation.failed` with `reason: process_restart` for each, not
+   a new event type or an event-schema bump [I].
+2. **Bounded deploy drain.** Before `deploy_atomic.yml` stops `antiek.service`,
+   wait up to N minutes for in-flight investigations to reach a terminal
+   event, then proceed (item 18's adopted part). A lease table or a separate
+   research worker is rejected: the process is the lease, and a second
+   service writing DuckDB would break the single-writer invariant [I]. The
+   stop sequence in the playbook is the deploy lane's; the drain signal is the
+   runtime's.
+3. **The stranded-dispatch age rule versus role timeouts.** The poller runs
+   inside the live process and fails any trajectory whose open request is
+   older than `DEFAULT_MIN_AGE_S` = 180 s (`ANTIEK_STRANDED_DISPATCH_MIN_AGE_S`,
+   `stranded_dispatch_recovery.py:56`). A legitimately slow role call that
+   emits no event for three minutes would be failed while alive [I from M].
+   Set the age from the largest configured role timeout plus slack, or skip
+   trajectories whose session is live in this process, before trusting either
+   mechanism.
 
 ## What would change this
 
