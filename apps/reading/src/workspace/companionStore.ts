@@ -158,8 +158,17 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
   openAgentTab: (input) => {
     const id = agentTabId(input);
     const existing = get().tabs.find((t) => t.id === id);
+    // SPR-06: anchor and documentId travel together. A book anchor names
+    // the document the agent was (re)opened from, so it pins `documentId`
+    // on both paths; otherwise the CompanionAgents "Open source document"
+    // request would pair a stale documentId with the new anchor and
+    // openers.openDocumentFromAgent would refuse it (document_mismatch).
+    // A deliverable anchor names no book and leaves documentId alone.
+    const anchorPatch = input.anchor
+      ? { anchor: input.anchor, ...(input.anchor.space === "book" ? { documentId: input.anchor.documentId } : {}) }
+      : {};
     if (existing) {
-      const patch = { ...(input.scope ? { scope: input.scope } : {}), ...(input.anchor ? { anchor: input.anchor } : {}) };
+      const patch = { ...(input.scope ? { scope: input.scope } : {}), ...anchorPatch };
       set((s) => ({
         activeTabId: id,
         ...(Object.keys(patch).length ? { tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : {}),
@@ -179,7 +188,7 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         ...(input.documentId !== undefined ? { documentId: input.documentId } : {}),
         seq,
         ...(input.scope ? { scope: input.scope } : {}),
-        ...(input.anchor ? { anchor: input.anchor } : {}),
+        ...anchorPatch,
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id, seq }));
     }
