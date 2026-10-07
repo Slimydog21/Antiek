@@ -51,9 +51,13 @@ import duckdb  # noqa: F401 — hard requirement: the backup pipeline is DuckDB;
 import jinja2  # type: ignore[import-untyped]
 import jinja2.meta  # type: ignore[import-untyped]
 import pytest
+from nacl.public import PrivateKey
 
+from runtime.byok.store import store_credential
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path
+from tools.critical_backup_crypto import MAGIC, decrypt_file
+from tools.critical_state_backup import restore
 
 REPO = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = REPO / "infrastructure" / "ansible" / "templates" / "backup.sh.j2"
@@ -169,6 +173,8 @@ def _build_install_dir(install_dir: Path, *, sabotage_normalizer: bool) -> None:
         target.write_text(_SABOTAGED_NORMALIZER)
     else:
         target.symlink_to(REPO / "tools" / "backup_normalize_schema.py")
+    for name in ("critical_state_backup.py", "critical_backup_crypto.py"):
+        (tools / name).symlink_to(REPO / "tools" / name)
 
 
 def _build_stub_bin(stub_bin: Path) -> None:
@@ -190,9 +196,12 @@ def _build_stub_bin(stub_bin: Path) -> None:
     _write_stub(
         stub_bin / "rclone",
         '#!/usr/bin/env bash\nset -euo pipefail\necho "$@" >> "${RCLONE_STUB_LOG}"\n'
-        'if [[ "$1" == "copyto" ]]; then cp "$2" "${RCLONE_STUB_KEEP}"; fi\n'
+        'keep="${RCLONE_STUB_KEEP}"; phase=data\n'
+        'if [[ "$3" == *.byok-key.enc ]]; then keep="${keep}.byok-key.enc"; phase=key; fi\n'
+        'if [[ "${RCLONE_STUB_FAIL:-}" == "$1-$phase" ]]; then echo "synthetic-provider-secret" >&2; exit 17; fi\n'
+        'if [[ "$1" == "copyto" ]]; then cp "$2" "$keep"; fi\n'
         'if [[ "$1" == "hashsum" && "${RCLONE_STUB_BAD_HASH:-0}" == "1" ]]; then printf \'%064d  remote\\n\' 0; fi\n'
-        'if [[ "$1" == "hashsum" && "${RCLONE_STUB_BAD_HASH:-0}" != "1" ]]; then shasum -a 256 "${RCLONE_STUB_KEEP}" | awk \'{print $1 "  remote"}\'; fi\n'
+        'if [[ "$1" == "hashsum" && "${RCLONE_STUB_BAD_HASH:-0}" != "1" ]]; then shasum -a 256 "$keep" | awk \'{print $1 "  remote"}\'; fi\n'
         'exit 0\n',
     )
 
@@ -238,6 +247,32 @@ def _make_harness(
     _build_stub_bin(stub_bin)
     staging_root.mkdir()
 
+    def protected(path: Path, body: bytes) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_bytes(body)
+        path.chmod(0o600)
+        return path
+
+    key, artifact = state_dir / "byok/byok_master.key", state_dir / "byok/credentials.enc"
+    store_credential("backup-test", "synthetic-backup-BYOK", owner_user_id="acct_backup_test",
+                     artifact_path=str(artifact), key_file=str(key))
+    accounts = protected(state_dir / "auth/accounts.json", b'{"acct_backup_test":{"role":"user"}}')
+    passkeys = protected(state_dir / "auth/passkeys.json", b'{"synthetic-key":{"user_id":"acct_backup_test"}}')
+    settings, pointer = state_dir / "settings", state_dir / "turbopuffer-shadow"
+    protected(settings / "lineup.json", b'{"selection":"synthetic"}')
+    protected(pointer / "promote-pointer.json", b'{"namespace":"synthetic"}')
+    system = {name: protected(tmp_path / "system" / name, b"synthetic-critical-" + name.encode())
+              for name in ("secrets.env", "rclone.conf", "tunnel.json")}
+    configuration = protected(tmp_path / "sources.json", json.dumps({
+        "version": 1, "state": str(state_dir), "byok_key": str(key), "byok_artifact": str(artifact),
+        "accounts": str(accounts), "passkeys": str(passkeys), "settings": [str(settings)],
+        "turbopuffer": str(pointer), "system_files": {name: str(path) for name, path in system.items()},
+        "extra_sqlite": [],
+    }).encode())
+    identity = PrivateKey.generate()
+    recipient = protected(tmp_path / "recovery-public.hex", bytes(identity.public_key).hex().encode())
+    protected(tmp_path / "recovery-private.hex", bytes(identity).hex().encode())
+
     script = tmp_path / "backup.sh"
     script.write_text(_render_template(state_dir, install_dir))
     script.chmod(0o755)
@@ -253,6 +288,8 @@ def _make_harness(
             "ANTIEK_BACKUP_STAGING_ROOT": str(staging_root),
             "ANTIEK_BACKUP_JOB_LOCK": str(tmp_path / "backup-job.lock"),
             "ANTIEK_BACKUP_LOCK_TIMEOUT_S": lock_timeout_s,
+            "ANTIEK_BACKUP_CRITICAL_CONFIG": str(configuration),
+            "ANTIEK_BACKUP_RECIPIENT_FILE": str(recipient),
         }
     )
     if allow_empty:
@@ -358,22 +395,38 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     proc = _run_script(harness)
     assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
-    # rclone WAS invoked: copyto followed by remote read-back verification.
+    # Both encrypted objects were uploaded and independently read back.
     invocations = harness.rclone_log.read_text().splitlines()
-    assert len(invocations) == 2, invocations
+    assert len(invocations) == 4, invocations
     assert invocations[0].startswith("copyto ")
-    assert "test-bucket/nightly/antiek-" in invocations[0]
-    assert invocations[1].startswith("hashsum SHA-256 ")
-    assert "--download" in invocations[1]
+    assert "test-bucket/nightly/encrypted-v1/antiek-" in invocations[0]
+    assert invocations[1].startswith("copyto ") and ".byok-key.enc" in invocations[1]
+    assert all(row.startswith("hashsum SHA-256 ") and "--download" in row for row in invocations[2:])
 
     # The preserved upload payload is a real archive with the expected members
     # (verify scratch DB must NOT ship; counts manifest + export + events must).
-    with tarfile.open(harness.rclone_keep) as tar:
+    assert harness.rclone_keep.read_bytes().startswith(MAGIC)
+    assert Path(str(harness.rclone_keep) + ".byok-key.enc").read_bytes().startswith(MAGIC)
+    plaintext = tmp_path / "recovered-data.tar.gz"
+    decrypt_file(harness.rclone_keep, plaintext, tmp_path / "recovery-private.hex")
+    with tarfile.open(plaintext) as tar:
         names = tar.getnames()
+    roots = {name.split("/", 1)[0] for name in names}
+    assert len(roots) == 1 and all(name.startswith("antiek-backup.") for name in roots), roots
     assert any(n.endswith("/duckdb/schema.sql") for n in names), names
     assert any(n.endswith("/source_manifest.json") for n in names), names
     assert any("/research_events/" in n for n in names), names
     assert not any("verify-scratch" in n for n in names), names
+    assert any(n.endswith("/critical-state/state/auth/accounts.json") for n in names)
+    assert not any(n.endswith("byok_master.key") for n in names)
+    recovered = tmp_path / "offline-recovered"
+    restore(harness.rclone_keep, Path(str(harness.rclone_keep) + ".byok-key.enc"),
+            tmp_path / "recovery-private.hex", recovered)
+    assert (recovered / "critical-state/state/auth/accounts.json").read_bytes() == (harness.state_dir / "auth/accounts.json").read_bytes()
+    with duckdb.connect(str(tmp_path / "restored.duckdb")) as restored_db:
+        restored_db.execute(f"IMPORT DATABASE '{recovered / 'duckdb'}'")
+        for table, expected in _SEED_COUNTS.items():
+            assert restored_db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone() == (expected,)
 
     # Freshness marker written with the real row counts. The substrate's
     # health probe runs as antiek, so a root-run backup must leave the marker
@@ -389,6 +442,9 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     assert marker["archive"].endswith(".tar.gz")
     assert marker["remote"].startswith("r2:test-bucket/nightly/")
     assert len(marker["sha256"]) == 64
+    assert marker["encrypted_object_contract_version"] == 1
+    assert marker["byok_key_remote"].endswith(".byok-key.enc")
+    assert len(marker["byok_key_sha256"]) == 64
 
     # The check tool reads the marker the script actually wrote (path + shape
     # consistency between backup.sh.j2 and tools/backup_freshness.py).
@@ -397,6 +453,54 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     assert tool.stdout.startswith("FRESH:")
 
     # The cleanup trap left no staging debris behind.
+    assert list(harness.staging_root.iterdir()) == []
+
+
+@pytest.mark.parametrize("phase", ["copyto-data", "copyto-key", "hashsum-data", "hashsum-key"])
+def test_encrypted_transfer_failure_blocks_marker_and_redacts_provider_error(tmp_path: Path, phase: str) -> None:
+    harness = _make_harness(tmp_path)
+    harness.env["RCLONE_STUB_FAIL"] = phase
+    proc = _run_script(harness)
+    assert proc.returncode != 0
+    assert not harness.marker.exists()
+    assert "synthetic-provider-secret" not in proc.stdout + proc.stderr
+    assert list(harness.staging_root.iterdir()) == []
+    if harness.rclone_keep.exists():
+        assert harness.rclone_keep.read_bytes().startswith(MAGIC)
+
+
+@pytest.mark.parametrize("missing", ["recipient", "inventory", "byok", "account", "tunnel"])
+def test_missing_required_critical_source_never_uploads_or_stamps(tmp_path: Path, missing: str) -> None:
+    harness = _make_harness(tmp_path)
+    path = {"recipient": tmp_path / "recovery-public.hex", "inventory": tmp_path / "sources.json",
+            "byok": harness.state_dir / "byok/byok_master.key",
+            "account": harness.state_dir / "auth/accounts.json", "tunnel": tmp_path / "system/tunnel.json"}[missing]
+    path.unlink()
+    proc = _run_script(harness)
+    assert proc.returncode != 0
+    assert not harness.rclone_log.exists()
+    assert not harness.marker.exists()
+    assert list(harness.staging_root.iterdir()) == []
+
+
+def test_remote_prefix_is_configurable_and_invalid_prefix_leaves_no_staging(tmp_path: Path) -> None:
+    harness = _make_harness(tmp_path)
+    harness.env["ANTIEK_BACKUP_REMOTE_PREFIX"] = "r2:test-bucket/staging/encrypted-v1"
+    proc = _run_script(harness)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(harness.marker.read_text())["remote"].startswith("r2:test-bucket/staging/encrypted-v1/")
+    harness.marker.unlink()
+    harness.rclone_log.unlink()
+    harness.env["ANTIEK_BACKUP_REMOTE_PREFIX"] = "r2:test-bucket/../unsafe"
+    proc = _run_script(harness)
+    assert proc.returncode != 0
+    assert not harness.rclone_log.exists() and not harness.marker.exists()
+    assert list(harness.staging_root.iterdir()) == []
+    harness.env["ANTIEK_BACKUP_REMOTE_PREFIX"] = "invalid synthetic-prefix-secret"
+    proc = _run_script(harness)
+    assert proc.returncode != 0
+    assert "synthetic-prefix-secret" not in proc.stdout + proc.stderr
+    assert not harness.rclone_log.exists() and not harness.marker.exists()
     assert list(harness.staging_root.iterdir()) == []
 
 
