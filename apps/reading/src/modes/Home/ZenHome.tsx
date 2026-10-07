@@ -290,7 +290,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
               disabled={working}
               minRows={2}
               maxRows={12}
-              className="font-serif text-lg leading-relaxed border-none focus:shadow-none"
+              className="font-serif text-lg leading-relaxed !border-0 !shadow-none !bg-transparent"
             />
             {promptDerived && (
               <p className="px-3 pt-1 text-xs font-sans text-ink-mute dark:text-moonlight">
@@ -316,7 +316,7 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
                 ))}
               </ul>
             )}
-            <div className="flex items-center gap-2 pt-3">
+            <div className="flex flex-wrap items-center gap-2 pt-3">
               <LemonButton
                 type="button"
                 variant="tertiary"
@@ -348,7 +348,10 @@ export default function ZenHome({ switchSlot }: { switchSlot?: ReactNode } = {})
                 onRecordingChange={setRecording}
               />
               <LemonButton type="button" variant="tertiary" size="sm" aria-label="Talk it through" onClick={talk}>
-                Talk it through <LemonTag colour="muted">preview</LemonTag>
+                <span className="whitespace-nowrap">Talk it through</span>
+                <span className="ml-1.5 rounded-full border border-rule dark:border-charcoal-1 px-1.5 text-xxs font-mono text-ink-mute dark:text-moonlight">
+                  preview
+                </span>
               </LemonButton>
               <span className="flex-1" />
               <LemonButton type="button" variant="primary" size="sm" disabled={!canSubmit} onClick={() => void submitBox()}>
