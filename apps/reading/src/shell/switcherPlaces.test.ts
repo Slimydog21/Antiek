@@ -8,11 +8,14 @@ import {
   buildPlaceRows,
   filterPlaceRows,
   groupBySection,
-  nextFilterForKey,
+  cycleSection,
+  formatFilterQuery,
   NO_FILTER,
+  parseFilterQuery,
   PLACE_SECTIONS,
   presentSections,
   rankPlaceRows,
+  tabInputFromTree,
   type OpenInput,
   type PlaceContext,
 } from "./switcherPlaces";
@@ -86,6 +89,13 @@ describe("Open rows — identity by reference", () => {
     expect(rows.filter((r) => r.current).map((r) => r.id)).toEqual(["open:window:win-notes-2"]);
   });
 
+  it("emits no core row when the caller cannot focus the core (main today)", () => {
+    const { core: _omit, ...noCore } = open;
+    const rows = buildPlaceRows({ ...base, open: { ...noCore, focusedWindowId: null } }).filter((r) => r.section === "open");
+    expect(rows.some((r) => r.id === "open:core")).toBe(false);
+    expect(rows.some((r) => r.current)).toBe(false);
+  });
+
   it("marks the core canvas current when nothing else holds focus", () => {
     const rows = buildPlaceRows({
       ...base,
@@ -99,7 +109,7 @@ describe("rankPlaceRows — section order is never interleaved", () => {
   it("keeps sections in canonical order and puts the current host first inside Open on an empty query", () => {
     const ranked = rankPlaceRows(buildPlaceRows(base), "");
     const order = ranked.map((r) => r.section);
-    const firstIndex = (s: string) => order.indexOf(s);
+    const firstIndex = (s: (typeof order)[number]) => order.indexOf(s);
     expect(firstIndex("doors")).toBeLessThan(firstIndex("scenes"));
     expect(firstIndex("scenes")).toBeLessThan(firstIndex("open"));
     const openRows = ranked.filter((r) => r.section === "open");
@@ -127,20 +137,39 @@ describe("rankPlaceRows — section order is never interleaved", () => {
   });
 });
 
-describe("filters — single keys only when the box is empty (caller's rule)", () => {
-  it("maps d/s/o/t/p/g/r to sections and a to all", () => {
-    expect(nextFilterForKey("o", NO_FILTER)).toEqual({ section: "open", agentStatus: "all" });
-    expect(nextFilterForKey("d", NO_FILTER)).toEqual({ section: "doors", agentStatus: "all" });
-    expect(nextFilterForKey("a", { section: "open", agentStatus: "all" })).toEqual(NO_FILTER);
-    expect(nextFilterForKey("x", NO_FILTER)).toBeNull();
-    expect(nextFilterForKey("Enter", NO_FILTER)).toBeNull();
+describe("filters — query syntax, never bare letters", () => {
+  it("parses in:<section> and is:<status> off the front and leaves the search text", () => {
+    expect(parseFilterQuery("in:open notes")).toEqual({ filter: { section: "open", agentStatus: "all" }, text: "notes" });
+    expect(parseFilterQuery("in:agents is:blocked")).toEqual({ filter: { section: "agents", agentStatus: "blocked" }, text: "" });
+    expect(parseFilterQuery("is:done in:agent plan")).toEqual({ filter: { section: "agents", agentStatus: "done" }, text: "plan" });
+    expect(parseFilterQuery("read")).toEqual({ filter: NO_FILTER, text: "read" });
   });
 
-  it("inside Agents, b/w/i/d narrow by herdr status and d means done, not doors", () => {
-    const agents = { section: "agents" as const, agentStatus: "all" as const };
-    expect(nextFilterForKey("b", agents)).toEqual({ section: "agents", agentStatus: "blocked" });
-    expect(nextFilterForKey("d", agents)).toEqual({ section: "agents", agentStatus: "done" });
-    expect(nextFilterForKey("a", agents)).toEqual(NO_FILTER);
+  it("a bare first letter is search text, not a filter — r/d/s/o/a all search", () => {
+    for (const k of ["r", "d", "s", "o", "a", "b"]) {
+      expect(parseFilterQuery(k)).toEqual({ filter: NO_FILTER, text: k });
+    }
+  });
+
+  it("an unknown word after in:/is: stays visible as text instead of silently filtering", () => {
+    expect(parseFilterQuery("in:nowhere x")).toEqual({ filter: NO_FILTER, text: "in:nowhere x" });
+    expect(parseFilterQuery("is:sleepy")).toEqual({ filter: NO_FILTER, text: "is:sleepy" });
+  });
+
+  it("formatFilterQuery round-trips what parseFilterQuery reads", () => {
+    const q = formatFilterQuery({ section: "agents", agentStatus: "blocked" }, "plan");
+    expect(q).toBe("in:agents is:blocked plan");
+    expect(parseFilterQuery(q)).toEqual({ filter: { section: "agents", agentStatus: "blocked" }, text: "plan" });
+    expect(formatFilterQuery(NO_FILTER, "  ")).toBe("");
+  });
+
+  it("Tab cycles all → each present section → all, and Shift+Tab reverses", () => {
+    const present = ["doors", "open"] as const;
+    expect(cycleSection("all", present, 1)).toBe("doors");
+    expect(cycleSection("doors", present, 1)).toBe("open");
+    expect(cycleSection("open", present, 1)).toBe("all");
+    expect(cycleSection("all", present, -1)).toBe("open");
+    expect(cycleSection("tabs", present, 1)).toBe("all"); // a section no longer present resets
   });
 
   it("filterPlaceRows narrows Agents by status and leaves other sections alone", () => {
@@ -181,6 +210,20 @@ describe("tabs, projects, arrangements", () => {
     ]);
     expect(rows[1].subtitle).toBe("Chapter 1");
     expect(rows[1].current).toBe(true);
+  });
+
+  it("tabInputFromTree walks pre-order, skips pruned nodes, and marks the active tab", () => {
+    const node = (tab_id: string, parent_tab_id: string | null, hier_number: string, child_order: string[] = [], pruned_at?: string) =>
+      ({ tab_id, parent_tab_id, hier_number, kind: "reader", ref: `${tab_id}-ref-0123456789`, child_order, pruned_at });
+    const input = tabInputFromTree("reading", {
+      nodes: { r1: node("r1", null, "1", ["c1", "c2"]), c1: node("c1", "r1", "1.1"), c2: node("c2", "r1", "1.2", [], "2026-10-07"), r2: node("r2", null, "2") },
+      root_order: ["r1", "r2"],
+      active_tab_id: "c1",
+    });
+    expect(input.tabs.map((t) => t.id)).toEqual(["r1", "c1", "r2"]);
+    expect(input.tabs[1]).toMatchObject({ active: true, path: ["1 reader · r1-ref-0", "1.1 reader · c1-ref-0"] });
+    const rows = buildPlaceRows({ ...base, tabs: input }).filter((r) => r.section === "tabs");
+    expect(rows[1].subtitle).toBe("1 reader · r1-ref-0");
   });
 
   it("project rows name their parent; arrangements render slot 10 as 0", () => {

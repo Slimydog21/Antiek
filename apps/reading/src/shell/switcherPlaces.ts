@@ -21,9 +21,13 @@
  *   - Fixed section order; ranking happens WITHIN a section using the same
  *     facet ranker the rest of the palette uses (paletteFacet.rankEntries),
  *     so a query never interleaves sections.
- *   - Filter keys are only meaningful when the search box is EMPTY; the
- *     caller decides that (the input owns printable keys — contract S11's
- *     spirit). This module only maps key → section.
+ *   - Filters are QUERY SYNTAX, not bare letters: `in:open`, `in:agents`,
+ *     `is:blocked` (the same shape as the palette's existing `state:`
+ *     facet). herdr's bare b/w/i/d keys were rejected for this surface
+ *     because the Switcher is type-to-search first and `r`, `d`, `s` begin
+ *     "read", "documents", "speak" — a bare-letter filter would steal the
+ *     first keystroke of the commonest queries (recorded in the SPR-02
+ *     handoff). Tab/Shift+Tab cycle sections; chips click.
  *
  * No React, no store imports, no data layer: the caller (CommandPalette)
  * reads the stores and hands plain inputs in, exactly like paletteFacet.
@@ -54,34 +58,21 @@ export const SECTION_LABELS: Record<PlaceSection, string> = {
   arrangements: "Arrangements",
 };
 
-/**
- * Single-key section filters, active only while the query is empty.
- * `a` = all (herdr's "a: all"). `o` is Open (prefix+o is tab.visitChild in
- * keymap.ts, but inside the open Switcher the letter is free).
- */
-export const SECTION_FILTER_KEYS: Readonly<Record<string, PlaceSection | "all">> = {
-  d: "doors",
-  s: "scenes",
-  o: "open",
-  t: "tabs",
-  p: "projects",
-  g: "agents",
-  r: "arrangements",
-  a: "all",
+/** `in:<word>` section filter words (plural and singular both parse). */
+export const SECTION_WORDS: Readonly<Record<string, PlaceSection>> = {
+  door: "doors", doors: "doors",
+  scene: "scenes", scenes: "scenes",
+  open: "open", pane: "open", panes: "open", window: "open", windows: "open",
+  tab: "tabs", tabs: "tabs",
+  project: "projects", projects: "projects",
+  agent: "agents", agents: "agents",
+  arrangement: "arrangements", arrangements: "arrangements",
 };
 
 /** herdr's agent-status vocabulary (refs/omarchy-herdr.md R15), and its
  *  single-key filters inside the Agents section. */
 export const AGENT_STATUSES = ["blocked", "working", "idle", "done", "unknown"] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
-export const AGENT_STATUS_FILTER_KEYS: Readonly<Record<string, AgentStatus | "all">> = {
-  b: "blocked",
-  w: "working",
-  i: "idle",
-  d: "done",
-  a: "all",
-};
-
 /** The pane-flow contract's pane target union (horizontal-pane-flow-20261002
  *  contract.md "Presentation and lifetime model"). Identity = existing host. */
 export type PaneTarget =
@@ -143,8 +134,11 @@ export interface OpenInput {
   /** Generic workspace panels (PanelLayout). */
   panels: readonly { id: string; title: string }[];
   focusedPanelId: string | null;
-  /** The core canvas — always present as a pane target. */
-  core: { title: string };
+  /** The core canvas as a pane target. OPTIONAL: on main there is no
+   *  "focus the core" command (the pane-flow packet, SPR-01, adds one), and a
+   *  row whose Enter does nothing would be a hidden non-consumption. Pass it
+   *  only when the caller can actually focus it. */
+  core?: { title: string };
 }
 
 export interface TabInput {
@@ -152,6 +146,34 @@ export interface TabInput {
   /** Tabs of the focused pane's tree, pre-order; `path` is the hierarchical
    *  path of titles from the root (tabTree.pathTo). */
   tabs: readonly { id: string; title: string; path: readonly string[]; active: boolean }[];
+}
+
+/** The structural slice of workspace/tabTree.ts#TabTree this adapter reads
+ *  (kept structural so the model imports nothing from workspace/). */
+export interface TabTreeLike {
+  nodes: Readonly<Record<string, { tab_id: string; parent_tab_id: string | null; hier_number: string; kind: string; ref: string; child_order: readonly string[]; pruned_at?: string }>>;
+  root_order: readonly string[];
+  active_tab_id: string | null;
+}
+
+/** Pre-order walk of a tab tree into TabInput rows. Pruned nodes are
+ *  skipped. Titles are what the strip shows a user without a title
+ *  field: the hierarchical number, the kind, and the ref's head. */
+export function tabInputFromTree(mothership: string, tree: TabTreeLike): TabInput {
+  const tabs: { id: string; title: string; path: readonly string[]; active: boolean }[] = [];
+  const label = (id: string) => {
+    const n = tree.nodes[id];
+    return `${n.hier_number} ${n.kind} · ${n.ref.slice(0, 8)}`;
+  };
+  const walk = (id: string, path: readonly string[]) => {
+    const n = tree.nodes[id];
+    if (!n || n.pruned_at) return;
+    const here = [...path, label(id)];
+    tabs.push({ id, title: label(id), path: here, active: tree.active_tab_id === id });
+    for (const c of n.child_order) walk(c, here);
+  };
+  for (const r of tree.root_order) walk(r, []);
+  return { mothership, tabs };
 }
 
 export interface ProjectInput {
@@ -218,8 +240,9 @@ function sceneRows(scenes: readonly SceneInput[]): PlaceRow[] {
 }
 
 function openRows(open: OpenInput): PlaceRow[] {
-  const rows: PlaceRow[] = [
-    {
+  const rows: PlaceRow[] = [];
+  if (open.core) {
+    rows.push({
       kind: "place",
       section: "open",
       id: "open:core",
@@ -230,8 +253,8 @@ function openRows(open: OpenInput): PlaceRow[] {
         open.focusedWindowId === null &&
         open.focusedPanelId === null &&
         open.activeCompanionTabId === null,
-    },
-  ];
+    });
+  }
   for (const w of open.windows) {
     rows.push({
       kind: "place",
@@ -351,7 +374,7 @@ export const NO_FILTER: PlaceFilter = { section: "all", agentStatus: "all" };
 
 /** Apply the single-key filters. The agent-status filter only narrows the
  *  Agents section; other sections are untouched by it. */
-export function filterPlaceRows(rows: readonly PlaceRow[], filter: PlaceFilter): PlaceRow[] {
+export function filterPlaceRows<R extends PlaceRow>(rows: readonly R[], filter: PlaceFilter): R[] {
   return rows.filter((r) => {
     if (filter.section !== "all" && r.section !== filter.section) return false;
     if (r.section === "agents" && filter.agentStatus !== "all") {
@@ -362,23 +385,55 @@ export function filterPlaceRows(rows: readonly PlaceRow[], filter: PlaceFilter):
 }
 
 /**
- * Interpret a key pressed while the query is EMPTY. Returns the next filter,
- * or null when the key is not a filter key (the caller then lets the input
- * have it). Inside the Agents section (or when the section filter is
- * "agents"), herdr's b/w/i/d/a narrow by status — `d` therefore means
- * "done" there and "doors" elsewhere; `a` always clears.
+ * Parse the filter words off the front of a query: any leading run of
+ * `in:<section>` / `is:<status>` words (either order, repeatable; the last
+ * of each wins). Returns the filter and the remaining search text. Unknown
+ * words after `in:`/`is:` are NOT filters — they stay in the text so the
+ * user sees their typo rather than an empty list.
  */
-export function nextFilterForKey(key: string, current: PlaceFilter): PlaceFilter | null {
-  const k = key.length === 1 ? key.toLowerCase() : key;
-  if (current.section === "agents") {
-    const status = AGENT_STATUS_FILTER_KEYS[k];
-    if (status === "all") return NO_FILTER;
-    if (status) return { section: "agents", agentStatus: status };
+export function parseFilterQuery(query: string): { filter: PlaceFilter; text: string } {
+  let section: PlaceSection | "all" = "all";
+  let agentStatus: AgentStatus | "all" = "all";
+  const words = query.trim().split(/\s+/);
+  let i = 0;
+  while (i < words.length) {
+    const w = words[i].toLowerCase();
+    const m = w.match(/^(in|is):([a-z]*)$/);
+    if (!m) break;
+    if (m[1] === "in") {
+      const s = SECTION_WORDS[m[2]];
+      if (!s) break;
+      section = s;
+    } else {
+      if (m[2] === "all") agentStatus = "all";
+      else if ((AGENT_STATUSES as readonly string[]).includes(m[2])) agentStatus = m[2] as AgentStatus;
+      else break;
+    }
+    i += 1;
   }
-  const section = SECTION_FILTER_KEYS[k];
-  if (section === undefined) return null;
-  if (section === "all") return NO_FILTER;
-  return { section, agentStatus: "all" };
+  return { filter: { section, agentStatus }, text: words.slice(i).join(" ") };
+}
+
+/** Rebuild a query from a filter and search text (chips write through this). */
+export function formatFilterQuery(filter: PlaceFilter, text: string): string {
+  const parts: string[] = [];
+  if (filter.section !== "all") parts.push(`in:${filter.section}`);
+  if (filter.agentStatus !== "all") parts.push(`is:${filter.agentStatus}`);
+  if (text.trim()) parts.push(text.trim());
+  return parts.join(" ");
+}
+
+/** The next section when cycling with Tab (direction 1) / Shift+Tab (-1)
+ *  over "all" + the sections present. */
+export function cycleSection(
+  current: PlaceSection | "all",
+  present: readonly PlaceSection[],
+  direction: 1 | -1,
+): PlaceSection | "all" {
+  const ring: (PlaceSection | "all")[] = ["all", ...present];
+  const idx = ring.indexOf(current);
+  const next = (idx === -1 ? 0 : idx + direction + ring.length) % ring.length;
+  return ring[next];
 }
 
 /**
@@ -386,9 +441,9 @@ export function nextFilterForKey(key: string, current: PlaceFilter): PlaceFilter
  * Empty query → original order (current/focused rows first within Open, so
  * the host you are on is one Enter away — the only recency signal on main).
  */
-export function rankPlaceRows(rows: readonly PlaceRow[], query: string): PlaceRow[] {
+export function rankPlaceRows<R extends PlaceRow>(rows: readonly R[], query: string): R[] {
   const q = query.trim();
-  const out: PlaceRow[] = [];
+  const out: R[] = [];
   for (const section of PLACE_SECTIONS) {
     const inSection = rows.filter((r) => r.section === section);
     if (inSection.length === 0) continue;
@@ -405,8 +460,8 @@ export function rankPlaceRows(rows: readonly PlaceRow[], query: string): PlaceRo
 }
 
 /** Group ranked rows by section for rendering, preserving row order. */
-export function groupBySection(rows: readonly PlaceRow[]): { section: PlaceSection; rows: PlaceRow[] }[] {
-  const groups: { section: PlaceSection; rows: PlaceRow[] }[] = [];
+export function groupBySection<R extends PlaceRow>(rows: readonly R[]): { section: PlaceSection; rows: R[] }[] {
+  const groups: { section: PlaceSection; rows: R[] }[] = [];
   for (const section of PLACE_SECTIONS) {
     const inSection = rows.filter((r) => r.section === section);
     if (inSection.length) groups.push({ section, rows: inSection });
