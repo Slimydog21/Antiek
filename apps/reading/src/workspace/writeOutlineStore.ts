@@ -2,7 +2,7 @@
  * writeOutlineStore.ts — the Write outline pane's active block tab (C5).
  *
  * The pane owns its DATA (the deliverable's blocks, fetched per section);
- * this store holds only the tab interaction state — which block tab is
+ * this store holds a mutation revision and the tab interaction state — which block tab is
  * active and the flat order the tab keys (prefix n/p, ctrl+alt+]/[, with the
  * right pane focused) cycle through — one muscle memory ("the focused
  * pane's tabs") across the companion (research/reading) and the outline
@@ -25,6 +25,8 @@ export function writeOutlineVisible(layoutPreset: string, panelOpen: boolean): b
 interface WriteOutlineState {
   /** The flat block order the keys cycle (section order, then block_index). */
   blockIds: string[];
+  mutationRevision: number;
+  invalidate: () => void;
   activeBlockId: string | null;
   setBlocks: (blockIds: string[]) => void;
   setActiveBlock: (id: string | null) => void;
@@ -34,6 +36,8 @@ interface WriteOutlineState {
 
 export const useWriteOutline = create<WriteOutlineState>()((set) => ({
   blockIds: [],
+  mutationRevision: 0,
+  invalidate: () => set((s) => ({ mutationRevision: s.mutationRevision + 1 })),
   activeBlockId: null,
 
   setBlocks: (blockIds) =>
@@ -55,5 +59,5 @@ export const useWriteOutline = create<WriteOutlineState>()((set) => ({
       return { activeBlockId: s.blockIds[next] };
     }),
 
-  reset: () => set({ blockIds: [], activeBlockId: null }),
+  reset: () => set({ blockIds: [], activeBlockId: null, mutationRevision: 0 }),
 }));
