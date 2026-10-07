@@ -43,7 +43,7 @@ function localKey(): string {
 function putCalls() {
   return fetches.mock.calls.filter(([, init]) => init?.method === "PUT");
 }
-function mountNotebook(startOpen = true, delay = { ms: 60000 }) {
+function mountNotebook(startOpen = false, delay = { ms: 60000 }) {
   const editorRef = createRef<TipTapEditor>();
   function View() {
     const current = useAuth();
@@ -61,6 +61,10 @@ function mountNotebook(startOpen = true, delay = { ms: 60000 }) {
 }
 async function hydrated(mounted: ReturnType<typeof mountNotebook>): Promise<TipTapEditor> {
   try {
+    // Open only after actual identity confirmation, matching the user's notebook entry.
+    await waitFor(() => { expect(isWorkspaceOwnerSession(workspaceOwnerSession())).toBe(true); });
+    const open = screen.queryByRole("button", { name: "Open notebook" });
+    if (open !== null) fireEvent.click(open);
     await waitFor(() => {
       expect(mounted.container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true");
       expect(mounted.editorRef.current).not.toBeNull();
@@ -215,7 +219,7 @@ describe("mounted notebook retention boundaries", () => {
     const delayedPut = deferred<Response>();
     putReply = () => delayedPut.promise;
     const delay = { ms: 0 };
-    const mounted = mountNotebook(true, delay);
+    const mounted = mountNotebook(false, delay);
     const old = await hydrated(mounted);
     const owner = workspaceOwnerSession();
     const key = localKey();

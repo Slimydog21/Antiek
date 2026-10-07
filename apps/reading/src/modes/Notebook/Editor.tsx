@@ -131,6 +131,11 @@ export function NotebookEditor({
   // is read-only until a retry succeeds (see the hydration effect).
   const [hydrationFailed, setHydrationFailed] = useState<boolean>(false);
   const [hydrationAttempt, setHydrationAttempt] = useState<number>(0);
+  const isCurrentEditor = (instance: TipTapEditor): boolean => {
+    const retained = draftRef.current;
+    return !instance.isDestroyed && retained?.editor === instance
+      && retained.owner === owner && retained.notebookId === notebookId;
+  };
 
   // Seed the initial etag from the existing stored snapshot (if any).
   const initialStored = readStored(notebookId, owner);
@@ -179,7 +184,7 @@ export function NotebookEditor({
       // and the server's atomic-replace would destroy persisted blocks.
       // The server-side empty-doc floor is the backstop; this is the
       // belt (the common fresh-browser case never even reaches it).
-      if (!hydratedRef.current || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
+      if (!hydratedRef.current || owner.subject === null || !isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) {
         return;
       }
 
@@ -196,7 +201,7 @@ export function NotebookEditor({
       setSaved("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
-        if (!isWorkspaceOwnerSession(owner)) return;
+        if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
         const doc = e.getJSON();
         try {
           const r = await apiFetch(`${API_BASE}/notebooks/${notebookId}/content`, {
@@ -204,7 +209,7 @@ export function NotebookEditor({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ doc }),
           });
-          if (!isWorkspaceOwnerSession(owner)) return;
+          if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
           if (!r.ok) {
             throw new ApiError(
               `PUT /notebooks/${notebookId}/content failed: HTTP ${r.status}`,
@@ -220,7 +225,7 @@ export function NotebookEditor({
           writeStored(notebookId, e.getHTML(), etagRef.current, owner);
           etagRef.current += 1;
         } catch (err) {
-          if (!isWorkspaceOwnerSession(owner)) return;
+          if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
           // Offline / network error, server rejection and true etag
           // conflict are semantically different states — the operator
           // sees them differently.

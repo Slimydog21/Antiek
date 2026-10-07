@@ -202,7 +202,7 @@ const notebookDraftOwners = new WeakMap<CapturedNotebookDraftOwner, WorkspaceOwn
 /** Capture only a ready producer. This permits one final local flush, never outbound work. */
 export function captureNotebookDraftOwner(owner: WorkspaceOwnerSession): CapturedNotebookDraftOwner | null {
   if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return null;
-  const captured: CapturedNotebookDraftOwner = Object.freeze({ [notebookDraftOwnerBrand]: true });
+  const captured = Object.freeze({ [notebookDraftOwnerBrand]: true } satisfies CapturedNotebookDraftOwner);
   notebookDraftOwners.set(captured, owner);
   return captured;
 }
