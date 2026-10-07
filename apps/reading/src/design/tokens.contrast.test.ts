@@ -307,3 +307,31 @@ describe("the operator's green and lime brand palette", () => {
     expect(relativeLuminance({ r: 0, g: 0, b: 0 })).toBeCloseTo(0, 5);
   });
 });
+
+describe("agent StatusDot tokens (SPR-10 M3)", () => {
+  // The tokens StatusDot.tsx names, and the island ring token. Read from the
+  // component so the test cannot drift from what renders.
+  const dotSrc = readFileSync(join(here, "..", "workspace", "agents", "StatusDot.tsx"), "utf8");
+  const STATE_TOKENS = [...new Set([...dotSrc.matchAll(/var\((--state-[a-z]+)\)/g)].map((m) => m[1]))];
+  const RING_TOKEN = dotSrc.match(/ISLAND_RING_TOKEN = "(--[a-z-]+)"/)![1];
+
+  it("names at least four state tokens and a ring token", () => {
+    expect(STATE_TOKENS.length).toBeGreaterThanOrEqual(4);
+    expect(RING_TOKEN).toMatch(/^--/);
+  });
+
+  for (const theme of THEMES) {
+    for (const s of STATE_TOKENS) {
+      it(`${theme}: ${s} is >= 3:1 on page, card and inset`, () => {
+        for (const bg of ["--page", "--card", "--inset"]) {
+          expect(ratio(tok(theme, s), tok(theme, bg)), `${theme} ${s} on ${bg}`).toBeGreaterThanOrEqual(AA_UI);
+        }
+      });
+    }
+    it(`${theme}: the island ring token ${RING_TOKEN} is >= 3:1 on --fixed-ink and --void`, () => {
+      for (const bg of ["--fixed-ink", "--void"]) {
+        expect(ratio(tok(theme, RING_TOKEN), tok(theme, bg)), `${theme} ${RING_TOKEN} on ${bg}`).toBeGreaterThanOrEqual(AA_UI);
+      }
+    });
+  }
+});
