@@ -4,7 +4,7 @@
  * keeps sub/agent a prefix of a tree path.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 
 import { unitAccountKey } from "../../testAccountOwner";
 import { clearTabProject, readTabProject } from "../persistence";
@@ -12,6 +12,7 @@ import { TAB_PROJECT_ID, useTabTrees } from "../tabTreeStore";
 import { composePreBackendTree } from "./adapters/preBackend";
 import { fixtureInputs, fixtureInputsWithMembers } from "./fixtures.test.helpers";
 import { isSelectionPathOf, selectionPath, useIsSelected, useSelection } from "./selection";
+import { findProjectPath } from "./tree";
 
 const tabs = () => useTabTrees.getState();
 const sel = () => useSelection.getState();
@@ -107,7 +108,7 @@ describe("S5 useIsSelected render isolation", () => {
     const renders = new Map<string, number>();
     function Row({ id }: { id: string }) {
       renders.set(id, (renders.get(id) ?? 0) + 1);
-      const on = useIsSelected(id);
+      const on = useIsSelected(id, "project");
       return <li data-on={on ? "1" : "0"}>{id}</li>;
     }
     const ids = Array.from({ length: 500 }, (_, i) => `p${i + 1}`);
@@ -119,5 +120,33 @@ describe("S5 useIsSelected render isolation", () => {
     expect(changed).toEqual(["p1", "p2"]);
     expect(renders.get("p1")).toBe(before.get("p1")! + 1);
     expect(renders.get("p2")).toBe(before.get("p2")! + 1);
+  });
+});
+
+describe("S6 useIsSelected is keyed by role", () => {
+  it("a selected agent never lights the sibling sub-project row that shares its id", () => {
+    const tree = composePreBackendTree(fixtureInputs());
+    expect(sel().selectSubProject("inv-child-2", tree)).toBe(true);
+    expect(sel().selectAgent("inv-child", tree)).toBe(true);
+    expect(sel().selection).toEqual({ projectId: "default", subProjectId: "inv-child-2", agentId: "inv-child" });
+    // Pre-backend the research agent's id IS the investigation id, and a
+    // sibling sub-project node carries that same id off the selected path.
+    expect(findProjectPath(tree, "inv-child")!.map((n) => n.id)).toEqual(["default", "inv-root", "inv-child"]);
+    const asSub = renderHook(() => useIsSelected("inv-child", "subproject"));
+    const asAgent = renderHook(() => useIsSelected("inv-child", "agent"));
+    const asProject = renderHook(() => useIsSelected("inv-child", "project"));
+    expect(asSub.result.current).toBe(false);
+    expect(asAgent.result.current).toBe(true);
+    expect(asProject.result.current).toBe(false);
+    // The lit sub-project rows are exactly the selection path's sub-project.
+    const lit = ["inv-root", "inv-child", "inv-child-2", "inv-orphan"].filter((id) => renderHook(() => useIsSelected(id, "subproject")).result.current);
+    expect(lit).toEqual(["inv-child-2"]);
+    expect(renderHook(() => useIsSelected("default", "project")).result.current).toBe(true);
+    expect(renderHook(() => useIsSelected("default", "subproject")).result.current).toBe(false);
+    expect(renderHook(() => useIsSelected("default", "agent")).result.current).toBe(false);
+    // Clearing the agent flips only the agent answer.
+    act(() => { sel().selectAgent(null, tree); });
+    expect(asAgent.result.current).toBe(false);
+    expect(asSub.result.current).toBe(false);
   });
 });
