@@ -1,16 +1,16 @@
 /**
  * App.zen.test.tsx — FFX-KPA SPR-03 M7: /zen renders ZenHome only behind
- * antiek.nav.zenhome. With the flag off the path is not a route, so the
- * existing "*" handler sends it to "/" like any unknown path. The whole App is
- * rendered (auth gate included) against a stubbed fetch, as auth.gate.test.tsx
- * does.
+ * the "nav.zenhome" feature flag (localStorage antiek.flag.nav.zenhome). With
+ * the flag off the path is not a route, so the existing "*" handler sends it
+ * to "/" like any unknown path. The whole App is rendered (auth gate included)
+ * against a stubbed fetch, as auth.gate.test.tsx does.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
 import App from "./App";
-import { setFlag } from "./lib/flags";
+import { setFeatureFlag } from "./lib/featureFlags";
 
 const IDENTITY = { user_id: "reader-a", email: "a@example.com", auth_method: "passkey" };
 
@@ -65,7 +65,7 @@ function renderAt(at: string) {
 
 describe("/zen route (SPR-03 M7)", () => {
   it("flag on: /zen renders the zen home", async () => {
-    setFlag("antiek.nav.zenhome", true);
+    setFeatureFlag("nav.zenhome", true);
     renderAt("/zen");
     expect(
       await screen.findByRole("textbox", { name: "What are you working on?" }, APP_TREE_WAIT),

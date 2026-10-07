@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import AppShell from "./AppShell";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
-import { isFlagOn } from "./lib/flags";
+import { isFeatureOn } from "./lib/featureFlags";
 
 // ── WP-12.2 bundle budget (index chunk ceiling 700 KB gz) ──────────────
 // Every routed mode is code-split. Only the shell, the auth provider and
@@ -127,7 +127,7 @@ function InterviewRedirect() {
 function AuthenticatedRoutes() {
   // FFX-KPA SPR-03 M7: the zen home ships dark. With the flag off /zen is not
   // a route at all and falls to the "*" handler like any unknown path.
-  const zenHome = isFlagOn("antiek.nav.zenhome");
+  const zenHome = isFeatureOn("nav.zenhome");
   return (
     <AppShell>
       <CommandPalette />

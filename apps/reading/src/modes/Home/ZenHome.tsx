@@ -26,7 +26,7 @@ import { derivePromptFor, modelKey, useProjectIntake } from "./useProjectIntake"
 
 /**
  * ZenHome — the research door as one box (FFX-KPA SPR-03, dark behind
- * antiek.nav.zenhome at /zen).
+ * the "nav.zenhome" feature flag at /zen).
  *
  * Type, speak, drop, or talk it through; submit creates a project and lands
  * the user inside it. Everything else that StartResearch shows (tier, source

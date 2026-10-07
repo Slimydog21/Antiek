@@ -43,7 +43,7 @@ async function bootZen(page: Page): Promise<Request[]> {
     writes.push(req);
   });
   await page.addInitScript(() => {
-    window.localStorage.setItem("antiek.nav.zenhome", "on");
+    window.localStorage.setItem("antiek.flag.nav.zenhome", "on");
     // A real MediaStream from an oscillator so MediaRecorder runs headless.
     const ctx = new AudioContext();
     navigator.mediaDevices.getUserMedia = async () => {
