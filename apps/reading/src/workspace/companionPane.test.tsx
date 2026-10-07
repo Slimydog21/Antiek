@@ -499,3 +499,117 @@ describe("CR-F2 — the All-agents menu yields Escape to a top modal", () => {
     expect(screen.queryByRole("menu", { name: "All agents" })).toBeNull();
   });
 });
+
+// ─── SPR-07 (agent pane, Phase A): project filter + hidden-active placeholder ───
+// Invariants 3–6. Kind-agnostic: today's tabs carry no projectId, so the
+// filter changes nothing for them; a research-thread tab opened with a
+// projectId stands in for the Phase B agent tab.
+
+import { Profiler } from "react";
+import { tabVisible } from "./companionStore";
+
+describe("SPR-07: project filter (companionStore)", () => {
+  it("a project-scoped tab carries projectId and no investigationId key; a cross-project one carries no projectId key", () => {
+    let a = "", x = "";
+    act(() => {
+      a = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", scope: "project", projectId: "p-a" });
+      x = comp().openAgentTab({ kind: "dialogue", scope: "cross-project" });
+    });
+    const ta = comp().tabs.find((t) => t.id === a)!;
+    const tx = comp().tabs.find((t) => t.id === x)!;
+    expect(ta.projectId).toBe("p-a");
+    expect(Object.hasOwn(tx, "projectId")).toBe(false);
+    expect(Object.hasOwn(tx, "investigationId")).toBe(false);
+    // Re-opening the same agent carries the projectId onto the existing tab.
+    act(() => { comp().openAgentTab({ kind: "dialogue", scope: "cross-project" }); });
+    expect(Object.hasOwn(comp().tabs.find((t) => t.id === x)!, "projectId")).toBe(false);
+  });
+
+  it("setProjectFilter hides (never deletes) the other project's tabs; cross-project and projectId-less tabs stay visible", () => {
+    let a = "";
+    act(() => {
+      a = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", scope: "project", projectId: "p-a" });
+      comp().openAgentTab({ kind: "research-thread", investigationId: "inv-old" });
+      comp().openAgentTab({ kind: "dialogue", scope: "cross-project" });
+    });
+    act(() => comp().setProjectFilter("p-b"));
+    const ta = comp().tabs.find((t) => t.id === a)!;
+    expect(comp().tabs).toHaveLength(3);
+    expect(tabVisible(ta, "p-b")).toBe(false);
+    expect(tabVisible(ta, "p-a")).toBe(true);
+    expect(tabVisible(ta, null)).toBe(true);
+    for (const t of comp().tabs.filter((t) => t.id !== a)) expect(tabVisible(t, "p-b")).toBe(true);
+    // activeTabId is untouched by the filter (graft e: the placeholder is the rule).
+    expect(comp().activeTabId).toBe("agent:dialogue");
+    act(() => comp().reset());
+    expect(comp().projectFilter).toBeNull();
+  });
+});
+
+describe("SPR-07: CompanionPane renders the filter", () => {
+  function openProjectTabs() {
+    let a = "", b = "", x = "";
+    act(() => {
+      a = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", title: "Agent A", scope: "project", projectId: "p-a" });
+      b = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-b", title: "Agent B", scope: "project", projectId: "p-b" });
+      x = comp().openAgentTab({ kind: "dialogue", scope: "cross-project" });
+    });
+    return { a, b, x };
+  }
+
+  it("selecting p-b shows exactly the p-b and cross-project tabs; switching back restores p-a without a new seq", () => {
+    const { a, b, x } = openProjectTabs();
+    const seqBefore = comp().seq;
+    let renders = 0;
+    render(
+      <MemoryRouter>
+        <Profiler id="companion" onRender={() => { renders++; }}>
+          <CompanionPane />
+        </Profiler>
+      </MemoryRouter>,
+    );
+    const strip = () => [...document.querySelectorAll("[data-agent-tab]")].map((el) => el.getAttribute("data-agent-tab"));
+    expect(strip()).toEqual([a, b, x]);
+    renders = 0;
+    act(() => comp().setProjectFilter("p-b"));
+    expect(strip()).toEqual([b, x]);
+    // One render for the state change plus useStripOverflow's re-measure
+    // commit (pre-existing). A filter computed INSIDE the zustand selector
+    // returns a fresh array every call and never settles (the mutation is
+    // "Maximum update depth exceeded", not a count), so a bound of 2 is
+    // the honest pin.
+    expect(renders).toBeLessThanOrEqual(2);
+    act(() => comp().setProjectFilter("p-a"));
+    expect(strip()).toEqual([a, x]);
+    expect(comp().seq).toBe(seqBefore);
+    expect(comp().tabs).toHaveLength(3);
+  });
+
+  it("an active tab hidden by the filter renders the placeholder with Switch and Close, never its surface", () => {
+    const { a } = openProjectTabs();
+    act(() => comp().activateAgentTab(a));
+    render(<MemoryRouter><CompanionPane /></MemoryRouter>);
+    expect(document.querySelector("[data-agent-surface]")).not.toBeNull();
+    act(() => comp().setProjectFilter("p-b"));
+    const placeholder = document.querySelector("[data-agent-hidden-placeholder]")!;
+    expect(placeholder).not.toBeNull();
+    expect(placeholder.textContent).toContain("belongs to another project");
+    expect(document.querySelector("[data-agent-surface]")).toBeNull();
+    expect(within(placeholder as HTMLElement).getByRole("button", { name: /switch to that project/i })).toBeTruthy();
+    fireEvent.click(within(placeholder as HTMLElement).getByRole("button", { name: /^close$/i }));
+    expect(comp().tabs.some((t) => t.id === a)).toBe(false);
+  });
+
+  it("cycling into a hidden tab and reopening a hidden tab both land on the placeholder", () => {
+    const { a, x } = openProjectTabs();
+    render(<MemoryRouter><CompanionPane /></MemoryRouter>);
+    act(() => { comp().activateAgentTab(x); comp().setProjectFilter("p-b"); });
+    act(() => comp().cycleAgentTab(1)); // wraps x → a (hidden)
+    expect(comp().activeTabId).toBe(a);
+    expect(document.querySelector("[data-agent-hidden-placeholder]")).not.toBeNull();
+    act(() => comp().closeAgentTabWithUndo(a));
+    act(() => comp().reopenLastClosedAgentTab());
+    expect(comp().activeTabId).toBe(a);
+    expect(document.querySelector("[data-agent-hidden-placeholder]")).not.toBeNull();
+  });
+});

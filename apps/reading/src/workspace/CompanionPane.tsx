@@ -27,8 +27,9 @@ import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
 import { AGENT_TAB_KINDS } from "./companionRegistry";
-import { sourceDocumentOf, useCompanion } from "./companionStore";
+import { sourceDocumentOf, tabVisible, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
+import { useSelection } from "./contracts/selection";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { topModal } from "./escapeOverlay";
 
@@ -42,6 +43,10 @@ const NEW_AGENT_WORKING_FIRST = 6;
 
 export default function CompanionPane() {
   const tabs = useCompanion((s) => s.tabs);
+  const projectFilter = useCompanion((s) => s.projectFilter);
+  // SPR-07 (graft c): the filter is computed OUTSIDE the zustand selector —
+  // a selector returning a fresh array re-renders forever on zustand 5.
+  const shown = useMemo(() => tabs.filter((t) => tabVisible(t, projectFilter)), [tabs, projectFilter]);
   const activeTabId = useCompanion((s) => s.activeTabId);
   const activateAgentTab = useCompanion((s) => s.activateAgentTab);
   const openAgentTab = useCompanion((s) => s.openAgentTab);
@@ -52,11 +57,15 @@ export default function CompanionPane() {
       ? investigations.find((i) => i.investigation_id === tab.investigationId)
       : undefined;
 
+  // `active` resolves from ALL tabs: an active tab the filter hides renders
+  // the placeholder below (one rule for activeTabId-on-hidden, prefix n/p
+  // cycling into it, and a reopen from another project; graft e).
   const active = tabs.find((t) => t.id === activeTabId) ?? null;
+  const activeHidden = active !== null && !shown.some((t) => t.id === active.id);
   const scroller = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef(false);
   const root = useRef<HTMLElement>(null);
-  const tabKey = useMemo(() => tabs.map((t) => t.id).join("\u0000"), [tabs]);
+  const tabKey = useMemo(() => shown.map((t) => t.id).join("\u0000"), [shown]);
   // Re-measured when the tab set changes and when questions land (they
   // title, and so size, the thread tabs).
   const overflow = useStripOverflow(scroller, [tabKey, investigations]);
@@ -103,22 +112,22 @@ export default function CompanionPane() {
             onKeyDown={(e) => {
               // The ARIA tabs pattern, automatic activation: an agent surface
               // swaps in place, so the arrow keys open as they move.
-              if (e.ctrlKey || e.metaKey || e.altKey || tabs.length === 0) return;
-              const i = Math.max(0, tabs.findIndex((t) => t.id === activeTabId));
+              if (e.ctrlKey || e.metaKey || e.altKey || shown.length === 0) return;
+              const i = Math.max(0, shown.findIndex((t) => t.id === activeTabId));
               let next: number | null = null;
-              if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
-              else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+              if (e.key === "ArrowRight") next = (i + 1) % shown.length;
+              else if (e.key === "ArrowLeft") next = (i - 1 + shown.length) % shown.length;
               else if (e.key === "Home") next = 0;
-              else if (e.key === "End") next = tabs.length - 1;
+              else if (e.key === "End") next = shown.length - 1;
               if (next === null) return;
               e.preventDefault();
-              const id = tabs[next].id;
+              const id = shown[next].id;
               activateAgentTab(id);
               document.getElementById(agentTabDomId(id))?.focus();
             }}
             className="flex items-center gap-1 min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {tabs.map((tab) => (
+            {shown.map((tab) => (
             <AgentTab
               key={tab.id}
               tab={tab}
@@ -137,7 +146,7 @@ export default function CompanionPane() {
         </div>
         {overflowing ? (
           <OverflowMenu
-            tabs={tabs}
+            tabs={shown}
             hidden={overflow.hiddenBefore + overflow.hiddenAfter}
             activeTabId={activeTabId}
             summaryOf={summaryOf}
@@ -152,7 +161,9 @@ export default function CompanionPane() {
         id={COMPANION_PANEL_DOM_ID}
         {...(active ? { role: "tabpanel", "aria-labelledby": agentTabDomId(active.id) } : {})}
       >
-        {active ? (
+        {active && activeHidden ? (
+          <HiddenAgentPlaceholder tab={active} />
+        ) : active ? (
           <ActiveAgentSurface tab={active} summary={summaryOf(active)} />
         ) : (
           <div className="p-3" data-companion-empty>
@@ -172,8 +183,39 @@ export default function CompanionPane() {
 /** The agent surface the tabs control. */
 const COMPANION_PANEL_DOM_ID = "companion-agent-panel";
 
-function agentTabDomId(tabId: string): string {
+export function agentTabDomId(tabId: string): string {
   return `agenttab-${tabId.replace(/[^A-Za-z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(36)}_`)}`;
+}
+
+/** SPR-07: the active tab belongs to a project other than the selected
+ *  one. The tab is hidden, never deleted; the operator may switch to that
+ *  project (the one selection writer, contracts/selection.ts) or close the
+ *  tab (the shared 10 s Undo). */
+function HiddenAgentPlaceholder({ tab }: { tab: AgentTabDescriptor }) {
+  return (
+    <div className="p-3 flex flex-col gap-2" data-agent-hidden-placeholder>
+      <p className="text-sm text-ink-soft dark:text-moonlight">
+        <span className="font-medium text-ink dark:text-bright">{tab.title}</span> belongs to another project
+        {tab.projectId ? <> (<span className="font-mono text-xs">{tab.projectId}</span>)</> : null}.
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
+          onClick={() => { if (tab.projectId) useSelection.getState().selectProject(tab.projectId); }}
+        >
+          Switch to that project
+        </button>
+        <button
+          type="button"
+          className="text-xs font-mono text-shadow-1 dark:text-moonlight underline-offset-2 hover:underline"
+          onClick={() => closeAgentTabWithUndo(tab)}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function ActiveAgentSurface({

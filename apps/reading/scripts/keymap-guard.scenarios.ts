@@ -141,6 +141,8 @@ export const SCENARIOS = {
     effect: () => see('[aria-label="Contents"][data-open="true"]'),
   },
   "inbox.toggle": { effect: () => see('[data-keymap-owner="inbox.toggle"]') },
+  // SPR-07 (fix 3): the composer, not merely the pane, must take focus.
+  "agent.openPane": { effect: () => until(() => !!document.activeElement?.closest("[data-agent-pane]") && document.activeElement?.tagName === "TEXTAREA", "agent.openPane: composer did not take focus") },
   "door.research": door("/"),
   "door.read": door("/library"),
   "door.write": door("/write"),

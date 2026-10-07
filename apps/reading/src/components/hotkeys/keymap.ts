@@ -93,6 +93,7 @@ export const ACTIONS = {
   "switcher.open": { label: "Switcher: open panes, windows and tabs (in:open)" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
+  "agent.openPane": { label: "Agent: open the project's agent pane (or focus its composer)" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -232,6 +233,15 @@ export const KEYMAP: readonly KeymapRow[] = [
   // prefix+o is tab.visitChild (herdr's "go to the toast" is a later unit).
   { id: "prefix-switcher-open", action: "switcher.open", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
   { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+
+  // ── SPR-07 the agent pane: prefix+a / ctrl+alt+a under D2's "a" ("ask about
+  // this"; DESIGN-MODEL §2). ONE action: open-or-focus is idempotent. Declared
+  // unimplemented until the SPR-06 owner lands the tree.ts row for kind
+  // "agent" (handoff F1); Phase B flips both rows to implemented in one
+  // commit with the handler and the guard scenario. A saved prefix of
+  // ctrl+alt+a silently falls back to ctrl+b (readPrefix).
+  { id: "prefix-agent-pane", action: "agent.openPane", status: "unimplemented", blockedBy: "ffx-kpa-spr-07 F1: tree.ts AGENT_RUN_KIND_OF_TAB row for kind 'agent' (SPR-06 owner, INBOX 2026-10-07T22:40Z)", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-pane", action: "agent.openPane", status: "unimplemented", blockedBy: "ffx-kpa-spr-07 F1: tree.ts AGENT_RUN_KIND_OF_TAB row for kind 'agent' (SPR-06 owner, INBOX 2026-10-07T22:40Z)", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
@@ -242,20 +252,22 @@ export const KEYMAP: readonly KeymapRow[] = [
  * here. (The attention inbox has explicitly unimplemented rows and no handler;
  * the sheet derives that status from this table.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
- * prefix+a always works and the operator's platforms do not grab it.
+ * prefix+a always works and the operator's platforms do not grab it. SPR-07
+ * moved a / ctrl+alt+a into KEYMAP (the agent pane; islands' "ask about
+ * this" reading, handoff F8).
  */
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
     "w", "shift+n", "m", "shift+m",
-    "r", "a",
+    "r",
   ],
   chords: [
     "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
     "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
     "ctrl+alt+w",
     "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m",
-    "ctrl+alt+r", "ctrl+alt+a",
+    "ctrl+alt+r",
   ],
 } as const;
 
