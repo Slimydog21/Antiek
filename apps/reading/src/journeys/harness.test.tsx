@@ -75,6 +75,23 @@ describe("the no-click guard", () => {
     }
   });
 
+  it("POSITIVE CONTROL: element.click(), a raw non-bubbling MouseEvent on a child, and touchstart are caught at capture and fail at restore()", () => {
+    const restore = noClick();
+    const parent = document.createElement("div");
+    const child = document.createElement("span");
+    parent.appendChild(child);
+    document.body.appendChild(parent);
+    let reached = 0;
+    parent.addEventListener("click", () => reached++);
+    child.click(); // HTMLElement.prototype.click — not a fireEvent helper
+    child.dispatchEvent(new MouseEvent("mousedown", { bubbles: false }));
+    child.dispatchEvent(new Event("touchstart", { bubbles: true }));
+    expect(reached).toBe(0); // stopped at capture, never reached the handler
+    expect(() => restore()).toThrow(JourneyClickError);
+    expect(() => restore()).not.toThrow(); // second restore is idempotent
+    parent.remove();
+  });
+
   it("restore() gives the mouse back (so other test files are unaffected)", () => {
     const restore = noClick();
     restore();

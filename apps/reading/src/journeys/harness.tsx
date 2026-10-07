@@ -144,9 +144,19 @@ export class JourneyClickError extends Error {
   }
 }
 
-const MOUSE_HELPERS = ["click", "dblClick", "mouseDown", "mouseUp", "pointerDown", "pointerUp", "contextMenu"] as const;
+const MOUSE_HELPERS = ["click", "dblClick", "mouseDown", "mouseUp", "pointerDown", "pointerUp", "contextMenu", "touchStart"] as const;
+const MOUSE_EVENTS = ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup", "contextmenu", "touchstart"] as const;
 
-/** Make every mouse helper on `fireEvent` throw until `restore()`. */
+/**
+ * Make the mouse impossible until `restore()`:
+ *   1. every `fireEvent` mouse helper throws synchronously (names the helper);
+ *   2. a CAPTURE-phase listener on `window` for every mouse event records a
+ *      violation and stops it — capture runs for non-bubbling events and for
+ *      events dispatched on a child, so `el.dispatchEvent(new MouseEvent(…))`
+ *      and `HTMLElement.prototype.click()` cannot slip past;
+ *   3. `restore()` THROWS if any violation was recorded, so a journey that
+ *      clicked through a path the patches do not cover still fails.
+ */
 export function noClick(): () => void {
   const saved = new Map<string, unknown>();
   const fe = fireEvent as unknown as Record<string, unknown>;
@@ -156,7 +166,18 @@ export function noClick(): () => void {
       throw new JourneyClickError(`fireEvent.${name}`);
     };
   }
+  const violations: string[] = [];
+  const onMouse = (e: Event) => {
+    const target = e.target instanceof Element ? e.target.tagName.toLowerCase() : "window";
+    violations.push(`${e.type} on <${target}>`);
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  };
+  for (const type of MOUSE_EVENTS) window.addEventListener(type, onMouse, true);
   return () => {
     for (const [name, fn] of saved) fe[name] = fn;
+    for (const type of MOUSE_EVENTS) window.removeEventListener(type, onMouse, true);
+    const seen = violations.splice(0); // report once; a second restore() is a no-op
+    if (seen.length) throw new JourneyClickError(seen.join(", "));
   };
 }
