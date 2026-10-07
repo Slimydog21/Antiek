@@ -399,6 +399,38 @@ def readable_notebook_for(
     return get_notebook(con, notebook_id)
 
 
+class NotebookDeleteConflict(ValueError):
+    """Another notebook still references this notebook or one of its blocks."""
+
+
+def delete_notebook(con: Any, notebook_id: str, *, owner_user_id: str) -> bool:
+    """Delete only the owner's notebook and blocks under one exclusive writer lease.
+
+    DuckDB's foreign-key index requires the child delete to commit before the
+    parent delete. A parent-delete failure therefore leaves an empty notebook
+    and raises; a later owner retry can finish removing it. Source documents,
+    nodes, edges and historical exports are never cascade targets.
+    """
+    if con.in_explicit_transaction:
+        raise ValueError("notebook deletion requires a standalone writer lease")
+    with con.transaction():
+        notebook = readable_notebook_for(con, notebook_id, owner_user_id=owner_user_id)
+        if notebook is None:
+            return False
+        referenced = con.execute(
+            "SELECT 1 FROM notebook_blocks WHERE notebook_id != ? "
+            "AND (ref_id = ? OR ref_id IN ("
+            "SELECT block_id FROM notebook_blocks WHERE notebook_id = ?)) LIMIT 1",
+            [notebook_id, notebook_id, notebook_id],
+        ).fetchone()
+        if referenced is not None:
+            raise NotebookDeleteConflict("notebook still has incoming references")
+        con.execute("DELETE FROM notebook_blocks WHERE notebook_id = ?", [notebook_id])
+    with con.transaction():
+        con.execute("DELETE FROM notebooks WHERE notebook_id = ?", [notebook_id])
+    return True
+
+
 def list_notebooks(
     con: Any,
     *,
