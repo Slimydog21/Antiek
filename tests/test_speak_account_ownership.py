@@ -129,7 +129,7 @@ def _unchanged_rows_and_events(root: Path) -> tuple:
     events = tuple(
         sorted(
             (str(path.relative_to(root)), hashlib.sha256(path.read_bytes()).hexdigest())
-            for path in (root / "events").rglob("*")
+            for path in (root / "events").rglob("*.jsonl")
             if path.is_file()
         )
     )
