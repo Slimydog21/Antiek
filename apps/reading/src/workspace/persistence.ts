@@ -230,7 +230,11 @@ export function clearWsFromUrl(): void {
     window.location.pathname +
     (search ? "?" + search : "") +
     window.location.hash;
-  window.history.replaceState({}, "", next);
+  // Landing: the packet routes this native replacement through
+  // navigationLifetime so the navigation epoch advances without a router
+  // publication (navigationLifetime.test: "removes ws through exactly the
+  // original native replacement"). The import had landed; this call had not.
+  replaceNavigationStateWithoutPublication({}, next);
 }
 
 /** Build a shareable URL for the current workspace state. */
