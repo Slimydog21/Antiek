@@ -1,0 +1,9 @@
+# Copy to backend.hcl (gitignored) after `terraform apply` in ./bootstrap,
+# using its `backend_hcl` output, then:
+#
+#   terraform init -backend-config=backend.hcl
+#
+# region, encrypt and use_lockfile are fixed in versions.tf.
+
+bucket = "antiek-tfstate-<ACCOUNT_ID>-eu-north-1"
+key    = "antiek/main.tfstate"
