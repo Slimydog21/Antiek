@@ -67,6 +67,18 @@ export function WorkspaceWindow({
     const t = window.setTimeout(() => rootRef.current?.focus(), 0);
     return () => {
       window.clearTimeout(t);
+      // Landing (pane-flow packet → main, S04 "resolve the actual focused host
+      // first; no stale fallback"): this cleanup runs AFTER the exit animation,
+      // i.e. after the store has already moved focus to the retained topmost
+      // window and that window's own effect focused its root. Restoring the
+      // pre-mount element here (often the launcher's More key) would steal
+      // focus back from that host — the failure the packet's own
+      // productEntry.keyboard "entry after N windows" cases recorded. So the
+      // pre-mount restore applies only when no OTHER window owns focus (this
+      // window still being the store's focused id — e.g. an unmount without a
+      // store close — keeps the M8 restore).
+      const owner = useWindows.getState().focusedId;
+      if (owner !== null && owner !== id) return;
       const prev = restoreFocusRef.current;
       if (prev && typeof prev.focus === "function" && document.contains(prev)) {
         prev.focus();
