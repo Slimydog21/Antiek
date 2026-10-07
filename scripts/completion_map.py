@@ -76,17 +76,14 @@ DIMENSIONS = [
     (4, "R4", "Pane semantics", 10, 80, "VERIFIED LIVE", "2026-10-03",
      "review/D3-D4-D5-INDEPENDENT-VERIFICATION-20261003.md",
      "Upheld; the agent-opens-into-left-document-space seam was driven live."),
-    (5, "R5", "Writing shape", 10, 40, "VERIFIED LIVE (LOCAL)", "2026-10-04",
-     "review/D5-WRITING-SHAPE-INVESTIGATION-20261004.md",
-     "Down from an inherited 60. Two of five checkpoints reproduce; three fail, and all "
-     "three have isolated mechanisms rather than symptoms. CP2 block tabs fail on a legacy-"
-     "table count - app.py:3831 counts section_blocks while writes land in outline_blocks - "
-     "plus an independent missing mutation dependency at WriteOutlinePane.tsx:97-137. CP4 "
-     "selected-span edit fails because focusing the instruction textarea clears the browser "
-     "selection and unmounts the panel before a request can be made (useFloatMenuSelection.ts:"
-     "113-116). CP5 loses block assignments on drop/reload. All four UIs exist; the composition "
-     "fails. Measured in a real local browser at 1440x900 against main 8683803f8 - production "
-     "was not observed."),
+    (5, "R5", "Writing shape", 10, 60, "VERIFIED LIVE (LOCAL)", "2026-10-07",
+     "review/ROUND-22-REGRADE-20261007.md",
+     "Up from 40 on #3741. CP1-3 reproduce: the left list AND right tabs both update on one "
+     "click (the legacy-table count now reads canonical plus unmigrated legacy blocks, the right "
+     "pane resyncs on outline mutations, and the selection is retained on focus). CP4 retains "
+     "and submits the exact sentence but the provider-free server returns the configured 503, "
+     "so no full apply credit - a correct environment response, not a suppressed request. CP5 "
+     "still loses the assignment on reload while blocks and prose persist - measured, not fixed."),
     (6, "R6", "Execution", 14, 80, "VERIFIED LIVE", "2026-10-04",
      "review/ROUND-18-REGRADE-20261004.md",
      "Up from 60. D6.5 closes: a claim with no stored core span now downgrades through the existing "
