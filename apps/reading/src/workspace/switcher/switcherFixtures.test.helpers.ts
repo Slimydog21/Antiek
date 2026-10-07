@@ -8,6 +8,7 @@
  * refuses. A seeded LCG stands in for fast-check (not in package-lock).
  */
 import type { ProjectMember } from "../../lib/api/projects";
+import type { AgentTabDescriptor } from "../companionStore";
 import { composePreBackendTree, type PreBackendInputs } from "../contracts/adapters/preBackend";
 import { project, summary, tab } from "../contracts/fixtures.test.helpers";
 import { isSelectionPathOf, type Selection } from "../contracts/selection";
@@ -49,7 +50,7 @@ export function genInputs(seed: number): PreBackendInputs {
     });
   });
   const seen = new Set<string>();
-  const companionTabs: PreBackendInputs["companionTabs"] = [];
+  const companionTabs: AgentTabDescriptor[] = [];
   const nTabs = int(6);
   for (let k = 0; k < nTabs; k += 1) {
     const r = rnd();

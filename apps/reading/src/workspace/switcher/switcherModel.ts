@@ -133,8 +133,6 @@ function gear2Empty(root: ProjectNode): EmptyReason {
   return "none-listed";
 }
 
-const NO_TABS: readonly GearTab[] = Object.freeze([]);
-
 export function deriveSwitcher(tree: ContextTree, selection: Selection): SwitcherModel {
   const rawPath = findProjectPath(tree, selection.subProjectId ?? selection.projectId);
   const stale = rawPath === null || rawPath[0].id !== selection.projectId;
