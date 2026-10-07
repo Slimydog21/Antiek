@@ -4045,7 +4045,12 @@ def create_app(
             sec_rows = con.execute(
                 "SELECT s.section_id, s.deliverable_id, s.parent_section_id, "
                 "s.section_index, s.title, s.prose_text, s.prose_provenance, "
-                "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id) "
+                "((SELECT COUNT(*) FROM outline_blocks ob WHERE ob.section_id = s.section_id) + "
+                "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id "
+                "AND NOT EXISTS (SELECT 1 FROM outline_blocks migrated "
+                "WHERE migrated.section_id = sb.section_id "
+                "AND migrated.source_block_kind = sb.block_kind "
+                "AND migrated.source_block_id = sb.block_id))) "
                 "FROM deliverable_sections s WHERE s.deliverable_id = ? "
                 "ORDER BY s.section_index ASC", [deliverable_id],
             ).fetchall()
