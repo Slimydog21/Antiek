@@ -46,6 +46,7 @@ import { readNotebookDraft, writeNotebookDraft } from "../../lib/notebookDraftSt
  */
 
 import type { PanelKind, PanelMode } from "../../workspace/panel.types";
+import { isDocumentAnchor, type DocumentAnchor } from "../../workspace/contracts/anchor";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { postTypedEvent } from "../../lib/api";
 import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
@@ -106,6 +107,24 @@ export type AiAction =
       kind: "toast";
       level: "info" | "ok" | "warn" | "err";
       message: string;
+    }
+  // ── SPR-07 (agent pane, M6): confirm-only kinds. dispatchAiAction has NO
+  // side effect for them; the pane renders them as buttons the user
+  // confirms (AgentReplyActions.tsx). Never auto-opened.
+  | {
+      kind: "open_document";
+      anchor: DocumentAnchor;
+    }
+  | {
+      kind: "open_writer";
+      deliverable_id: string;
+      block_id?: string;
+    }
+  | {
+      kind: "project_seed";
+      title: string;
+      prompt: string;
+      sources?: string[];
     };
 
 // ─── Parser ──────────────────────────────────────────────────────────
@@ -130,7 +149,32 @@ const VALID_ACTION_KINDS = new Set<AiAction["kind"]>([
   "add_to_notebook",
   "chase_question",
   "toast",
+  "open_document",
+  "open_writer",
+  "project_seed",
 ]);
+
+/** SPR-07: the three pane kinds get real shape checks (the legacy kinds
+ *  keep their "defer to the executor" discipline). Null = valid. */
+function paneActionProblem(item: Record<string, unknown>): string | null {
+  switch (item.kind) {
+    case "open_document":
+      return isDocumentAnchor(item.anchor) ? null : "open_document: anchor is not a DocumentAnchor";
+    case "open_writer":
+      if (typeof item.deliverable_id !== "string" || !item.deliverable_id) return "open_writer: deliverable_id required";
+      if (item.block_id !== undefined && typeof item.block_id !== "string") return "open_writer: block_id must be a string";
+      return null;
+    case "project_seed":
+      if (typeof item.title !== "string" || !item.title) return "project_seed: title required";
+      if (typeof item.prompt !== "string" || !item.prompt) return "project_seed: prompt required";
+      if (item.sources !== undefined && !(Array.isArray(item.sources) && item.sources.every((x) => typeof x === "string"))) {
+        return "project_seed: sources must be an array of strings";
+      }
+      return null;
+    default:
+      return null;
+  }
+}
 
 /**
  * Parse an assistant reply. Returns the stripped prose + structured
@@ -181,6 +225,11 @@ export function parseAssistantReply(raw: string): ParsedAssistantReply {
     const k = (item as { kind?: string }).kind;
     if (typeof k !== "string" || !VALID_ACTION_KINDS.has(k as AiAction["kind"])) {
       errors.push(`Unknown action kind: ${JSON.stringify(k)}`);
+      continue;
+    }
+    const problem = paneActionProblem(item as Record<string, unknown>);
+    if (problem) {
+      errors.push(problem);
       continue;
     }
     // Light shape validation — defer the strict typing to the executor.
@@ -564,6 +613,15 @@ export function dispatchAiAction(
       );
     }
 
+    // SPR-07 (fix 5 / graft a): the pane kinds have NO side effect here.
+    // AgentReplyActions renders them as buttons; the user's keystroke runs
+    // the opener. The record is real (DispatchedAction) so a sidecar that
+    // receives one shows a pill that says so, and undo is honestly null.
+    case "open_document":
+    case "open_writer":
+    case "project_seed":
+      return { action, label: "Confirm in the agent pane", undo: null, at };
+
     case "toast": {
       const fn =
         action.level === "ok"
@@ -721,7 +779,7 @@ export function workspaceContextPrompt(): string {
     `  toast            { level: info|ok|warn|err, message }\n\n` +
     `Rules:\n` +
     `  - Anything outside the enum is silently dropped.\n` +
-    `  - The operator sees every action as a clickable pill they can undo.\n` +
+    `  - The operator sees every action as a clickable pill they can undo where an undo exists.\n` +
     `  - Stable \`id\` makes re-dispatch idempotent (focuses, not duplicates).\n` +
     `  - Prefer at most 2 actions per reply.\n\n` +
     `Workspace state right now:\n` +
