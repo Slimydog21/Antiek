@@ -2000,7 +2000,7 @@ def create_app(
                                     or path in {"/auth/passkey/register/options", "/auth/passkey/register/verify"}
                                     or re.fullmatch(r"/auth/passkeys/[^/]+", path) is not None
                                     or (path == "/notebooks" and method in {"GET", "POST"})
-                                    or (re.fullmatch(r"/notebooks/[^/]+", path) is not None and method == "GET")
+                                    or (re.fullmatch(r"/notebooks/[^/]+", path) is not None and method in {"GET", "DELETE"})
                                     or (re.fullmatch(r"/notebooks/[^/]+/content", path) is not None and method in {"GET", "PUT"})
                                     or (re.fullmatch(r"/notebooks/[^/]+/blocks(?:/[^/]+)?", path) is not None and method in {"POST", "PATCH", "DELETE"})
                                     or (path == "/projects" and method in {"GET", "POST"})
@@ -5984,6 +5984,35 @@ def create_app(
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
+
+    @app.delete("/notebooks/{notebook_id}", status_code=204)
+    async def delete_notebook_endpoint(notebook_id: str, request: Request) -> Response:
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import (
+            NotebookDeleteConflict,
+            NotebookReadWithheld,
+            delete_notebook,
+        )
+
+        from .books import _reader_owner_id
+
+        db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
+
+        def _sync() -> bool:
+            with connect_write(db_path, purpose="api:delete_notebook") as con:
+                return delete_notebook(con, notebook_id, owner_user_id=owner_user_id)
+
+        try:
+            deleted = await asyncio.to_thread(_sync)
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+        except NotebookDeleteConflict as exc:
+            raise HTTPException(status_code=409, detail="notebook still has incoming references") from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return Response(status_code=204)
 
     @app.post(
         "/notebooks/{notebook_id}/blocks",
