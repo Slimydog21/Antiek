@@ -3,7 +3,7 @@
  * (pin / locate / writer block) and the wire projection (toBranchAnchor).
  */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { BookAnchor } from "../../lib/api";
@@ -144,7 +144,8 @@ describe("A5 anchorFromWriterBlock", () => {
     expect(isDocumentAnchor(a)).toBe(true);
     const b = await anchorFromWriterBlock({ deliverableId: "d1", sectionId: "s1", outlineBlockId: null, paragraphIndex: null, proseText: null });
     expect(b.version).toEqual({ kind: "unversioned", reason: "writer_prose_block_unpersisted" });
-    const src = readFileSync(fileURLToPath(new URL("./anchor.ts", import.meta.url)), "utf8");
+    const here = typeof __dirname === "string" ? __dirname : resolve(process.cwd(), "src/workspace/contracts");
+    const src = readFileSync(resolve(here, "anchor.ts"), "utf8");
     expect(src).not.toMatch(/zustand/);
   });
 });
