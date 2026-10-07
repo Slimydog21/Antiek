@@ -109,3 +109,17 @@ places rows and the zen home's geared switcher read ONE source. `is:<status>`
 accepts exactly herdr's five words (`AGENT_STATUSES`) and gets a live source
 only from the monitoring lane's store (SPR-10); no status is invented before
 that.
+
+## Independent critique of #3748 (MiMo V2.6 Pro, 2026-10-07) — dispositions
+
+Report: `specs/antiek-keyboard-panes-agents-20261007/ground/critic-mimo-spr02-3748-b286539d8.md`.
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| F1 | The sprint page claimed Esc "returns focus to the opener (existing behaviour)"; the palette never did. | Page corrected; focus return IMPLEMENTED here (opener captured on open, focused on close; KeySheet pattern); tested in both flag states. |
+| F2 | j/k when the box is empty not implemented. | Implemented (empty box only; with text they are search text). |
+| F3 | Esc closed immediately instead of clear-then-close (Omarchy menu rule R14). | Implemented: Esc clears a non-empty query, a second Esc closes. |
+| F4 | PageUp/PageDown ×6 absent. | Implemented (six rows, R14). |
+| F5 | Right/Left/Backspace descend/ascend absent. | N/A: the Switcher's list is flat; the nested descend/ascend belongs to the zen home's geared switcher (SPR-04). Recorded, not built. |
+| F6 | `is:all` is a sixth accepted token. | Kept, documented: `is:all` and `in:all` are the clear tokens the chips write; they are never a status. |
+| F7 | Flag-off still subscribes to windows/companion/tab-tree stores. | Accepted as render-frequency-only (DOM parity proven); zustand hooks cannot be conditional. Revisit if a profile shows the palette re-rendering on window moves with the flag off. |

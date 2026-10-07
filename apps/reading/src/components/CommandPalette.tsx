@@ -407,6 +407,10 @@ export default function CommandPalette() {
     | null
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // SPR-02 (critique F1): the element that had focus when the Switcher opened.
+  // Close returns focus there (the KeySheet pattern) — a keyboard-first
+  // surface must hand focus back, never leave it on <body>.
+  const openerRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
   // SPR-02 — places sections. Flag-off renders exactly the pre-SPR-02 palette.
   const placesOn = isFeatureOn("switcher.places");
@@ -593,7 +597,13 @@ export default function CommandPalette() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) {
         e.preventDefault();
-        setOpen(false);
+        // Omarchy menu rule R14: Esc clears the filter first, then closes.
+        setQuery((q) => {
+          if (q !== "") return "";
+          setOpen(false);
+          return q;
+        });
+        setActiveIdx(0);
       }
     };
     const removeKeyboardOwner = registerKeyboardOwner(window, {
@@ -612,12 +622,17 @@ export default function CommandPalette() {
 
   useEffect(() => {
     if (open) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       void loadIndex();
       // Defer focus until after the dialog mounts.
       setTimeout(() => inputRef.current?.focus(), 0);
     } else {
       setQuery("");
       setActiveIdx(0);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && opener.isConnected) opener.focus();
     }
   }, [open, loadIndex]);
 
@@ -889,13 +904,22 @@ export default function CommandPalette() {
     setOpen(false);
   };
 
+  const PAGE = 6; // Omarchy menu rule R14: PageUp/PageDown move six rows.
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
+    const empty = query === "";
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (e.key === "ArrowDown" || (empty && plain && e.key === "j")) {
       e.preventDefault();
       setActiveIdx((idx) => Math.min(idx + 1, combined.length - 1));
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === "ArrowUp" || (empty && plain && e.key === "k")) {
       e.preventDefault();
       setActiveIdx((idx) => Math.max(idx - 1, 0));
+    } else if (e.key === "PageDown") {
+      e.preventDefault();
+      setActiveIdx((idx) => Math.min(idx + PAGE, combined.length - 1));
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      setActiveIdx((idx) => Math.max(idx - PAGE, 0));
     } else if (e.key === "Enter" && combined[activeIdx]) {
       e.preventDefault();
       choose(combined[activeIdx]);
@@ -1100,7 +1124,7 @@ export default function CommandPalette() {
           )}
         </ul>
         <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between gap-2">
-          <span>{placesOn ? "↑↓ navigate · Tab sections · Enter go · Esc close" : "↑↓ navigate · Enter select · Esc close"}</span>
+          <span>{placesOn ? "↑↓ j k navigate · PgUp PgDn ×6 · Tab sections · Enter go · Esc clear/close" : "↑↓ navigate · Enter select · Esc close"}</span>
           <span className="flex items-center gap-2">
             <span className="uppercase tracking-wide">Driver</span>
             <ModelUsagePicker
