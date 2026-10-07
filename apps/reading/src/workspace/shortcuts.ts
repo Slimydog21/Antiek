@@ -488,6 +488,9 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "project.select": () => toggleProjectPicker(),
     "agent.openPane": () => openAgentPaneKey(),
+    // SPR-04: the geared switch (GearSwitchHost in the Topbar listens;
+    // inside the open dialog this is the only row that fires, and closes it).
+    "gear.toggle": () => toggleGearSwitch(),
   } satisfies Partial<Record<ActionId, KeyHandler>>;
 }
 

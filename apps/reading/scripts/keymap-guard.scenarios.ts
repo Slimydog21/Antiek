@@ -10,7 +10,7 @@ import { useTabTrees } from "../src/workspace/tabTreeStore";
 import { useCompanion } from "../src/workspace/companionStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
-import { isFeatureOn } from "../src/lib/featureFlags";
+import { isFeatureOn, setFeatureFlag } from "../src/lib/featureFlags";
 
 export async function until(predicate: () => boolean, message: string, timeout = 3000): Promise<void> {
   const end = performance.now() + timeout;
@@ -135,6 +135,9 @@ export const SCENARIOS = {
   // places flag is on; the guard runs with default flags, so the plain
   // Switcher is the visible effect either way).
   "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
+  // SPR-04: the host re-reads the flag on the toggle event, so turning it
+  // on in prepare is enough; the open dialog is the visible effect.
+  "gear.toggle": { prepare: () => setFeatureFlag("nav.switcher", true), effect: () => see('[data-keymap-owner="gear.toggle"]') },
   "reader.tocToggle": {
     prepare: async () => {
       const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');

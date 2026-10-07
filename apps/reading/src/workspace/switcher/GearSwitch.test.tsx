@@ -282,3 +282,85 @@ describe("M2 — the surface: a11y, focus, notch, hygiene", () => {
     expect(cursorTab()!.id).toBe("gear-tab-project-default");
   });
 });
+
+describe("M3 — the keymap rows through the real dispatcher", () => {
+  let uninstall: (() => void) | null = null;
+  const calls: Record<string, number> = {};
+  const counted = (id: string) => () => { calls[id] = (calls[id] ?? 0) + 1; };
+
+  beforeEach(() => {
+    for (const k of Object.keys(calls)) delete calls[k];
+    uninstall = installShortcuts(vi.fn() as never, {
+      handlers: { "pane.focusLeft": counted("pane.focusLeft"), "pane.focusRight": counted("pane.focusRight"), "tab.next": counted("tab.next") },
+    });
+  });
+  afterEach(() => {
+    uninstall?.();
+    uninstall = null;
+  });
+
+  it("ctrl+alt+shift+w opens the switch and closes it again; prefix+w (ctrl+b, w) opens it too", async () => {
+    await mountTopbar();
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(document.activeElement).toBe(cursorTab());
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeNull());
+    await keys("ctrl+b", "w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(prefixState.isArmed()).toBe(false);
+  });
+
+  it("from a textarea the prefix does nothing and the chord still opens", async () => {
+    await mountTopbar();
+    const area = document.createElement("textarea");
+    document.body.append(area);
+    area.focus();
+    await keys("ctrl+b", "w");
+    expect(dialog()).toBeNull();
+    expect(prefixState.isArmed()).toBe(false);
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+  });
+
+  it("modal scope: with the switch open, ctrl+alt+h never reaches pane.focusLeft, ctrl+b never arms, and a textarea beneath receives nothing", async () => {
+    await mountTopbar();
+    const area = document.createElement("textarea");
+    area.setAttribute("aria-label", "beneath");
+    document.body.append(area);
+    area.focus();
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(focusContext(document.activeElement)).toEqual({ kind: "modal", owner: "gear.toggle", text: false });
+    await keys("ctrl+alt+h", "ctrl+alt+l", "ctrl+alt+]");
+    expect(calls).toEqual({});
+    await keys("ctrl+b");
+    expect(prefixState.isArmed()).toBe(false);
+    expect(document.querySelector("[data-prefix-chip], [data-prefix-armed]")).toBeNull();
+    await keys("ctrl+b", "h");
+    expect(calls).toEqual({});
+    expect(dialog()).toBeTruthy();
+    // Keys land on the focused tab, never on the editor underneath.
+    for (const k of ["a", "b", "ArrowRight"]) await key(document.activeElement!, { key: k });
+    expect(document.activeElement?.tagName).toBe("BUTTON");
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(area.value).toBe("");
+    expect(area).not.toBe(document.activeElement);
+    // The chord closes it and focus returns to the textarea.
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(document.activeElement).toBe(area);
+  });
+
+  it("the flag off: the key is inert and nothing mounts", async () => {
+    setFeatureFlag("nav.switcher", false);
+    render(<GearSwitchHost surface="topbar" />);
+    await act(async () => {});
+    expect(document.querySelector("[data-gear-chip]")).toBeNull();
+    await keys("ctrl+alt+shift+w");
+    await act(async () => {});
+    expect(document.querySelector("[data-gear-switch]")).toBeNull();
+    expect(document.querySelector("[data-gear-chip]")).toBeNull();
+  });
+});
