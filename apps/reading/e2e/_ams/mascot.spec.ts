@@ -87,7 +87,7 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
 
   test("M1 walk-cycle: the mascot art changes across two mid-stroll frames with position pinned", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await loadMascot(page, ROAMING);
     // Force a directed stroll so the walk classes (mascot-waddle/mascot-step)
     // ride the bob span → the rig limbs animate. We inject a far-side target
@@ -104,10 +104,19 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
         }),
       );
     });
-    // Settle so the directed walk has begun (the bob span now carries the walk
-    // classes). We are still well inside the 1800ms waddle window — the hit
-    // emote only mounts on arrival.
-    await page.waitForTimeout(300);
+    const bob = page.locator('[data-testid="brain-mascot"] > span').first();
+    await expect.poll(() => bob.evaluate((el) =>
+      el.getAnimations().some((animation) =>
+        animation instanceof CSSAnimation &&
+        animation.animationName === "mascot-step" &&
+        animation.playState === "running",
+      ),
+    ), { message: "directed mascot gait did not start" }).toBe(true);
+    await expect.poll(() => bob.locator("img").evaluateAll((images) =>
+      images.length > 0 && images.every((image) =>
+        image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      ),
+    ), { message: "mascot art did not finish loading" }).toBe(true);
 
     // PIN the mascot so the gate measures WALK MOTION, not the slide. The
     // cross-screen TRANSLATION is the removed confound: kill the left/top
@@ -146,13 +155,52 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
       width: Math.round(box.width),
       height: Math.round(box.height * 0.4),
     };
-    const grabFeet = () => page.screenshot({ clip: feetClip });
-    const a = decodePng(await grabFeet());
-    await page.waitForTimeout(150); // ~half a 300ms gait cycle → feet in a new phase
-    const b = decodePng(await grabFeet());
+    // Confirm the real gait advances before pausing it for capture. Seeking a
+    // missing, paused or zero-rate animation must not make a frozen sprite pass.
+    const gait = await bob.evaluateHandle(async (el) => {
+      const animation = el.getAnimations().find((candidate) =>
+        candidate instanceof CSSAnimation && candidate.animationName === "mascot-step",
+      );
+      if (!(animation instanceof CSSAnimation) || animation.playState !== "running") {
+        throw new Error("directed mascot gait is not running");
+      }
+      const before = animation.currentTime;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const after = animation.currentTime;
+      if (typeof before !== "number" || typeof after !== "number" || after <= before) {
+        throw new Error("directed mascot gait timeline did not advance");
+      }
+      // Incidental breathing must not supply the positive pixel difference.
+      const animations = el.getAnimations({ subtree: true });
+      for (const current of animations) current.pause();
+      await Promise.all(animations.map((current) => current.ready));
+      return animation;
+    });
+    const duration = await gait.evaluate((animation) => animation.effect?.getComputedTiming().duration);
+    if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+      throw new Error("directed mascot gait has no finite positive duration");
+    }
+    const grabFeet = async (time: number) => {
+      await gait.evaluate(async (animation, phaseTime) => {
+        if (animation.playState !== "paused") throw new Error("mascot gait capture lost its animation");
+        animation.currentTime = phaseTime;
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        if (animation.playState !== "paused" || animation.currentTime !== phaseTime) {
+          throw new Error("mascot gait capture phase changed before paint");
+        }
+      }, time);
+      return page.screenshot({ clip: feetClip });
+    };
+    // Opposing poses of the actual CSS gait, held through screenshot latency.
+    const first = await grabFeet(0);
+    const second = await grabFeet(duration / 2);
+    await testInfo.attach("gait-start", { body: first, contentType: "image/png" });
+    await testInfo.attach("gait-half-cycle", { body: second, contentType: "image/png" });
+    const a = decodePng(first);
+    const b = decodePng(second);
     const diff = frameMeanAbsDiff(a, b);
     // With translation pinned, the waddle bob/step cadence must move mascot
-    // pixels across a ~half-cycle gap; a fully frozen sprite diffs near 0 and
+    // pixels between opposing phases; a fully frozen sprite diffs near 0 and
     // FAILS.
     expect(
       diff,
