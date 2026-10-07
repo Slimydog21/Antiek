@@ -108,12 +108,22 @@ included tree refuses rather than following or silently omitting it. If a
 derived cache prevents traversal, return that exact inventory conflict instead
 of waiving coverage. Required stores are not silently created when absent.
 
-BYOK snapshots hold the existing key lock followed by the artifact lock and
+BYOK snapshots open the original sidecar locks read-only, hold the existing
+key lock followed by the artifact lock and
 authenticate every existing credential with the captured key. The raw master
 key is staged outside the data archive, encrypted into a separate object and
 removed before tar creation. The data archive carries only its ciphertext and
 the separate encrypted object's digest. SQLite online backup includes committed
-WAL data without copying live `-wal`/`-shm` files. Independent stores have
+WAL data without copying live `-wal`/`-shm` files. A readonly SQLite connection
+can still create live sidecars. Each SQLite snapshot therefore runs in a
+bounded worker under the source file's actual Unix UID/GID; a root collector
+clears supplementary groups and changes ownership only of its new private
+staging directory. It never chowns a live database or sidecar. The worker
+checks its UID before opening SQLite, and the collector directly waits for
+completion or retires that owned child before refusing. Synthetic controls
+exercise the same-user native worker; production root-to-application privilege
+drop, interpreter access and sandbox compatibility remain deployment checks.
+Independent stores have
 different snapshot times; this is not a cross-store transaction.
 
 The systemd unit reads optional `/etc/antiek/backup.env` for these path-only
@@ -129,7 +139,10 @@ Root must use the existing actual R2 bucket. The prefix override supports a
 staging namespace without creating a bucket. No AWS migration, account action,
 retention deletion or provider spend is part of this change. The recipient
 file and inventory must be readable inside the existing systemd sandbox;
-BYOK sidecar locks must be writable under its already admitted state root.
+BYOK sidecar locks must already exist and be readable. A missing lock refuses
+without creating root-owned application state. SQLite source-owner workers
+need the existing admitted ledger directories writable for native WAL/SHM
+creation, and must be able to execute the deployed interpreter and helper.
 An external-store sandbox conflict must be resolved explicitly, not by a broad
 `ReadWritePaths` relaxation.
 

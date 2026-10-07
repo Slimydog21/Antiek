@@ -16,6 +16,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -152,7 +153,10 @@ def _pair_locks(sources: SnapshotSources, inventory: _Inventory) -> Iterator[Non
         for path in (sources.byok_key, sources.byok_artifact):
             lock = Path(str(path) + ".lock")
             _parents(lock, inventory)
-            descriptor = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            try:
+                descriptor = os.open(lock, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except FileNotFoundError:
+                raise SnapshotError("required original BYOK lock is missing") from None
             descriptors.append(descriptor)
             info = os.fstat(descriptor)
             if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
@@ -196,14 +200,16 @@ def _byok(sources: SnapshotSources, destination: Path, escrow: Path, inventory: 
         _record(inventory, sources.byok_artifact, ciphertext, "byok-ciphertext", destination)
 
 
-def _sqlite(path: Path, target: Path, inventory: _Inventory, root: Path) -> None:
+def _sqlite_native(path: Path, target: Path, inventory: _Inventory, root: Path, timeout: float) -> None:
     before = _regular(path, inventory)
+    if before.st_uid != os.geteuid():
+        raise SnapshotError("SQLite must be read by its actual file owner")
     if before.st_size > MAX_FILE_BYTES:
         raise SnapshotError("SQLite source exceeds its size limit")
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
     os.close(descriptor)
-    deadline = time.monotonic() + SQLITE_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout
 
     def progress(_status: int, _remaining: int, _total: int) -> None:
         if time.monotonic() >= deadline or target.stat().st_size > MAX_FILE_BYTES:
@@ -230,6 +236,83 @@ def _sqlite(path: Path, target: Path, inventory: _Inventory, root: Path) -> None
     with target.open("rb") as stream:
         os.fsync(stream.fileno())
     _record(inventory, path, target, "sqlite-online-backup", root)
+
+
+def _retire_sqlite_worker(child: subprocess.Popen[bytes]) -> None:
+    if child.poll() is None:
+        child.terminate()
+        try:
+            child.wait(timeout=7)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=3)
+
+
+def _sqlite(path: Path, target: Path, inventory: _Inventory, root: Path) -> None:
+    """Keep any native WAL/SHM creation under the live database's Unix owner.
+
+    A readonly SQLite connection may create live sidecars. The root collector
+    must not leave those files root-owned and block the application writer.
+    Only a newly owned staging directory is chowned, never a live source.
+    """
+    before = _regular(path, inventory)
+    if before.st_size > MAX_FILE_BYTES:
+        raise SnapshotError("SQLite source exceeds its size limit")
+    if os.geteuid() != 0 and before.st_uid != os.geteuid():
+        raise SnapshotError("SQLite snapshot requires the actual source-owner worker")
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix=".sqlite-owned-", dir=target.parent) as temporary:
+        worker = Path(temporary)
+        worker_uid: int | None = None
+        worker_gid: int | None = None
+        worker_groups: list[int] | None = None
+        if os.geteuid() == 0:
+            os.chown(worker, before.st_uid, before.st_gid)
+            worker_uid, worker_gid, worker_groups = before.st_uid, before.st_gid, []
+        environment = {name: os.environ[name] for name in ("PATH", "LANG", "LC_ALL") if name in os.environ}
+        environment.update(HOME=".", TMPDIR=".", ANTIEK_HOME=".")
+        command = [sys.executable, "-I", str(Path(__file__).resolve()), "_sqlite-worker",
+                   "--source", str(path), "--timeout", str(SQLITE_TIMEOUT_SECONDS)]
+        child = subprocess.Popen(command, cwd=worker, env=environment, close_fds=True,
+                                 stdin=subprocess.DEVNULL, umask=0o077,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 user=worker_uid, group=worker_gid, extra_groups=worker_groups)
+        try:
+            code = child.wait(timeout=SQLITE_TIMEOUT_SECONDS + 5)
+        except BaseException as primary:
+            try:
+                _retire_sqlite_worker(child)
+            except BaseException:
+                raise SnapshotError("SQLite snapshot failed; worker retirement is unknown") from primary
+            raise SnapshotError("SQLite snapshot worker did not complete") from primary
+        if code != 0:
+            raise SnapshotError("SQLite source-owner worker refused")
+        after = _regular(path, inventory)
+        if (before.st_dev, before.st_ino, before.st_uid, before.st_gid, before.st_mode) != (
+            after.st_dev, after.st_ino, after.st_uid, after.st_gid, after.st_mode,
+        ):
+            raise SnapshotError("SQLite source identity changed during backup")
+        completed = worker / "snapshot.sqlite3"
+        info = _regular(completed, inventory)
+        if info.st_size > MAX_FILE_BYTES:
+            raise SnapshotError("SQLite snapshot exceeds its size limit")
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "wb") as output, completed.open("rb") as source:
+            if _identity(os.fstat(source.fileno())) != _identity(info):
+                raise SnapshotError("SQLite worker output changed while opening")
+            remaining = info.st_size
+            while remaining:
+                chunk = source.read(min(65536, remaining))
+                if not chunk:
+                    raise SnapshotError("SQLite worker output is truncated")
+                output.write(chunk)
+                remaining -= len(chunk)
+            if (source.read(1) or _identity(os.fstat(source.fileno())) != _identity(info)
+                or _identity(completed.lstat()) != _identity(info)):
+                raise SnapshotError("SQLite worker output changed during publication")
+            output.flush()
+            os.fsync(output.fileno())
+        _record(inventory, path, target, "sqlite-online-backup", root)
 
 
 def _tree(root: Path, inventory: _Inventory) -> Iterator[Path]:
@@ -575,11 +658,19 @@ def main() -> int:
     recovering = commands.add_parser("restore")
     for name in ("data", "key", "identity", "destination"):
         recovering.add_argument("--" + name, required=True, type=Path)
+    sqlite_worker = commands.add_parser("_sqlite-worker", help=argparse.SUPPRESS)
+    sqlite_worker.add_argument("--source", required=True, type=Path)
+    sqlite_worker.add_argument("--timeout", required=True, type=float)
     arguments = parser.parse_args()
     from tools.critical_backup_crypto import BackupCryptoError, encrypt_file
 
     try:
-        if arguments.command == "prepare":
+        if arguments.command == "_sqlite-worker":
+            if not 0 < arguments.timeout <= SQLITE_TIMEOUT_SECONDS:
+                raise SnapshotError("SQLite worker deadline is invalid")
+            inventory = _Inventory({0, os.geteuid()}, {0, os.getegid()})
+            _sqlite_native(arguments.source, Path("snapshot.sqlite3"), inventory, Path("."), arguments.timeout)
+        elif arguments.command == "prepare":
             prepare(load_sources(arguments.sources, arguments.state), arguments.destination,
                     arguments.escrow, arguments.recipient)
         elif arguments.command == "encrypt":

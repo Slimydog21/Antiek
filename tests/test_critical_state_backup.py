@@ -9,6 +9,8 @@ import io
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tarfile
 from contextlib import closing
 from dataclasses import replace
@@ -102,6 +104,93 @@ def test_snapshot_includes_committed_wal_without_uncommitted_rows_and_live_copy(
     finally:
         writer.rollback()
         writer.close()
+
+
+def test_sqlite_worker_preserves_live_owner_and_closed_wal_database(
+    tmp_path: Path, sources: backup.SnapshotSources,
+) -> None:
+    path = sources.state / "closed.sqlite3"
+    with closing(sqlite3.connect(path)) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE ledger(value INTEGER)")
+        writer.execute("INSERT INTO ledger VALUES (42)")
+        writer.commit()
+    path.chmod(0o600)
+    before, body = path.stat(), path.read_bytes()
+    assert not Path(str(path) + "-wal").exists()
+    assert not Path(str(path) + "-shm").exists()
+    destination = tmp_path / "snapshot"
+    backup.snapshot(sources, destination, tmp_path / "key")
+    after = path.stat()
+    assert (after.st_dev, after.st_ino, after.st_uid, after.st_gid, after.st_mode) == (
+        before.st_dev, before.st_ino, before.st_uid, before.st_gid, before.st_mode,
+    )
+    assert path.read_bytes() == body
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(path) + suffix).stat()
+        assert sidecar.st_uid == before.st_uid and sidecar.st_gid == before.st_gid
+        assert sidecar.st_mode & 0o077 == 0
+    with closing(sqlite3.connect(destination / "state/closed.sqlite3")) as restored:
+        assert restored.execute("SELECT value FROM ledger").fetchall() == [(42,)]
+        assert restored.execute("PRAGMA journal_mode").fetchone() == ("delete",)
+    assert not list(destination.rglob(".sqlite-owned-*"))
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_sqlite_refuses_wrong_unix_actor_before_any_native_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native: bool,
+) -> None:
+    path = private_file(tmp_path / "ledger.sqlite3", b"not-opened")
+    original = path.stat()
+    inventory = backup._Inventory({0, original.st_uid}, {0, original.st_gid})
+    monkeypatch.setattr(backup.os, "geteuid", lambda: original.st_uid + 1)
+
+    def unexpected_open(*args: object, **kwargs: object) -> None:
+        pytest.fail("wrong Unix actor must not open SQLite or start its worker")
+
+    monkeypatch.setattr(backup.sqlite3, "connect", unexpected_open)
+    monkeypatch.setattr(backup.subprocess, "Popen", unexpected_open)
+    target = tmp_path / "snapshot.sqlite3"
+    with pytest.raises(backup.SnapshotError, match="owner"):
+        if native:
+            backup._sqlite_native(path, target, inventory, tmp_path, 1)
+        else:
+            backup._sqlite(path, target, inventory, tmp_path)
+    assert not target.exists()
+    assert path.read_bytes() == b"not-opened"
+
+
+def test_sqlite_worker_timeout_reaps_only_owned_child_and_refuses_snapshot(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = sources.state / "ledger.sqlite3"
+    with closing(sqlite3.connect(path)) as writer:
+        writer.execute("CREATE TABLE ledger(value INTEGER)")
+        writer.commit()
+    path.chmod(0o600)
+    popen = subprocess.Popen
+    owned: list[subprocess.Popen[bytes]] = []
+
+    def stalled_worker(
+        command: list[str], *, cwd: Path, env: dict[str, str], close_fds: bool,
+        stdin: int, stdout: int, stderr: int, umask: int, user: int | None,
+        group: int | None, extra_groups: list[int] | None,
+    ) -> subprocess.Popen[bytes]:
+        child = popen([sys.executable, "-I", "-c", "import time; time.sleep(30)"],
+                      cwd=cwd, env=env, close_fds=close_fds, stdin=stdin, stdout=stdout,
+                      stderr=stderr, umask=umask, user=user, group=group, extra_groups=extra_groups)
+        owned.append(child)
+        return child
+
+    monkeypatch.setattr(backup.subprocess, "Popen", stalled_worker)
+    monkeypatch.setattr(backup, "SQLITE_TIMEOUT_SECONDS", 0.01)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    with pytest.raises(backup.SnapshotError, match="did not complete") as failure:
+        backup.snapshot(sources, destination, escrow)
+    assert isinstance(failure.value.__cause__, subprocess.TimeoutExpired)
+    assert len(owned) == 1 and owned[0].returncode is not None
+    assert owned[0].wait(timeout=0) != 0
+    assert not destination.exists() and not escrow.exists()
 
 
 def test_encrypt_restore_preserves_accounts_passkeys_and_real_owned_byok(
@@ -304,6 +393,23 @@ def test_held_actual_byok_artifact_lock_refuses_without_replacing_lock_inode(
         os.close(descriptor)
     assert lock.stat().st_ino == before
     assert not (tmp_path / "snapshot").exists()
+
+
+@pytest.mark.parametrize("which", ["key", "artifact"])
+def test_missing_original_byok_lock_never_creates_live_application_state(
+    tmp_path: Path, sources: backup.SnapshotSources, which: str,
+) -> None:
+    path = sources.byok_key if which == "key" else sources.byok_artifact
+    lock = Path(str(path) + ".lock")
+    lock.unlink()
+    key_before, artifact_before = sources.byok_key.read_bytes(), sources.byok_artifact.read_bytes()
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    with pytest.raises(backup.SnapshotError, match="lock"):
+        backup.snapshot(sources, destination, escrow)
+    assert not lock.exists()
+    assert not destination.exists() and not escrow.exists()
+    assert sources.byok_key.read_bytes() == key_before
+    assert sources.byok_artifact.read_bytes() == artifact_before
 
 
 @pytest.mark.parametrize("member", ["../escape", "/absolute", "antiek-backup.x/../../escape", "symlink", "hardlink"])
