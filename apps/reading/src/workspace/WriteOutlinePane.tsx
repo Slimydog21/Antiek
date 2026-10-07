@@ -87,6 +87,7 @@ export default function WriteOutlinePane() {
   const activeBlockId = useWriteOutline((s) => s.activeBlockId);
   const setActiveBlock = useWriteOutline((s) => s.setActiveBlock);
   const setBlocks = useWriteOutline((s) => s.setBlocks);
+  const mutationRevision = useWriteOutline((s) => s.mutationRevision);
   const assignments = useBlockSources((s) =>
     deliverableId ? (s.records[deliverableId] ?? NO_ASSIGNMENTS) : NO_ASSIGNMENTS,
   );
@@ -133,7 +134,7 @@ export default function WriteOutlinePane() {
     return () => {
       cancelled = true;
     };
-  }, [deliverableId, setBlocks, ensureDeliverable, attempt]);
+  }, [deliverableId, setBlocks, ensureDeliverable, attempt, mutationRevision]);
 
   const flat = sections.flatMap((s) =>
     s.blocks.map((b) => ({ section: s.section, block: b })),
