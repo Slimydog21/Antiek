@@ -7,6 +7,7 @@ export interface WorkspaceOwnerSession {
 
 let session: WorkspaceOwnerSession = { subject: null, epoch: 0 };
 let revalidating: WorkspaceOwnerSession | null = null;
+let transition: "ready" | "retiring" | "failed" = "ready";
 const listeners = new Set<() => void>();
 const retirementListeners = new Set<() => void>();
 const confirmationListeners = new Set<() => void>();
@@ -16,7 +17,7 @@ export function workspaceOwnerSession(): WorkspaceOwnerSession {
 }
 
 export function isWorkspaceOwnerSession(captured: WorkspaceOwnerSession): boolean {
-  return captured === session && captured !== revalidating;
+  return transition === "ready" && captured === session && captured !== revalidating;
 }
 
 /** A cookie recheck suspends outbound work without destroying a same-owner draft. */
@@ -35,7 +36,8 @@ export function awaitWorkspaceOwnerSession(
   captured: WorkspaceOwnerSession,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const retired = () => captured.subject === null || captured !== session || signal?.aborted === true;
+  const retired = () => transition !== "ready" || captured.subject === null
+    || captured !== session || signal?.aborted === true;
   if (retired()) return Promise.resolve(false);
   if (isWorkspaceOwnerSession(captured)) return Promise.resolve(true);
   return new Promise((resolve) => {
@@ -65,9 +67,20 @@ export function beforeWorkspaceOwnerChange(listener: () => void): () => void {
 /** A validated /auth/me answer establishes a subject; invalidation may only retire it to null. */
 export function setWorkspaceOwner(subject: string | null): void {
   if (subject === session.subject) return;
-  for (const retire of retirementListeners) retire();
+  if (transition === "retiring") throw new Error("Workspace owner replacement is already in progress");
+  // Local cleanup still needs the outgoing subject, but no callback order or
+  // resume may admit its token for outbound work after replacement begins.
+  transition = "retiring";
+  try {
+    for (const retire of retirementListeners) retire();
+  } catch (error) {
+    transition = "failed";
+    for (const listener of confirmationListeners) listener();
+    throw error;
+  }
   session = { subject, epoch: session.epoch + 1 };
   revalidating = null;
+  transition = "ready";
   for (const listener of confirmationListeners) listener();
   for (const listener of listeners) listener();
 }
