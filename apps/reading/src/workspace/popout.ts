@@ -18,6 +18,7 @@
 import { toast } from "../components/lemon/LemonToast";
 import type { PanelDescriptor } from "./panel.types";
 import { useWorkspace } from "./WorkspaceStore";
+import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 const CHANNEL_NAME = "antiek-workspace";
 
@@ -29,12 +30,16 @@ type Msg =
 
 function makeChannel(): BroadcastChannel | null {
   if (typeof BroadcastChannel === "undefined") return null;
-  return new BroadcastChannel(CHANNEL_NAME);
+  const subject = workspaceOwnerSession().subject;
+  if (subject === null) return null;
+  return new BroadcastChannel(`${CHANNEL_NAME}.${encodeURIComponent(subject)}`);
 }
 
 /** Open a panel in its own OS window. Removes it from the main-window
  *  in-tab arrays + records its descriptor for handoff to the popout. */
 export function openPopoutFor(panelId: string): void {
+  const owner = workspaceOwnerSession();
+  if (owner.subject === null) return;
   const ws = useWorkspace.getState();
   const panel = ws.panels[panelId];
   if (!panel) return;
@@ -67,10 +72,16 @@ export function openPopoutFor(panelId: string): void {
   ws.setMode(panelId, "popout");
 
   if (channel) {
+    const retire = beforeWorkspaceOwnerChange(() => {
+      channel.removeEventListener("message", onMessage);
+      channel.close();
+      retire();
+      try { win.close(); } catch { /* A denied OS close must not retain the old subject. */ }
+    });
     // Send the descriptor when popout signals it's ready.
     const onMessage = (e: MessageEvent<Msg>) => {
       const m = e.data;
-      if (!m) return;
+      if (!m || !isWorkspaceOwnerSession(owner)) return;
       if (m.kind === "popout-ready" && m.panelId === panelId) {
         channel.postMessage({
           kind: "popout-init",
@@ -88,6 +99,7 @@ export function openPopoutFor(panelId: string): void {
         toast.info(`${panel.title} re-docked from popout.`);
         channel.removeEventListener("message", onMessage);
         channel.close();
+        retire();
       }
     };
     channel.addEventListener("message", onMessage);
@@ -99,17 +111,27 @@ export function openPopoutFor(panelId: string): void {
 export async function receivePopoutPanel(
   panelId: string,
 ): Promise<PanelDescriptor | null> {
+  const owner = workspaceOwnerSession();
   const channel = makeChannel();
   if (!channel) return null;
 
   return new Promise<PanelDescriptor | null>((resolve) => {
     let resolved = false;
+    const retire = beforeWorkspaceOwnerChange(() => {
+      resolved = true;
+      channel.removeEventListener("message", onMessage);
+      channel.close();
+      retire();
+      resolve(null);
+    });
     const onMessage = (e: MessageEvent<Msg>) => {
       const m = e.data;
-      if (!m) return;
+      if (!m || !isWorkspaceOwnerSession(owner)) return;
       if (m.kind === "popout-init" && m.panelId === panelId) {
         resolved = true;
         channel.removeEventListener("message", onMessage);
+        channel.close();
+        retire();
         resolve(m.descriptor);
       }
     };
@@ -122,6 +144,7 @@ export async function receivePopoutPanel(
       if (!resolved) {
         channel.removeEventListener("message", onMessage);
         channel.close();
+        retire();
         resolve(null);
       }
     }, 2000);

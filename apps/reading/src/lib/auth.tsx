@@ -10,7 +10,7 @@
 // Cookies are cross-origin (antiek.ai → api.antiek.ai) so every
 // request goes through apiFetch which sets credentials: "include".
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   AuthenticationResponseJSON,
@@ -28,6 +28,59 @@ import {
 import { posthog, posthogEnabled } from "./posthogClient";
 import { setReadingStateOwner } from "../hooks/useReadingState";
 import { setSectionProseOwner, suspendSectionProseDispatch } from "../modes/Write/sectionProseOwner";
+import { beforeWorkspaceOwnerChange, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, useWorkspaceOwner, workspaceOwnerSession } from "./accountWorkspaceOwner";
+import "../workspace/WorkspaceStore";
+import "../workspace/tabTreeStore";
+import { useWindows } from "../workspace/windowsStore";
+import { useCompanion } from "../workspace/companionStore";
+import { useWriteOutline } from "../workspace/writeOutlineStore";
+import { clearReadingFocus } from "./readingFocus";
+
+beforeWorkspaceOwnerChange(clearReadingFocus);
+
+function replaceWorkspaceOwner(subject: string | null): void {
+  if (workspaceOwnerSession().subject === subject) return;
+  // The synchronous retirement listeners flush the known old owner's local
+  // partition before replacement. No awaiting work may retain that token.
+  resumeWorkspaceOwner();
+  setWorkspaceOwner(subject);
+  useWindows.getState().reset();
+  useCompanion.getState().reset();
+  useWriteOutline.getState().reset();
+}
+
+export const AUTH_SESSION_CHANGE_KEY = "antiek.auth.session-change.v1";
+const LOGOUT_RETIREMENT_KEY = "antiek.auth.logout-retirement.v1";
+
+function persistedLogoutRetirement(): string | null | undefined {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(LOGOUT_RETIREMENT_KEY);
+  } catch {
+    return undefined;
+  }
+  if (raw === null) return undefined;
+  if (raw.length > 512) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistLogoutRetirement(subject: string | null | undefined): void {
+  try {
+    if (subject === undefined) window.localStorage.removeItem(LOGOUT_RETIREMENT_KEY);
+    else window.localStorage.setItem(LOGOUT_RETIREMENT_KEY, JSON.stringify(subject));
+  } catch { /* The current document still refuses its retired cookie. */ }
+}
+
+function notifyAuthSessionChange(): void {
+  try {
+    window.localStorage.setItem(AUTH_SESSION_CHANGE_KEY, `${Date.now()}:${Math.random()}`);
+  } catch { /* Focus refresh still verifies the cookie when storage is blocked. */ }
+}
 
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
@@ -73,7 +126,7 @@ export type AuthState =
 export interface AuthContextValue {
   state: AuthState;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
-  refresh: () => Promise<void>;
+  refresh: (options?: { afterSignIn: true }) => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
   signOut: () => Promise<void>;
 }
@@ -237,11 +290,20 @@ function AuthUnavailableScreen({
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const workspaceOwner = useWorkspaceOwner();
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [revalidating, setRevalidating] = useState(false);
   const refreshEpochRef = useRef(0);
+  const validatedSubjectRef = useRef<string | null>(null);
+  const logoutPendingRef = useRef(false);
+  const retiredSubjectRef = useRef<string | null | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { afterSignIn: true }) => {
+    if (logoutPendingRef.current) return;
     const epoch = ++refreshEpochRef.current;
+    suspendWorkspaceOwner();
+    suspendSectionProseDispatch();
+    setRevalidating(true);
     let answer: IdentityAnswer;
     try {
       answer = await fetchIdentity();
@@ -259,16 +321,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // and do not claim "unauthenticated" either — that sent a signed-in
       // user to /login during every backend restart.
       setState({ status: "unavailable", reason: answer.reason });
+      setRevalidating(false);
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
+    const persistedRetirement = persistedLogoutRetirement();
+    if (persistedRetirement !== undefined) retiredSubjectRef.current = persistedRetirement;
+    if (identity && retiredSubjectRef.current !== undefined
+      && (retiredSubjectRef.current === null || identity.user_id === retiredSubjectRef.current)
+      && options?.afterSignIn !== true) {
+      // A newer request is still using the retired cookie. An automatic
+      // refresh cannot undo logout, including a failed logout transport.
+      replaceWorkspaceOwner(null);
+      setReadingStateOwner(null);
+      setSectionProseOwner(null);
+      setState({ status: "unauthenticated" });
+      setRevalidating(false);
+      return;
+    }
+    if (identity) {
+      retiredSubjectRef.current = undefined;
+      persistLogoutRetirement(undefined);
+    }
     // An inferred (CORS-masked) 401 is not proof of a null user: leave the
     // reading-state owner as it was, the pre-F-03 behaviour for transport
     // failures, so pending work survives a blip that /health happened to
     // outlive.
     if (!(answer.kind === "anonymous" && answer.inferred)) {
+      const subject = identity?.user_id ?? null;
+      const previousSubject = validatedSubjectRef.current;
+      const changed = previousSubject !== subject;
+      validatedSubjectRef.current = subject;
+      replaceWorkspaceOwner(subject);
       setReadingStateOwner(identity?.user_id ?? null);
       setSectionProseOwner(identity?.user_id ?? null);
+      resumeWorkspaceOwner();
+      // Opening another window with the same shared cookie is no cookie change.
+      if ((changed && previousSubject !== null) || options?.afterSignIn === true) notifyAuthSessionChange();
     } else {
       suspendSectionProseDispatch();
     }
@@ -279,20 +368,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setState({ status: "unauthenticated" });
     }
+    setRevalidating(false);
   }, []);
 
   const signOut = useCallback(async () => {
     // A logout invalidates every identity answer already in flight; it must
     // never be reversed by an older /auth/me response.
     refreshEpochRef.current += 1;
+    const logoutEpoch = refreshEpochRef.current;
+    logoutPendingRef.current = true;
+    setRevalidating(false);
+    retiredSubjectRef.current = validatedSubjectRef.current;
+    persistLogoutRetirement(retiredSubjectRef.current);
+    validatedSubjectRef.current = null;
+    replaceWorkspaceOwner(null);
     setReadingStateOwner(null);
     setSectionProseOwner(null);
-    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
     setState({ status: "unauthenticated" });
+    notifyAuthSessionChange();
+    try {
+      const response = await apiFetch(authUrl("/auth/logout"), { method: "POST" });
+      if (!response.ok) throw new Error("Antiek could not finish signing out. Try again.");
+      notifyAuthSessionChange();
+    } finally {
+      if (refreshEpochRef.current === logoutEpoch) logoutPendingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    let lastFocusRefresh = 0;
+    const invalidate = () => {
+      if (logoutPendingRef.current) return;
+      // An untrusted notification proves no change. Hide and suspend the
+      // mounted workspace until /auth/me confirms the current cookie owner.
+      void refresh();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === AUTH_SESSION_CHANGE_KEY && event.newValue !== event.oldValue) invalidate();
+    };
+    const onFocus = () => {
+      if (document.visibilityState === "hidden" || Date.now() - lastFocusRefresh < 1000) return;
+      lastFocusRefresh = Date.now();
+      invalidate();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refresh]);
 
   // Link the PostHog person to the substrate session as auth state resolves.
@@ -329,7 +457,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {state.status === "unavailable" ? (
         <AuthUnavailableScreen reason={state.reason} onRetry={refresh} />
       ) : (
-        children
+        <div hidden={revalidating} style={{ display: revalidating ? "none" : "contents" }} aria-hidden={revalidating || undefined}>
+          <Fragment key={workspaceOwner.epoch}>{children}</Fragment>
+        </div>
       )}
     </AuthCtx.Provider>
   );

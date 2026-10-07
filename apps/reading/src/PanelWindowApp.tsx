@@ -9,6 +9,7 @@ import {
 } from "./workspace/WorkspaceStore";
 import { farewellPopout, receivePopoutPanel } from "./workspace/popout";
 import type { PanelDescriptor } from "./workspace/panel.types";
+import { useAuth } from "./lib/auth";
 
 /**
  * The popout window app. Renders at `/_panel/:panelId` when the
@@ -30,6 +31,8 @@ import type { PanelDescriptor } from "./workspace/panel.types";
  * don't fight over localStorage (the main tab is the one that persists).
  */
 export default function PanelWindowApp() {
+  const { state: auth } = useAuth();
+  const subject = auth.status === "authenticated" ? auth.identity.user_id : null;
   const params = useParams<{ panelId?: string }>();
   const panelId = params.panelId ? decodeURIComponent(params.panelId) : null;
   const [descriptor, setDescriptor] = useState<PanelDescriptor | null>(null);
@@ -41,6 +44,7 @@ export default function PanelWindowApp() {
   }, []);
 
   useEffect(() => {
+    if (subject === null) return;
     if (!panelId) {
       setError("No panel id in URL.");
       return;
@@ -61,7 +65,7 @@ export default function PanelWindowApp() {
     return () => {
       cancelled = true;
     };
-  }, [panelId]);
+  }, [panelId, subject]);
 
   // Tell main we're leaving — before unload.
   useEffect(() => {
@@ -89,6 +93,8 @@ export default function PanelWindowApp() {
       document.title = prev;
     };
   }, [descriptor]);
+
+  if (subject === null) return null;
 
   if (error) {
     return (

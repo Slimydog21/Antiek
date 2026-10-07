@@ -1220,6 +1220,19 @@ _INVITEE_TRANSCRIBER: Any | None = None
 
 
 
+def _admitted_invite(con: Any, token: str) -> invitations.Invite | None:
+    iv = invitations.resolve_token(con, token)
+    if iv is not None:
+        under_takedown = con.execute(
+            "SELECT 1 FROM speak_takedowns "
+            "WHERE project_id = ? AND status = 'active' LIMIT 1",
+            [iv.project_id],
+        ).fetchone()
+        if under_takedown is not None:
+            return None
+    return iv
+
+
 def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
     """Resolve invite on a read connection; missing Speak schema → 404.
 
@@ -1227,7 +1240,7 @@ def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
     GETs use ``_read`` (no DDL); treat absent tables as unknown token.
     """
     try:
-        return invitations.resolve_token(con, token)
+        return _admitted_invite(con, token)
     except Exception as exc:  # noqa: BLE001 — catalog-absent → closed door
         name = type(exc).__name__
         msg = str(exc).lower()
@@ -1243,7 +1256,7 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
     token is the invitee's credential — a bad/expired token is the only
     thing standing between a stranger and this interview, so we fail
     closed."""
-    iv = invitations.resolve_token(con, token)
+    iv = _admitted_invite(con, token)
     if iv is None:
         raise HTTPException(status_code=404, detail="unknown or expired invite link")
     return iv.interview_id, iv.project_id

@@ -1,3 +1,4 @@
+import { accountStorageKey, isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { useCallback, useEffect, useState } from "react";
 
 import type {
@@ -68,16 +69,18 @@ export interface TalkThreadState {
   active_branch_id: string;
 }
 
-const KEY = (documentId: string) => `antiek.read.talk.${documentId}`;
+const KEY = (documentId: string, owner: WorkspaceOwnerSession) => accountStorageKey(`antiek.read.talk.${encodeURIComponent(documentId)}`, owner);
 const TRUNK = "trunk";
 
 function emptyState(): TalkThreadState {
   return { branches: [{ branch_id: TRUNK, forked_from: null, messages: [] }], active_branch_id: TRUNK };
 }
 
-function readStored(documentId: string): TalkThreadState {
+function readStored(documentId: string, owner: WorkspaceOwnerSession): TalkThreadState {
+  const key = KEY(documentId, owner);
+  if (key === null || !isWorkspaceOwnerSession(owner)) return emptyState();
   try {
-    const raw = window.sessionStorage.getItem(KEY(documentId));
+    const raw = window.sessionStorage.getItem(key);
     if (!raw) return emptyState();
     const parsed = JSON.parse(raw) as TalkThreadState;
     if (!parsed.branches?.length || !parsed.active_branch_id) return emptyState();
@@ -87,9 +90,11 @@ function readStored(documentId: string): TalkThreadState {
   }
 }
 
-function writeStored(documentId: string, state: TalkThreadState): void {
+function writeStored(documentId: string, state: TalkThreadState, owner: WorkspaceOwnerSession): void {
+  const key = KEY(documentId, owner);
+  if (key === null || !isWorkspaceOwnerSession(owner)) return;
   try {
-    window.sessionStorage.setItem(KEY(documentId), JSON.stringify(state));
+    window.sessionStorage.setItem(key, JSON.stringify(state));
   } catch {
     /* private mode — the thread still works in-memory, just won't persist */
   }
@@ -140,16 +145,17 @@ export interface UseTalkThread {
 }
 
 export function useTalkThread(documentId: string): UseTalkThread {
-  const [state, setState] = useState<TalkThreadState>(() => readStored(documentId));
+  const [owner] = useState(workspaceOwnerSession);
+  const [state, setState] = useState<TalkThreadState>(() => readStored(documentId, owner));
 
   // Restore the document's saved thread when the book changes.
   useEffect(() => {
-    setState(readStored(documentId));
+    setState(readStored(documentId, owner));
   }, [documentId]);
 
   // Persist on every change (the bookmark carries it across navigation).
   useEffect(() => {
-    writeStored(documentId, state);
+    writeStored(documentId, state, owner);
   }, [documentId, state]);
 
   const activeBranch =
@@ -192,7 +198,7 @@ export function useTalkThread(documentId: string): UseTalkThread {
       };
       // Selected-model operation identity must be durable before dispatch so
       // a reload/retry cannot accidentally create a second billable action.
-      writeStored(documentId, next);
+      writeStored(documentId, next, owner);
       setState(next);
       return id;
     },

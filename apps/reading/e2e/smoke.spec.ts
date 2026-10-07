@@ -130,7 +130,7 @@ test.describe("Notebook editor — autosave + conflict", () => {
       timeout: 8_000,
     });
     await page.evaluate(() => {
-      const key = "antiek.notebook.storybook-blank.etag";
+      const key = "antiek.notebook.storybook-blank.owner.storybook-notebook.etag";
       const current = parseInt(
         window.localStorage.getItem(key) ?? "0",
         10,

@@ -1,3 +1,4 @@
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 /**
  * BrainstormStation thought-partner pane (master-spec §4.5 Surface E).
  *
@@ -48,6 +49,7 @@ import {
 export { THOUGHT_PARTNER_SEED_EVENT, type ThoughtPartnerSeedDetail };
 
 export default function ThoughtPartnerPanel() {
+  const [owner] = useState(workspaceOwnerSession);
   const [draft, setDraft] = useState("");
   const [composedContext, setComposedContext] = useState("");
   const [seedLabel, setSeedLabel] = useState<string | null>(null);
@@ -118,6 +120,7 @@ export default function ThoughtPartnerPanel() {
   );
 
   const send = useCallback(async () => {
+    if (!isWorkspaceOwnerSession(owner)) return;
     const prompt = draft.trim();
     if (!prompt || pending) return;
     setPending(true);
@@ -142,6 +145,7 @@ export default function ThoughtPartnerPanel() {
         insightCtx,
         composedContext.trim() ? composedContext : null,
       );
+      if (!isWorkspaceOwnerSession(owner)) return;
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,6 +161,7 @@ export default function ThoughtPartnerPanel() {
           ...launchFields(prompt),
         }),
       });
+      if (!isWorkspaceOwnerSession(owner)) return;
       if (!resp.ok) {
         thread.failTurn(
           messageId,
@@ -165,6 +170,7 @@ export default function ThoughtPartnerPanel() {
         return;
       }
       const data = await resp.json();
+      if (!isWorkspaceOwnerSession(owner)) return;
       const rawText: string = data.text ?? "";
       const { prose, actions } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -181,13 +187,15 @@ export default function ThoughtPartnerPanel() {
         if (applied.length) setAiLog((prev) => [...applied, ...prev]);
       }
     } catch (e: unknown) {
+      if (!isWorkspaceOwnerSession(owner)) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
       thread.failTurn(messageId, msg);
     } finally {
+      if (!isWorkspaceOwnerSession(owner)) return;
       setPending(false);
     }
-  }, [composedContext, draft, pending, slotted, thread]);
+  }, [composedContext, draft, pending, slotted, thread, owner]);
 
   return (
     <div

@@ -38,6 +38,7 @@ from services.html_projection.styles import (
     ProjectionStyle,
     default_registry,
 )
+from substrate.event_log import log_event
 from substrate.graph import ensure_initialized
 from substrate.multi_user.auth import UserClaims
 from substrate.research_artifact.paths import artifact_path_for, atomic_write_nofollow
@@ -58,6 +59,13 @@ def api_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     ensure_initialized(db)
+    for investigation in (
+        "inv-contract", "inv-fault", "inv-orphan", "inv-db-fault",
+        "inv-source-fault", "inv-pending", "inv-corrupt-source",
+    ):
+        log_event(investigation, "investigation.start_requested", payload={
+            "question": "Owned export/recovery control", "owner_user_id": "__operator__",
+        })
     return {"db": db, "events": events, "arts": arts}
 
 
@@ -469,7 +477,7 @@ def test_export_then_render_exact_id_persists_owner_scoped_version(api_env, monk
     assert client.get("/artifacts/inv-contract/render").status_code == 404
     source_path = Path(exported.json()["path"])
     source_before = source_path.read_bytes()
-    assert client.post("/research/inv-contract/artifact/export").status_code == 500
+    assert client.post("/research/inv-contract/artifact/export").status_code == 403
     assert source_path.read_bytes() == source_before
 
 
@@ -601,7 +609,7 @@ def test_pending_claim_blocks_cross_owner_but_same_owner_can_retry(api_env, monk
         )
         assert _client().post("/research/inv-pending/artifact/export").status_code == 500
     _as_user("other-owner", monkeypatch)
-    assert _client().post("/research/inv-pending/artifact/export").status_code == 500
+    assert _client().post("/research/inv-pending/artifact/export").status_code == 403
     _as_user("__operator__", monkeypatch)
     assert _client().post("/research/inv-pending/artifact/export").status_code == 200
 

@@ -25,6 +25,7 @@
  *     new context and files the tab there, instead of dying silently.
  */
 import { toast } from "../components/lemon/LemonToast";
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { freshTabId, rootTabId } from "./documentSpace";
 import { setTabTitle } from "./tabTitles";
 import { useTabTrees } from "./tabTreeStore";
@@ -53,15 +54,18 @@ const MOTHERSHIP_OF: Record<NewTabTarget["kind"], Mothership> = {
  *  error state, a failed spawn a toast; the operator is never left with a
  *  picker that closed into silence. */
 export async function spawnNewTab(target: NewTabTarget): Promise<void> {
+  const owner = workspaceOwnerSession();
   const mothership = MOTHERSHIP_OF[target.kind];
   const contextEpoch = useTabTrees.getState().contextEpoch;
   await useTabTrees.getState().ensureMothership(mothership);
+  if (!isWorkspaceOwnerSession(owner)) return;
   let s = useTabTrees.getState();
   if (s.contextEpoch !== contextEpoch) {
     // The project (or adapter) changed mid-load: load once under the new
     // context and file the tab there — the corpus is account-wide, so the
     // target survives the switch.
     await s.ensureMothership(mothership);
+    if (!isWorkspaceOwnerSession(owner)) return;
     s = useTabTrees.getState();
   }
   const tree = s.trees[mothership];
