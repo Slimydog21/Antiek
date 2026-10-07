@@ -1,8 +1,8 @@
 """Persist verified account subjects without changing existing graph owners.
 
 The acct_ namespace matches account-memory/BYOT's existing email derivation.
-Verified email creates accounts. An explicitly bound, verified legacy session
-may retain the original operator; other session/passkey paths only resolve rows.
+Verified email creates accounts. Explicitly bound, verified legacy sessions and
+stored passkeys may retain the original operator; other auth paths only resolve rows.
 Roles are resolved separately from deployment policy, never from this store.
 """
 
@@ -18,6 +18,10 @@ from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .passkeys import PasskeyCredential
 
 from .magic_link import SESSION_TTL_SECONDS, SessionClaims
 
@@ -213,6 +217,42 @@ def account_for_email(email: str) -> Account | None:
     normalized = _normalized_email(email)
     with _locked_store() as path:
         return next((a for a in _read(path) if a.email == normalized), None)
+
+
+def account_for_verified_legacy_passkey(
+    credential: PasskeyCredential, *, operator_emails: Collection[str],
+) -> Account | None:
+    """Retain the original owner after stored-key WebAuthn verification.
+
+    The caller must first complete authentication against the stored public
+    credential. Configuration and client-supplied email are not proof. A
+    retained credential email, when present, must match current original
+    operator policy. Existing subjects and aliases are never rebound.
+    """
+    if credential.user_id != "__operator__":
+        return None
+    retained = legacy_operator_email()
+    if retained is None:
+        return None
+    email = _normalized_email(retained)
+    if email not in operator_emails:
+        return None
+    if credential.email is not None and (
+        not isinstance(credential.email, str) or _normalized_email(credential.email) != email
+    ):
+        return None
+    with _locked_store() as path:
+        accounts = _read(path)
+        existing = next((a for a in accounts if a.email == email), None)
+        if existing is not None:
+            return existing if existing.legacy_owner == "__operator__" else None
+        if any(a.legacy_owner is not None for a in accounts):
+            return None
+        account = Account(_subject(email), email, "__operator__")
+        if any(a.user_id == account.user_id for a in accounts):
+            raise AccountStoreError("account identity unavailable")
+        _write(path, [*accounts, account])
+        return account
 
 
 def legacy_account_for_session(email: str) -> Account | None:
