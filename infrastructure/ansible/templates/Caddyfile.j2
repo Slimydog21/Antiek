@@ -22,7 +22,7 @@
 #
 #   UFW (setup.yml §3) allows 22 only; 80/443 are closed.
 #
-# ORIGIN CERT — decided in docs/decisions/caddy-cert-strategy-2026-10.md:
+# ORIGIN CERT: decided in docs/decisions/caddy-cert-strategy-2026-10.md:
 # `tls internal` (Caddy's local CA). ACME cannot validate a box the
 # internet cannot reach: neither HTTP-01 nor TLS-ALPN-01 can be answered
 # while 80/443 stay closed behind the proxied record, and a fresh host

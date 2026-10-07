@@ -166,14 +166,14 @@
         mode: "0644"
       tags: [base, security]
 
-    # sshd: keys only. Restore rehearsal 2026-10-07 (D11): a fresh Hetzner
+    # sshd keys only. Restore rehearsal 2026-10-07 (D11): a fresh Hetzner
     # image ships `PasswordAuthentication yes` and Antiek-v1 had logged ~55k
     # failed password logins. Ubuntu's sshd_config includes sshd_config.d/*.conf
     # first and sshd keeps the FIRST value it reads, so a 00- name wins over
     # the image's 50-cloud-init.conf. Root keeps key login (ansible_user=root).
     # The AWS hosts get the same lines from cloud-init (terraform-aws prod.tf,
     # lane_host.tf); this task is the Hetzner/any-image equivalent.
-    - name: sshd — keys-only drop-in
+    - name: sshd keys-only drop-in
       ansible.builtin.copy:
         dest: /etc/ssh/sshd_config.d/00-antiek-hardening.conf
         content: |
@@ -187,13 +187,13 @@
       register: sshd_hardening
       tags: [base, security, sshd]
 
-    - name: sshd — validate the full configuration before any reload
+    - name: sshd validate the full configuration before any reload
       ansible.builtin.command: /usr/sbin/sshd -t
       changed_when: false
       when: sshd_hardening is changed
       tags: [base, security, sshd]
 
-    - name: sshd — reload if running (open sessions survive a reload)
+    - name: sshd reload if running (open sessions survive a reload)
       ansible.builtin.command: systemctl try-reload-or-restart ssh.service
       when: sshd_hardening is changed
       tags: [base, security, sshd]

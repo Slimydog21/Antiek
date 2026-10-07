@@ -457,15 +457,15 @@ def test_every_host_path_is_keys_only_ssh() -> None:
     assert re.search(r"ssh_pwauth\s*=\s*false", prod)
 
     tasks = yaml.safe_load(_SETUP.read_text(encoding="utf-8"))[0]["tasks"]
-    drop_in = next(t for t in tasks if t.get("name") == "sshd — keys-only drop-in")
+    drop_in = next(t for t in tasks if t.get("name") == "sshd keys-only drop-in")
     copy = drop_in["ansible.builtin.copy"]
     assert Path(copy["dest"]).parent == Path("/etc/ssh/sshd_config.d")
     assert Path(copy["dest"]).name < "50-cloud-init.conf"
     for line in (*_KEYS_ONLY, "PermitRootLogin prohibit-password"):
         assert line in copy["content"].splitlines()
     names = [t.get("name") for t in tasks]
-    validate = names.index("sshd — validate the full configuration before any reload")
-    reload = names.index("sshd — reload if running (open sessions survive a reload)")
+    validate = names.index("sshd validate the full configuration before any reload")
+    reload = names.index("sshd reload if running (open sessions survive a reload)")
     assert names.index(drop_in["name"]) < validate < reload
     assert tasks[validate]["ansible.builtin.command"] == "/usr/sbin/sshd -t"
     assert "try-reload-or-restart" in tasks[reload]["ansible.builtin.command"]
