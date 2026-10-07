@@ -14,7 +14,7 @@ import { create } from "zustand";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 
 import { useSelection } from "./selection";
-import { findAgent, findProjectPath, type AgentNode, type ContextTree, type ProjectNode } from "./tree";
+import { checkTree, findAgent, findProjectPath, type AgentNode, type ContextTree, type ProjectNode } from "./tree";
 
 const EMPTY_ROOTS: readonly ProjectNode[] = Object.freeze([]);
 const EMPTY_AGENTS: readonly AgentNode[] = Object.freeze([]);
@@ -126,11 +126,21 @@ function reuseTree(next: ContextTree, prevTree: ContextTree): ContextTree {
 // The write path
 // ---------------------------------------------------------------------------
 
-/** The ONLY write path for any feeder. Reuses node identities by
- *  fingerprint; returns the previous tree by reference when nothing changed
- *  (the store then notifies only `composedAt` subscribers). Then reconciles
- *  the selection against the published tree. */
+/** The ONLY write path for any feeder. Runs `checkTree` first: a tree that
+ *  fails it is REFUSED (the previous roots, agents and `composedAt` stay;
+ *  status "error" names every violation), so the provenance rule
+ *  (CONTRACTS.md §2) holds on the write path and not only in tests; a
+ *  future feeder that flips a pre-backend node's provenance cannot reach
+ *  `displayKind`. Otherwise reuses node identities by fingerprint; returns
+ *  the previous tree by reference when nothing changed (the store then
+ *  notifies only `composedAt` subscribers). Then reconciles the selection
+ *  against the published tree. */
 export function publishTree(next: ContextTree, composedAt: string): void {
+  const problems = checkTree(next);
+  if (problems.length > 0) {
+    markTreeError(`publishTree refused: ${problems.join("; ")}`);
+    return;
+  }
   const prevTree = useContextTreeStore.getState().tree;
   const tree = reuseTree(next, prevTree);
   useContextTreeStore.setState(tree === prevTree ? { composedAt } : { tree, composedAt });
