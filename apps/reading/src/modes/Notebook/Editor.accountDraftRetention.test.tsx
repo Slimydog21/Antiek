@@ -59,12 +59,19 @@ function mountNotebook(startOpen = false, delay = { ms: 60000 }) {
   const mounted = render(<MemoryRouter><AuthProvider><View /></AuthProvider></MemoryRouter>);
   return { ...mounted, editorRef };
 }
+async function openNotebook(mounted: ReturnType<typeof mountNotebook>): Promise<void> {
+  await waitFor(() => {
+    expect(workspaceOwnerSession().subject).not.toBeNull();
+    expect(isWorkspaceOwnerSession(workspaceOwnerSession())).toBe(true);
+    expect(screen.queryByRole("button", { name: "Open notebook" }) !== null
+      || mounted.container.querySelector("[data-notebook-editor]") !== null).toBe(true);
+  });
+  const open = screen.queryByRole("button", { name: "Open notebook" });
+  if (open !== null) fireEvent.click(open);
+}
 async function hydrated(mounted: ReturnType<typeof mountNotebook>): Promise<TipTapEditor> {
   try {
-    // Open only after actual identity confirmation, matching the user's notebook entry.
-    await waitFor(() => { expect(isWorkspaceOwnerSession(workspaceOwnerSession())).toBe(true); });
-    const open = screen.queryByRole("button", { name: "Open notebook" });
-    if (open !== null) fireEvent.click(open);
+    await openNotebook(mounted);
     await waitFor(() => {
       expect(mounted.container.querySelector("[data-notebook-editor]")?.getAttribute("data-hydrated")).toBe("true");
       expect(mounted.editorRef.current).not.toBeNull();
@@ -147,7 +154,7 @@ describe("captured pending notebook edits", () => {
     expect(restored.getHTML()).toBe(html);
     expect(isWorkspaceOwnerSession(owner)).toBe(false);
     expect(putCalls()).toHaveLength(0);
-  });
+  }, 15000); // Three real editor lifetimes and two logout cycles; no old timeout changes.
 
   it("keeps authorized edits through actual suspension, server-unavailable unmount and same-A Retry", async () => {
     const mounted = mountNotebook();
@@ -301,6 +308,7 @@ describe("mounted notebook retention boundaries", () => {
   it("does not retain an unhydrated command over a real read-only hydration failure", async () => {
     notebookReply = async () => response(503);
     const mounted = mountNotebook();
+    await openNotebook(mounted);
     await screen.findByText(/editing is paused/);
     const editor = mounted.editorRef.current;
     if (editor === null) throw new Error("Read-only editor did not mount");
