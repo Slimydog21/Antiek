@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { transcribeAudio, ApiError } from "../../lib/api";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -54,14 +55,14 @@ export default function VoiceChaseButton({
 
   useEffect(() => {
     if (!escapeCancels || !recording) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+    return registerKeyboardOwner(window, {
+      id: "voice.escape-cancel", scope: "overlay",
+      eligible: (e) => e.key === "Escape",
+    }, (e) => {
       e.preventDefault();
       cancelledRef.current = true;
       recorder.stop();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    });
   }, [escapeCancels, recording, recorder.stop]);
   const [phase, setPhase] = useState<Phase>("idle");
   // null reason ⇒ the no-key case (AIActionFailure says so); a string ⇒ a
