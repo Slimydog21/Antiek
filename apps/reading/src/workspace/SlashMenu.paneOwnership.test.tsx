@@ -89,7 +89,7 @@ beforeEach(() => {
       return { length: 0, item: () => null, *[Symbol.iterator]() {} } as unknown as DOMRectList;
     }
     const rect = new DOMRect(0, 0, 1000, 700);
-    return { 0: rect, length: 1, item: (index) => index === 0 ? rect : null,
+    return { 0: rect, length: 1, item: (index: number) => index === 0 ? rect : null,
       *[Symbol.iterator]() { yield rect; } } as unknown as DOMRectList;
   });
   vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
