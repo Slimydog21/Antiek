@@ -64,6 +64,10 @@ A node or agent may carry `source.kind: "investigation"` or `scopeProvenance: "s
 
 The `displayKind` lens: `source.kind "default"` → "Default project"; `kind "project"` → "Project"; `kind "subproject"` + `provenance "backend"` → "Sub-project"; everything else → "Investigation".
 
+Enforced on the write path (repair round 2026-10-07T20:20Z): `publishTree` runs `checkTree` first and REFUSES a tree that fails it: the previous roots, agents and `composedAt` stay, status becomes `"error"` and `error` names every violation (`publishTree refused: …`); a sound publish recovers (treeStore.test.tsx R6). A future `adapters/backend.ts` that spreads a pre-backend node and flips its provenance cannot reach `displayKind`, with or without the writer census.
+
+Provenance labels a pre-backend agent may not wear, each a `checkTree`/`isAgentNode` rejection and not a comment (tree.test.ts T3/T6): a `runId` ("pre-backend agent with a runId"), `scopeProvenance: "backend"` ("pre-backend agent with backend scope provenance"), `status.provenance: "backend"` ("pre-backend agent with a backend status"). A `provenance: "backend"` agent may carry all three.
+
 ## 3. Deletion path (the adapter is deletable by one edit)
 
 1. Implement `adapters/backend.ts`: map the SPR-B context route to a `ContextTree` with `provenance: "backend"` on every node, `source.kind` `registry` or (if SPR-B picks nested projects) a new source member, `scopeProvenance: "backend"`, and publish through `publishTree` (the ONLY write path; it reuses identities and reconciles the selection).
@@ -78,6 +82,7 @@ The `displayKind` lens: `source.kind "default"` → "Default project"; `kind "pr
 - **The documented non-choice path**: the owner subscription in tabTreeStore.ts:745-756 re-seeds `projectId: readTabProject() ?? TAB_PROJECT_ID` on an account switch. The mirror's single `useTabTrees.subscribe` sees it (projectId or contextEpoch changed) and resets the selection to `{projectId}`, clearing sub/agent; contracts.account-isolation.test.ts I19 proves "p-a" never leaks into account-b and comes back for account-a. No `auth.tsx` entry and no `setWorkspaceOwner` call anywhere under `contracts/`.
 - Sub/agent selection is **session-only**: no new storage key before SPR-B names one.
 - `isSelectionPathOf` is strict: a persisted project id absent from the tree is not a prefix of any path, so `selectSubProject`/`selectAgent` refuse under a stale project (even a cross-project agent) and `useSelectedProjectNode()` returns null (R5). `reconcile` keeps `projectId` regardless.
+- **The row selector is keyed by role**: `useIsSelected(id, role)` with `role` one of `"project" | "subproject" | "agent"` answers `selection[role] === id` and nothing else. Pre-backend the id spaces overlap (a research agent's `id` IS its investigation id, which is also a sub-project node's id), so a raw-id check would light a sibling sub-project row off the selected path and the rendered selection would stop being a prefix of one tree path (selection.test.tsx S6 pins this; S5 keeps the render-isolation claim). An untyped caller passing no role lights nothing.
 - No registry validation of the stored id (async; a stored id may name an archived project). The ProjectPickerContent.tsx:16-18 comment ("an archived project stays listed only when it IS the selection") versus its code (the registry's default list simply excludes archived rows; nothing re-adds the selected one) is recorded, not resolved.
 
 ## 5. Anchor
@@ -86,6 +91,7 @@ The `displayKind` lens: `source.kind "default"` → "Default project"; `kind "pr
 - `region_id` is never emitted (a per-projection RegionStore id).
 - `BookDocumentAnchor.pageIndex?` was added beyond the binding design: a text anchor has no page in its `range`, yet the wire wants `page_index` for a text pin (`page_index_hint`) and the design's A2/A3 cases require it. It is a pagination hint, never identity, absent when unknown.
 - `SpawnFlowResult.documentAnchor` is absent when `anchorId` is null AND when the pin returned a forged row with no payload (ReformatFlow.tsx:69). The `reformat_forged_anchor` reason stays in `DocumentVersion` for a producer that wants to name it; spawnFlows never fabricates a range for it.
+- **Anchor and documentId travel together** on `companionStore.openAgentTab`: a book anchor pins `documentId = anchor.documentId` on both the new-tab and the reuse path (a deliverable anchor names no book and leaves `documentId` alone). Before the repair round the reuse path patched `anchor` but not `documentId`, so reopening a thread from a passage in another book left CompanionAgents' "Open source document" pairing the old `documentId` with the new anchor, which `openDocumentFromAgent` refuses (`document_mismatch`) and the click handler ignores (openers.test.tsx O6 pins the fix; the handler still ignores the result, now unreachable through this path).
 - Dedup is anchor-blind: crossPane's reopen path activates the existing tab and leaves its `branch_origin.anchor` untouched (openers.test.tsx O4 records this). Landing at the passage on a dedup reuse is still open (R8/P1-4 half-closed: anchor on the request and on the node DONE).
 - `anchorKey` carries unit+basis so a UTF-16 and a scalar anchor over the same astral text never collide; its fields 3..5 are spawnFlows' `(chunkId, start, end)` tuple.
 
@@ -95,7 +101,7 @@ The `displayKind` lens: `source.kind "default"` → "Default project"; `kind "pr
 - Whether `"default"` survives as a server project (TODO ffx-nav-backend-context).
 - SPR-B's run-state names ("five states"): `AgentRunState` aliases `InvestigationSummary.status` until an INBOX note lands; SPR-10's attention order cannot be designed against them yet.
 - Dialogue run identity: `AgentNode.id === viewId` by construction (no run exists); SPR-B's agent bridge decides whether a dialogue ever gets a run id.
-- Membership for a NESTED investigation (a member whose parent is not a member): the adapter re-files only forest roots; the nested node stays under its parent and its tab is filed on that node with `scope "project"`. Whether SPR-B's membership is inherited is unknown.
+- Membership for a NESTED investigation: the adapter re-files only forest roots; a nested node stays under its parent. Its tab is filed on that node with `scope "project"` / `"registry-member"` ONLY when that membership is what placed the subtree under the project (the forest root is a member of the same project; preBackend.test.ts (k)). A nested member whose root is not a member sits on another root's path, so its tab is honestly cross-project (`session-global`) rather than a project claim the member project cannot select (the pre-repair mislabel). Membership is not inherited downward (a non-member child under a member root is cross-project). Whether SPR-B's membership is inherited is unknown.
 - `summary: null` investigation nodes are representable but never built by the adapter (a parent outside the window promotes the child instead of inventing the parent).
 
 ## 7. Steelman of "no module" (rigor #2) and the collapse rule
@@ -111,9 +117,12 @@ Collapse rule: if only ONE consumer lands against this branch head by the time S
 3. `spawnFlows.documentAnchor` absent for ReformatFlow's forged anchor (§0, §5).
 4. The census regex matches the constructor literal (`kind: "investigation"` followed by `,` or `}`), since `tree.ts` must declare the union member.
 5. `isSelectionPathOf` under a stale project id is strict (§4).
+6. `publishTree` refuses a tree `checkTree` rejects (§2), so the write path and the invariant checker cannot disagree.
+7. `useIsSelected` takes a role (§4); the single-id form is gone before any consumer lands.
+8. A book anchor pins `documentId` on `openAgentTab` reuse (§5).
 
 ## 9. Verification (local head, no push, no PR)
 
-- `npx vitest run --maxWorkers=1 --testTimeout=30000 src/workspace/contracts` — 9 files, 68 tests, all green (red-first: every suite failed on module resolution at commit `2fceac4da`).
+- `npx vitest run --maxWorkers=1 --testTimeout=30000 src/workspace/contracts` — 9 files, 77 tests, all green (red-first: every suite failed on module resolution at commit `2fceac4da`; the repair round's nine tests, S6 / O6 / R6 ×2 / T3 ×3 / T6 / (k), each failed against head `4c1da9bc6` before its fix).
 - Regression: `src/workspace/companionPane.test.tsx src/workspace/crossPane.race.test.ts src/workspace/ProjectPicker.test.tsx src/workspace/documentTabs.projectRoundtrip.test.tsx src/modes/Reading/Reading.spawnFlows.test.tsx` — 5 files, 50 tests, all green.
 - `npm run typecheck`, `npm run lint:tokens`, `npm run lint:type` — exit 0. `npm run build:check` — see the run-ledger entry for the measured index chunk.
