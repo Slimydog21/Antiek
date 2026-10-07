@@ -15,8 +15,11 @@ import {
   SUMMARIES_ACYCLIC,
   fixtureInputs,
   fixtureInputsWithMembers,
+  project,
+  summary,
   tab,
 } from "../fixtures.test.helpers";
+import { isSelectionPathOf } from "../selection";
 import { checkTree, findAgent, findProjectPath, type AgentNode, type ContextTree, type ProjectNode } from "../tree";
 import { composePreBackendTree, readLocalParents } from "./preBackend";
 
@@ -161,6 +164,42 @@ describe("composePreBackendTree", () => {
     expect(found.owner?.id).toBe("p1");
     expect(found.node).toMatchObject({ scope: "project", scopeProvenance: "registry-member", projectId: "p1" });
     expect(found.node.status).toBeUndefined();
+  });
+
+  it("(k) a tab is filed by membership only when membership placed its investigation under that project", () => {
+    const members = (ids: string[]) =>
+      new Map([["p1", ids.map((id) => ({ member_kind: "investigation" as const, member_id: id, added_at: "2026-09-18T10:00:00Z" }))]]);
+    const inputs = {
+      projects: [project("p1", "P1")],
+      investigations: [summary("inv-root"), summary("inv-kid", { parent_investigation_id: "inv-root" })],
+      localParents: {},
+      companionTabs: [tab("research-thread", { investigationId: "inv-kid" })],
+    };
+    // A nested member whose forest root is not a member: nothing moved it
+    // under p1, so its tab is honestly cross-project (session-global).
+    const nested = composePreBackendTree({ ...inputs, membersByProject: members(["inv-kid"]) });
+    expect(findProjectPath(nested, "inv-kid")!.map((n) => n.id)).toEqual(["default", "inv-root", "inv-kid"]);
+    const f = findAgent(nested, "inv-kid")!;
+    expect(f.owner).toBeNull();
+    expect(f.node).toMatchObject({ scope: "cross-project", scopeProvenance: "session-global", projectId: null });
+    expect(isSelectionPathOf({ projectId: "default", subProjectId: "inv-kid", agentId: "inv-kid" }, nested)).toBe(true);
+    // Cross-project, it is selectable under p1 as well (never a project-scoped claim p1 cannot honour).
+    expect(isSelectionPathOf({ projectId: "p1", agentId: "inv-kid" }, nested)).toBe(true);
+    expect(checkTree(nested)).toEqual([]);
+    // The root is a member too: the subtree lives under p1 and the nested
+    // tab is filed on its own node with registry-member provenance.
+    const both = composePreBackendTree({ ...inputs, membersByProject: members(["inv-root", "inv-kid"]) });
+    expect(findProjectPath(both, "inv-kid")!.map((n) => n.id)).toEqual(["p1", "inv-root", "inv-kid"]);
+    const g = findAgent(both, "inv-kid")!;
+    expect(g.owner?.id).toBe("inv-kid");
+    expect(g.node).toMatchObject({ scope: "project", scopeProvenance: "registry-member", projectId: "inv-kid" });
+    expect(isSelectionPathOf({ projectId: "p1", subProjectId: "inv-kid", agentId: "inv-kid" }, both)).toBe(true);
+    expect(checkTree(both)).toEqual([]);
+    // Membership is not inherited: a non-member child under a member root stays cross-project.
+    const rootOnly = composePreBackendTree({ ...inputs, membersByProject: members(["inv-root"]) });
+    expect(findProjectPath(rootOnly, "inv-kid")!.map((n) => n.id)).toEqual(["p1", "inv-root", "inv-kid"]);
+    expect(findAgent(rootOnly, "inv-kid")!.node.scope).toBe("cross-project");
+    expect(checkTree(rootOnly)).toEqual([]);
   });
 
   it("(i) readLocalParents filters non-string values and is re-read on each call", () => {

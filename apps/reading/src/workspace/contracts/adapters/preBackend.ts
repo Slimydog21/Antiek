@@ -141,16 +141,36 @@ export function composePreBackendTree(inputs: PreBackendInputs): ContextTree {
     else childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), s]);
   }
 
-  // 3. Agents from the companion tabs; filed by membership when linked.
+  // 3. Agents from the companion tabs; filed by membership ONLY when that
+  //    membership is what placed the investigation under the project: a
+  //    forest root re-filed under its member project (rule 5), or an
+  //    investigation outside the list filed on the project itself. A nested
+  //    member whose forest root is not a member sits on another root's
+  //    path, so its tab is honestly cross-project (session-global);
+  //    membership is not inherited downward either (CONTRACTS.md §6).
   const memberOf = memberProjects(inputs.membersByProject);
   const registryIds = new Set(inputs.projects.map((p) => p.project_id));
+  const isForestRoot = (id: string): boolean => {
+    const parent = parentOf.get(id) ?? null;
+    return parent === null || onCycle.has(id) || !byId.has(parent);
+  };
+  const forestRootOf = (id: string): string => {
+    let cur = id;
+    while (!isForestRoot(cur)) cur = parentOf.get(cur)!;
+    return cur;
+  };
+  /** The registry project a listed investigation's subtree is filed under, if any. */
+  const homeProjectOf = (id: string): string | undefined => {
+    const target = memberOf.get(forestRootOf(id));
+    return target !== undefined && registryIds.has(target) ? target : undefined;
+  };
   const agentsByOwner = new Map<string, AgentNode[]>();
   const crossProjectAgents: AgentNode[] = [];
   for (const t of inputs.companionTabs) {
     const investigationId = t.kind === "research-thread" ? t.investigationId?.trim() || undefined : undefined;
     const summary = investigationId ? byId.get(investigationId) ?? null : null;
     const project = investigationId ? memberOf.get(investigationId) : undefined;
-    const linked = project !== undefined && registryIds.has(project);
+    const linked = project !== undefined && registryIds.has(project) && (!summary || homeProjectOf(investigationId!) === project);
     const owner = linked ? (summary ? investigationId! : project) : null;
     const base = {
       id: investigationId ?? t.id,
@@ -198,8 +218,7 @@ export function composePreBackendTree(inputs: PreBackendInputs): ContextTree {
   const file = (projectId: string, node: ProjectNode) =>
     rootsByProject.set(projectId, [...(rootsByProject.get(projectId) ?? []), node]);
   for (const r of forestRoots) {
-    const target = memberOf.get(r.summary.investigation_id);
-    const home = target !== undefined && registryIds.has(target) ? target : TAB_PROJECT_ID;
+    const home = homeProjectOf(r.summary.investigation_id) ?? TAB_PROJECT_ID;
     file(home, subproject(r.summary, home, r.parentMissing));
   }
 
