@@ -77,7 +77,7 @@ _ALLOWLIST: dict[tuple[str, int], str] = {
         "idempotent enough to retry instead. Tracked, not dismissed."
     ),
     (
-        "roles/note_taker/replay.py", 428,
+        "roles/note_taker/replay.py", 441,
     ): (
         "INSERT note_taker_configurations + UPDATE note_taker_windows. Partial "
         "application leaves a config row without its window state. Needs a "

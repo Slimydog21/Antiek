@@ -1,3 +1,4 @@
+import { accountStorageKey, isWorkspaceOwnerSession, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { useEffect, useState } from "react";
 
 /**
@@ -17,37 +18,40 @@ type Props = {
 const LS_PREFIX = "antiek.interview-notes.";
 
 export default function InterviewNotes({ interviewId }: Props) {
+  const owner = useWorkspaceOwner();
+  const key = interviewId ? accountStorageKey(LS_PREFIX + interviewId, owner) : null;
   const [text, setText] = useState<string>("");
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
 
   // Load on mount + on interview change
   useEffect(() => {
-    if (!interviewId) {
+    if (key === null) {
       setText("");
       return;
     }
     try {
-      const stored = window.localStorage.getItem(LS_PREFIX + interviewId);
+      const stored = window.localStorage.getItem(key);
       setText(stored ?? "");
     } catch {
       setText("");
     }
-  }, [interviewId]);
+  }, [key]);
 
   // Debounced autosave (1.2s after last keypress)
   useEffect(() => {
-    if (!interviewId) return;
+    if (key === null) return;
     setSaved("saving");
     const t = setTimeout(() => {
+      if (!isWorkspaceOwnerSession(owner)) return;
       try {
-        window.localStorage.setItem(LS_PREFIX + interviewId, text);
+        window.localStorage.setItem(key, text);
         setSaved("saved");
       } catch {
         // ignore quota
       }
     }, 1200);
     return () => clearTimeout(t);
-  }, [text, interviewId]);
+  }, [text, key, owner]);
 
   if (!interviewId) {
     return (

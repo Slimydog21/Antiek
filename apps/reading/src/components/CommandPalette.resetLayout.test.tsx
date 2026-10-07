@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../testAccountOwner";
 /**
  * CommandPalette.resetLayout.test.tsx — G-X2 (GAPS §8).
  *
@@ -103,10 +104,10 @@ describe("G-X2 — a reset stays reset (no debounced write-back)", () => {
     await act(async () => {
       await wait(300);
     });
-    expect(lsKeys()).toContain("antiek.workspace.inv.abc");
+    expect(lsKeys()).toContain(unitAccountKey("antiek.workspace.inv.abc"));
 
     runPaletteCommand("Reset workspace layout (this investigation)");
-    expect(lsKeys(), "cleared immediately").not.toContain("antiek.workspace.inv.abc");
+    expect(lsKeys(), "cleared immediately").not.toContain(unitAccountKey("antiek.workspace.inv.abc"));
 
     // The defect window: the persistence subscriber used to schedule a
     // snapshot of the emptied workspace ~250 ms after reset().
@@ -116,7 +117,7 @@ describe("G-X2 — a reset stays reset (no debounced write-back)", () => {
     expect(
       lsKeys(),
       "the emptied layout must NOT be written back into the cleared key",
-    ).not.toContain("antiek.workspace.inv.abc");
+    ).not.toContain(unitAccountKey("antiek.workspace.inv.abc"));
   });
 
   it("'Reset workspace layout (this route)' clears the collapsed route key on a dynamic route", async () => {
@@ -131,7 +132,7 @@ describe("G-X2 — a reset stays reset (no debounced write-back)", () => {
     expect(
       lsKeys(),
       "hydration persists the route scope under the collapsed key",
-    ).toContain("antiek.workspace.route./wrestle/:id");
+    ).toContain(unitAccountKey("antiek.workspace.route./wrestle/:id"));
 
     runPaletteCommand("Reset workspace layout (this route)");
     await act(async () => {
@@ -140,10 +141,10 @@ describe("G-X2 — a reset stays reset (no debounced write-back)", () => {
 
     const keys = lsKeys();
     expect(keys, "the collapsed route key must be cleared (and stay cleared)").not.toContain(
-      "antiek.workspace.route./wrestle/:id",
+      unitAccountKey("antiek.workspace.route./wrestle/:id"),
     );
     expect(keys, "no raw-pathname variant of the key may linger either").not.toContain(
-      "antiek.workspace.route./wrestle/doc-1",
+      unitAccountKey("antiek.workspace.route./wrestle/doc-1"),
     );
   });
 });

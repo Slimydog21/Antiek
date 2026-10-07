@@ -51,6 +51,7 @@ try:
         response_contains_secret,
         usage_counts_reported,
     )
+    from .wire_request import BuiltProviderRequest
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -63,6 +64,9 @@ except ImportError:  # pragma: no cover
         optional_count,
         response_contains_secret,
         usage_counts_reported,
+    )
+    from dispatch.providers.wire_request import (  # type: ignore[no-redef,import-not-found]
+        BuiltProviderRequest,
     )
 
 
@@ -207,18 +211,18 @@ class OpenAICompatProvider:
             self._client = httpx.Client(timeout=self._timeout_s)
         return self._client
 
-    def call(
+    def build_request(
         self,
         *,
         model: str,
         prompt: str,
         max_tokens: int,
         temperature: float,
+        api_key: str,
         extra_body: Mapping[str, Any] | None = None,
-    ) -> RawProviderResponse:
+    ) -> BuiltProviderRequest:
         """``extra_body`` adds fields for this call only, after the
         constructor's; a shared adapter instance is never mutated per call."""
-        api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -230,19 +234,35 @@ class OpenAICompatProvider:
             "temperature": temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
-        # Vendor-specific fields (e.g. z.ai's reasoning toggle) merge on
-        # top, never overriding the core request shape.
+        # Preserve constructor overrides followed by per-call overrides.
         if self._extra_body:
             body.update(self._extra_body)
         if extra_body:
             body.update(extra_body)
+        return BuiltProviderRequest(url=url, headers=headers, body=body, model=model)
+
+    def call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
+    ) -> RawProviderResponse:
+        api_key = self._resolve_api_key()
+        built = self.build_request(
+            model=model, prompt=prompt, max_tokens=max_tokens,
+            temperature=temperature, api_key=api_key, extra_body=extra_body,
+        )
+        model = built.model
 
         client = self._ensure_client()
         t_start = time.monotonic()
         resp: httpx.Response | None = None
         sanitized_transport_error: str | None = None
         try:
-            resp = client.post(url, json=body, headers=headers)
+            resp = client.post(built.url, json=built.body, headers=built.headers)
         except httpx.TimeoutException as e:
             if self._expose_error_body:
                 raise ProviderError(
@@ -276,7 +296,22 @@ class OpenAICompatProvider:
             )
         assert resp is not None
         latency_ms = int((time.monotonic() - t_start) * 1000)
+        return self.parse_response(
+            resp, model=model, api_key=api_key, latency_ms=latency_ms,
+            request_url=built.url,
+        )
 
+    def parse_response(
+        self,
+        response: httpx.Response,
+        *,
+        model: str,
+        api_key: str,
+        latency_ms: int,
+        request_url: str | None = None,
+    ) -> RawProviderResponse:
+        resp = response
+        url = request_url if request_url is not None else self.base_url + self.chat_completions_path
         if resp.status_code != 200:
             described = _described_upstream_error(resp, provider=self.name, endpoint=url, secret=api_key)
             if described is not None:

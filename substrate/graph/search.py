@@ -146,6 +146,7 @@ def search(
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
     owner_user_id: str | None = None,
+    account_owner_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -187,6 +188,12 @@ def search(
             non-negotiable: payouts on an ungated graph are explicitly forbidden
             by §16.2; and personal_reading (the owner's private third-party
             reading) must never reach a monetized / public read.
+        account_owner_ids: Verified account subject and explicitly persisted
+            legacy owner alias supplied by the HTTP account boundary. Applies
+            public-class-or-stored-owner admission before ranking, excludes
+            taken-down books and returns document hits only. None retains the
+            separate legacy CLI retrieval policy; a policy tag cannot mint
+            account ownership.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -195,6 +202,11 @@ def search(
     """
     if top_k < 1:
         raise ValueError(f"top_k must be >= 1, got {top_k}")
+    if account_owner_ids is not None:
+        if not account_owner_ids or any(not isinstance(owner, str) or not owner.strip() for owner in account_owner_ids):
+            raise ValueError("account_owner_ids requires authenticated stored owners")
+        if with_edges:
+            raise ValueError("account corpus search does not admit graph-edge disclosure")
 
     # Union the single-id scope into the set scope (a caller may pass
     # either or both). An EXPLICITLY-EMPTY set means "no documents in
@@ -240,11 +252,21 @@ def search(
         params.append(int(source_tier_max))
     # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
     # SPR-01 — emitted only via retrieval_gate.non_privileged_chunk_sql_clause.
-    gate_sql, gate_params = non_privileged_chunk_sql_clause(
-        table_alias="d",
-        policy_tag=policy_tag,
-        owner_user_id=owner_user_id or "__operator__",
-    )
+    if account_owner_ids is not None:
+        # Public accounts do not inherit the legacy privileged-class bypass.
+        # Apply their catalogue/body boundary before compatibility and ranking.
+        public_classes = ["public_domain", "opt_in_licensed", "source_declared_open", "user_public_contribution"]
+        public_slots = ",".join("?" for _ in public_classes)
+        owner_slots = ",".join("?" for _ in account_owner_ids)
+        gate_sql = f" AND (d.content_class IN ({public_slots}) OR d.owner_user_id IN ({owner_slots}))"
+        gate_sql += " AND NOT EXISTS (SELECT 1 FROM book_assets b WHERE b.document_id = d.document_id AND b.taken_down)"
+        gate_params = [*public_classes, *account_owner_ids]
+    else:
+        gate_sql, gate_params = non_privileged_chunk_sql_clause(
+            table_alias="d",
+            policy_tag=policy_tag,
+            owner_user_id=owner_user_id or "__operator__",
+        )
     candidate_sql += gate_sql
     params.extend(gate_params)
     assert_embedding_compatible(
@@ -298,7 +320,9 @@ def search(
         "query": query,
         "top_k": top_k,
         "results": results,
-        "node_matches": search_nodes_by_label(
+        # The account HTTP contract returns document hits. Node provenance
+        # needs its own audited account admission, not a privileged tag.
+        "node_matches": [] if account_owner_ids is not None else search_nodes_by_label(
             con, query, limit=10, policy_tag=policy_tag, owner_user_id=owner_user_id,
         ),
     }

@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from interfaces.research.api.app import create_app
 from substrate.auth import mint_session_cookie
 from substrate.event_log import log_event, trajectory
+from substrate.graph import default_db_path
+from substrate.research_artifact.paths import research_artifacts_dir
+from substrate.research_artifact.store import ResearchArtifactStore
 
 
 @pytest.fixture
@@ -14,6 +17,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", "typed-authority-hermetic-secret")
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "alice@example.test,bob@example.test")
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
@@ -24,6 +28,25 @@ def client(monkeypatch, tmp_path):
     ))
     assert result.get("/auth/me").json()["user_id"] == "alice"
     return result
+
+
+def _assert_unknown_owner_export_refused(client, inv):
+    files = {
+        str(path): path.read_bytes() for path in research_artifacts_dir().rglob("*")
+        if path.is_file()
+    }
+    existing = trajectory(inv)
+    store = ResearchArtifactStore(default_db_path())
+    assert store.get(inv) is None
+    response = client.post(f"/research/{inv}/artifact/export")
+    assert response.status_code == 403, response.text
+    assert response.json() == {"detail": "investigation export access withheld"}
+    assert store.get(inv) is None
+    assert trajectory(inv) == existing
+    assert {
+        str(path): path.read_bytes() for path in research_artifacts_dir().rglob("*")
+        if path.is_file()
+    } == files
 
 
 @pytest.mark.parametrize("ownership", [
@@ -53,7 +76,7 @@ def test_generic_start_cannot_turn_withheld_legacy_reader_into_disclosure(client
     inv = "legacy-without-start"
     secret = "LEGACY_OPAQUE_SECRET_1384"
     log_event(inv, "investigation.completed", payload={"thesis_summary": secret})
-    assert client.post(f"/research/{inv}/artifact/export").status_code == 200
+    _assert_unknown_owner_export_refused(client, inv)
     before = client.get(f"/research/{inv}/artifact.html")
     assert before.status_code == 200
     assert secret not in before.text
@@ -71,6 +94,7 @@ def test_generic_start_cannot_turn_withheld_legacy_reader_into_disclosure(client
     assert minted.status_code == 403, minted.text
     assert trajectory(inv) == existing
     client.app.state.broadcaster.broadcast.assert_not_called()
+    _assert_unknown_owner_export_refused(client, inv)
 
 
 def test_real_creator_keeps_its_normal_result_and_unknown_context_withheld(client):
@@ -87,7 +111,7 @@ def test_real_creator_keeps_its_normal_result_and_unknown_context_withheld(clien
     assert starts[0]["payload"]["owner_user_id"] is None
     secret = "CREATOR_SYNTHESIS_PRIVATE_8193"
     log_event(inv, "investigation.completed", payload={"thesis_summary": secret})
-    assert client.post(f"/research/{inv}/artifact/export").status_code == 200
+    _assert_unknown_owner_export_refused(client, inv)
     reader = client.get(f"/research/{inv}/artifact.html")
     assert reader.status_code == 200
     assert question not in reader.text

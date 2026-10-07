@@ -87,6 +87,19 @@ _PROCESS_WRITE_GATE = threading.Lock()
 # ---------------------------------------------------------------------------
 
 
+# Measured on prod (2026-09-18, ~881–925MB store, cited below and in the
+# connect_write fast path as "~6.8s"): the cost of a COLD duckdb.connect.
+# Writer budgets that gate a QUEUE (in-process write gate, flock poll) must
+# cover at least one full cold session ahead of the waiter, or the queued
+# writer is refused with zero cross-process contention — the frame-telemetry
+# 503 class of 2026-10-02 (interfaces/research/api/ad_routes.py derives its
+# budget from this figure; tests/test_frame_write_timeout_budget.py pins it).
+# On an M2 Pro dev machine the same store opens in ~1.3s regardless of size
+# (313MB and 851MB measured 2026-10-02), so the prod figure is hardware-bound,
+# not size-bound; do not re-derive it from dev timings.
+PROD_COLD_CONNECT_S = 6.8
+
+
 def _env_float(name: str, default: float) -> float:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -886,7 +899,8 @@ def _connect_write_after_process_gate(
     resolved_keepalive_s = _resolve_keepalive_s(keepalive_s)
     acquire_start = time.monotonic()
     deadline = acquire_start + timeout_s
-    # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
+    # Fast path: reuse parked in-process writer (skips the cold open —
+    # PROD_COLD_CONNECT_S, ~6.8s on the prod store).
     warm = _take_warm_slot(db_path)
     if warm is not None:
         try:

@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../../testAccountOwner";
 /**
  * digDeeper.test.tsx — island SPR-04 proofs (dig deeper from the island).
  *
@@ -326,7 +327,7 @@ async function expandIsland() {
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.removeItem("antiek.island.hidden");
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
   vi.stubGlobal("fetch", apiFetchMock);
   apiFetchMock.mockReset();
   getBookMock.mockReset().mockResolvedValue(makeDetail());
@@ -341,7 +342,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.removeItem("antiek.island.hidden");
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
 });
 
 // ── Proof 1: the dig-deeper launch + the family consequence ───────────────

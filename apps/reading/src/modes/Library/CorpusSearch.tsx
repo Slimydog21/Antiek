@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
 import { corpusSearch } from "../../api/corpusSearch";
@@ -27,6 +27,8 @@ import type { CorpusSearchHit } from "../../api/corpusSearch";
 // Bound the dropped-file text used as the query signal — enough to characterize
 // "books like these", not the whole file.
 const MAX_FILE_QUERY_CHARS = 2000;
+// Enough UTF8 bytes for the query prefix without decoding an unbounded file.
+const MAX_FILE_QUERY_BYTES = 8 * 1024;
 
 export interface CorpusSearchProps {
   /** Open a result's book in the reader (optionally at a page). */
@@ -36,73 +38,78 @@ export interface CorpusSearchProps {
   themeContext?: string[];
 }
 
+type SearchRequest = { query: string; signalLabel: string | null };
+type SearchState =
+  | { kind: "idle" }
+  | { kind: "reading" }
+  | { kind: "loading" }
+  | { kind: "ready"; hits: CorpusSearchHit[]; signalLabel: string | null }
+  | { kind: "failed"; message: string; request: SearchRequest | null };
+
 export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps) {
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<CorpusSearchHit[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<SearchState>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
-  // The honest label for what biased this search (a dropped file vs a typed
-  // query vs theme-context), so the reader knows why these results.
-  const [signal, setSignal] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const requestId = useRef(0);
+  const busy = state.kind === "loading" || state.kind === "reading";
+  const hits = state.kind === "ready" ? state.hits : null;
+  const signal = state.kind === "ready" ? state.signalLabel : null;
+
+  useEffect(() => () => { requestId.current += 1; }, []);
+
+  const retire = useCallback(() => {
+    requestId.current += 1;
+    setState({ kind: "idle" });
+  }, []);
+
+  const execute = useCallback(async (request: SearchRequest, id: number) => {
+    setState({ kind: "loading" });
+    try {
+      const result = await corpusSearch(request.query);
+      if (requestId.current !== id) return;
+      setState({ kind: "ready", hits: result.hits, signalLabel: request.signalLabel });
+    } catch (error: unknown) {
+      if (requestId.current !== id) return;
+      setState({ kind: "failed", message: error instanceof Error ? error.message : String(error), request });
+    }
+  }, []);
 
   const run = useCallback(
-    async (rawQuery: string, signalLabel: string | null) => {
+    async (rawQuery: string, signalLabel: string | null, id = ++requestId.current) => {
       const q = rawQuery.trim();
-      if (!q) {
-        setHits(null);
-        setSignal(null);
+      if (!q) { setState({ kind: "idle" }); return; }
+      const themed = themeContext && themeContext.length > 0
+        ? `${q}\n\n(in the context of: ${themeContext.slice(0, 4).join(", ")})`
+        : q;
+      await execute({ query: themed, signalLabel }, id);
+    },
+    [execute, themeContext],
+  );
+
+  const onSubmit = useCallback((event: React.FormEvent) => {
+    event.preventDefault();
+    void run(query, null);
+  }, [query, run]);
+
+  const biasFromFile = useCallback(async (file: File) => {
+    const id = ++requestId.current;
+    setState({ kind: "reading" });
+    try {
+      const prefix = file.size <= MAX_FILE_QUERY_BYTES ? file : file.slice(0, MAX_FILE_QUERY_BYTES);
+      const text = (await prefix.text()).slice(0, MAX_FILE_QUERY_CHARS);
+      if (requestId.current !== id) return;
+      if (!text.trim()) {
+        setState({ kind: "failed", message: "That file has no readable text to search by.", request: null });
         return;
       }
-      // Fold the active-research theme into the query when present (M1
-      // theme-context); absent, the raw query stands on its own.
-      const themed =
-        themeContext && themeContext.length > 0
-          ? `${q}\n\n(in the context of: ${themeContext.slice(0, 4).join(", ")})`
-          : q;
-      setBusy(true);
-      setError(null);
-      try {
-        const res = await corpusSearch(themed);
-        setHits(res.hits);
-        setSignal(signalLabel);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-        setHits(null);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [themeContext],
-  );
-
-  const onSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      void run(query, null);
-    },
-    [query, run],
-  );
-
-  // File-drop = a query signal. Read a bounded text prefix in the browser and
-  // search on it; the file is never sent to the server / ingested.
-  const biasFromFile = useCallback(
-    async (file: File) => {
-      try {
-        const text = (await file.text()).slice(0, MAX_FILE_QUERY_CHARS);
-        if (!text.trim()) {
-          setError("That file has no readable text to search by.");
-          return;
-        }
-        setQuery("");
-        await run(text, `books like “${file.name}”`);
-      } catch {
-        setError("Couldn’t read that file.");
-      }
-    },
-    [run],
-  );
+      setQuery("");
+      await run(text, `books like “${file.name}”`, id);
+    } catch {
+      if (requestId.current !== id) return;
+      setState({ kind: "failed", message: "Couldn’t read that file.", request: null });
+    }
+  }, [run]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -115,11 +122,9 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
   );
 
   const clear = useCallback(() => {
+    retire();
     setQuery("");
-    setHits(null);
-    setSignal(null);
-    setError(null);
-  }, []);
+  }, [retire]);
 
   return (
     <section
@@ -140,7 +145,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { retire(); setQuery(e.target.value); }}
           placeholder="Search your books — or drop a file to find books like it"
           aria-label="Search the corpus"
           className="flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm outline-none border border-rule dark:border-charcoal-1"
@@ -177,10 +182,16 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
         </p>
       )}
 
-      {error && (
-        <p className="mt-2 text-sm text-emperor" role="alert">
-          {error}
-        </p>
+      {state.kind === "failed" && (
+        <div className="mt-2 flex items-center justify-between gap-3" role="alert">
+          <p className="text-sm text-emperor">{state.message}</p>
+          {state.request && (
+            <LemonButton type="button" size="sm" variant="tertiary"
+              onClick={() => { if (state.request) void execute(state.request, ++requestId.current); }}>
+              Retry search
+            </LemonButton>
+          )}
+        </div>
       )}
 
       {hits !== null && (
@@ -218,14 +229,14 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
               ))}
             </ul>
           )}
-          <button
-            type="button"
-            onClick={clear}
-            className="mt-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
-          >
-            clear search
-          </button>
+
         </div>
+      )}
+      {state.kind !== "idle" && (
+        <button type="button" onClick={clear}
+          className="mt-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline">
+          clear search
+        </button>
       )}
     </section>
   );

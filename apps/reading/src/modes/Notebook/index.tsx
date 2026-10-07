@@ -30,41 +30,39 @@ import type {
 export default function Notebook() {
   const params = useParams<{ notebookId?: string }>();
   const notebookId = params.notebookId ?? null;
+
+  // A new ID retires the prior state owner, including its in-flight edits.
+  return notebookId
+    ? <NotebookDetail key={notebookId} notebookId={notebookId} />
+    : <NotebookEmpty />;
+}
+
+function NotebookDetail({ notebookId }: { notebookId: string }) {
   const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    if (!notebookId) {
-      setNotebook(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const data = (await getNotebook(notebookId)) as NotebookResponse;
-      setNotebook(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [notebookId]);
-
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = (await getNotebook(notebookId)) as NotebookResponse;
+        if (!cancelled) setNotebook(data);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [notebookId]);
 
   const appendBlock = useCallback(
     async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
-      try {
-        const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
-        track("notebook_block_appended", { block_type: req.block_type });
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
+      track("notebook_block_appended", { block_type: req.block_type });
+      setNotebook(data);
     },
     [notebookId],
   );
@@ -86,14 +84,11 @@ export default function Notebook() {
   const editBlock = useCallback(
     async (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
-      try {
-        const data = (await patchNotebookBlock(
-          notebookId, blockId, { content },
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      // Preserve rejection so the canvas can keep the draft open for retry.
+      const data = (await patchNotebookBlock(
+        notebookId, blockId, { content },
+      )) as NotebookResponse;
+      setNotebook(data);
     },
     [notebookId],
   );
@@ -121,10 +116,6 @@ export default function Notebook() {
     },
     [notebookId, notebook],
   );
-
-  if (!notebookId) {
-    return <NotebookEmpty />;
-  }
 
   return (
     <div className="flex flex-col h-full">

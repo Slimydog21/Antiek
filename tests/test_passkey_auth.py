@@ -77,7 +77,7 @@ def test_registration_persists_public_credential_and_consumes_challenge(monkeypa
 
 
 def test_logged_out_passkey_login_issues_session_only_after_verification(monkeypatch):
-    sentinel = SimpleNamespace(label="This Mac")
+    sentinel = SimpleNamespace(label="This Mac", user_id="__operator__", email=None)
     monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [sentinel])
     monkeypatch.setattr(
         "interfaces.research.api.auth.authentication_options",
