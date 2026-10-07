@@ -119,6 +119,10 @@ export const SCENARIOS = {
   "tab.reopen": { prepare: async () => { await tabs(); useTabTrees.getState().closeActiveTab("reading", "prune"); await settle(); }, effect: () => readerAt("b") },
   "tab.treeToggle": { prepare: () => tabs(), effect: () => see('[data-tab-tree-panel]') },
   "project.select": { effect: () => see('[data-keymap-owner="project.select"]') },
+  // SPR-02 M5: opens the same Switcher (narrowed to Open only when the
+  // places flag is on; the guard runs with default flags, so the plain
+  // Switcher is the visible effect either way).
+  "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
   "reader.tocToggle": {
     prepare: async () => {
       const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');

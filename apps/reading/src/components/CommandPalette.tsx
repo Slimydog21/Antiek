@@ -394,6 +394,7 @@ export function rankEntries(
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // (mirror for the window-level Escape owner; see the effect below)
   const [investigations, setInvestigations] = useState<PaletteInvestigation[]>([]);
   const [documents, setDocuments] = useState<PaletteDocument[]>([]);
   const [notebooks, setNotebooks] = useState<PaletteNotebook[]>([]);
@@ -411,6 +412,8 @@ export default function CommandPalette() {
   // Close returns focus there (the KeySheet pattern) — a keyboard-first
   // surface must hand focus back, never leave it on <body>.
   const openerRef = useRef<HTMLElement | null>(null);
+  const queryRef = useRef("");
+  queryRef.current = query;
   const navigate = useNavigate();
   // SPR-02 — places sections. Flag-off renders exactly the pre-SPR-02 palette.
   const placesOn = isFeatureOn("switcher.places");
@@ -598,12 +601,14 @@ export default function CommandPalette() {
       if (e.key === "Escape" && open) {
         e.preventDefault();
         // Omarchy menu rule R14: Esc clears the filter first, then closes.
-        setQuery((q) => {
-          if (q !== "") return "";
+        // (queryRef mirrors the input so this effect, keyed on `open`, never
+        // reads a stale query and never calls a setter inside an updater.)
+        if (queryRef.current !== "") {
+          setQuery("");
+          setActiveIdx(0);
+        } else {
           setOpen(false);
-          return q;
-        });
-        setActiveIdx(0);
+        }
       }
     };
     const removeKeyboardOwner = registerKeyboardOwner(window, {

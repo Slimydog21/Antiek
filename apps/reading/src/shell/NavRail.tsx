@@ -193,8 +193,12 @@ function RailButton({
   const color = active
     ? "bg-sun text-ink"
     : isWorkflow
-    ? "text-ice-2/80 hover:text-ice-1 hover:bg-white/10"
-    : "text-ice-2/50 hover:text-ice-2/70 hover:bg-white/5";
+    // Captions on the dark island use the island's light text tokens
+    // (tokens.contrast.test: bg-ink carries text-bright / text-moonlight).
+    // text-ice-2 is the PAGE pigment — paper by day, dark at night — so on
+    // bg-void it read 1.1:1 at night (critique C3 on #3751).
+    ? "text-moonlight hover:text-bright hover:bg-white/10"
+    : "text-moonlight/80 hover:text-moonlight hover:bg-white/5";
   // SPR-07 M2 — EVERY bar button now stacks a VISIBLE text caption under its
   // glyph (the v1 complaint was icon-only utilities + a caption-less igloo).
   // Workflows already had this dominant stack; Search/More now share the same
@@ -277,12 +281,15 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
-  // SPR-02 M4 (specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html)
-  // — with places on, the bottom dock folds into its compact five-key strip
+  // SPR-02 M4a (specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html)
+  // — with places on, the bottom dock folds into its compact five-key layout
   // at every width (captions kept — SPR-07's "no caption-less bar control"
   // rule stands; the keycap chips and the Home/Search keys go: ⌘O and
   // prefix+g still reach them), and More opens the Switcher narrowed to
-  // Scenes instead of the products drawer. Flag off: the dock is unchanged.
+  // Scenes instead of the products drawer. The TEN-SLOT workspace strip
+  // (M4b) is the consumer of SPR-01's arrangements and lands with them —
+  // this is the compact dock, not that strip. Flag off: the dock is
+  // unchanged.
   const placesOn = isFeatureOn("switcher.places");
   const openScenesSwitcher = () =>
     window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE, { detail: { query: "in:scenes" } }));
@@ -407,7 +414,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       aria-current={onHome ? "page" : undefined}
       className={
         "shrink-0 flex flex-col items-center justify-center gap-0.5 " +
-        (onHome ? "bg-sun text-ink " : "text-ice-2/80 hover:bg-white/10 ") +
+        (onHome ? "bg-sun text-ink " : "text-moonlight hover:text-bright hover:bg-white/10 ") +
         (isBottom ? "w-16 h-full" : "h-16 w-full")
       }
     >
@@ -517,7 +524,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <aside
           data-orientation="bottom"
           data-rail-flow="inline"
-          data-rail-strip={strip ? "true" : undefined}
+          data-rail-compact={strip ? "true" : undefined}
           className={(strip ? "h-12" : "h-16") + " w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"}
           aria-label="Primary navigation"
         >

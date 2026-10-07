@@ -5,7 +5,7 @@
  * With `antiek.flag.switcher.places` OFF the bottom dock is the pre-SPR-02
  * dock (parity: full height, Home + Search keys, keycap chips, More opens the
  * products drawer). With it ON at desktop width the dock is the compact
- * five-key strip (captions kept, no chips, no Home/Search keys) and More
+ * five-key compact dock (captions kept, no chips, no Home/Search keys) and More
  * opens the Switcher narrowed to Scenes instead of the drawer.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,10 +61,10 @@ afterEach(() => {
 describe("flag off — the pre-SPR-02 dock", () => {
   beforeEach(() => setFeatureFlag("switcher.places", false));
 
-  it("keeps Home and Search keys, keycap chips on the doors, and no strip marker", () => {
+  it("keeps Home and Search keys, keycap chips on the doors, and no compact marker", () => {
     mount();
     const dock = screen.getByLabelText("Primary navigation");
-    expect(dock.getAttribute("data-rail-strip")).toBeNull();
+    expect(dock.getAttribute("data-rail-compact")).toBeNull();
     expect(dock.className).toContain("h-16");
     expect(screen.getByRole("button", { name: "Antiek home" })).toBeTruthy();
     // "Research" also matches /search/ — scope to the Utilities cluster.
@@ -83,13 +83,13 @@ describe("flag off — the pre-SPR-02 dock", () => {
   });
 });
 
-describe("flag on — the strip", () => {
+describe("flag on — the compact dock (M4a; the ten-slot strip is M4b, with SPR-01 arrangements)", () => {
   beforeEach(() => setFeatureFlag("switcher.places", true));
 
-  it("folds to the compact five-key strip at desktop width: four doors + More, captions kept, no Home/Search keys", () => {
+  it("folds to the compact five-key compact dock at desktop width: four doors + More, captions kept, no Home/Search keys", () => {
     mount();
     const dock = screen.getByLabelText("Primary navigation");
-    expect(dock.getAttribute("data-rail-strip")).toBe("true");
+    expect(dock.getAttribute("data-rail-compact")).toBe("true");
     expect(dock.className).toContain("h-12");
     expect(screen.queryByRole("button", { name: "Antiek home" })).toBeNull();
     expect(within(dock).queryByLabelText("Utilities")).toBeNull(); // the Search cluster is gone

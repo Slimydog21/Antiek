@@ -54,7 +54,7 @@
 export const KEYMAP_DECISION =
   "docs/decisions/mothership-keys-herdr-prefix.md (specs/antiek-mothership/DECISIONS.md D2)";
 
-export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed";
+export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed" | "lane-Sweep-SPR-02";
 export type KeymapScope = "anywhere" | "outside-text";
 export type KeymapTask = "find" | "go" | "panels" | "help";
 export type Platform = "mac" | "other";
@@ -230,8 +230,8 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-project-select", action: "project.select", status: "implemented", chord: "ctrl+alt+p", scope: "anywhere", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
   // SPR-02 M5 — the Switcher narrowed to the Open section. shift+o because
   // prefix+o is tab.visitChild (herdr's "go to the toast" is a later unit).
-  { id: "prefix-switcher-open", action: "switcher.open", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
-  { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+  { id: "prefix-switcher-open", action: "switcher.open", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+  { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
 ];
 
 /**
