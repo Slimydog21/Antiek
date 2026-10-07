@@ -651,3 +651,50 @@ def test_patch_section_prose_endpoint_preserves_provenance(client, seed):
     row = _section_prose_row(seed["deliverable_id"])
     assert row[0] == "operator fixed a typo"
     assert json.loads(row[1]) == {"0": [node]}  # provenance survived the edit
+
+
+def test_deliverable_count_includes_current_and_legacy_blocks(client, seed):
+    """Both registered write APIs contribute; migration must not double-count."""
+    did, sid = seed["deliverable_id"], seed["section_id"]
+    legacy = client.post("/sections/attach-block", json={
+        "section_id": sid, "block_kind": "insight",
+        "block_id": seed["node"], "block_index": 0,
+    })
+    assert legacy.status_code == 202, legacy.text
+    body = {
+        "section_id": sid, "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 1,
+    }
+    for index in (1, 2):
+        placed = client.post("/write/blocks", json={**body, "block_index": index})
+        assert placed.status_code == 201, placed.text
+    detail = client.get(f"/deliverables/{did}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["sections"][0]["block_count"] == 3
+
+    from substrate.write.migrate_outline_block import migrate
+
+    with connect_write(default_db_path(), purpose="test/migrate-count") as con:
+        assert migrate(con).migrated == 1
+    assert client.get(f"/write/sections/{sid}/blocks").json()["count"] == 3
+    assert client.get(f"/deliverables/{did}").json()["sections"][0]["block_count"] == 3
+
+
+def test_deliverable_count_tracks_outline_block_moves(client, seed):
+    did, sid = seed["deliverable_id"], seed["section_id"]
+    other = client.post("/sections", json={
+        "deliverable_id": did, "section_index": 1, "title": "Second",
+    })
+    assert other.status_code == 201, other.text
+    other_id = other.json()["section_id"]
+    placed = client.post("/write/blocks", json={
+        "section_id": sid, "block_kind": "user_authored",
+        "provenance_kind": "user_authored", "content": "My block", "block_index": 0,
+    })
+    assert placed.status_code == 201, placed.text
+    assert [s["block_count"] for s in client.get(f"/deliverables/{did}").json()["sections"]] == [1, 0]
+    moved = client.post(f"/write/blocks/{placed.json()['outline_block_id']}/move", json={
+        "to_section_id": other_id, "to_index": 0,
+    })
+    assert moved.status_code == 202, moved.text
+    assert [s["block_count"] for s in client.get(f"/deliverables/{did}").json()["sections"]] == [0, 1]
