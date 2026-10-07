@@ -93,7 +93,8 @@ export interface ProjectNode {
 export type AgentScope = "project" | "cross-project";
 /** How scope was decided. "session-global": the companion store has no
  *  project field (STAGED T9/P1-5), so the agent is honestly cross-project.
- *  "registry-member": linked via membersByProject. "backend": SPR-B said so. */
+ *  "registry-member": linked via membersByProject. "backend": SPR-B said so,
+ *  which only an agent with `provenance: "backend"` may claim (checkTree). */
 export type ScopeProvenance = "session-global" | "registry-member" | "backend";
 
 /** backend: agent-bridge status record. Absent status is representable and
@@ -106,6 +107,7 @@ export interface AgentStatusRecord {
   lastSeen: string | null;
   /** "stale": older than the 30 s poll or from a summary outside the window. */
   freshness: "live" | "stale";
+  /** "backend" only under an agent with `provenance: "backend"` (checkTree). */
   provenance: Provenance;
 }
 
@@ -117,7 +119,8 @@ export interface AgentNode {
    *  Never persisted by the backend. */
   viewId: string;
   viewOpen: boolean;
-  /** backend: bridge run/attempt id. Pre-backend: ALWAYS absent, never fabricated. */
+  /** backend: bridge run/attempt id. Pre-backend: ALWAYS absent, never
+   *  fabricated (checkTree rejects a pre-backend agent carrying one). */
   runId?: string;
   /** VIEW vocabulary. */
   kind: AgentTabKind;
@@ -247,6 +250,13 @@ function agentProblems(v: unknown, at: string): string[] {
       (s.lastSeen !== null && !isStr(s.lastSeen)) || (s.freshness !== "live" && s.freshness !== "stale") || !PROVENANCE.has(s.provenance)) {
       out.push(`${at}: malformed status`);
     }
+  }
+  // Provenance labels a pre-backend agent may not wear (CONTRACTS.md §2):
+  // a run id (never fabricated), a backend-decided scope, a backend status.
+  if (v.provenance === "pre-backend") {
+    if (v.runId !== undefined) out.push(`${at}: pre-backend agent with a runId`);
+    if (v.scopeProvenance === "backend") out.push(`${at}: pre-backend agent with backend scope provenance`);
+    if (isObject(v.status) && v.status.provenance === "backend") out.push(`${at}: pre-backend agent with a backend status`);
   }
   return out;
 }

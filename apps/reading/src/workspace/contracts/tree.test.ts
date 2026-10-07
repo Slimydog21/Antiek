@@ -101,6 +101,35 @@ describe("T3 guards", () => {
   it("rejects runKind that disagrees with the table", () => {
     expect(isAgentNode({ ...agent, runKind: "dialogue" })).toBe(false);
   });
+  it("rejects a pre-backend agent with a runId (never fabricated)", () => {
+    expect(isAgentNode({ ...agent, runId: "run-1" })).toBe(false);
+    expect(isAgentNode({ ...agent, runId: "run-1", provenance: "backend" })).toBe(true);
+  });
+  it("rejects a pre-backend agent claiming backend scope provenance", () => {
+    expect(isAgentNode({ ...agent, scope: "project", projectId: "p1", scopeProvenance: "backend" })).toBe(false);
+    expect(isAgentNode({ ...agent, scope: "project", projectId: "p1", scopeProvenance: "backend", provenance: "backend" })).toBe(true);
+  });
+  it("rejects a pre-backend agent carrying a backend status", () => {
+    const status = { state: "completed" as const, since: null, lastSeen: null, freshness: "live" as const, provenance: "backend" as const };
+    expect(isAgentNode({ ...agent, status })).toBe(false);
+    expect(isAgentNode({ ...agent, status: { ...status, provenance: "pre-backend" } })).toBe(true);
+    expect(isAgentNode({ ...agent, status, provenance: "backend" })).toBe(true);
+  });
+});
+
+describe("T6 provenance labels are checked, not commented", () => {
+  it("checkTree names each forged label on a pre-backend agent", () => {
+    const tree = composePreBackendTree(fixtureInputs());
+    const a = tree.crossProjectAgents.find((x) => x.kind === "research-thread" && x.status)!;
+    const forged: AgentNode = { ...a, runId: "fabricated-run", scopeProvenance: "backend", status: { ...a.status!, provenance: "backend" } };
+    const bad: ContextTree = { ...tree, crossProjectAgents: tree.crossProjectAgents.map((x) => (x === a ? forged : x)) };
+    const at = `crossProjectAgents[${tree.crossProjectAgents.indexOf(a)}]`;
+    expect(checkTree(bad)).toEqual([
+      `${at}: pre-backend agent with a runId`,
+      `${at}: pre-backend agent with backend scope provenance`,
+      `${at}: pre-backend agent with a backend status`,
+    ]);
+  });
 });
 
 describe("T4 displayKind", () => {
