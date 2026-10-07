@@ -10,9 +10,11 @@ import { createRef } from "react";
 import { AgentComposer, type AgentComposerProps } from "./AgentComposer";
 
 beforeAll(() => {
-  // jsdom lays nothing out: a mounted root counts as visible unless hidden.
+  // jsdom lays nothing out, so every element reports one rect: the [hidden]
+  // case below is caught by the guard's own closest("[hidden]") check, not
+  // by this stub (a stub that consulted [hidden] masked that mutation).
   Element.prototype.getClientRects = function () {
-    return (this.closest("[hidden]") ? [] : [{}]) as unknown as DOMRectList;
+    return [{}] as unknown as DOMRectList;
   };
 });
 afterEach(() => { cleanup(); document.body.innerHTML = ""; });
