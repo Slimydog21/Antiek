@@ -7,7 +7,6 @@ Antiek model call, execute a remote worker, or write canonical state.
 from __future__ import annotations
 
 import os
-import tempfile
 import threading
 import time
 from collections.abc import Mapping
@@ -31,18 +30,8 @@ _DEFAULT_MAX_OUTPUT_BYTES = 256_000
 _MAX_PROMPT_BYTES = 1_000_000
 _READ_CHUNK_BYTES = 16_384
 _PASSTHROUGH_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
-# Why session mode can fall back to stdout at all: ``_argv`` passes ``--no-tools``,
-# so Prime has no tool that could write the handoff file, and ``run()`` returns only
-# after the child has exited, so nothing can write it later either. The receipt says
-# so explicitly rather than reporting a "missing" file that could never have existed.
-_SESSION_STDOUT_FALLBACK_DETAIL = (
-    "answer taken from stdout: argv passes --no-tools, so Prime has no tool that "
-    "could write the session handoff file"
-)
-_SESSION_NO_OUTPUT_DETAIL = (
-    "no session output: argv passes --no-tools, so the handoff file cannot be "
-    "written, and the run produced no stdout to fall back on"
-)
+_SESSION_STDOUT_DETAIL = "session answer returned on stdout under --no-tools"
+_SESSION_NO_OUTPUT_DETAIL = "no session answer on stdout under --no-tools"
 # Process-wide count of invocations that reached the spawn path (enabled
 # backend, well-formed request), whatever the receipt said afterwards —
 # an UNAVAILABLE binary still counts as an attempt. Surfaced by /health so
@@ -268,14 +257,11 @@ class PrimeAgentRLMBackend:
         return PrimeAgentOutcome(request, PrimeAgentEvidence(text), receipt)
 
     def run_session(self, request: PrimeAgentSessionRequest) -> PrimeAgentOutcome:
-        """Run one bounded session call and return its answer.
+        """Return one bounded session answer directly from the tool-less process.
 
-        Session mode keeps the same least-privilege subprocess envelope and asks
-        Prime Agent to write its final answer to an output file. Under the current
-        tool-less argv that file can never be written, so the backend reads it
-        exactly once after the run and otherwise takes the answer from stdout,
-        naming the reason in the receipt. It never waits for a file to appear:
-        ``run()`` returns only after the child has exited.
+        The goal and iteration payload are sent together. No file write or
+        completion marker is requested; the existing process policy owns UTF-8,
+        timeout, exit status and output limits.
         """
         canonical = PrimeAgentRequest(
             prompt=request.iteration_prompt,
@@ -295,64 +281,42 @@ class PrimeAgentRLMBackend:
                 detail="session request fields must be non-empty",
             )
 
-        with tempfile.TemporaryDirectory(dir=self._cwd) as tmp:
-            output_path = Path(tmp) / "prime_agent_session_answer.txt"
-            session_prompt = (
-                f"{request.goal_brief.strip()}\n\n"
-                "You are in Antiek RLM session mode. Use the iteration payload "
-                "below, write ONLY the final answer to the required output path, "
-                "and print a short completion line.\n\n"
-                f"Iteration payload:\n{request.iteration_prompt}\n\n"
-                f"Write final answer to exactly: {output_path}\n"
-                f"When done, print exactly: done: {output_path}"
-            )
-            bootstrap = self.run(PrimeAgentRequest(
-                prompt=session_prompt,
-                workflow=request.workflow,
-                request_id=request.request_id,
-            ))
-            if bootstrap.receipt.state is not PrimeAgentTerminalState.SUCCESS:
-                return PrimeAgentOutcome(canonical, None, bootstrap.receipt)
-
-            text, state, detail = self._read_session_output(output_path)
-            if state is not None:
-                return self._outcome(
-                    canonical,
-                    state,
-                    bootstrap.receipt.argv,
-                    exit_code=bootstrap.receipt.exit_code,
-                    duration_ms=bootstrap.receipt.duration_ms,
-                    output_bytes=0,
-                    detail=detail,
-                )
-            if text is None:
-                # No handoff file, and none was ever possible under --no-tools.
-                # The run's own stdout is the answer; say so in the receipt.
-                if bootstrap.evidence is None or not bootstrap.evidence.text:
-                    return self._outcome(
-                        canonical,
-                        PrimeAgentTerminalState.MALFORMED,
-                        bootstrap.receipt.argv,
-                        exit_code=bootstrap.receipt.exit_code,
-                        duration_ms=bootstrap.receipt.duration_ms,
-                        output_bytes=bootstrap.receipt.output_bytes,
-                        detail=_SESSION_NO_OUTPUT_DETAIL,
-                    )
-                text = bootstrap.evidence.text
-                detail = _SESSION_STDOUT_FALLBACK_DETAIL
-            encoded = text.encode("utf-8")
-            return PrimeAgentOutcome(
+        session_prompt = (
+            f"{request.goal_brief.strip()}\n\n"
+            "You are in Antiek RLM session mode with tools disabled. Use the "
+            "iteration payload below and return the final answer directly in "
+            "your response. Do not write files or return a completion marker.\n\n"
+            f"Iteration payload:\n{request.iteration_prompt}"
+        )
+        bootstrap = self.run(PrimeAgentRequest(
+            prompt=session_prompt,
+            workflow=request.workflow,
+            request_id=request.request_id,
+        ))
+        if bootstrap.receipt.state is not PrimeAgentTerminalState.SUCCESS:
+            return PrimeAgentOutcome(canonical, None, bootstrap.receipt)
+        if bootstrap.evidence is None or not bootstrap.evidence.text.strip():
+            return self._outcome(
                 canonical,
-                PrimeAgentEvidence(text=text, source="prime-agent-session"),
-                PrimeAgentReceipt(
-                    state=PrimeAgentTerminalState.SUCCESS,
-                    argv=bootstrap.receipt.argv,
-                    exit_code=bootstrap.receipt.exit_code,
-                    duration_ms=bootstrap.receipt.duration_ms,
-                    output_bytes=min(len(encoded), self._max_output_bytes),
-                    detail=detail,
-                ),
+                PrimeAgentTerminalState.MALFORMED,
+                bootstrap.receipt.argv,
+                exit_code=bootstrap.receipt.exit_code,
+                duration_ms=bootstrap.receipt.duration_ms,
+                output_bytes=bootstrap.receipt.output_bytes,
+                detail=_SESSION_NO_OUTPUT_DETAIL,
             )
+        return PrimeAgentOutcome(
+            canonical,
+            PrimeAgentEvidence(text=bootstrap.evidence.text, source="prime-agent-session"),
+            PrimeAgentReceipt(
+                state=PrimeAgentTerminalState.SUCCESS,
+                argv=bootstrap.receipt.argv,
+                exit_code=bootstrap.receipt.exit_code,
+                duration_ms=bootstrap.receipt.duration_ms,
+                output_bytes=bootstrap.receipt.output_bytes,
+                detail=_SESSION_STDOUT_DETAIL,
+            ),
+        )
 
     def _argv(self, request: PrimeAgentRequest) -> tuple[str, ...]:
         return (
@@ -369,29 +333,6 @@ class PrimeAgentRLMBackend:
             str(self._cwd),
             "-p",
         )
-
-    def _read_session_output(
-        self,
-        output_path: Path,
-    ) -> tuple[str | None, PrimeAgentTerminalState | None, str | None]:
-        """Read ``output_path`` once and decode bounded UTF-8 session output.
-
-        Returns ``(None, None, None)`` when the file is absent: the child has
-        already exited by the time this runs, so absence is final and the caller
-        falls back to stdout rather than waiting for a write that cannot come.
-        """
-        if not output_path.is_file() or output_path.stat().st_size == 0:
-            return None, None, None
-        raw = output_path.read_bytes()
-        if len(raw) > self._max_output_bytes:
-            return None, PrimeAgentTerminalState.FAILED, "output limit exceeded"
-        try:
-            text = raw.decode("utf-8", errors="strict").strip()
-        except UnicodeDecodeError:
-            return None, PrimeAgentTerminalState.MALFORMED, "output file was not UTF-8"
-        if not text:
-            return None, PrimeAgentTerminalState.MALFORMED, "output file was empty"
-        return text, None, None
 
     @staticmethod
     def _outcome(
