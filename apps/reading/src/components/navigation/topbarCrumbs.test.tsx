@@ -7,8 +7,8 @@
  * a raw id; while the title is unknown it reads as the kind's noun.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 vi.mock("../../lib/auth", async (orig) => ({
   ...(await orig<typeof import("../../lib/auth")>()),
@@ -22,7 +22,8 @@ vi.mock("../../lib/auth", async (orig) => ({
 import { Topbar } from "./Topbar";
 import { resetTabTitles, setTabTitle, setTitleResolvers } from "../../workspace/tabTitles";
 
-beforeAll(() => {
+beforeAll(async () => {
+  await import("../../workspace/RecordCrumb");
   if (!window.matchMedia) {
     Object.defineProperty(window, "matchMedia", {
       writable: true,
@@ -99,6 +100,23 @@ describe("B3-9 record crumbs are named like their tabs", () => {
     at("/inv/7f3a9c21-44");
     expect(await screen.findByText("Research")).toBeTruthy();
     expect(crumbs().textContent).not.toContain("7f3a9c21-44");
+  });
+
+  it("the manual notebook parent opens the registered notebooks index", async () => {
+    render(
+      <MemoryRouter initialEntries={["/notebook/nb-saved-prose"]}>
+        <Topbar />
+        <Routes>
+          <Route path="/notebook/:notebookId" element={<h1>Saved notebook</h1>} />
+          <Route path="/notebooks" element={<h1>Notebooks index</h1>} />
+          <Route path="*" element={<h1>Unregistered route</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "Saved notebook" })).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("link", { name: "Notebook" })));
+    expect(screen.getByRole("heading", { name: "Notebooks index" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Unregistered route" })).toBeNull();
   });
 
   it("route words keep their sentence-case labels", () => {
