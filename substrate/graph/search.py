@@ -40,6 +40,10 @@ import sys
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from processing.embedding.cpu_inference import (
+    EmbeddingInferenceUnavailable,
+    configure_cpu_inference,
+)
 from substrate.graph import retrieval_gate as _retrieval_gate
 from substrate.graph.embedding_meta import assert_embedding_compatible
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
@@ -94,11 +98,15 @@ class SentenceTransformerEmbedding:
                 "`pip install sentence-transformers` or pass a custom "
                 "EmbeddingModel."
             ) from exc
-        self._model = SentenceTransformer(model_name)
+        configure_cpu_inference()
+        self._model = SentenceTransformer(model_name, device="cpu")
         self.dimension = int(self._model.get_sentence_embedding_dimension() or 384)
 
     def encode(self, text: str) -> list[float]:
-        vec = self._model.encode([text])[0]
+        try:
+            vec = self._model.encode([text])[0]
+        except RuntimeError as exc:
+            raise EmbeddingInferenceUnavailable("embedding inference failed") from exc
         return [float(x) for x in vec]
 
 
