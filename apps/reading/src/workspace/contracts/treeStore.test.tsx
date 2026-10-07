@@ -11,7 +11,7 @@ import { TAB_PROJECT_ID, useTabTrees } from "../tabTreeStore";
 import { composePreBackendTree } from "./adapters/preBackend";
 import { SUMMARIES, fixtureInputs, tabs } from "./fixtures.test.helpers";
 import { useSelection } from "./selection";
-import type { ContextTree, ProjectNode } from "./tree";
+import { checkTree, displayKind, type ContextTree, type ProjectNode } from "./tree";
 import {
   markTreeError,
   markTreeUnfed,
@@ -117,5 +117,45 @@ describe("R5 useSelectedProjectNode", () => {
     expect(result.current).toBeNull();
     act(() => { useSelection.getState().selectProject("p1"); });
     expect(result.current?.id).toBe("p1");
+  });
+});
+
+describe("R6 publishTree refuses a tree checkTree rejects", () => {
+  it("keeps the previous tree and composedAt, marks error naming the violation; a sound publish recovers", () => {
+    const good = composePreBackendTree(fixtureInputs());
+    publishTree(good, "t1");
+    const before = useContextTreeStore.getState().tree;
+    const inv = good.roots[0].children[0];
+    expect(inv.source.kind).toBe("investigation");
+    const forged: ProjectNode = { ...inv, provenance: "backend" };
+    const bad: ContextTree = {
+      ...good, provenance: "backend",
+      roots: [{ ...good.roots[0], provenance: "backend", children: [forged, ...good.roots[0].children.slice(1)] }, ...good.roots.slice(1)],
+    };
+    expect(checkTree(bad)).toEqual(["roots[0].children[0]: investigation source with backend provenance"]);
+    publishTree(bad, "t2");
+    const t = useContextTreeStore.getState().tree;
+    expect(t.roots).toBe(before.roots);
+    expect(t.crossProjectAgents).toBe(before.crossProjectAgents);
+    expect(t.status).toBe("error");
+    expect(t.error).toContain("roots[0].children[0]: investigation source with backend provenance");
+    expect(useContextTreeStore.getState().composedAt).toBe("t1");
+    for (const n of byId(t).values()) expect(displayKind(n)).not.toBe("Sub-project");
+    publishTree(good, "t3");
+    expect(useContextTreeStore.getState().tree.status).toBe("ready");
+    expect(useContextTreeStore.getState().tree.error).toBeNull();
+    expect(useContextTreeStore.getState().tree.roots).toBe(before.roots);
+    expect(useContextTreeStore.getState().composedAt).toBe("t3");
+  });
+  it("refuses an unfed store's first publish too, leaving it unfed with an error", () => {
+    const good = composePreBackendTree(fixtureInputs());
+    const dialogue = good.crossProjectAgents.find((a) => a.kind === "dialogue")!;
+    const bad: ContextTree = { ...good, roots: good.roots.map((r) => (r.id === "default" ? { ...r, agents: [dialogue] } : r)) };
+    publishTree(bad, "t1");
+    const t = useContextTreeStore.getState().tree;
+    expect(t.roots).toHaveLength(0);
+    expect(t.status).toBe("error");
+    expect(t.error).toContain("cross-project agent agent:dialogue filed under a node");
+    expect(useContextTreeStore.getState().composedAt).toBeNull();
   });
 });
