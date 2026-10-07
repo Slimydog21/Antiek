@@ -162,7 +162,7 @@ export default function Login() {
         if (!live) return;
         if (result.status === "authenticated") {
           setEmailStatus("approved");
-          await refresh();
+          await refresh({ afterSignIn: true });
           navigate(
             result.setup_passkey
               ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
@@ -198,7 +198,7 @@ export default function Login() {
     const result = await claimLogin(handoff.attemptId, handoff.claimSecret, code);
     if (result.status === "authenticated") {
       setEmailStatus("approved");
-      await refresh();
+      await refresh({ afterSignIn: true });
       navigate(
         result.setup_passkey
           ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
@@ -239,7 +239,7 @@ export default function Login() {
       const { ceremony_id, ...optionsJSON } = await beginPasskeyLogin();
       const credential = await startAuthentication({ optionsJSON });
       await finishPasskeyLogin(ceremony_id, credential);
-      await refresh();
+      await refresh({ afterSignIn: true });
       track("passkey_login_succeeded");
       navigate(nextPath, { replace: true });
     } catch (error) {

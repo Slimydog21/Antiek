@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../testAccountOwner";
 /**
  * Editor.hydration.test.tsx — SPR-01 M5.
  *
@@ -86,7 +87,7 @@ describe("NotebookEditor — substrate hydration (M5)", () => {
 
   it("keeps cached content and still hydrates when the GET fails (offline)", async () => {
     window.localStorage.setItem(
-      "antiek.notebook.nb-off",
+      unitAccountKey("antiek.notebook.nb-off"),
       "<p>CACHED-OFFLINE-DRAFT</p>",
     );
     getNotebookContentMock.mockRejectedValue(new Error("network down"));

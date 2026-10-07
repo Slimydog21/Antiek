@@ -13,10 +13,21 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
+
+from substrate.byot_usage.actions import (
+    ACTION_COLUMNS,
+    ACTION_SCHEMA,
+    _OwnerActionAccounting,
+    checked_int,
+    checked_sum,
+    record_exposure,
+)
 
 __all__ = [
     "ByotUsageLedger",
@@ -26,7 +37,7 @@ __all__ = [
     "SettlementEvidenceError",
 ]
 
-_SCHEMA_VERSION: Final = 3
+_SCHEMA_VERSION: Final = 6
 _BUSY_TIMEOUT_MS: Final = 30_000
 
 
@@ -72,7 +83,7 @@ class OperationConflict(RuntimeError):
 
 
 class SettlementEvidenceError(RuntimeError):
-    """A settlement-pending operation lacks its persisted result evidence."""
+    """A settlement lacks or conflicts with its persisted result evidence."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +102,14 @@ class OperationRow:
     result_text: str | None
     created_at: str
     updated_at: str
+    action_id: str | None = None
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-class ByotUsageLedger:
+class ByotUsageLedger(_OwnerActionAccounting):
     """Per-key usage accumulator backed by a small SQLite sidecar.
 
     Thread-safe for single-writer use (the caller serialises through
@@ -120,13 +132,28 @@ class ByotUsageLedger:
 
     def _connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self._db_path, timeout=self._busy_timeout_ms / 1000)
-        con.execute("PRAGMA journal_mode=WAL")
         con.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+        con.execute("PRAGMA foreign_keys=ON")
         return con
+
+    def _enable_wal(self, con: sqlite3.Connection) -> None:
+        # Changing journal mode can return SQLITE_BUSY immediately while a
+        # concurrent opener finishes migration. Normal connections only read
+        # the persisted WAL mode; retries are limited to this initialization.
+        deadline = time.monotonic() + self._busy_timeout_ms / 1000
+        while True:
+            try:
+                con.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
 
     def _ensure_schema(self) -> None:
         con = self._connect()
         try:
+            con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "CREATE TABLE IF NOT EXISTS byot_usage_meta ("
                 "  key TEXT PRIMARY KEY, value TEXT NOT NULL"
@@ -135,11 +162,8 @@ class ByotUsageLedger:
             row = con.execute(
                 "SELECT value FROM byot_usage_meta WHERE key = 'schema_version'"
             ).fetchone()
-            if row is None:
-                con.execute(
-                    "INSERT INTO byot_usage_meta (key, value) VALUES ('schema_version', ?)",
-                    (str(_SCHEMA_VERSION),),
-                )
+            if row is not None and row[0] not in ("1", "2", "3", "4", "5", "6"):
+                raise ValueError("unsupported BYOT usage schema version")
             con.execute(
                 "CREATE TABLE IF NOT EXISTS byot_key_usage ("
                 "  api_key_id TEXT NOT NULL,"
@@ -168,11 +192,34 @@ class ByotUsageLedger:
             for name in ("provider_id", "model_id", "dispatch_event_id", "result_text"):
                 if name not in columns:
                     con.execute(f"ALTER TABLE byot_operation_journal ADD COLUMN {name} TEXT")
+            for name, sql_type in ACTION_COLUMNS.items():
+                if name not in columns:
+                    con.execute(
+                        f"ALTER TABLE byot_operation_journal ADD COLUMN {name} {sql_type}"
+                    )
+            for statement in ACTION_SCHEMA:
+                con.execute(statement)
+            owned_columns = {column[1] for column in con.execute(
+                "PRAGMA table_info(byot_owned_wrestling_job)"
+            ).fetchall()}
+            if "execution_token" not in owned_columns:
+                con.execute(
+                    "ALTER TABLE byot_owned_wrestling_job ADD COLUMN execution_token TEXT"
+                )
             con.execute(
-                "UPDATE byot_usage_meta SET value = ? WHERE key = 'schema_version'",
+                "INSERT INTO byot_usage_meta(key,value) VALUES('journal_id',?)"
+                " ON CONFLICT(key) DO NOTHING", (uuid.uuid4().hex,),
+            )
+            con.execute(
+                "INSERT INTO byot_usage_meta(key,value) VALUES('schema_version',?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (str(_SCHEMA_VERSION),),
             )
             con.commit()
+            self._enable_wal(con)
+        except BaseException:
+            con.rollback()
+            raise
         finally:
             con.close()
 
@@ -193,8 +240,9 @@ class ByotUsageLedger:
         ``evidence_sha256`` is recorded for auditability but does not
         affect the accumulated total.
         """
-        if actual_cents < 0:
+        if type(actual_cents) is int and actual_cents < 0:
             raise ValueError("actual_cents must be non-negative")
+        checked_int(actual_cents)
         if not api_key_id:
             raise ValueError("api_key_id must be non-empty")
         if not owner_user_id:
@@ -202,6 +250,13 @@ class ByotUsageLedger:
         now = _now_iso()
         con = self._connect()
         try:
+            con.execute("BEGIN IMMEDIATE")
+            used = con.execute(
+                "SELECT used_cents FROM byot_key_usage WHERE api_key_id=? AND owner_user_id=?",
+                (api_key_id, owner_user_id),
+            ).fetchone()
+            checked_sum([used[0] if used else 0, actual_cents])
+            checked_sum([self._owner_usage(con, owner_user_id).used_cents, actual_cents])
             con.execute(
                 "INSERT INTO byot_key_usage"
                 "  (api_key_id, owner_user_id, used_cents, last_settled_at, updated_at)"
@@ -213,6 +268,9 @@ class ByotUsageLedger:
                 (api_key_id, owner_user_id, actual_cents, now, now),
             )
             con.commit()
+        except BaseException:
+            con.rollback()
+            raise
         finally:
             con.close()
 
@@ -227,8 +285,10 @@ class ByotUsageLedger:
             raise ValueError("api_key_id must be non-empty")
         if not owner_user_id:
             raise ValueError("owner_user_id must be non-empty")
-        if limit_cents is not None and limit_cents < 0:
-            raise ValueError("limit_cents must be non-negative or None")
+        if limit_cents is not None:
+            if type(limit_cents) is int and limit_cents < 0:
+                raise ValueError("limit_cents must be non-negative or None")
+            checked_int(limit_cents)
         now = _now_iso()
         con = self._connect()
         try:
@@ -255,7 +315,7 @@ class ByotUsageLedger:
             row = con.execute(
                 "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
                 " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
-                " dispatch_event_id, result_text, created_at, updated_at"
+                " dispatch_event_id, result_text, created_at, updated_at, action_id"
                 " FROM byot_operation_journal WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -270,10 +330,10 @@ class ByotUsageLedger:
             rows = con.execute(
                 "SELECT api_key_id, owner_user_id, used_cents,"
                 " limit_cents, last_settled_at, updated_at,"
-                " (SELECT COALESCE(SUM(j.reserved_cents), 0) FROM byot_operation_journal j"
+                " (SELECT COALESCE(SUM(MAX(j.reserved_cents,COALESCE(j.actual_cents,0))), 0) FROM byot_operation_journal j"
                 "  WHERE j.api_key_id = byot_key_usage.api_key_id"
                 "  AND j.owner_user_id = byot_key_usage.owner_user_id"
-                "  AND j.state IN ('prepared','sent','settlement_pending','unknown'))"
+                "  AND j.state IN ('allocated','prepared','sent','settlement_pending','unknown'))"
                 " FROM byot_key_usage WHERE owner_user_id = ?"
                 " ORDER BY api_key_id",
                 (owner_user_id,),
@@ -300,10 +360,10 @@ class ByotUsageLedger:
             r = con.execute(
                 "SELECT api_key_id, owner_user_id, used_cents,"
                 " limit_cents, last_settled_at, updated_at,"
-                " (SELECT COALESCE(SUM(j.reserved_cents), 0) FROM byot_operation_journal j"
+                " (SELECT COALESCE(SUM(MAX(j.reserved_cents,COALESCE(j.actual_cents,0))), 0) FROM byot_operation_journal j"
                 "  WHERE j.api_key_id = byot_key_usage.api_key_id"
                 "  AND j.owner_user_id = byot_key_usage.owner_user_id"
-                "  AND j.state IN ('prepared','sent','settlement_pending','unknown'))"
+                "  AND j.state IN ('allocated','prepared','sent','settlement_pending','unknown'))"
                 " FROM byot_key_usage"
                 " WHERE api_key_id = ? AND owner_user_id = ?",
                 (api_key_id, owner_user_id),
@@ -370,15 +430,16 @@ class ByotUsageLedger:
         """
         if not all((api_key_id, owner_user_id, operation_id, authority_digest)):
             raise ValueError("operation identity fields must be non-empty")
-        if reserved_cents < 0:
+        if type(reserved_cents) is int and reserved_cents < 0:
             raise ValueError("reserved_cents must be non-negative")
+        checked_int(reserved_cents)
         now = _now_iso()
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT api_key_id, state, reserved_cents, actual_cents,"
-                " authority_digest, evidence_sha256 FROM byot_operation_journal"
+                " authority_digest, evidence_sha256, action_id FROM byot_operation_journal"
                 " WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -388,6 +449,7 @@ class ByotUsageLedger:
                     or existing[2] != reserved_cents
                     or existing[4] != authority_digest
                     or existing[1] != "prepared"
+                    or existing[6] is not None
                 ):
                     raise OperationConflict("operation is not retryable")
             else:
@@ -396,16 +458,18 @@ class ByotUsageLedger:
                     " WHERE api_key_id = ? AND owner_user_id = ?",
                     (api_key_id, owner_user_id),
                 ).fetchone()
-                other_reserved = con.execute(
-                    "SELECT COALESCE(SUM(reserved_cents), 0)"
-                    " FROM byot_operation_journal WHERE api_key_id = ?"
-                    " AND owner_user_id = ?"
-                    " AND state IN ('prepared', 'sent', 'settlement_pending', 'unknown')",
-                    (api_key_id, owner_user_id),
-                ).fetchone()[0]
-                used, limit = usage if usage is not None else (0, None)
-                if limit is not None and used + other_reserved + reserved_cents > limit:
+                limit = usage[1] if usage is not None else None
+                exposure = checked_sum([
+                    record_exposure(con, owner_user_id, api_key_id), reserved_cents,
+                ])
+                if limit is not None and exposure > limit:
                     raise OperationConflict("operation exceeds local limit")
+                self._admit_owner(con, owner_user_id, reserved_cents)
+                con.execute(
+                    "INSERT INTO byot_key_usage(api_key_id,owner_user_id,used_cents,updated_at)"
+                    " VALUES(?,?,0,?) ON CONFLICT(api_key_id,owner_user_id) DO NOTHING",
+                    (api_key_id, owner_user_id, now),
+                )
                 con.execute(
                     "INSERT INTO byot_operation_journal"
                     " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
@@ -446,9 +510,10 @@ class ByotUsageLedger:
         result_text: str = "",
     ) -> None:
         """Persist non-secret provider result facts before settlement bookkeeping."""
-        if actual_cents < 0 or not all(
-            (evidence_sha256, dispatch_event_id, provider_id, model_id)
-        ):
+        if type(actual_cents) is int and actual_cents < 0:
+            raise ValueError("result facts are invalid")
+        checked_int(actual_cents)
+        if not all((evidence_sha256, dispatch_event_id, provider_id, model_id)):
             raise ValueError("result facts are invalid")
         con = self._connect()
         try:
@@ -457,7 +522,8 @@ class ByotUsageLedger:
                 "UPDATE byot_operation_journal SET state = 'settlement_pending',"
                 " actual_cents = ?, evidence_sha256 = ?, dispatch_event_id = ?,"
                 " provider_id = ?, model_id = ?, result_text = ?, updated_at = ?"
-                " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
+                " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'"
+                " AND action_id IS NULL",
                 (actual_cents, evidence_sha256, dispatch_event_id, provider_id, model_id,
                  result_text, _now_iso(), owner_user_id, operation_id),
             ).rowcount
@@ -476,7 +542,8 @@ class ByotUsageLedger:
             con.execute("BEGIN IMMEDIATE")
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = ?, updated_at = ?"
-                " WHERE owner_user_id = ? AND operation_id = ? AND state = ?",
+                " WHERE owner_user_id = ? AND operation_id = ? AND state = ?"
+                " AND action_id IS NULL",
                 (new, _now_iso(), owner, operation, old),
             ).rowcount
             if changed != 1:
@@ -492,33 +559,48 @@ class ByotUsageLedger:
         self, owner_user_id: str, operation_id: str, actual_cents: int,
         evidence_sha256: str,
     ) -> None:
-        """Atomically settle a sent operation and increment usage exactly once."""
-        if actual_cents < 0:
+        """Settle the recorded result and increment usage exactly once."""
+        if type(actual_cents) is int and actual_cents < 0:
             raise ValueError("actual_cents must be non-negative")
+        checked_int(actual_cents)
         con = self._connect()
         now = _now_iso()
         try:
             con.execute("BEGIN IMMEDIATE")
             row = con.execute(
-                "SELECT api_key_id, state FROM byot_operation_journal"
+                "SELECT api_key_id, state, actual_cents, evidence_sha256, action_id"
+                " FROM byot_operation_journal"
                 " WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
-            if row is None or row[1] != "settlement_pending":
+            if row is None or row[1] != "settlement_pending" or row[4] is not None:
                 raise OperationConflict("operation is not settleable")
+            recorded_cents, recorded_evidence = row[2], row[3]
+            if (
+                recorded_cents is None or recorded_evidence is None
+                or recorded_cents != actual_cents
+                or recorded_evidence != evidence_sha256
+            ):
+                raise SettlementEvidenceError("settlement differs from recorded result")
+            used = con.execute(
+                "SELECT used_cents FROM byot_key_usage WHERE api_key_id=? AND owner_user_id=?",
+                (row[0], owner_user_id),
+            ).fetchone()
+            checked_sum([used[0] if used else 0, recorded_cents])
+            checked_sum([self._owner_usage(con, owner_user_id).used_cents, recorded_cents])
             con.execute(
                 "INSERT INTO byot_key_usage"
                 " (api_key_id, owner_user_id, used_cents, last_settled_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?) ON CONFLICT(api_key_id, owner_user_id)"
                 " DO UPDATE SET used_cents = used_cents + excluded.used_cents,"
                 " last_settled_at = excluded.last_settled_at, updated_at = excluded.updated_at",
-                (row[0], owner_user_id, actual_cents, now, now),
+                (row[0], owner_user_id, recorded_cents, now, now),
             )
             con.execute(
                 "UPDATE byot_operation_journal SET state = 'settled', actual_cents = ?,"
                 " evidence_sha256 = ?, updated_at = ? WHERE owner_user_id = ?"
                 " AND operation_id = ?",
-                (actual_cents, evidence_sha256, now, owner_user_id, operation_id),
+                (recorded_cents, recorded_evidence, now, owner_user_id, operation_id),
             )
             con.commit()
         except Exception:
@@ -532,6 +614,8 @@ class ByotUsageLedger:
         row = self.operation(owner_user_id, operation_id)
         if row is None:
             raise OperationConflict("operation not found")
+        if row.action_id is not None:
+            raise OperationConflict("action attempt requires action reconciliation")
         if row.state == "settlement_pending":
             if row.actual_cents is None or row.evidence_sha256 is None:
                 raise SettlementEvidenceError(
@@ -564,7 +648,8 @@ class ByotUsageLedger:
             con.execute("BEGIN IMMEDIATE")
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = 'cancelled', updated_at = ?"
-                " WHERE owner_user_id = ? AND state = 'prepared' AND created_at < ?",
+                " WHERE owner_user_id = ? AND state = 'prepared' AND created_at < ?"
+                " AND action_id IS NULL",
                 (_now_iso(), owner_user_id, older_than),
             ).rowcount
             con.commit()

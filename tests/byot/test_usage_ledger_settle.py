@@ -14,7 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from substrate.byot_usage.ledger import ByotUsageLedger, OperationConflict
+from substrate.byot_usage.ledger import (
+    ByotUsageLedger,
+    OperationConflict,
+    SettlementEvidenceError,
+)
 
 
 def test_record_settlement_increments_used_cents(tmp_path: Path) -> None:
@@ -162,6 +166,40 @@ def test_sent_or_unknown_operation_is_never_blindly_replayed(tmp_path: Path) -> 
     with pytest.raises(OperationConflict):
         ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
     assert ledger.operation("owner", "op-1").state == "unknown"  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("actual_cents", "evidence_sha256"),
+    [(4, "c" * 64), (6, "c" * 64), (5, "d" * 64)],
+)
+def test_settlement_cannot_replace_recorded_result(
+    tmp_path: Path, actual_cents: int, evidence_sha256: str,
+) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.set_limit("key-1", "owner", 20)
+    ledger.prepare_operation("key-1", "owner", "op-1", 8, "a" * 64)
+    ledger.mark_operation_sent("owner", "op-1")
+    ledger.record_operation_result(
+        "owner", "op-1", actual_cents=5, evidence_sha256="c" * 64,
+        dispatch_event_id="evt-1", provider_id="provider", model_id="model",
+    )
+    recorded = ledger.operation("owner", "op-1")
+
+    with pytest.raises(SettlementEvidenceError):
+        ledger.settle_operation("owner", "op-1", actual_cents, evidence_sha256)
+
+    assert ledger.operation("owner", "op-1") == recorded
+    usage = ledger.key_usage("key-1", "owner")
+    assert usage is not None
+    assert (usage.used_cents, usage.held_cents, usage.available_cents) == (0, 8, 12)
+
+    settled = ledger.reconcile_operation("owner", "op-1")
+    assert settled.state == "settled"
+    assert (settled.actual_cents, settled.evidence_sha256) == (5, "c" * 64)
+    assert ledger.reconcile_operation("owner", "op-1") == settled
+    usage = ledger.key_usage("key-1", "owner")
+    assert usage is not None
+    assert (usage.used_cents, usage.held_cents, usage.available_cents) == (5, 0, 15)
 
 
 def test_operation_identity_cannot_be_rebound(tmp_path: Path) -> None:

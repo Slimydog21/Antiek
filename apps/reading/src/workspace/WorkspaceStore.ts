@@ -31,6 +31,7 @@
  */
 
 import { create } from "zustand";
+import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 import {
   defaultDockedSize,
@@ -411,6 +412,23 @@ export function getHydrationGeneration(): number {
   return hydrationGeneration;
 }
 
+beforeWorkspaceOwnerChange(() => {
+  // Preserve the outgoing owner's last edit before cancelling its timer.
+  const state = useWorkspace.getState();
+  if (persistenceEnabled && (pendingWrite !== null || Object.keys(state.panels).length > 0)) {
+    const snapshot = project(state);
+    // Its old OS windows retire with the session. Returning to this owner
+    // restores their panels in the main window instead of hiding them.
+    snapshot.panels = Object.fromEntries(Object.entries(snapshot.panels).map(([id, panel]) => [id,
+      panel.mode === "popout" ? { ...panel, mode: "floating" as const } : panel,
+    ]));
+    writeScope(activeScope, snapshot);
+  }
+  disablePersistence();
+  markHydrated();
+  useWorkspace.getState().reset();
+});
+
 useWorkspace.subscribe((state, prev) => {
   if (suppressPersistAfterReset) {
     suppressPersistAfterReset = false;
@@ -429,8 +447,11 @@ useWorkspace.subscribe((state, prev) => {
     return;
   }
   if (pendingWrite) clearTimeout(pendingWrite);
+  const owner = workspaceOwnerSession();
+  const scope = activeScope;
+  const snapshot = project(state);
   pendingWrite = setTimeout(() => {
     pendingWrite = null;
-    writeScope(activeScope, project(useWorkspace.getState()));
+    if (isWorkspaceOwnerSession(owner)) writeScope(scope, snapshot);
   }, 250);
 });

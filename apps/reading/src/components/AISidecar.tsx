@@ -1,3 +1,4 @@
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   historyPayload,
@@ -66,6 +67,7 @@ interface DispatchEvent {
 }
 
 export default function AISidecar() {
+  const [owner] = useState(workspaceOwnerSession);
   // S8 refactor: when AISidecar is mounted as a PanelKind, the
   // workspace mounts/unmounts it directly — being mounted IS "open".
   // The legacy toggle paths (⌘J shortcut + custom event) now route
@@ -202,6 +204,7 @@ export default function AISidecar() {
   }, [reloadContext]);
 
   const sendThoughtPartner = async () => {
+    if (!isWorkspaceOwnerSession(owner)) return;
     if (!draft.trim() || pending) return;
     const prompt = draft.trim();
     setPending(true);
@@ -227,7 +230,7 @@ export default function AISidecar() {
           ...launchFields(prompt),
         }),
       });
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || !isWorkspaceOwnerSession(owner)) return;
       if (!resp.ok) {
         thread.failTurn(
           messageId,
@@ -236,7 +239,7 @@ export default function AISidecar() {
         return;
       }
       const data = await resp.json();
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || !isWorkspaceOwnerSession(owner)) return;
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
       const { prose, actions, parseErrors } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -274,10 +277,12 @@ export default function AISidecar() {
         console.warn("[AISidecar] @@actions parse errors", parseErrors);
       }
     } catch (e: unknown) {
-      if (!aliveRef.current) return;
+      if (!isWorkspaceOwnerSession(owner)) return;
+      if (!aliveRef.current || !isWorkspaceOwnerSession(owner)) return;
       const msg = e instanceof Error ? e.message : String(e);
       thread.failTurn(messageId, msg);
     } finally {
+      if (!isWorkspaceOwnerSession(owner)) return;
       if (aliveRef.current) setPending(false);
     }
   };

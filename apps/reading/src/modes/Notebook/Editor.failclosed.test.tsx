@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../testAccountOwner";
 /**
  * Editor.failclosed.test.tsx — audit wave4 C12 + C13.
  *
@@ -153,7 +154,7 @@ describe("C13 — a server rejection is not 'saved to local'", () => {
     expect(screen.queryByText("saved to local")).toBeNull();
     expect(screen.queryByText("saved")).toBeNull();
     // The draft survives locally even though the server refused it.
-    expect(window.localStorage.getItem("antiek.notebook.nb-s")).toContain("Y");
+    expect(window.localStorage.getItem(unitAccountKey("antiek.notebook.nb-s"))).toContain("Y");
   });
 
   it("401/403 tell the operator to sign in; 409 to reload", async () => {

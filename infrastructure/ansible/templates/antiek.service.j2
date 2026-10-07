@@ -102,6 +102,8 @@ ExecStart={{ antiek_install_dir }}/.venv/bin/uvicorn \
     --host 127.0.0.1 \
     --port {{ uvicorn_port }} \
     --workers 1 \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1 \
     --timeout-keep-alive 900 \
     --timeout-graceful-shutdown 30
 

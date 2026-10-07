@@ -221,8 +221,10 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
         )
     ensure_speak_schema(con)
     row = con.execute(
-        "SELECT publish_intent, invitation_mode FROM speak_projects "
-        "WHERE project_id = ?",
+        "SELECT p.publish_intent, p.invitation_mode FROM speak_projects p "
+        "WHERE p.project_id = ? AND NOT EXISTS ("
+        "SELECT 1 FROM speak_takedowns t "
+        "WHERE t.project_id = p.project_id AND t.status = 'active')",
         [project_id],
     ).fetchone()
     if row is None:

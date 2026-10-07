@@ -111,7 +111,7 @@ describe("exported dev config", () => {
     const shadowing = Object.keys(proxy)
       .filter((prefix) => spaPaths.some((p) => p.startsWith(prefix)))
       .sort();
-    expect(shadowing).toEqual(["/investigations", "/library", "/notebooks", "/sources", "/write"]);
+    expect(shadowing).toEqual(["/investigations", "/library", "/notebooks", "/sources", "/speak", "/write"]);
 
     for (const [prefix, opts] of Object.entries(proxy)) {
       const bypass = typeof opts === "string" ? undefined : opts.bypass;
@@ -123,5 +123,17 @@ describe("exported dev config", () => {
         expect(bypass, prefix).toBeUndefined();
       }
     }
+  });
+
+  it("proxies Speak API calls while keeping invitation navigations in the SPA", async () => {
+    const { proxy, bypass } = await loadConfig({ ANTIEK_DEV_API_TARGET: "http://127.0.0.1:8017" });
+    const speak = proxy["/speak"];
+    expect(typeof speak).toBe("object");
+    if (!speak || typeof speak === "string") throw new Error("Speak proxy missing");
+    expect(speak.target).toBe("http://127.0.0.1:8017");
+    expect(speak.bypass).toBe(bypass);
+    expect(bypass(req("text/html", "GET", "/speak/invite/token"))).toBe("/speak/invite/token");
+    expect(bypass(req("*/*", "GET", "/speak/feed"))).toBeUndefined();
+    expect(bypass(req("*/*", "POST", "/speak/invite/token/voice"))).toBeUndefined();
   });
 });

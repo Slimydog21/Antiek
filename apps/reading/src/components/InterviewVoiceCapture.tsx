@@ -11,8 +11,8 @@ import { apiFetch } from "../lib/api";
  * the substrate is a server-side aggregator, not a real-time call.
  * The component:
  *
- *   1. Starts a MediaRecorder bound to the user's microphone (16kHz
- *      mono opus inside webm) once the operator clicks 'Start'.
+ *   1. Starts a MediaRecorder bound to the user's microphone, using
+ *      the browser's supported format, once the operator clicks 'Start'.
  *   2. Streams chunks as ondataavailable fires (~200ms intervals).
  *   3. Posts the accumulated Blob to the caller-provided upload route
  *      when the invitee clicks 'Stop'.
@@ -65,13 +65,25 @@ export default function InterviewVoiceCapture({
   const chunksRef = useRef<Blob[]>([]);
   const tickRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
+  const mountedRef = useRef(true);
+  const permissionAttemptRef = useRef(0);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const cancelFlushRef = useRef<(() => void) | null>(null);
 
   const cleanup = useCallback(() => {
+    permissionAttemptRef.current += 1;
+    cancelFlushRef.current?.();
+    cancelFlushRef.current = null;
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
     if (tickRef.current !== null) {
       window.clearInterval(tickRef.current);
       tickRef.current = null;
     }
     if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onerror = null;
       try {
         mediaRecorderRef.current.stop();
       } catch {
@@ -85,9 +97,16 @@ export default function InterviewVoiceCapture({
     }
   }, []);
 
-  useEffect(() => () => cleanup(), [cleanup]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cleanup();
+    };
+  }, [cleanup]);
 
   const requestConsent = async () => {
+    const attempt = ++permissionAttemptRef.current;
     setError(null);
     setState("requesting_consent");
     try {
@@ -99,9 +118,14 @@ export default function InterviewVoiceCapture({
           noiseSuppression: true,
         },
       });
+      if (!mountedRef.current || attempt !== permissionAttemptRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       setState("consent_granted");
     } catch (e: unknown) {
+      if (!mountedRef.current || attempt !== permissionAttemptRef.current) return;
       setError(
         e instanceof Error
           ? `Mic permission denied: ${e.message}`
@@ -118,54 +142,77 @@ export default function InterviewVoiceCapture({
       return;
     }
     chunksRef.current = [];
-    const rec = new MediaRecorder(streamRef.current, {
-      mimeType: "audio/webm;codecs=opus",
-    });
-    rec.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    rec.onerror = (e: Event) => {
-      setError(`MediaRecorder error: ${(e as ErrorEvent).message ?? "unknown"}`);
+    try {
+      // Let the browser choose a supported format (Safari may use audio/mp4).
+      const rec = new MediaRecorder(streamRef.current);
+      rec.ondataavailable = (e) => {
+        if (!mountedRef.current || mediaRecorderRef.current !== rec) return;
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onerror = (e: Event) => {
+        if (!mountedRef.current || mediaRecorderRef.current !== rec) return;
+        cleanup();
+        setError(e instanceof ErrorEvent ? e.message : "Recording failed. Please try again.");
+        setState("error");
+      };
+      mediaRecorderRef.current = rec;
+      rec.start(200); // 200ms chunk timeslice
+      startTimeRef.current = Date.now();
+      setDurationSeconds(0);
+      tickRef.current = window.setInterval(() => {
+        setDurationSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 250);
+      setState("recording");
+    } catch (e: unknown) {
+      cleanup();
+      setError(e instanceof Error ? e.message : "Recording is unavailable. You can type instead.");
       setState("error");
-    };
-    rec.start(200); // 200ms chunk timeslice
-    mediaRecorderRef.current = rec;
-    startTimeRef.current = Date.now();
-    setDurationSeconds(0);
-    tickRef.current = window.setInterval(() => {
-      setDurationSeconds(
-        Math.floor((Date.now() - startTimeRef.current) / 1000),
-      );
-    }, 250);
-    setState("recording");
+    }
   };
 
   const stopAndUpload = async () => {
     if (!mediaRecorderRef.current) return;
-    mediaRecorderRef.current.stop();
+    const rec = mediaRecorderRef.current;
+    const recordedSeconds = Math.max(0, (Date.now() - startTimeRef.current) / 1000);
     if (tickRef.current !== null) {
       window.clearInterval(tickRef.current);
       tickRef.current = null;
     }
     setState("uploading");
 
-    // Wait for the final ondataavailable to fire (MediaRecorder
-    // flushes on stop). One requestAnimationFrame is enough in
-    // practice; tests on slower hardware may need a microtask delay.
-    await new Promise((r) => requestAnimationFrame(r));
-
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    let uploadTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      // The stop event follows the final data event. A frame is not a flush
+      // guarantee, especially for a hidden tab or a slower mobile encoder.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Recording didn't finish. Please try again.")), 5_000);
+        const finish = () => { clearTimeout(timer); cancelFlushRef.current = null; resolve(); };
+        cancelFlushRef.current = () => { clearTimeout(timer); reject(new Error("Recording cancelled.")); };
+        rec.onstop = finish;
+        try { rec.stop(); }
+        catch (error) { clearTimeout(timer); reject(error); }
+      });
+      if (!mountedRef.current) return;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+      if (blob.size === 0) throw new Error("No audio captured. Please try recording again.");
+      // Match the server's finite voice-note ceiling before sending bytes.
+      if (blob.size > 64 * 1024 * 1024) throw new Error("That recording is too large. Please record a shorter memory.");
       // Raw-body upload; duration rides on the query string. Keeps
       // the substrate side free of the python-multipart dependency
       // for a single-field upload (master-spec §11.5). The URL is
       // pluggable so the token-gated invitee route can be targeted
       // without forking the capture component (SPR-08 M3).
-      const url = buildUploadUrl(durationSeconds);
+      const url = buildUploadUrl(recordedSeconds);
+      uploadTimer = setTimeout(() => controller.abort(), 130_000);
       const resp = await apiFetch(url, {
         method: "POST",
-        headers: { "Content-Type": "audio/webm" },
+        headers: { "Content-Type": blob.type },
         body: blob,
+        signal: controller.signal,
       });
       if (!resp.ok) {
         let detail = `HTTP ${resp.status}`;
@@ -175,27 +222,39 @@ export default function InterviewVoiceCapture({
         } catch {
           // keep the status-only detail
         }
+        if (!mountedRef.current || uploadAbortRef.current !== controller) return;
         if (onUploadError) onUploadError(resp.status, detail);
         throw new Error(`Upload failed: ${detail}`);
       }
-      const data = await resp.json();
+      const data: unknown = await resp.json();
+      if (!mountedRef.current) return;
+      if (typeof data !== "object" || data === null) throw new Error("The server didn't confirm your recording. Please try again.");
+      const result = "audio_url" in data && typeof data.audio_url === "string" && data.audio_url
+        ? data.audio_url
+        : "transcript" in data && typeof data.transcript === "string" && data.transcript.trim()
+          ? data.transcript
+          : null;
+      if (result === null) throw new Error("The server didn't confirm your recording. Please try again.");
       setState("uploaded");
-      if (data.audio_url && onUploaded) {
-        onUploaded(data.audio_url);
-      } else if (onUploaded) {
-        // The token-gated route returns the transcript, not an audio_url; still
-        // signal completion so the invitee surface can advance.
-        onUploaded(typeof data.transcript === "string" ? data.transcript : "");
-      }
+      onUploaded?.(result);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!mountedRef.current) return;
+      setError(e instanceof DOMException && e.name === "AbortError"
+        ? "The upload took too long. You can try again or type your memory."
+        : e instanceof Error ? e.message : String(e));
       setState("error");
     } finally {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+      clearTimeout(uploadTimer);
+      rec.onstop = null;
+      rec.ondataavailable = null;
+      rec.onerror = null;
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
+      if (mediaRecorderRef.current === rec) {
+        cancelFlushRef.current = null;
+        streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+        mediaRecorderRef.current = null;
       }
-      mediaRecorderRef.current = null;
     }
   };
 
@@ -254,7 +313,12 @@ export default function InterviewVoiceCapture({
       )}
 
       {state === "error" && (
-        <p className="text-xs font-mono text-emperor">{error ?? "Unknown error."}</p>
+        <div>
+          <p role="alert" className="text-xs font-mono text-emperor">{error ?? "Unknown error."}</p>
+          <button type="button" onClick={requestConsent} className="mt-2 text-sm underline">
+            Try recording again
+          </button>
+        </div>
       )}
     </div>
   );

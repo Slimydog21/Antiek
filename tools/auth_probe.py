@@ -7,8 +7,9 @@ Runs five checks against a live Antiek API base URL:
   2. ``OPTIONS /auth/request`` with ``Origin`` — Layer A: CORS preflight
      for the Pages → API cross-origin login submit.
   3. ``POST /auth/request`` with JSON — Layer B: policy path completes
-     with enumeration guard ``{"sent": true}`` (dry-run email defaults
-     to a non-allowlisted address so no mail is sent).
+     with ``sent: true`` and usable attempt/claim fields (dry-run email
+     defaults to a non-allowlisted address so no mail is sent). Attempt
+     credentials are validated but never included in probe output.
   4. ``GET /auth/passkey/status`` without a session cookie — Layer B: the
      passkey discovery route is public and does not leak credential counts.
   5. ``GET /auth/me`` without session cookie — Layer B: middleware returns
@@ -115,11 +116,19 @@ def stage_health(base_url: str) -> StageResult:
             f"GET /health failed: {exc}",
         )
     payload = _json_body(body)
-    ok = code == 200 and isinstance(payload, dict) and payload.get("status") == "ok"
+    # Layer A's documented claim is "API reachable (transport baseline)":
+    # a 200 with a JSON object body proves exactly that. The ``status``
+    # FIELD is a computed health verdict since
+    # fix/health-status-computed-20261003 (previously an unconditional
+    # "ok" literal — invisible to the 84.6% frame-telemetry write-refusal
+    # storm of 2026-10-02/03). A degraded write path must NOT fail this
+    # transport stage, so the verdict is reported, not asserted.
+    status_value = payload.get("status") if isinstance(payload, dict) else None
+    ok = code == 200 and isinstance(payload, dict) and isinstance(status_value, str)
     detail = (
-        "status ok"
+        f"reachable, status={status_value!r}"
         if ok
-        else f"expected 200 with status=ok, got http={code} body={payload!r}"
+        else f"expected 200 with a JSON body carrying status, got http={code} body={payload!r}"
     )
     return StageResult("health", "A", ok, code, detail)
 
@@ -185,11 +194,24 @@ def stage_auth_request(base_url: str, origin: str, email: str) -> StageResult:
         )
 
     parsed = _json_body(body)
-    ok = code == 200 and parsed == {"sent": True}
+    # The browser needs both fields to call /auth/claim, whose bounds are
+    # 16..200 characters. Additive response fields do not invalidate a login.
+    ok = (
+        code == 200
+        and isinstance(parsed, dict)
+        and parsed.get("sent") is True
+        and all(
+            isinstance(parsed.get(field), str) and 16 <= len(parsed[field]) <= 200
+            for field in ("attempt_id", "claim_secret")
+        )
+    )
     detail = (
-        "sent:true (enumeration guard; dry-run email is non-allowlisted)"
+        "sent:true with usable login attempt fields (values withheld; enumeration guard)"
         if ok
-        else f"expected 200 {{\"sent\": true}}, got http={code} body={parsed!r}"
+        else (
+            "expected 200 with sent:true and usable login attempt fields; "
+            f"got http={code} (response values withheld)"
+        )
     )
     return StageResult("auth_request_dry_run", "B", ok, code, detail)
 

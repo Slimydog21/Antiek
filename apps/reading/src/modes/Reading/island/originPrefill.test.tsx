@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../../testAccountOwner";
 /**
  * originPrefill.test.tsx — reading-global SPR-02 proof 4: the origin
  * context's ONE consumer. A reader window opened with
@@ -206,7 +207,7 @@ async function renderWindowReaderWithOrigin(origin: { from: string; id: string }
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.removeItem("antiek.island.hidden");
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
   vi.stubGlobal("fetch", apiFetchMock);
   apiFetchMock.mockReset();
   getBookMock.mockReset().mockResolvedValue(makeDetail());

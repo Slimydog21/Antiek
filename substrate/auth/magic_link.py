@@ -67,6 +67,7 @@ class SessionClaims:
     user_id: str
     email: str
     issued_at: int  # unix seconds
+    expires_at: int | None = None  # only the verified signed exp claim
 
 
 # ── Internals ────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ def _decode(
 # ── Magic-link tokens ────────────────────────────────────────────────
 
 
-def mint_magic_link_token(email: str) -> str:
+def mint_magic_link_token(email: str, *, attempt_id: str | None = None) -> str:
     """Mint a magic-link token bound to ``email``.
 
     The token embeds the requested email; verification returns it so
@@ -160,10 +161,10 @@ def mint_magic_link_token(email: str) -> str:
     enforcement is the caller's job (in ``auth.py``).
     """
     normalized = email.strip().lower()
-    return _encode(
-        _MAGIC_LINK_AUDIENCE,
-        {"email": normalized, "iat": int(time.time())},
-    )
+    payload: dict[str, Any] = {"email": normalized, "iat": int(time.time())}
+    if attempt_id is not None:
+        payload["attempt_id"] = attempt_id
+    return _encode(_MAGIC_LINK_AUDIENCE, payload)
 
 
 def verify_magic_link_token(
@@ -230,13 +231,17 @@ def verify_session_cookie(
         expired_exc=InvalidSessionCookie,
         invalid_exc=InvalidSessionCookie,
     )
+    verified_expiry: int | None = None
     if "exp" in payload:
         expiry = payload["exp"]
         if type(expiry) is not int or int(time.time()) >= expiry:
             raise InvalidSessionCookie("session expired or expiry malformed")
+        verified_expiry = expiry
     user_id = payload.get("user_id")
     email = payload.get("email")
     iat = payload.get("iat")
     if not isinstance(user_id, str) or not isinstance(email, str) or not isinstance(iat, int):
         raise InvalidSessionCookie("session claims malformed")
-    return SessionClaims(user_id=user_id, email=email, issued_at=iat)
+    return SessionClaims(
+        user_id=user_id, email=email, issued_at=iat, expires_at=verified_expiry,
+    )

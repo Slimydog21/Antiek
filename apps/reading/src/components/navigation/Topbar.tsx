@@ -64,7 +64,11 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     // verbatim, set as data.
     const id = !known[seg] && /\d/.test(seg);
     const label = known[seg] ?? (id ? seg : seg[0].toUpperCase() + seg.slice(1).replace(/-/g, " "));
-    crumbs.push({ label, to: acc, id });
+    // The manual notebook index is plural; its singular route requires an id.
+    const to = i === 0 && seg === "notebook" && segments.length === 2 && segments[1] !== "auto"
+      ? "/notebooks"
+      : acc;
+    crumbs.push({ label, to, id });
   }
   return crumbs;
 }

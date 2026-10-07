@@ -25,6 +25,7 @@
  * inside the window was never written: the tab is simply back.
  */
 import { create } from "zustand";
+import { subscribeWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 import { toast, UNDO_TTL_MS } from "../components/lemon/LemonToast";
 import { clearTabProject, readTabProject, writeTabProject } from "./persistence";
@@ -738,3 +739,18 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 // The keyboard dispatcher (entry chunk) reaches the store through this
 // handle; the store itself loads with the lazy strip.
 tabTreeHandle.store = useTabTrees;
+
+// The shipped adapter is session memory. Keep its rows with the subject
+// that produced them; a new subject never reads a prior adapter's rows.
+const ownerAdapters = new Map<string, TabTreeAdapter>();
+let adapterOwner = workspaceOwnerSession().subject;
+subscribeWorkspaceOwner(() => {
+  if (adapterOwner !== null) ownerAdapters.set(adapterOwner, useTabTrees.getState().adapter);
+  useTabTrees.getState().resetTabTrees();
+  adapterOwner = workspaceOwnerSession().subject;
+  useTabTrees.setState({
+    adapter: adapterOwner === null ? createInMemoryTabTreeAdapter()
+      : ownerAdapters.get(adapterOwner) ?? createInMemoryTabTreeAdapter(),
+    projectId: readTabProject() ?? TAB_PROJECT_ID,
+  });
+});

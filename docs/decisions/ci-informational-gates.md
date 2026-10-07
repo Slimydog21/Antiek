@@ -45,7 +45,7 @@ issue, **not** an accessibility violation. Accessibility is still exercised by
 > of the STEP — its exit code is lost-pixel's own and a real regression reds the check — but the
 > `lostpixel` context sits in `emitted_but_not_required`, so the PR still merges. #3300 and #3261
 > both merged with `lostpixel` red on their merged head sha. Requiring it needs the 82%-pass
-> flake rate addressed first; 675 baselines currently cover light mode only.
+> flake rate addressed first; the committed baselines cover light mode only.
 
 **Was informational** because no visual baselines existed for the new
 four-workflow shell. **The reconsider-if has fired:** 381 baseline PNGs are now

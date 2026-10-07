@@ -10,6 +10,8 @@ zero-script gate rejects — including when the input is hostile.
 from __future__ import annotations
 
 import importlib
+from collections.abc import Sequence
+from typing import cast
 
 import pytest
 
@@ -129,10 +131,14 @@ def test_sketch_is_the_agent_skill_rendered_deterministically() -> None:
     out = _render("sketch", typical)
     assert out == _render("sketch", typical)
     assert out.startswith("<svg")
+    # The fixture table is typed `dict[str, dict[str, dict[str, object]]]`, so every value here
+    # reads as `object` and cannot be passed to `sketch_svg`'s tightened signature. `cast` rather
+    # than a runtime isinstance assertion: this is a golden-output test, and the fixture is the
+    # thing under test -- an assert here would be testing the fixture rather than the renderer.
     assert out == sketch_svg(
-        seed=typical["seed"],
-        title=typical["title"],
-        data=typical["data"],
+        seed=cast(int, typical["seed"]),
+        title=cast(str, typical["title"]),
+        data=cast("Sequence[float] | None", typical["data"]),
         palette=sketch.PALETTE,
         ink=tokens.LEMON_INK,
     )

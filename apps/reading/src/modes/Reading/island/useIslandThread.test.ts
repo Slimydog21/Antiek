@@ -1,3 +1,4 @@
+import { unitAccountKey } from "../../../testAccountOwner";
 /**
  * useIslandThread.test.ts — the hook composition proofs (island SPR-01).
  *
@@ -99,7 +100,7 @@ function distillation(count: number): DistillationResponse {
 }
 
 beforeEach(() => {
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
   useInvestigationMock.mockReset();
   useInvestigationListMock.mockReset().mockReturnValue({
     investigations: [],
@@ -113,7 +114,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem("antiek:investigation_tree");
+  window.localStorage.removeItem(unitAccountKey("antiek:investigation_tree"));
 });
 
 describe("useIslandThread", () => {

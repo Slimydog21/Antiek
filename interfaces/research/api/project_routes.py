@@ -139,6 +139,9 @@ def register_project_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="project_body_invalid")
         with connect_write(_resolve_db_path(), purpose="projects/create") as con:
             init_projects_schema(con)
+            if getattr(request.state, "account_subject", None) and isinstance(body.get("primary_document_id"), str):
+                from .books import _require_account_book
+                _require_account_book(con, body["primary_document_id"], request)
             try:
                 project = registry.create_project(
                     con,
@@ -187,6 +190,17 @@ def register_project_routes(app: FastAPI) -> None:
         with connect_write(_resolve_db_path(), purpose="projects/members/add") as con:
             init_projects_schema(con)
             try:
+                if getattr(request.state, "account_subject", None):
+                    from .books import _require_account_book
+
+                    registry.require_project(con, owner_user_id=owner, project_id=project_id)
+                    # Document ownership is authoritative. The other member
+                    # types do not yet have an admitted account-owner interface.
+                    if body["member_kind"] != "document":
+                        raise HTTPException(status_code=403, detail="owner_bound_member_required")
+                    if not isinstance(body["member_id"], str):
+                        raise HTTPException(status_code=422, detail="member_body_invalid")
+                    _require_account_book(con, body["member_id"], request)
                 status = registry.add_member(
                     con,
                     owner_user_id=owner,
