@@ -83,9 +83,16 @@ class PrimeAgentBinaryIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class _NativeDirectory:
+    relative_path: str
+    metadata: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PrimeAgentBundleEntry:
     relative_path: str
     identity: PrimeAgentBinaryIdentity
+    native_ancestors: tuple[_NativeDirectory, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,19 +185,20 @@ def revalidate_prime_agent_installation(installation: PrimeAgentInstallation) ->
 
 
 def _snapshot_bundle(binary: Path) -> tuple[Path | None, tuple[PrimeAgentBundleEntry, ...]]:
-    if binary.suffix != ".js":
-        return None, ()
-    bundle_dir = binary.parent
-    package_root = bundle_dir.parent.parent
-    package_json = package_root / "package.json"
-    root = package_root if package_json.is_file() else bundle_dir
-    paths = [*bundle_dir.rglob("*")]
-    if package_json.is_file():
-        paths.append(package_json)
-        for package_name in _BUNDLED_RUNTIME_PACKAGES:
-            dependency = package_root / "node_modules" / package_name
-            if dependency.is_dir():
-                paths.extend(dependency.rglob("*"))
+    if binary.suffix == ".js":
+        bundle_dir = binary.parent
+        package_root = bundle_dir.parent.parent
+        package_json = package_root / "package.json"
+        root = package_root if package_json.is_file() else bundle_dir
+        paths = [*bundle_dir.rglob("*")]
+        if package_json.is_file():
+            paths.append(package_json)
+            for package_name in _BUNDLED_RUNTIME_PACKAGES:
+                dependency = package_root / "node_modules" / package_name
+                if dependency.is_dir():
+                    paths.extend(dependency.rglob("*"))
+    else:
+        return _snapshot_native_bundle(binary)
     entries: list[PrimeAgentBundleEntry] = []
     total = 0
     for path in sorted(paths):
@@ -202,8 +210,209 @@ def _snapshot_bundle(binary: Path) -> tuple[Path | None, tuple[PrimeAgentBundleE
         if len(entries) > _MAX_BUNDLE_FILES or total > _MAX_BUNDLE_BYTES:
             raise PrimeAgentUnavailable("prime-agent bundle exceeds verification bounds")
     if not entries:
-        raise PrimeAgentUnavailable("prime-agent JavaScript bundle is empty")
+        raise PrimeAgentUnavailable("prime-agent bundle is empty")
     return root, tuple(entries)
+
+
+def _native_metadata(observed: os.stat_result) -> tuple[int, ...]:
+    return (
+        observed.st_dev,
+        observed.st_ino,
+        observed.st_mode,
+        observed.st_uid,
+        observed.st_size,
+        observed.st_mtime_ns,
+        observed.st_ctime_ns,
+    )
+
+
+def _check_native_owner(observed: os.stat_result) -> None:
+    if observed.st_uid not in {0, os.geteuid()} or observed.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise PrimeAgentUnavailable("prime-agent native release has unsafe ownership or mode")
+
+
+@contextmanager
+def _open_native_directory_path(root: Path) -> Iterator[int]:
+    """Resolve each absolute component through its actual no-follow parent fd."""
+    if not root.is_absolute():
+        raise PrimeAgentUnavailable("prime-agent native release requires an absolute path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(root.anchor, flags)
+    try:
+        for name in root.parts[1:]:
+            observed = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            child = os.open(name, flags, dir_fd=fd)
+            try:
+                if not stat.S_ISDIR(observed.st_mode) or _native_metadata(
+                    observed
+                ) != _native_metadata(os.fstat(child)):
+                    raise PrimeAgentUnavailable("prime-agent native release directory changed")
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(fd)
+            fd = child
+        yield fd
+    except OSError as exc:
+        raise PrimeAgentUnavailable(
+            "prime-agent native release directory could not be opened"
+        ) from exc
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def _open_native_ancestors(root_fd: int, ancestors: tuple[_NativeDirectory, ...]) -> Iterator[int]:
+    fd = os.dup(root_fd)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        for index, directory in enumerate(ancestors):
+            if index:
+                child = os.open(Path(directory.relative_path).name, flags, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            observed = os.fstat(fd)
+            if (
+                not stat.S_ISDIR(observed.st_mode)
+                or _native_metadata(observed) != directory.metadata
+            ):
+                raise PrimeAgentUnavailable("prime-agent native release directory changed")
+            _check_native_owner(observed)
+        yield fd
+        if _native_metadata(os.fstat(fd)) != ancestors[-1].metadata:
+            raise PrimeAgentUnavailable("prime-agent native release directory changed")
+    except OSError as exc:
+        raise PrimeAgentUnavailable(
+            "prime-agent native release ancestor could not be opened"
+        ) from exc
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def _open_native_file(directory_fd: int, name: str, observed: os.stat_result) -> Iterator[int]:
+    if not stat.S_ISREG(observed.st_mode):
+        raise PrimeAgentUnavailable("prime-agent native release contains a non-regular entry")
+    _check_native_owner(observed)
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise PrimeAgentUnavailable("prime-agent native release file could not be opened") from exc
+    try:
+        if _native_metadata(os.fstat(fd)) != _native_metadata(observed):
+            raise PrimeAgentUnavailable("prime-agent native release file changed before read")
+        yield fd
+        if _native_metadata(os.fstat(fd)) != _native_metadata(observed) or _native_metadata(
+            os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        ) != _native_metadata(observed):
+            raise PrimeAgentUnavailable("prime-agent native release file changed during read")
+    finally:
+        os.close(fd)
+
+
+def _native_chunks(fd: int, size: int) -> Iterator[bytes]:
+    remaining = size
+    while remaining:
+        chunk = os.read(fd, min(remaining, 128 * 1024))
+        if not chunk:
+            raise PrimeAgentUnavailable(
+                "prime-agent native release file ended before reserved size"
+            )
+        remaining -= len(chunk)
+        yield chunk
+
+
+def _snapshot_native_bundle(
+    binary: Path,
+) -> tuple[Path | None, tuple[PrimeAgentBundleEntry, ...]]:
+    root = binary.parent
+    result: list[PrimeAgentBundleEntry] = []
+    with _open_native_directory_path(root) as root_fd:
+        root_identity = _NativeDirectory(".", _native_metadata(os.fstat(root_fd)))
+        _check_native_owner(os.fstat(root_fd))
+        try:
+            package = os.stat("package.json", dir_fd=root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return None, ()
+        if not stat.S_ISREG(package.st_mode):
+            raise PrimeAgentUnavailable(
+                "prime-agent native release package metadata is not regular"
+            )
+        observed = os.stat(binary.name, dir_fd=root_fd, follow_symlinks=False)
+        with _open_native_file(root_fd, binary.name, observed) as fd:
+            magic = os.read(fd, 4)
+        if (
+            magic
+            not in {
+                b"\x7fELF",
+                b"\xfe\xed\xfa\xce",
+                b"\xce\xfa\xed\xfe",
+                b"\xfe\xed\xfa\xcf",
+                b"\xcf\xfa\xed\xfe",
+                b"\xca\xfe\xba\xbe",
+                b"\xbe\xba\xfe\xca",
+                b"\xca\xfe\xba\xbf",
+                b"\xbf\xba\xfe\xca",
+            }
+            and magic[:2] != b"MZ"
+        ):
+            return None, ()
+        pending: list[tuple[_NativeDirectory, ...]] = [(root_identity,)]
+        directories = []
+        visited = total = 0
+        while pending:
+            ancestors = pending.pop()
+            directories.append(ancestors)
+            with (
+                _open_native_ancestors(root_fd, ancestors) as directory_fd,
+                os.scandir(directory_fd) as directory,
+            ):
+                for entry in directory:
+                    visited += 1
+                    if visited > _MAX_BUNDLE_FILES:
+                        raise PrimeAgentUnavailable(
+                            "prime-agent bundle exceeds verification bounds"
+                        )
+                    observed = entry.stat(follow_symlinks=False)
+                    relative = str(Path(ancestors[-1].relative_path) / entry.name)
+                    if stat.S_ISDIR(observed.st_mode):
+                        pending.append(
+                            (*ancestors, _NativeDirectory(relative, _native_metadata(observed)))
+                        )
+                        continue
+                    total += observed.st_size
+                    if total > _MAX_BUNDLE_BYTES:
+                        raise PrimeAgentUnavailable(
+                            "prime-agent bundle exceeds verification bounds"
+                        )
+                    with _open_native_file(directory_fd, entry.name, observed) as fd:
+                        if relative == binary.name and not observed.st_mode & (
+                            stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                        ):
+                            raise PrimeAgentUnavailable("prime-agent executable is not executable")
+                        digest = sha256()
+                        for chunk in _native_chunks(fd, observed.st_size):
+                            digest.update(chunk)
+                        identity = PrimeAgentBinaryIdentity(
+                            observed.st_dev,
+                            observed.st_ino,
+                            observed.st_size,
+                            observed.st_mtime_ns,
+                            observed.st_mode,
+                            observed.st_uid,
+                            digest.hexdigest(),
+                        )
+                    result.append(PrimeAgentBundleEntry(relative, identity, ancestors))
+        for ancestors in directories:
+            with _open_native_ancestors(root_fd, ancestors):
+                pass
+        with _open_native_directory_path(root) as current:
+            if _native_metadata(os.fstat(current)) != root_identity.metadata:
+                raise PrimeAgentUnavailable("prime-agent native release root changed")
+    if not result:
+        raise PrimeAgentUnavailable("prime-agent bundle is empty")
+    return root, tuple(sorted(result, key=lambda entry: Path(entry.relative_path)))
 
 
 @contextmanager
@@ -232,6 +441,9 @@ def stage_verified_prime_agent(installation: PrimeAgentInstallation, destination
         source = installation.bundle_root / entry.relative_path
         target = destination / entry.relative_path
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if entry.native_ancestors:
+            _copy_native_file(installation.bundle_root, entry, target, executable=source == installation.binary)
+            continue
         _copy_verified_file(
             source,
             entry.identity,
@@ -328,6 +540,56 @@ def validate_staged_prime_agent(
     return entrypoint
 
 
+def _copy_native_file(
+    root: Path, entry: PrimeAgentBundleEntry, target: Path, *, executable: bool
+) -> None:
+    with _open_native_directory_path(root) as root_fd:
+        with _open_native_ancestors(root_fd, entry.native_ancestors) as directory_fd:
+            name = Path(entry.relative_path).name
+            observed = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            expected = entry.identity
+            if (
+                observed.st_dev,
+                observed.st_ino,
+                observed.st_size,
+                observed.st_mtime_ns,
+                observed.st_mode,
+                observed.st_uid,
+            ) != (
+                expected.device,
+                expected.inode,
+                expected.size,
+                expected.mtime_ns,
+                expected.mode,
+                expected.owner_uid,
+            ):
+                raise PrimeAgentUnavailable("verified prime-agent native file changed before copy")
+            with _open_native_file(directory_fd, name, observed) as source_fd:
+                target_fd = os.open(
+                    target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o500 if executable else 0o400
+                )
+                try:
+                    digest = sha256()
+                    for chunk in _native_chunks(source_fd, expected.size):
+                        digest.update(chunk)
+                        view = memoryview(chunk)
+                        offset = 0
+                        while offset < len(view):
+                            offset += os.write(target_fd, view[offset:])
+                    if digest.hexdigest() != expected.sha256:
+                        raise PrimeAgentUnavailable(
+                            "verified prime-agent native bytes changed during copy"
+                        )
+                    os.fsync(target_fd)
+                finally:
+                    os.close(target_fd)
+        with _open_native_ancestors(root_fd, entry.native_ancestors):
+            pass
+        with _open_native_directory_path(root) as current:
+            if _native_metadata(os.fstat(current)) != entry.native_ancestors[0].metadata:
+                raise PrimeAgentUnavailable("prime-agent native release root changed during copy")
+
+
 def _copy_verified_file(
     source: Path,
     expected: PrimeAgentBinaryIdentity,
@@ -360,14 +622,21 @@ def _snapshot_binary(binary: Path, *, require_executable: bool = True) -> PrimeA
     """Open once, compare lstat/fstat, enforce ownership/mode, and hash that fd."""
     try:
         path_stat = binary.lstat()
-        fd = os.open(binary, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+        if not stat.S_ISREG(path_stat.st_mode):
+            raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
+        if path_stat.st_size > _MAX_BUNDLE_BYTES:
+            raise PrimeAgentUnavailable("prime-agent bundle exceeds verification bounds")
+        fd = os.open(
+            binary,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0),
+        )
     except OSError as exc:
         raise PrimeAgentUnavailable("prime-agent executable could not be inspected") from exc
     try:
         opened_stat = os.fstat(fd)
         if not stat.S_ISREG(path_stat.st_mode) or not stat.S_ISREG(opened_stat.st_mode):
             raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
-        if (path_stat.st_dev, path_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
+        if _native_metadata(path_stat) != _native_metadata(opened_stat):
             raise PrimeAgentUnavailable("prime-agent executable changed while being inspected")
         if opened_stat.st_uid not in {0, os.geteuid()}:
             raise PrimeAgentUnavailable(
@@ -379,19 +648,32 @@ def _snapshot_binary(binary: Path, *, require_executable: bool = True) -> PrimeA
             stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         ):
             raise PrimeAgentUnavailable("prime-agent executable is not executable")
-        return _identity_from_fd(fd)
+        identity = _identity_from_fd(fd, observed=opened_stat)
+        if _native_metadata(binary.lstat()) != _native_metadata(opened_stat):
+            raise PrimeAgentUnavailable("prime-agent executable changed while being inspected")
+        return identity
+    except OSError as exc:
+        raise PrimeAgentUnavailable("prime-agent executable could not be inspected") from exc
     finally:
         os.close(fd)
 
 
-def _identity_from_fd(fd: int) -> PrimeAgentBinaryIdentity:
+def _identity_from_fd(
+    fd: int, *, observed: os.stat_result | None = None
+) -> PrimeAgentBinaryIdentity:
     opened_stat = os.fstat(fd)
     if not stat.S_ISREG(opened_stat.st_mode):
         raise PrimeAgentUnavailable("prime-agent executable is not a regular file")
+    if observed is not None and _native_metadata(opened_stat) != _native_metadata(observed):
+        raise PrimeAgentUnavailable("prime-agent executable changed before read")
+    if opened_stat.st_size > _MAX_BUNDLE_BYTES:
+        raise PrimeAgentUnavailable("prime-agent bundle exceeds verification bounds")
     os.lseek(fd, 0, os.SEEK_SET)
     digest = sha256()
-    while chunk := os.read(fd, 128 * 1024):
+    for chunk in _native_chunks(fd, opened_stat.st_size):
         digest.update(chunk)
+    if _native_metadata(os.fstat(fd)) != _native_metadata(opened_stat):
+        raise PrimeAgentUnavailable("prime-agent executable changed during read")
     os.lseek(fd, 0, os.SEEK_SET)
     return PrimeAgentBinaryIdentity(
         device=opened_stat.st_dev,

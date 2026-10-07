@@ -36,12 +36,15 @@ vi.mock("../../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../lib/api")>();
   return {
     ...actual,
+    editSelection: editSelectionMock,
     postTypedEvent: (envelope: unknown) => postTypedEventMock(envelope),
     searchBlocks: (q: string) => searchBlocksMock(q),
     startInvestigation: (req: unknown) => startInvestigationMock(req),
     apiFetch: (input: unknown, init?: unknown) => apiFetchMock(input, init),
   };
 });
+
+const editSelectionMock = vi.hoisted(() => vi.fn());
 
 // ── voice mock (M3) ──────────────────────────────────────────────────────────
 // A controllable useVoiceCapture stand-in so the Note panel's voice affordance
@@ -196,6 +199,7 @@ beforeEach(() => {
   searchBlocksMock.mockClear();
   startInvestigationMock.mockClear();
   apiFetchMock.mockClear();
+  editSelectionMock.mockReset();
   stopAndCaptureMock.mockClear();
   voiceStartMock.mockClear();
   voiceState.phase = "idle";
@@ -611,4 +615,54 @@ describe("the pin seam (anchor-first SPR-02)", () => {
     expect(alert.textContent).toContain("restricted source");
     expect(searchBlocksMock).not.toHaveBeenCalled();
   });
+});
+
+
+describe("instruction focus keeps the operation selection", () => {
+  it("submits the original passage after focus collapses the browser selection", async () => {
+    const onApplyEdit = vi.fn();
+    render(<Host onRewrite={vi.fn()} editContext={{ deliverableId: "d1", sectionId: "s1" }} onApplyEdit={onApplyEdit} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit…" }));
+    const instruction = screen.getByPlaceholderText(/more concise/);
+    act(() => instruction.focus());
+    clearSelection();
+    expect(document.querySelector("[data-floatmenu-edit]")).not.toBeNull();
+    expect(document.activeElement).toBe(instruction);
+    fireEvent.change(instruction, { target: { value: "Shorten it" } });
+    editSelectionMock.mockResolvedValueOnce({ edited_text: "Short passage" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await act(async () => {});
+    expect(editSelectionMock).toHaveBeenCalledWith({
+      deliverable_id: "d1", section_id: "s1",
+      selection_text: "the selected passage", instruction: "Shorten it",
+    });
+    expect(onApplyEdit).toHaveBeenCalledWith("Short passage", expect.objectContaining({ text: "the selected passage" }));
+  });
+
+  it.each(["Escape", "outside"])("dismisses a retained selection on %s", (method) => {
+    render(<Host onRewrite={vi.fn()} editContext={{ deliverableId: "d1", sectionId: "s1" }} onApplyEdit={vi.fn()} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit…" }));
+    act(() => screen.getByPlaceholderText(/more concise/).focus());
+    clearSelection();
+    expect(document.querySelector("[data-floatmenu-edit]")).not.toBeNull();
+    if (method === "Escape") fireEvent.keyDown(window, { key: "Escape" });
+    else fireEvent.mouseDown(document.body);
+    expect(document.querySelector("[data-floatmenu]")).toBeNull();
+  });
+});
+
+
+it("replaces a retained action when another passage is selected", () => {
+  render(<Host onRewrite={vi.fn()} editContext={{ deliverableId: "d1", sectionId: "s1" }} onApplyEdit={vi.fn()} />);
+  const scope = screen.getByTestId("scope");
+  selectTextIn(scope, "the selected passage");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit…" }));
+  act(() => screen.getByPlaceholderText(/more concise/).focus());
+  clearSelection();
+  expect(document.querySelector("[data-floatmenu-edit]")).not.toBeNull();
+  selectTextIn(scope, "another passage", { top: 400, left: 120, width: 100, height: 18 });
+  expect(document.querySelector("[data-floatmenu-edit]")).toBeNull();
+  expect(screen.getByRole("menuitem", { name: "Edit…" })).toBeTruthy();
 });
