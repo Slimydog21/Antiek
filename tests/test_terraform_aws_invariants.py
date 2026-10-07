@@ -324,7 +324,7 @@ def test_idle_poweroff_has_exactly_one_owner() -> None:
     lane = _tf_text(_TF)
     assert "idle-stop" not in lane and "idle_stop.sh" not in lane
     assert not (_TF / "scripts" / "lanes-idle-stop.sh").exists()
-    assert "idle_poweroff_min = var.lane_host_idle_stop_minutes" in lane
+    assert re.search(r"idle_poweroff_min\s+=\s+var\.lane_host_idle_stop_minutes", lane)
     assert "ExecStart=${local.lane_host_helper_path} sweep" in lane
 
 
@@ -403,8 +403,14 @@ def test_lane_host_matches_the_compute_contract() -> None:
     if example.is_file():
         config = re.search(r"lane_host_helper_config = jsonencode\(\{(.*?)\}\)", text, re.S)
         assert config, "lane-host.json is no longer rendered"
-        rendered = set(re.findall(r"^\s*([a-z_]+)\s*=", config.group(1), re.M))
-        assert set(json.loads(example.read_text(encoding="utf-8"))) <= rendered
+        rendered = dict(re.findall(r"^\s*([a-z_]+)\s*=\s*(.+?)\s*$", config.group(1), re.M))
+        helper = json.loads(example.read_text(encoding="utf-8"))
+        assert set(helper) <= set(rendered)
+        # Timing keys must match the helper exactly: a shorter host dead-man
+        # than the dispatcher's bound stops live lanes during a Mini outage.
+        for key in ("deadman_min", "no_retention_ceiling_h", "ttl_days_ok", "ttl_days_failed"):
+            assert rendered[key] == str(helper[key]), key
+        assert int(rendered["deadman_min"]) == backend["deadman_min"]
 
 
 # ── Ansible hunks this root depends on ───────────────────────────────────────

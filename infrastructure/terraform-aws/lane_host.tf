@@ -120,19 +120,23 @@ locals {
 
   # bin/compute-lane-host.example.json, filled from this root's variables.
   lane_host_helper_config = jsonencode({
-    workroot          = local.lane_host_workroot
-    slice             = local.lane_host_slice
-    systemd_run       = "/usr/bin/systemd-run"
-    systemctl         = "/usr/bin/systemctl"
-    user_prefix       = local.lane_host_user_prefix
-    key_dir           = local.lane_host_key_dir
-    keys              = var.lane_host_provider_keys
-    projects          = var.lane_host_projects
-    extra             = ["--expand-environment=no"]
-    deadman_min       = 15
-    ttl_days_ok       = 7
-    ttl_days_failed   = 14
-    idle_poweroff_min = var.lane_host_idle_stop_minutes
+    workroot    = local.lane_host_workroot
+    slice       = local.lane_host_slice
+    systemd_run = "/usr/bin/systemd-run"
+    systemctl   = "/usr/bin/systemctl"
+    user_prefix = local.lane_host_user_prefix
+    key_dir     = local.lane_host_key_dir
+    keys        = var.lane_host_provider_keys
+    projects    = var.lane_host_projects
+    extra       = ["--expand-environment=no"]
+    # deadman_min and no_retention_ceiling_h MUST equal compute policy
+    # backends.node.deadman_min and the helper example (compute 1.6.1);
+    # tests/test_terraform_aws_invariants.py pins the values.
+    deadman_min            = 60
+    no_retention_ceiling_h = 24
+    ttl_days_ok            = 7
+    ttl_days_failed        = 14
+    idle_poweroff_min      = var.lane_host_idle_stop_minutes
   })
 
   lane_host_cloud_config = [

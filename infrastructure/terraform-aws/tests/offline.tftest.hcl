@@ -312,19 +312,20 @@ run "lane_host_on" {
       for f in yamldecode(trimprefix(local.lane_host_user_data[0], "#cloud-config\n")).write_files : f.content
       if f.path == "/etc/compute/lane-host.json"
       ])) == {
-      workroot          = "/srv/lanes"
-      slice             = "lanes.slice"
-      systemd_run       = "/usr/bin/systemd-run"
-      systemctl         = "/usr/bin/systemctl"
-      user_prefix       = "lane-"
-      key_dir           = "/etc/compute/keys"
-      keys              = ["DEEPSEEK_API_KEY", "XIAOMI_API_KEY", "ZAI_API_KEY"]
-      projects          = { inferact = { retention = true }, solcoa = { retention = true }, volantis = { retention = false } }
-      extra             = ["--expand-environment=no"]
-      deadman_min       = 15
-      ttl_days_ok       = 7
-      ttl_days_failed   = 14
-      idle_poweroff_min = 60
+      workroot               = "/srv/lanes"
+      slice                  = "lanes.slice"
+      systemd_run            = "/usr/bin/systemd-run"
+      systemctl              = "/usr/bin/systemctl"
+      user_prefix            = "lane-"
+      key_dir                = "/etc/compute/keys"
+      keys                   = ["DEEPSEEK_API_KEY", "XIAOMI_API_KEY", "ZAI_API_KEY"]
+      projects               = { inferact = { retention = true }, solcoa = { retention = true }, volantis = { retention = false } }
+      extra                  = ["--expand-environment=no"]
+      deadman_min            = 60
+      no_retention_ceiling_h = 24
+      ttl_days_ok            = 7
+      ttl_days_failed        = 14
+      idle_poweroff_min      = 60
     }
     error_message = "the helper's config must match compute-lane-host.example.json's shape, filled from this root."
   }

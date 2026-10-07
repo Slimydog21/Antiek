@@ -1,16 +1,263 @@
 #!/usr/bin/python3 -I
-"""Test stand-in for compute's bin/compute-lane-host (~/.agents/compute).
+"""compute-lane-host: the ONLY privileged entry point on a compute lane host (compute 1.6.1, D-19 node backend).
 
-tests/offline.tftest.hcl points compute_lane_host_helper here so the plan
-can render the lane-host cloud-config without the compute checkout. It
-carries the two markers lane_host.tf's precondition checks and nothing else.
+Installed root-owned at /usr/local/sbin/compute-lane-host, reached by the control account through exactly one sudoers rule:
+    compute ALL=(root) NOPASSWD: /usr/local/sbin/compute-lane-host
+Every argument is validated here (a sudoers argument pattern cannot be: `*` matches spaces). Identity split: the Mini logs in
+as `compute` (control: ssh, rsync, journal, show); each lane runs as the system user lane-<project> in a system unit under
+lanes.slice, so a lane cannot touch its supervision (exit records live in <workroot>/.records, written by a root
+ExecStopPost), cannot start units of its own (no user manager, NoNewPrivileges), cannot read another tenant's workdir (per
+project group, UMask 0007), cannot read key files other than the ones its unit loads (root-only /etc/compute/keys, read by
+PID 1), cannot reach the instance metadata service, the VPC, RFC1918 or the tailnet (per-unit IPAddressDeny, 1.6.1: the
+durable-actors critic's item 13a; lane code is LLM-driven shell, so tailnet egress would be lateral reach to the Mini), and
+cannot edit the control account's shell startup.
+
+Durability (1.6.1, critic item 7): a workdir of a no-retention project is purged only after the Mini wrote
+<records>/<unit>.pulled-<token> following a final pull with rc 0, and only while no exit record and no supervisor heartbeat
+is newer than that marker; otherwise the sweep keeps it until the hard ceiling (no_retention_ceiling_h, 24 h), purges it
+then, and logs it to <records>/.ceiling-purged.jsonl, which `compute gc` turns into a crit alert. Lane units get
+TimeoutStopSec=100 so an agent's own SIGTERM handler can flush PROGRESS.md inside a 2-minute spot notice.
+
+ops:  start JSON | stop UNIT | purge PROJECT TAG | sweep [--no-poweroff]
+config: /etc/compute/lane-host.json (root-owned). COMPUTE_LANE_HOST_CONF is honoured only when not running as root (tests).
 """
-import sys
+import json, os, re, shutil, subprocess, sys, time
+
+CONF_PATH = "/etc/compute/lane-host.json"
+NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$")
+UNIT = re.compile(r"^lane-[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}$")
+KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+ENVNAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+SECRET = re.compile(r"(API_KEY|TOKEN|SECRET|PASSWORD)$", re.I)
+MEM = re.compile(r"^[0-9]{1,6}[KMGT]?$")
+RESERVED_ENV = ("HOME", "TMPDIR", "USER", "LOGNAME", "PATH")
+LIVE = ("active", "activating", "deactivating", "reloading")
+# 1.6.1 (critic item 13a): IMDS and every private / CGNAT (tailnet) / ULA / link-local range, per unit (BPF; no global firewall).
+# DNS keeps working through the resolved stub on 127.0.0.53 (loopback is not denied); public egress is unchanged.
+IP_DENY = "169.254.0.0/16 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7 fe80::/10"
 
 
-def op_sweep():
-    sys.exit("fixture: not compute-lane-host")
+def die(code, msg):
+    print(f"compute-lane-host: {msg}", file=sys.stderr); sys.exit(code)
+
+
+def conf():
+    path = os.environ.get("COMPUTE_LANE_HOST_CONF") if os.geteuid() != 0 else None
+    try:
+        with open(path or CONF_PATH) as f: c = json.load(f)
+    except (OSError, ValueError) as e:
+        die(2, f"cannot read config: {e}")
+    c.setdefault("slice", "lanes.slice"); c.setdefault("systemd_run", "/usr/bin/systemd-run")
+    c.setdefault("systemctl", "/usr/bin/systemctl"); c.setdefault("user_prefix", "lane-"); c.setdefault("key_dir", "/etc/compute/keys")
+    # deadman_min 60 (1.6.1, critic item 3): with one host, unit-name dedupe is the safety fence and the dead man only bounds the
+    # cost of orphaned units; a short one turns any Mini outage longer than it into "stop every cloud lane" (L24). It must equal
+    # the Mini's policy backends.node.deadman_min, which sizes the Mini-side `uncollected` detection bound.
+    c.setdefault("extra", ["--expand-environment=no"]); c.setdefault("deadman_min", 60); c.setdefault("idle_poweroff_min", 0)
+    c.setdefault("ttl_days_ok", 7); c.setdefault("ttl_days_failed", 14); c.setdefault("no_retention_ceiling_h", 24)
+    if not re.match(r"^/[A-Za-z0-9_./-]+$", str(c.get("workroot", ""))): die(2, "config workroot must be a plain absolute path")
+    c["records"] = c["workroot"].rstrip("/") + "/.records"
+    return c
+
+
+def unit_of(project, tag):
+    return f"lane-{project[:40]}-{tag}"
+
+
+def state(c, unit):
+    r = subprocess.run([c["systemctl"], "show", "-p", "ActiveState", unit], capture_output=True, text=True, timeout=30)
+    m = re.search(r"^ActiveState=(\S*)", r.stdout, re.M)
+    return m.group(1) if m else "unknown"
+
+
+def project_ok(c, project):
+    if not NAME.match(project) or project not in (c.get("projects") or {}): die(2, f"project {project!r} is not allowed on this host")
+
+
+def tag_ok(tag):
+    if not NAME.match(tag) or tag.startswith("."): die(2, f"tag {tag!r} is not a plain name")
+
+
+def op_start(c, raw):
+    try: r = json.loads(raw)
+    except ValueError: die(2, "start needs one JSON argument")
+    project, tag, token = str(r.get("project", "")), str(r.get("tag", "")), str(r.get("token", ""))
+    project_ok(c, project); tag_ok(tag)
+    unit = unit_of(project, tag)
+    if r.get("unit") != unit: die(2, f"unit must be {unit}")
+    if not re.match(r"^[0-9a-f]{8,32}$", token): die(2, "token must be hex")
+    for k in ("memory_high", "memory_max"):
+        if not MEM.match(str(r.get(k, ""))): die(2, f"{k} must look like 1G")
+    try:
+        tasks, runtime = int(r["tasks_max"]), int(r["runtime_s"])
+    except (KeyError, TypeError, ValueError):
+        die(2, "tasks_max and runtime_s must be integers")
+    if not (1 <= tasks <= 100000 and 1 <= runtime <= 7 * 86400): die(2, "tasks_max / runtime_s out of range")
+    keys = r.get("keys") or []; provisioned = set(c.get("keys") or [])
+    for k in keys:
+        if not isinstance(k, str) or not KEY.match(k) or k not in provisioned: die(2, f"key {k!r} is not provisioned here")
+    env = r.get("setenv") or {}
+    for k, v in env.items():
+        if not ENVNAME.match(k) or SECRET.search(k) or k in RESERVED_ENV or "\n" in str(v) or "\0" in str(v):
+            die(2, f"env {k!r} is not allowed")
+    argv = r.get("argv") or []
+    if not argv or not all(isinstance(x, str) and "\0" not in x for x in argv): die(2, "argv must be a non-empty list of strings")
+    wd = f"{c['workroot'].rstrip('/')}/{project}/{tag}"
+    if not os.path.isdir(wd): die(2, f"workdir {wd} does not exist (stage-in creates it)")
+    if state(c, unit) in LIVE: die(3, f"unit {unit} is already active (node-local dedupe)")
+    rec = f"{c['records']}/{unit}.exit-{token}"
+    user = c["user_prefix"] + project
+    # '+': runs as root outside the sandbox, so the record lands where the lane cannot write. No '$' and no '%' in it.
+    stop_post = (f"+/bin/sh -c 'env | grep -E \"^(SERVICE_RESULT|EXIT_CODE|EXIT_STATUS)=\" > {rec}.part; mv {rec}.part {rec}'")
+    cmd = [c["systemd_run"], "--system", "--quiet", f"--unit={unit}", f"--slice={c['slice']}", "--collect", f"--working-directory={wd}",
+           "-p", f"User={user}", "-p", f"Group={user}", "-p", "UMask=0007", "-p", "NoNewPrivileges=yes", "-p", "ProtectHome=yes",
+           "-p", "ProtectSystem=strict", "-p", f"ReadWritePaths={wd}", "-p", "PrivateTmp=yes",
+           "-p", f"IPAddressDeny={IP_DENY}", "-p", f"MemoryHigh={r['memory_high']}", "-p", f"MemoryMax={r['memory_max']}",
+           "-p", f"TasksMax={tasks}", "-p", f"RuntimeMaxSec={runtime}", "-p", "TimeoutStopSec=100",
+           "-p", f"ExecStopPost={stop_post}", *c["extra"]]
+    for k in keys: cmd += ["-p", f"EnvironmentFile=-{c['key_dir'].rstrip('/')}/{k}.env"]
+    cmd += [f"--setenv={k}={v}" for k, v in sorted(env.items())] + [f"--setenv=HOME={wd}", "--setenv=TMPDIR=/tmp/"]
+    p = subprocess.run(cmd + ["--", *argv], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    sys.stdout.write(p.stdout); sys.stderr.write(p.stderr)
+    if p.returncode != 0 and re.search(r"already (loaded|exists|active)|fragment file", p.stderr, re.I): sys.exit(3)
+    sys.exit(0 if p.returncode == 0 else 4)
+
+
+def op_stop(c, unit):
+    if not UNIT.match(unit): die(2, f"{unit!r} is not a lane unit")
+    p = subprocess.run([c["systemctl"], "stop", "--no-block", unit], capture_output=True, text=True, timeout=30)
+    sys.stderr.write(p.stderr); sys.exit(0 if p.returncode == 0 else 4)
+
+
+def records_of(c, unit, kind):
+    """[(mtime, path)] of <records>/<unit>.<kind>-*, newest first."""
+    d = c["records"]; out = []
+    for f in os.listdir(d) if os.path.isdir(d) else []:
+        if f.startswith(f"{unit}.{kind}-") and not f.endswith(".part"):
+            try: out.append((os.path.getmtime(os.path.join(d, f)), os.path.join(d, f)))
+            except OSError: pass
+    return sorted(out, reverse=True)
+
+
+def pulled_ok(c, unit):
+    """True when the newest pulled marker is at least as new as every exit record and the supervisor heartbeat: the Mini's last
+    final pull happened after the unit's last run ended and no supervisor has touched the unit since (critic item 7)."""
+    marks = records_of(c, unit, "pulled")
+    if not marks: return False
+    newest = max([t for t, _ in records_of(c, unit, "exit")] + [0])
+    try: newest = max(newest, os.path.getmtime(f"{c['records']}/{unit}.hb"))
+    except OSError: pass
+    return marks[0][0] >= newest
+
+
+def purge(c, project, tag):
+    unit = unit_of(project, tag); wd = f"{c['workroot'].rstrip('/')}/{project}/{tag}"
+    if state(c, unit) in LIVE: return False, 0
+    size = du(wd)
+    shutil.rmtree(wd, ignore_errors=True)
+    for f in os.listdir(c["records"]) if os.path.isdir(c["records"]) else []:
+        if f.startswith(unit + "."):
+            try: os.unlink(os.path.join(c["records"], f))
+            except OSError: pass
+    return not os.path.exists(wd), size
+
+
+def du(path):
+    total = 0
+    for dp, dns, fns in os.walk(path):
+        for n in fns:
+            try: total += os.lstat(os.path.join(dp, n)).st_size
+            except OSError: pass
+    return total
+
+
+def op_purge(c, project, tag):
+    """The Mini's purge (finish of a no-retention job): refused (exit 3) unless the final pull's marker proves the outputs home."""
+    project_ok(c, project); tag_ok(tag)
+    if not pulled_ok(c, unit_of(project, tag)):
+        print(json.dumps(dict(purged=False, freed_bytes=0, why="no pulled marker newer than the last exit record / heartbeat")))
+        sys.exit(3)
+    ok, size = purge(c, project, tag)
+    print(json.dumps(dict(purged=ok, freed_bytes=size)))
+    sys.exit(0 if ok else 3)
+
+
+def live_units(c):
+    p = subprocess.run([c["systemctl"], "list-units", "--plain", "--no-legend", "--all", "lane-*"], capture_output=True, text=True, timeout=30)
+    out = {}
+    for line in p.stdout.splitlines():
+        w = line.split()
+        if len(w) >= 3 and w[0].startswith("lane-"):
+            u = w[0][:-8] if w[0].endswith(".service") else w[0]
+            if w[2] in LIVE: out[u] = w[2]
+    return out
+
+
+def op_sweep(c, poweroff=True):
+    """Host timer (every 5 min) and `compute gc`: the dead-man switch and the storage lifecycle (L8/L9/D-06) run here,
+    so they work while the Mini is down. -> JSON counts; `due` > 0 with `purged` == 0 means the sweep is not working."""
+    now = time.time(); res = dict(stopped=[], due=0, purged=0, freed_bytes=0, kept=0, live=0, poweroff=False, awaiting_pull=0,
+                                  ceiling_purged=[])
+    units = live_units(c); res["live"] = len(units)
+    for u in sorted(units):                                        # dead man: the supervisor touches <unit>.hb every poll
+        hb = f"{c['records']}/{u}.hb"
+        try: age = now - os.path.getmtime(hb)
+        except OSError: age = float("inf")
+        if age > float(c["deadman_min"]) * 60:
+            subprocess.run([c["systemctl"], "stop", "--no-block", u], capture_output=True, timeout=30); res["stopped"].append(u)
+    wr = c["workroot"].rstrip("/")
+    for project in sorted(os.listdir(wr)) if os.path.isdir(wr) else []:
+        if project.startswith(".") or project not in (c.get("projects") or {}): continue
+        retain = bool((c["projects"][project] or {}).get("retention", True))
+        for tag in sorted(os.listdir(os.path.join(wr, project))):
+            if tag.startswith(".") or not NAME.match(tag): continue
+            unit = unit_of(project, tag)
+            if unit in units: res["kept"] += 1; continue
+            recs = [os.path.join(c["records"], f) for f in (os.listdir(c["records"]) if os.path.isdir(c["records"]) else [])
+                    if f.startswith(unit + ".exit-")]
+            newest = max([os.path.getmtime(x) for x in recs] + [os.path.getmtime(os.path.join(wr, project, tag))])
+            success = bool(recs) and "SERVICE_RESULT=success" in open(max(recs, key=os.path.getmtime)).read()
+            ceiling = False
+            if not retain:                                     # no-retention: purge at once, but only what came home (item 7)
+                if not pulled_ok(c, unit):
+                    if now - newest < float(c["no_retention_ceiling_h"]) * 3600: res["awaiting_pull"] += 1; res["kept"] += 1; continue
+                    ceiling = True                             # D-07 stays bounded: purge at the ceiling, never silently
+            else:
+                ttl = float(c["ttl_days_ok" if success else "ttl_days_failed"]) * 86400
+                if now - newest < ttl: res["kept"] += 1; continue
+            res["due"] += 1
+            ok, size = purge(c, project, tag)
+            if ok: res["purged"] += 1; res["freed_bytes"] += size
+            if ok and ceiling:
+                res["ceiling_purged"].append(f"{project}/{tag}")
+                os.makedirs(c["records"], exist_ok=True)
+                with open(f"{c['records']}/.ceiling-purged.jsonl", "a") as f:
+                    f.write(json.dumps(dict(t=now, project=project, tag=tag, freed_bytes=size)) + "\n")
+    try:
+        with open(f"{c['records']}/.ceiling-purged.jsonl") as f: res["ceiling_total"] = sum(1 for l in f if l.strip())
+    except OSError:
+        res["ceiling_total"] = 0
+    stamp = f"{c['records']}/.last-active"
+    os.makedirs(c["records"], exist_ok=True)
+    if units or not os.path.exists(stamp):
+        with open(stamp, "a"): pass
+        os.utime(stamp)
+    idle = float(c["idle_poweroff_min"])
+    if poweroff and idle > 0 and not units and now - os.path.getmtime(stamp) > idle * 60:
+        res["poweroff"] = True                                    # stop-when-idle: the instance stops billing compute
+        print(json.dumps(res)); sys.stdout.flush()
+        subprocess.run([c["systemctl"], "poweroff"], timeout=30); sys.exit(0)
+    print(json.dumps(res))
+
+
+def main(argv):
+    if not argv: die(2, __doc__.strip().splitlines()[-2])
+    c = conf(); op = argv[0]
+    if op == "start" and len(argv) == 2: return op_start(c, argv[1])
+    if op == "stop" and len(argv) == 2: return op_stop(c, argv[1])
+    if op == "purge" and len(argv) == 3: return op_purge(c, argv[1], argv[2])
+    if op == "sweep" and argv[1:] in ([], ["--no-poweroff"]): return op_sweep(c, poweroff=not argv[1:])
+    die(2, f"unknown or malformed op {argv[:1]}")
 
 
 if __name__ == "__main__":
-    op_sweep()
+    main(sys.argv[1:])
