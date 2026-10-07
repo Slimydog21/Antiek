@@ -1827,8 +1827,9 @@ def create_app(
         from substrate.auth.accounts import (
             AccountStoreError,
             account_for_session,
+            account_for_verified_legacy_session,
             account_registry_active,
-            legacy_account_for_session,
+            legacy_operator_email,
         )
 
         account_mode = account_registry_active()
@@ -1949,10 +1950,23 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if account_mode:
+                    # Verify original continuity before opening public signup.
+                    # A configured binding without a verified cookie cannot
+                    # create an account; a failed join cannot fall back to
+                    # the old shared operator while this binding is active.
+                    retaining_original = (
+                        cookie_claims.user_id == "__operator__"
+                        and cookie_email in operator_emails
+                        and cookie_email == legacy_operator_email()
+                    )
+                    if account_mode or retaining_original:
                         try:
                             if cookie_claims.user_id == "__operator__" and cookie_email in operator_emails:
-                                account = await asyncio.to_thread(legacy_account_for_session, cookie_email)
+                                account = await asyncio.to_thread(
+                                    account_for_verified_legacy_session,
+                                    cookie_claims,
+                                    operator_emails=operator_emails,
+                                )
                             else:
                                 account = await asyncio.to_thread(
                                     account_for_session, cookie_claims.user_id, cookie_email,
@@ -1965,7 +1979,7 @@ def create_app(
                             request.state.user_email = account.email
                             request.state.auth_method = "antiek_session_cookie"
                             request.state.account_subject = account.user_id
-                            # The alias is persisted only after explicit legacy email proof.
+                            # Original retention proof has persisted the legacy alias.
                             # Keep it separate from the subject used by credentials/billing.
                             request.state.legacy_owner_user_id = account.legacy_owner if is_operator else None
                             request.state.private_owner_user_id = (
@@ -2011,7 +2025,7 @@ def create_app(
                             return await call_next(request)
                     # Allowlist, never "no list = anyone": with no
                     # operator email configured a cookie proves nobody.
-                    if not account_mode and cookie_email in operator_emails:
+                    if not account_mode and not retaining_original and cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
