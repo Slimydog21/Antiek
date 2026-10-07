@@ -86,11 +86,11 @@ beforeEach(() => {
   vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(() => 700);
   vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element): DOMRectList {
     if (!this.isConnected || this.closest("[hidden], [inert]")) {
-      return { length: 0, item: () => null, *[Symbol.iterator]() {} };
+      return { length: 0, item: () => null, *[Symbol.iterator]() {} } as unknown as DOMRectList;
     }
     const rect = new DOMRect(0, 0, 1000, 700);
     return { 0: rect, length: 1, item: (index) => index === 0 ? rect : null,
-      *[Symbol.iterator]() { yield rect; } };
+      *[Symbol.iterator]() { yield rect; } } as unknown as DOMRectList;
   });
   vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
     constructor(private callback: ResizeObserverCallback) {}

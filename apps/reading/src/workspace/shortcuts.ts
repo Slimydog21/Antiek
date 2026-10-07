@@ -72,6 +72,11 @@ import { prefixState } from "../components/hotkeys/prefixState";
 import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneZoom,
   togglePaneArrangementAt } from "./PaneFlowLayout";
 
+// Landing gate (antiek.flag.pane.flow): read ONCE at load, like the keymap
+// rows it must agree with — a flag that flipped mid-session would bind rows
+// to the wrong handlers.
+const PANE_FLOW_ON = isFeatureOn("pane.flow");
+
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
  *  driven directly by the workspace store. */
@@ -472,7 +477,7 @@ function paneFocusKey(event: KeyboardEvent, side: "left" | "right"): boolean | v
   // cockpit's named-pane focus works from any focus (cockpitInset contract).
   // The packet's admission rules (actual target inside a pane-flow host) apply
   // only once the flow arrangement exists, i.e. with the flag on.
-  if (!isFeatureOn("pane.flow")) { focusPane(side); return; }
+  if (!PANE_FLOW_ON) { focusPane(side); return; }
   if (modernPaneAt(event)) return focusAdjacentPane(event, side === "left" ? -1 : 1, executingPrefixEvent === event);
   // Retained h/l aliases keep the old named-pane behavior. New arrows need
   // the actual shared host arrangement, never a z/focusedId fallback.
@@ -485,7 +490,7 @@ function paneFocusKey(event: KeyboardEvent, side: "left" | "right"): boolean | v
 
 function paneFullscreenKey(event: KeyboardEvent): boolean | void {
   // Landing gate (antiek.flag.pane.flow OFF): main's handler, verbatim.
-  if (!isFeatureOn("pane.flow")) { useWorkspace.getState().toggleFullscreenPane(); return; }
+  if (!PANE_FLOW_ON) { useWorkspace.getState().toggleFullscreenPane(); return; }
   if (modernPaneAt(event)) return toggleActivePaneZoom(event, executingPrefixEvent === event);
   const target = legacyPaneEventTarget(event, executingPrefixEvent === event);
   if (target?.kind === "window") {
@@ -542,7 +547,7 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "pane.focusRight": (event) => paneFocusKey(event, "right"),
     // Landing gate: the reorder rows exist only with antiek.flag.pane.flow on,
     // and keymap.test requires handlers to match the table exactly.
-    ...(isFeatureOn("pane.flow") ? {
+    ...(PANE_FLOW_ON ? {
       "pane.reorderLeft": (event: KeyboardEvent) => reorderActivePane(event, -1, executingPrefixEvent === event),
       "pane.reorderRight": (event: KeyboardEvent) => reorderActivePane(event, 1, executingPrefixEvent === event),
     } : {}),
@@ -551,9 +556,11 @@ export function createActionHandlers(navigate: NavigateFunction) {
       if (event.target instanceof Element && event.target.closest("[data-pane-flow-root]")) {
         return togglePaneArrangementAt(event, executingPrefixEvent === event);
       }
-      // Landing: outside a pane-flow root (every flag-off user; the legacy
-      // arrangement) the key keeps main's meaning — docked ⇄ omarchy-inset.
-      if (useWorkspace.getState().paneArrangement === "legacy") {
+      // Landing gate: with antiek.flag.pane.flow OFF the key keeps main's
+      // meaning — docked ⇄ omarchy-inset. With the flag ON the packet's rule
+      // holds: outside a measured pane-flow root (legacy arrangement, invalid
+      // bounds) the key is refused before any preference write.
+      if (!PANE_FLOW_ON) {
         useWorkspace.getState().toggleLayoutPreset();
         return true;
       }

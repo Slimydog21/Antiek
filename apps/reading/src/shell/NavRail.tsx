@@ -26,7 +26,6 @@ import {
   PRODUCT_ACTIVATE_EVENT,
   formatBinding,
   BUILTIN_BINDINGS,
-  PRODUCT_ACTIVATE_EVENT,
 } from "../components/hotkeys/bindings";
 import type { ActionId } from "../components/hotkeys/keymap";
 

@@ -65,10 +65,10 @@ beforeEach(() => {
   });
   vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element): DOMRectList {
     if (!this.isConnected || this.closest("[hidden], [inert]")) {
-      return { length: 0, item: () => null, *[Symbol.iterator]() {} };
+      return { length: 0, item: () => null, *[Symbol.iterator]() {} } as unknown as DOMRectList;
     }
     const rect = new DOMRect(0, 0, controls.width, controls.height);
-    return { 0: rect, length: 1, item: (index) => index === 0 ? rect : null, *[Symbol.iterator]() { yield rect; } };
+    return { 0: rect, length: 1, item: (index: number) => index === 0 ? rect : null, *[Symbol.iterator]() { yield rect; } } as unknown as DOMRectList;
   });
   vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
     private measure: () => void;

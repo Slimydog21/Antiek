@@ -59,10 +59,10 @@ beforeEach(() => {
   vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(() => 700);
   vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element): DOMRectList {
     if (!this.isConnected || this.closest("[hidden], [inert]") || width === 0) {
-      return { length: 0, item: () => null, *[Symbol.iterator]() {} };
+      return { length: 0, item: () => null, *[Symbol.iterator]() {} } as unknown as DOMRectList;
     }
     const rect = new DOMRect(0, 0, width, 700);
-    return { 0: rect, length: 1, item: (index) => index === 0 ? rect : null, *[Symbol.iterator]() { yield rect; } };
+    return { 0: rect, length: 1, item: (index: number) => index === 0 ? rect : null, *[Symbol.iterator]() { yield rect; } } as unknown as DOMRectList;
   });
   vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
     private measure: () => void;
@@ -85,6 +85,11 @@ afterEach(() => {
   useWindows.getState().reset();
   useWorkspace.getState().reset();
   prefixState.disarm();
+  // Landing: a spy placed on the store's state object is copied into every
+  // later state by zustand's set(), and main's Vitest 4 restoreAllMocks no
+  // longer clears spy call history — so a toggle counted in one case leaked
+  // into the next ("refuses legacy L …" ran green alone, red in sequence).
+  vi.clearAllMocks();
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
 
