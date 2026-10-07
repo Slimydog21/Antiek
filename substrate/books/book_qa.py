@@ -237,6 +237,7 @@ def answer_book_question(
     top_k: int = DEFAULT_QA_TOP_K,
     config: Any | None = None,
     policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
     authorized_dispatch: Callable[[str], tuple[DispatchResult, str]] | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
@@ -256,7 +257,9 @@ def answer_book_question(
     authenticated owner talking to HIS OWN gated/personal book) passes a
     PRIVILEGED tag (``operator_only`` ∈ ``PRIVILEGED_POLICY_TAGS``) so — and
     only then — the gate admits those classes. The privilege decision is the
-    CALLER's (it owns the auth check); this function only forwards the tag.
+    CALLER's (it owns the auth check); this function forwards the tag and the
+    server-derived ``owner_user_id``. The latter scopes personal-reading
+    retrieval to that owner. Omitting it retains the existing operator default.
 
     Raises ``ProviderError`` when every provider in the dispatch chain is
     unavailable (no key) — the caller maps that to an honest 503, never a
@@ -275,6 +278,7 @@ def answer_book_question(
         # never the model context or a citation). The authenticated-owner caller
         # passes a PRIVILEGED tag to read his own gated/personal book in full.
         policy_tag=policy_tag,
+        owner_user_id=owner_user_id,
     )
     context_chunks = retrieved["results"]
 

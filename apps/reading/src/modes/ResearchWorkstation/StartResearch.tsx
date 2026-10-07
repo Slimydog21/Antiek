@@ -1,3 +1,4 @@
+import { accountStorageKey, isWorkspaceOwnerSession, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useModeNavigate } from "../../workspace/useModeNavigate";
 
@@ -100,8 +101,10 @@ interface PendingOwnerLaunch {
 }
 
 function readPendingOwnerLaunch(): PendingOwnerLaunch | null {
+  const key = accountStorageKey(OWNER_LAUNCH_KEY);
+  if (key === null) return null;
   try {
-    const raw = window.sessionStorage.getItem(OWNER_LAUNCH_KEY);
+    const raw = window.sessionStorage.getItem(key);
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<PendingOwnerLaunch>;
     if (
@@ -163,6 +166,7 @@ type AttachState =
   | { kind: "failed"; reason: string | null };
 
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
+  const [owner] = useState(workspaceOwnerSession);
   const navigate = useModeNavigate();
   const start = useStartInvestigation();
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
@@ -235,18 +239,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   }, [modelsState, modelChoice, selectedModel]);
 
   const onSubmit = useCallback(async () => {
+    if (!isWorkspaceOwnerSession(owner)) return;
+    const key = accountStorageKey(OWNER_LAUNCH_KEY, owner);
+    if (key === null) return;
     const pending = modelChoice && selectedModel
       ? { question, modelChoice, operationId } satisfies PendingOwnerLaunch
       : null;
-    if (pending) window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
+    if (pending) window.sessionStorage.setItem(key, JSON.stringify(pending));
     const id = await submit(modelChoice && selectedModel
       ? { question, modelChoice, operationId, sourcePolicy }
       : { question, researchTier: tier, sourcePolicy });
-    if (id) {
-      window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
+    if (id && isWorkspaceOwnerSession(owner)) {
+      window.sessionStorage.removeItem(key);
       setQuestion("");
     }
-  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy]);
+  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy, owner]);
 
   const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
     setSourcePolicy((current) => {

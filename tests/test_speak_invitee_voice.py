@@ -102,7 +102,11 @@ def test_invitee_voice_bridges_to_an_answer(client, monkeypatch):
 
 
 def test_invitee_voice_requires_consent(client, monkeypatch):
-    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", StubTranscriber())
+    from unittest.mock import Mock
+
+    transcriber = StubTranscriber()
+    transcriber.transcribe = Mock(wraps=transcriber.transcribe)
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", transcriber)
     token = _invited_token(client)
     # Record before consent → 403 (the same gate the typed answer enforces).
     r = client.post(
@@ -111,6 +115,9 @@ def test_invitee_voice_requires_consent(client, monkeypatch):
         headers={"Content-Type": "audio/webm"},
     )
     assert r.status_code == 403
+    # Consent is required before any audio leaves for transcription, rather
+    # than only when the already-transcribed answer is about to be stored.
+    transcriber.transcribe.assert_not_called()
 
 
 def test_invitee_voice_bad_token_404(client, monkeypatch):
@@ -153,6 +160,24 @@ def test_invitee_voice_empty_body_400(client, monkeypatch):
         headers={"Content-Type": "audio/webm"},
     )
     assert r.status_code == 400
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n\t"])
+def test_invitee_voice_blank_transcription_does_not_consume_question(client, monkeypatch, text):
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", StubTranscriber(text))
+    token = _invited_token(client)
+    client.post(f"/speak/invite/{token}/consent", json={"scopes": ["record"]})
+    before = client.get(f"/speak/invite/{token}").json()
+    response = client.post(
+        f"/speak/invite/{token}/voice?question_id=q1",
+        content=b"controlled-transcriber-test-input",
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert response.status_code == 422, response.text
+    assert "no words" in response.json()["detail"]
+    after = client.get(f"/speak/invite/{token}").json()
+    assert after["transcript"] == before["transcript"]
+    assert after["pending_questions"] == before["pending_questions"]
 
 
 def test_invitee_voice_surface_open_while_operator_authed(client, monkeypatch):

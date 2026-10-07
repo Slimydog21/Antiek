@@ -53,6 +53,7 @@ from roles.note_taker import (  # noqa: E402
     DurableNoteTakerReplay,
     parse_notes_response,
 )
+from substrate.byot_usage.ledger import ByotUsageLedger  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
@@ -141,7 +142,13 @@ def _default_replay_service(
         db_path=db_path or default_db_path(),
         events_dir=events_dir,
         threshold=threshold or _resolve_threshold(),
+        owned_investigation_guard=_is_owned_investigation,
     )
+
+
+def _is_owned_investigation(investigation_id: str) -> bool:
+    """The money journal's unique investigation binding is the authority."""
+    return ByotUsageLedger().owned_wrestling_for_investigation(investigation_id) is not None
 
 
 def _resolve_replay_tuning() -> tuple[float, float, float]:
@@ -266,6 +273,8 @@ def start_replay_recovery(
                 if stop.is_set():
                     return
                 try:
+                    if _is_owned_investigation(investigation_id):
+                        continue
                     service.catch_up(investigation_id)
                     progressed = True
                 except Exception as exc:
@@ -388,6 +397,15 @@ def make_note_taker_handler(
         # this is defense-in-depth; helps if someone later adds note
         # events to the subscription.)
         if event.role == "note_taker" or str(event.action_type) == ActionType.NOTE_EMERGED.value:
+            return
+        if (event.policy_id or "").startswith("owned-wrestling/"):
+            return
+
+        try:
+            if await asyncio.to_thread(_is_owned_investigation, event.investigation_id):
+                return
+        except Exception:
+            # A failed authority read must not route an unknown owner source.
             return
 
         try:

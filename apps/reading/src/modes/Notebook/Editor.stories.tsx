@@ -1,6 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useEffect, type ReactNode } from "react";
+import { setWorkspaceOwner, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 
 import EditorPanel from "./EditorPanel";
+
+// Storybook has no issued session. This explicit, story-only actor keeps its
+// local persistence controls out of the anonymous production account path.
+const STORY_OWNER = "storybook-notebook";
+function NotebookStoryOwner({ children }: { children: ReactNode }) {
+  const owner = useWorkspaceOwner();
+  useEffect(() => {
+    setWorkspaceOwner(STORY_OWNER);
+    return () => { setWorkspaceOwner(null); };
+  }, []);
+  return owner.subject === STORY_OWNER ? children : null;
+}
 
 /**
  * NotebookEditor — TipTap-based block editor (S7-full). Five custom
@@ -17,6 +31,7 @@ const meta = {
   component: EditorPanel,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
+  decorators: [(Story) => <NotebookStoryOwner><Story /></NotebookStoryOwner>],
 } satisfies Meta<typeof EditorPanel>;
 
 export default meta;

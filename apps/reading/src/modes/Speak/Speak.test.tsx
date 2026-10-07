@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 /**
@@ -153,6 +153,29 @@ describe("Speak project page", () => {
     // The engine returns nothing (no provider) → honest failure, no fake bio.
     reject(new Error("no provider"));
     expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+
+  it.each([
+    ["comparison", "HTTP 401: operator_auth_required"],
+    ["comparison", "HTTP 503: provider unavailable"],
+    ["comparison", "Failed to fetch"],
+    ["assembly", "HTTP 401: operator_auth_required"],
+    ["assembly", "HTTP 503: provider unavailable"],
+    ["assembly", "Failed to fetch"],
+  ])("shows the actual %s refusal %s and retries in place", async (action, reason) => {
+    const call = action === "comparison" ? api.whatEveryoneAgreesOn : api.assembleDraft;
+    call.mockRejectedValue(new Error(reason));
+    await act(async () => { mount(); });
+    fireEvent.click(screen.getByRole("button", {
+      name: action === "comparison" ? /^refresh$/i : /assemble the story/i,
+    }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(reason);
+    expect(alert.textContent).not.toContain("provider isn't configured");
+    expect(call).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /^try again$/i }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole("alert")).textContent).toContain(reason);
   });
 
   it("gathers economics/publishing behind one Settings tap; the split is shown, not paid", async () => {

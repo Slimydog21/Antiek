@@ -38,6 +38,12 @@ import { useReadingState } from "../../hooks/useReadingState";
 import { fetchDocumentForks } from "../../workspace/forkLineage";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
+  awaitWorkspaceOwnerSession,
+  isWorkspaceOwnerSession,
+  useWorkspaceOwner,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
+import {
   createAnchor,
   getAnchorMap,
   linkAnchorInvestigation,
@@ -73,6 +79,7 @@ import {
 import { clearReadingFocus, setReadingFocus } from "../../lib/readingFocus";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
+import { readingPositionOwnerEpoch, usePositionOwnerEpoch } from "./usePosition";
 
 /**
  * Book reader — the Read workflow's reading surface (Read SPR-03).
@@ -109,6 +116,15 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
+type BookResource = { documentId: string; ownerEpoch: number; owner: WorkspaceOwnerSession };
+type LoadedBook = { book: BookDetail; body: FullTextResponse; housePool: BookSummary[] };
+type BookLoad = BookResource & (
+  | { kind: "loading"; data: LoadedBook | null }
+  | { kind: "ready"; data: LoadedBook }
+  | { kind: "failed"; data: LoadedBook | null; error: unknown }
+);
+type BookLoadLifetime = { resource: BookResource; active: boolean; attempt: object | null; controller: AbortController };
+
 export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
   const typography = useReadingTypography();
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
@@ -117,44 +133,99 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const [searchParams] = useSearchParams();
   const openTalkOnLoad = searchParams.get("talk") === "1";
 
-  const [book, setBook] = useState<BookDetail | null>(null);
-  const [body, setBody] = useState<FullTextResponse | null>(null);
-  const [housePool, setHousePool] = useState<BookSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const ownerEpoch = usePositionOwnerEpoch();
+  const owner = useWorkspaceOwner();
+  const actionLifetime = useMemo<{ active: boolean; controller: AbortController | null }>(
+    () => ({ active: false, controller: null }), [documentId, owner],
+  );
+  useEffect(() => {
+    actionLifetime.active = true;
+    const controller = new AbortController();
+    actionLifetime.controller = controller;
+    return () => { actionLifetime.active = false; controller.abort(); };
+  }, [actionLifetime]);
+  const readingActionCurrent = useCallback(() => actionLifetime.active
+    && owner.subject !== null && isWorkspaceOwnerSession(owner), [actionLifetime, owner]);
+  const confirmReadingAction = useCallback(() => {
+    const controller = actionLifetime.controller;
+    return controller === null ? Promise.resolve(false) : awaitWorkspaceOwnerSession(owner, controller.signal);
+  }, [actionLifetime, owner]);
+  const resource = useMemo(() => ({ documentId, ownerEpoch, owner }), [documentId, ownerEpoch, owner]);
+  const resourceRef = useRef(resource);
+  resourceRef.current = resource;
+  const lifetimeRef = useRef<BookLoadLifetime | null>(null);
+  const [loadState, setLoadState] = useState<BookLoad>(() => ({ ...resource, kind: "loading", data: null }));
+  const load = loadState.documentId === documentId && loadState.ownerEpoch === ownerEpoch
+    && loadState.owner === owner && owner.subject !== null ? loadState : null;
+  const book = load?.data?.book ?? null;
+  const body = load?.data?.body ?? null;
+  const housePool = load?.data?.housePool ?? [];
+  const loading = !load || load.kind === "loading";
+  const error = load?.kind === "failed" ? load.error : null;
 
-  const loadBook = useCallback(async (isCancelled: () => boolean) => {
-    setLoading(true);
-    setError(null);
+  const loadBook = useCallback(async (lifetime: BookLoadLifetime) => {
+    const attempt = {};
+    const retained = () => lifetime.resource.owner.subject !== null
+      && lifetime.active && lifetimeRef.current === lifetime
+      && lifetime.resource === resource
+      && resourceRef.current === lifetime.resource
+      && readingPositionOwnerEpoch() === lifetime.resource.ownerEpoch;
+    const admitted = () => retained() && isWorkspaceOwnerSession(lifetime.resource.owner);
+    while (!admitted()) {
+      if (!retained() || !await awaitWorkspaceOwnerSession(lifetime.resource.owner, lifetime.controller.signal)) return;
+    }
+    lifetime.attempt = attempt;
+    const retainedAttempt = () => retained() && lifetime.attempt === attempt;
+    const current = () => retainedAttempt() && isWorkspaceOwnerSession(lifetime.resource.owner);
+    setLoadState((previous) => current() ? {
+      ...lifetime.resource,
+      kind: "loading",
+      data: previous.documentId === documentId && previous.ownerEpoch === ownerEpoch ? previous.data : null,
+    } : previous);
     try {
       const [detail, full] = await Promise.all([
         getBook(documentId),
         getBookFullText(documentId),
       ]);
-      if (isCancelled()) return;
-      setBook(detail);
-      setBody(full);
+      while (!current()) {
+        if (!retainedAttempt() || !await awaitWorkspaceOwnerSession(lifetime.resource.owner, lifetime.controller.signal)) return;
+      }
+      setLoadState((previous) => current() ? {
+        ...lifetime.resource, kind: "ready",
+        data: { book: detail, body: full, housePool: previous.data?.housePool ?? [] },
+      } : previous);
       // House-state candidates for the zero-buyer ad border.
       try {
         const servable = await listBooks("servable");
-        if (!isCancelled()) setHousePool(servable.books);
+        while (!current()) {
+          if (!retainedAttempt() || !await awaitWorkspaceOwnerSession(lifetime.resource.owner, lifetime.controller.signal)) return;
+        }
+        setLoadState((previous) => current() && previous.data ? {
+          ...previous, data: { ...previous.data, housePool: servable.books },
+        } : previous);
       } catch {
         /* house pool is best-effort; a neutral house card is fine */
       }
-    } catch (e: unknown) {
-      if (!isCancelled()) setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (!isCancelled()) setLoading(false);
+    } catch (cause: unknown) {
+      while (!current()) {
+        if (!retainedAttempt() || !await awaitWorkspaceOwnerSession(lifetime.resource.owner, lifetime.controller.signal)) return;
+      }
+      setLoadState((previous) => current() ? {
+        ...lifetime.resource, kind: "failed", data: previous.data, error: cause,
+      } : previous);
     }
-  }, [documentId]);
+  }, [documentId, ownerEpoch, resource]);
 
   useEffect(() => {
-    let cancelled = false;
-    void loadBook(() => cancelled);
+    const lifetime: BookLoadLifetime = { resource, active: true, attempt: null, controller: new AbortController() };
+    lifetimeRef.current = lifetime;
+    void loadBook(lifetime);
     return () => {
-      cancelled = true;
+      lifetime.active = false;
+      lifetime.controller.abort();
+      if (lifetimeRef.current === lifetime) lifetimeRef.current = null;
     };
-  }, [loadBook]);
+  }, [loadBook, resource]);
 
   // The fork lineage this session knows for the open document (both
   // directions, one GET): the strip's badge/chip and the fork tab's
@@ -165,7 +236,8 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   }, [documentId]);
 
   const reload = useCallback(() => {
-    void loadBook(() => false);
+    const lifetime = lifetimeRef.current;
+    if (lifetime) void loadBook(lifetime);
   }, [loadBook]);
 
   useEffect(() => {
@@ -178,23 +250,33 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       setAnchorMapChunks([]);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
+    const current = () => !controller.signal.aborted && isWorkspaceOwnerSession(owner);
     void (async () => {
       try {
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+        }
         const map = await getAnchorMap(documentId, {
           owner: body?.reason === "owner_personal_reading",
         });
-        if (!cancelled) setAnchorMapChunks(map.chunks);
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+        }
+        setAnchorMapChunks(map.chunks);
       } catch {
         // The map is best-effort beside the body (a 403 on a just-gated book
         // must not break reading); decorations simply don't paint.
-        if (!cancelled) setAnchorMapChunks([]);
+        while (!current()) {
+          if (!await awaitWorkspaceOwnerSession(owner, controller.signal)) return;
+        }
+        setAnchorMapChunks([]);
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [documentId, body]);
+  }, [documentId, body, owner]);
 
   // The ONE scalar space: the anchor-map's offsets and the anchor schema
   // both pin to unicode-nfc-v1 normalized text, so the body the reader
@@ -274,7 +356,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   useEffect(() => {
     const main = mainRef.current;
     if (!main || visibleIslands.length === 0) {
-      setIslandRects(new Map());
+      setIslandRects((previous) => previous.size === 0 ? previous : new Map());
       return;
     }
     function measure() {
@@ -450,7 +532,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
   // Gated books never publish page body (dual structure / issue-3135 class).
   useEffect(() => {
-    if (!documentId) {
+    if (!documentId || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
       clearReadingFocus();
       return;
     }
@@ -468,7 +550,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
     return () => {
       clearReadingFocus();
     };
-  }, [documentId, pageIndex, book?.title, ownerReadable, pages]);
+  }, [documentId, pageIndex, book?.title, ownerReadable, pages, owner]);
 
 
   const selection = useFloatMenuSelection({
@@ -512,13 +594,39 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // a servable selection posts the quote and the server resolves canonically.
   const pinFromSelection = useCallback(
     async (source: string, sel: FloatMenuSelection): Promise<BookAnchor | null> => {
+      if (!readingActionCurrent()) return null;
       const loc = locateSelection(sel.text);
       const body = buildPinBody(source, sel, loc, normalizedBody, pageIndex);
       if (!body) return null;
-      return createAnchor(documentId, body);
+      const pinned = await createAnchor(documentId, body);
+      while (!readingActionCurrent()) {
+        if (!await confirmReadingAction()) return null;
+      }
+      return pinned;
     },
-    [documentId, pageIndex, locateSelection, normalizedBody],
+    [documentId, pageIndex, locateSelection, normalizedBody, readingActionCurrent, confirmReadingAction],
   );
+
+  const spinFromPage = useCallback(async (passageText: string) => {
+    while (!readingActionCurrent()) {
+      if (!await confirmReadingAction()) throw new Error("The reading account changed.");
+    }
+    const spawned = await spinResearch(documentId, pageIndex, passageText);
+    while (!readingActionCurrent()) {
+      if (!await confirmReadingAction()) throw new Error("The reading account changed.");
+    }
+    return spawned;
+  }, [documentId, pageIndex, readingActionCurrent, confirmReadingAction]);
+  const linkFromPage = useCallback(async (anchorId: string, investigationId: string) => {
+    while (!readingActionCurrent()) {
+      if (!await confirmReadingAction()) throw new Error("The reading account changed.");
+    }
+    const linked = await linkAnchorInvestigation(documentId, anchorId, investigationId);
+    while (!readingActionCurrent()) {
+      if (!await confirmReadingAction()) throw new Error("The reading account changed.");
+    }
+    return linked;
+  }, [documentId, readingActionCurrent, confirmReadingAction]);
 
   // The FloatMenu's pin seam: Note/Dialogue/Search + the Pin button fire here
   // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
@@ -529,13 +637,16 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // operator saw zero marks, zero alerts).
   const onPinAnchor = useCallback(
     (pin: { source: string }, sel: FloatMenuSelection) => {
+      if (!readingActionCurrent()) return;
       const manual = pin.source === "pin";
       void (async () => {
         try {
           await pinFromSelection(pin.source, sel);
+          if (!readingActionCurrent()) return;
           refetchAnchors();
           if (manual) toast.info("Highlight pinned.");
         } catch (e) {
+          if (!readingActionCurrent()) return;
           // Diagnostics for logs; a plain sentence for the operator.
           const described = describeFailure(e, { what: "pin that passage" });
           console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
@@ -545,7 +656,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         }
       })();
     },
-    [pinFromSelection, refetchAnchors],
+    [pinFromSelection, refetchAnchors, readingActionCurrent],
   );
 
   // Deep-research (highlight) -> pin -> spin-research -> write-back, and the
@@ -558,7 +669,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // honestly, never an anchorless island.
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, sel: FloatMenuSelection) => {
-      if (safeSpawnText === null) return;
+      if (safeSpawnText === null || !readingActionCurrent()) return;
       window.getSelection()?.removeAllRanges();
       const loc = locateSelection(sel.text);
       void (async () => {
@@ -570,11 +681,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
             if (!pinned) throw new Error("the passage could not be anchored");
             return pinned;
           },
-          spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
-          link: (anchorId, investigationId) =>
-            linkAnchorInvestigation(documentId, anchorId, investigationId),
+          spin: spinFromPage,
+          link: linkFromPage,
           passageText: safeSpawnText,
         });
+        if (!readingActionCurrent()) return;
         if (result.ok) {
           refetchAnchors();
           toast.info("Research started — the island is on your passage.");
@@ -584,7 +695,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         }
       })();
     },
-    [documentId, pageIndex, anchors, locateSelection, pinFromSelection, refetchAnchors],
+    [anchors, locateSelection, pinFromSelection, spinFromPage, linkFromPage, refetchAnchors, readingActionCurrent],
   );
 
   // Free-inquiry (island SPR-03): pin the current page's LEAD passage first
@@ -593,6 +704,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   // passage can't anchor (no manifest) and refuses honestly with no withheld
   // text anywhere.
   const spawnFreeInquiry = useCallback(() => {
+    if (!readingActionCurrent()) return;
     const page = pages[pageIndex];
     if (!page) return;
     const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
@@ -614,6 +726,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         anchors,
         locate: () => loc,
         pin: async () => {
+          if (!readingActionCurrent()) throw new Error("The reading account changed.");
           if (!loc || !chunkId) throw new Error("the passage could not be anchored");
           if (servableForOutbound) {
             return createAnchor(documentId, {
@@ -634,11 +747,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
             source: "pin",
           });
         },
-        spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
-        link: (anchorId, investigationId) =>
-          linkAnchorInvestigation(documentId, anchorId, investigationId),
+        spin: spinFromPage,
+        link: linkFromPage,
         passageText: lead,
       });
+      if (!readingActionCurrent()) return;
       if (result.ok) {
         refetchAnchors();
         toast.info("Research started — the island is on your passage.");
@@ -647,7 +760,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         refetchAnchors();
       }
     })();
-  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors]);
+  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors, readingActionCurrent, spinFromPage, linkFromPage]);
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
   // anchored menu would otherwise float over the wrong page. A chase already in
@@ -818,7 +931,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       </CenterNote>
     );
   }
-  if (error === "book_not_found") {
+  if (load?.kind === "failed" && error instanceof Error && error.message === "book_not_found") {
     return (
       <CenterNote inWindow={inWindow}>
         <EmptyState
@@ -832,16 +945,18 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       </CenterNote>
     );
   }
-  if (error || !book || !body) {
+  if (load?.kind === "failed" || !book || !body) {
     // What failed and what is safe; the raw message ("Failed to fetch") is
     // for "Copy error details", never the page.
+    const failure = describeFailure(error, { what: "open this book" });
+    const detail = error instanceof Error ? error.message : error == null ? null : String(error);
     return (
       <CenterNote inWindow={inWindow}>
         <ErrorState
           title="Couldn't open this book"
-          body="Your library and notes are unchanged. Check your connection, then try again."
-          detail={error}
-          onRetry={reload}
+          body={`Your library and notes are unchanged. ${failure.detail}`}
+          detail={detail}
+          onRetry={failure.retryable ? reload : undefined}
         />
       </CenterNote>
     );

@@ -24,6 +24,7 @@
 import { create } from "zustand";
 
 import { listForks, type DocumentFork } from "../api/forks";
+import { awaitWorkspaceOwnerSession, beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession, type WorkspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 interface ForkLineageState {
   /** document id → the fork row where it is the CHILD. */
@@ -49,7 +50,8 @@ function put(state: ForkLineageState, row: DocumentFork): ForkLineageState {
 }
 
 /** Record a fork row the session holds (a creation response, a list read). */
-export function recordFork(row: DocumentFork): void {
+export function recordFork(row: DocumentFork, owner: WorkspaceOwnerSession = workspaceOwnerSession()): void {
+  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
   useForkLineage.setState((s) => put(s, row));
 }
 
@@ -58,6 +60,8 @@ export function forkLineageOf(documentId: string): {
   forkedFrom: DocumentFork | null;
   forks: DocumentFork[];
 } {
+  const owner = workspaceOwnerSession();
+  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return { forkedFrom: null, forks: [] };
   const s = useForkLineage.getState();
   return {
     forkedFrom: s.byFork[documentId] ?? null,
@@ -72,12 +76,17 @@ const inflight = new Map<string, Promise<void>>();
 /** Learn a document's fork neighbourhood from the server (both directions,
  *  one GET). Never rejects: a failure leaves the store untouched. */
 export function fetchDocumentForks(documentId: string): Promise<void> {
+  const owner = workspaceOwnerSession();
+  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return Promise.resolve();
   const running = inflight.get(documentId);
   if (running) return running;
   const run = listForks(documentId)
-    .then((resp) => {
-      if (resp.forked_from) recordFork(resp.forked_from);
-      for (const row of resp.forks) recordFork(row);
+    .then(async (resp) => {
+      while (!isWorkspaceOwnerSession(owner)) {
+        if (!await awaitWorkspaceOwnerSession(owner)) return;
+      }
+      if (resp.forked_from) recordFork(resp.forked_from, owner);
+      for (const row of resp.forks) recordFork(row, owner);
     })
     .catch(() => undefined)
     .finally(() => {
@@ -92,3 +101,5 @@ export function resetForkLineage(): void {
   inflight.clear();
   useForkLineage.setState({ byFork: {}, byParent: {} });
 }
+
+beforeWorkspaceOwnerChange(resetForkLineage);

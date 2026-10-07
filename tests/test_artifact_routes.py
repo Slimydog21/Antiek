@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from runtime.db_lock import connect_write
+from substrate.event_log import log_event
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_document
@@ -53,6 +54,9 @@ def _client():
 
 
 def test_post_export_artifact(api_env):
+    log_event("inv-api", "investigation.start_requested", payload={
+        "question": "Artifact export control", "owner_user_id": "__operator__",
+    })
     promote_insight(
         text="API export insight.",
         investigation_id="inv-api",

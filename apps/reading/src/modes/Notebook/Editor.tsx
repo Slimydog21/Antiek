@@ -19,6 +19,8 @@ import { NoteBlock } from "./blocks/NoteBlock";
 import { QuestionCardBlock } from "./blocks/QuestionCardBlock";
 import { RegionEmbedBlock } from "./blocks/RegionEmbedBlock";
 import { SlashMenu } from "./SlashMenu";
+import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, notebookDraftKey, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { readNotebookDraft as readStored, writeNotebookDraft as writeStored } from "../../lib/notebookDraftStorage";
 
 /**
  * Antiek notebook editor — TipTap-based block editor with five custom
@@ -45,18 +47,6 @@ type Props = {
   autosaveDelayMs?: number;
 };
 
-const LS_PREFIX = "antiek.notebook.";
-const LS_ETAG_SUFFIX = ".etag";
-
-function lsKey(notebookId: string): string {
-  return LS_PREFIX + notebookId;
-}
-function lsEtagKey(notebookId: string): string {
-  return LS_PREFIX + notebookId + LS_ETAG_SUFFIX;
-}
-
-type Stored = { html: string; etag: number };
-
 // PUT statuses that mean the substrate was NOT reached (or holds no row for
 // this notebook: scratch / claim-* notebooks are local-only), so the draft
 // saved to localStorage is the honest outcome. 405/501 belong here too: the
@@ -71,51 +61,6 @@ function rejectedLabel(status: number): string {
   if (status === 401 || status === 403) return "not saved — sign in again";
   if (status === 409) return "not saved — reload";
   return `not saved — server refused (HTTP ${status})`;
-}
-
-function readStored(notebookId: string): Stored | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const html = window.localStorage.getItem(lsKey(notebookId));
-    if (html === null) return null;
-    const etagRaw = window.localStorage.getItem(lsEtagKey(notebookId));
-    const etag = etagRaw === null ? 0 : Number.parseInt(etagRaw, 10) || 0;
-    return { html, etag };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Optimistic-concurrency write. Bumps the etag iff the stored etag
- * matches the operator's expected baseline. Returns the new etag on
- * success or `null` if a conflict was detected (another tab wrote
- * between our reads).
- *
- * S7 acceptance: "Single-author conflict detection trips (test by
- * opening the same notebook in two browser tabs, editing both, saving)."
- */
-function writeStored(
-  notebookId: string,
-  html: string,
-  expectedEtag: number,
-): number | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const currentRaw = window.localStorage.getItem(lsEtagKey(notebookId));
-    const currentEtag =
-      currentRaw === null ? 0 : Number.parseInt(currentRaw, 10) || 0;
-    if (currentEtag !== expectedEtag) {
-      return null;
-    }
-    const next = currentEtag + 1;
-    window.localStorage.setItem(lsKey(notebookId), html);
-    window.localStorage.setItem(lsEtagKey(notebookId), String(next));
-    return next;
-  } catch {
-    // Quota error — silently keep the operator's baseline (no save)
-    return expectedEtag;
-  }
 }
 
 /**
@@ -156,6 +101,7 @@ export function NotebookEditor({
   editorRef,
   autosaveDelayMs = 1500,
 }: Props) {
+  const owner = useWorkspaceOwner();
   const [slash, setSlash] = useState<{ open: boolean; query: string }>({
     open: false,
     query: "",
@@ -186,7 +132,7 @@ export function NotebookEditor({
   const [hydrationAttempt, setHydrationAttempt] = useState<number>(0);
 
   // Seed the initial etag from the existing stored snapshot (if any).
-  const initialStored = readStored(notebookId);
+  const initialStored = readStored(notebookId, owner);
   if (initialStored && etagRef.current === 0) {
     etagRef.current = initialStored.etag;
   }
@@ -232,7 +178,7 @@ export function NotebookEditor({
       // and the server's atomic-replace would destroy persisted blocks.
       // The server-side empty-doc floor is the backstop; this is the
       // belt (the common fresh-browser case never even reaches it).
-      if (!hydratedRef.current) {
+      if (!hydratedRef.current || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
         return;
       }
 
@@ -243,6 +189,7 @@ export function NotebookEditor({
       setSaved("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
+        if (!isWorkspaceOwnerSession(owner)) return;
         const doc = e.getJSON();
         try {
           const r = await apiFetch(`${API_BASE}/notebooks/${notebookId}/content`, {
@@ -250,6 +197,7 @@ export function NotebookEditor({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ doc }),
           });
+          if (!isWorkspaceOwnerSession(owner)) return;
           if (!r.ok) {
             throw new ApiError(
               `PUT /notebooks/${notebookId}/content failed: HTTP ${r.status}`,
@@ -262,9 +210,10 @@ export function NotebookEditor({
           setRejectedStatus(null);
           // Keep a local mirror so a reload while offline shows the
           // last-known-good state.
-          writeStored(notebookId, e.getHTML(), etagRef.current);
+          writeStored(notebookId, e.getHTML(), etagRef.current, owner);
           etagRef.current += 1;
         } catch (err) {
+          if (!isWorkspaceOwnerSession(owner)) return;
           // Offline / network error, server rejection and true etag
           // conflict are semantically different states — the operator
           // sees them differently.
@@ -282,7 +231,7 @@ export function NotebookEditor({
           // Conflict (writeStored returned null because another tab
           // raced ahead of our baseline etag): the local write was
           // refused. Indicator shows "conflict — reload" + a toast.
-          const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
+          const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current, owner);
           if (nextEtag === null) {
             setSaved("conflict");
             toast.err(
@@ -317,6 +266,16 @@ export function NotebookEditor({
       }, autosaveDelayMs);
     },
   });
+
+  useEffect(() => {
+    return beforeWorkspaceOwnerChange(() => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (!editor || editor.isDestroyed || !isWorkspaceOwnerSession(owner)) return;
+      if (!docHasRealContent(editor.getJSON())) return;
+      const next = writeStored(notebookId, editor.getHTML(), etagRef.current, owner);
+      if (next !== null) etagRef.current = next;
+    });
+  }, [editor, notebookId, owner]);
 
   useEffect(() => {
     return () => {
@@ -354,7 +313,7 @@ export function NotebookEditor({
     (async () => {
       try {
         const { doc } = await getNotebookContent(notebookId);
-        if (cancelled || editor.isDestroyed) return;
+        if (cancelled || editor.isDestroyed || !isWorkspaceOwnerSession(owner)) return;
         if (docHasRealContent(doc) && !docHasRealContent(editor.getJSON())) {
           // emitUpdate:false — hydration must not itself trigger an autosave.
           editor.commands.setContent(doc as JSONContent, {
@@ -363,6 +322,7 @@ export function NotebookEditor({
           setSaved("saved");
         }
       } catch (err) {
+        if (cancelled || editor.isDestroyed || !isWorkspaceOwnerSession(owner)) return;
         // A 404 means the substrate has no row for this notebook, so no
         // save can destroy anything: hydrate over what we have. Any other
         // failure (5xx, 401, network) leaves the persisted blocks UNKNOWN.
@@ -376,7 +336,7 @@ export function NotebookEditor({
           failClosed = true;
         }
       } finally {
-        if (!cancelled && !editor.isDestroyed) {
+        if (!cancelled && !editor.isDestroyed && isWorkspaceOwnerSession(owner)) {
           // emitUpdate:false — toggling editability must not autosave.
           editor.setEditable(!failClosed, false);
           setHydrationFailed(failClosed);
@@ -390,7 +350,7 @@ export function NotebookEditor({
     return () => {
       cancelled = true;
     };
-  }, [editor, notebookId, hydrationAttempt]);
+  }, [editor, notebookId, hydrationAttempt, owner]);
 
   // S8 WP-8.4 follow-through — when the AI tool-call protocol's
   // `add_to_notebook` action writes to our localStorage key, it
@@ -399,8 +359,8 @@ export function NotebookEditor({
   // the browser's standard `storage` event, which we also handle.
   useEffect(() => {
     const reloadFromStorage = () => {
-      if (!editor) return;
-      const stored = readStored(notebookId);
+      if (!editor || !isWorkspaceOwnerSession(owner)) return;
+      const stored = readStored(notebookId, owner);
       if (!stored) return;
       // Only swap if the etag advanced past our baseline — avoids
       // clobbering an in-flight local edit on every dispatched action.
@@ -415,7 +375,7 @@ export function NotebookEditor({
       reloadFromStorage();
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== "antiek.notebook." + notebookId) return;
+      if (e.key !== notebookDraftKey(notebookId, owner)) return;
       reloadFromStorage();
     };
     window.addEventListener("antiek:notebook:appended", onCustom);
@@ -424,7 +384,7 @@ export function NotebookEditor({
       window.removeEventListener("antiek:notebook:appended", onCustom);
       window.removeEventListener("storage", onStorage);
     };
-  }, [editor, notebookId]);
+  }, [editor, notebookId, owner]);
 
   if (!editor) {
     return (

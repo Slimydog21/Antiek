@@ -23,7 +23,7 @@ def db(tmp_path):
         con.close()
 
 
-def add_chunk(db, doc_id: str, provider, *, content_class: str = "user_owned",
+def add_chunk(db, doc_id: str, provider, *, content_class: str | None = "user_owned",
               tier: int = 2, with_embedding: bool = True, with_meta: bool = True,
               owner: str = "__operator__") -> str:
     chunk_id = f"chunk-{doc_id}"
@@ -91,6 +91,48 @@ def test_set_and_union_scope_keep_compatible_books(db):
     assert set(hits(db, model, document_ids=["a", "b"])) == {"a", "b"}
     assert set(hits(db, model, document_ids=["a"], document_id="b")) == {"a", "b"}
     assert hits(db, model, document_ids=["a", "a"]) == ["a"]
+
+
+def test_account_filter_precedes_ranking_and_foreign_embedding_checks(db):
+    model = HashEmbedding(dimension=8)
+    add_chunk(db, "own", model, owner="account-a")
+    add_chunk(db, "public", model, content_class="public_domain", owner="account-b")
+    for content_class in ("user_owned", "personal_reading", "restricted_pending_opt_in", None):
+        add_chunk(db, f"foreign-{content_class}", OtherSpace(), owner="account-b",
+                  content_class=content_class)
+    # Foreign incompatible vectors must neither poison a legal query nor rank
+    # into its top slot. The real DuckDB candidate query enforces this.
+    result = search(db, "quantum", model=model, top_k=20, policy_tag="operator_only",
+                    owner_user_id="account-a", account_owner_ids=("account-a",))
+    assert {row["document_id"] for row in result["results"]} == {"own", "public"}
+    assert "foreign" not in str(result)
+    assert result["node_matches"] == []
+    first = search(db, "quantum", model=model, top_k=1, policy_tag="operator_only",
+                   owner_user_id="account-a", account_owner_ids=("account-a",))
+    assert len(first["results"]) == 1
+    assert first["results"][0]["document_id"] in {"own", "public"}
+
+
+def test_account_explicit_legacy_alias_does_not_grant_foreign_private_rows(db):
+    model = HashEmbedding(dimension=8)
+    add_chunk(db, "account-own", model, owner="account-operator", content_class="personal_reading")
+    add_chunk(db, "legacy-own", model, owner="__operator__", content_class="personal_reading")
+    add_chunk(db, "foreign", model, owner="account-a")
+    assert set(hits(db, model, policy_tag="operator_only", owner_user_id="account-operator",
+                    account_owner_ids=("account-operator", "__operator__"))) == {"account-own", "legacy-own"}
+    assert hits(db, model, policy_tag="operator_only", owner_user_id="account-b",
+                account_owner_ids=("account-b",)) == []
+    # Closed legacy CLI behavior remains separate and unchanged.
+    assert set(hits(db, model, policy_tag="operator_only")) == {"legacy-own", "foreign"}
+
+
+def test_account_search_takedown_overrides_public_and_owned_classes(db):
+    model = HashEmbedding(dimension=8)
+    for doc, content_class in (("public-taken-down", "public_domain"), ("own-taken-down", "user_owned")):
+        add_chunk(db, doc, model, owner="account-a", content_class=content_class)
+        db.execute("INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)", [doc])
+    add_chunk(db, "own-live", model, owner="account-a")
+    assert hits(db, model, policy_tag="operator_only", account_owner_ids=("account-a",)) == ["own-live"]
 
 
 def test_explicit_empty_and_absent_document(db):

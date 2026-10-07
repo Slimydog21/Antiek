@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Bridge + substrate health probe.
 #
-# Two checks per run:
+# Three checks per run:
 #  1. ``hermes-bridge.antiek.ai/health`` — confirms the Cloudflare
 #     Tunnel + local proxy + xAI OAuth resolution are all alive.
 #  2. ``api.antiek.ai/ops/provider-ratio?window_minutes=15`` —
 #     confirms Hermes is actually taking traffic (not silently
 #     dropping to OpenRouter).
+#  3. ``api.antiek.ai/health`` write verdict and refusal-rate alert —
+#     the frame-telemetry write-path refusal rate over a rolling
+#     15-minute window (the 2026-10-02/03 incident class: 84.6% of
+#     writes refused for 28h while every liveness check stayed green).
 #
-# When either check trips, posts to ``ANTIEK_ALERT_WEBHOOK`` (Slack-
+# When any check trips, posts to ``ANTIEK_ALERT_WEBHOOK`` (Slack-
 # compatible JSON ``{"text": "..."}``). When the env var is unset,
 # prints the alert to stderr instead.
 #
@@ -17,8 +21,9 @@
 # Discord, Zapier, PagerDuty) handles deduplication.
 #
 # Exit codes:
-#   0  both checks passed
-#   1  bridge unhealthy or provider-ratio alert recommended
+#   0  all checks passed
+#   1  bridge unhealthy, provider-ratio alert recommended, or write-path
+#      refusal-rate alert recommended or sensor unreadable
 #   3  bad invocation (missing curl/jq)
 #
 # Required env (defaults shown):
@@ -77,7 +82,7 @@ else
 fi
 
 # ── (2) Provider ratio ──
-ratio_body=$(curl -fsS --max-time 8 "${API_AUTH_HEADER[@]}" \
+ratio_body=$(curl -fsS --max-time 8 ${API_AUTH_HEADER[@]+"${API_AUTH_HEADER[@]}"} \
   "$API_URL/ops/provider-ratio?window_minutes=$WINDOW" 2>/dev/null || true)
 if [ -z "$ratio_body" ]; then
   alerts+=("API DOWN: $API_URL/ops/provider-ratio returned nothing")
@@ -86,6 +91,26 @@ else
   if [ "$ratio_alert" = "true" ]; then
     reason=$(echo "$ratio_body" | jq -r '.alert_reason // "(no reason)"')
     alerts+=("HERMES DEGRADED: $reason")
+  fi
+fi
+
+# ── (3) Write-path refusal rate ──
+# Prod incident 2026-10-02/03: POST /api/ad/frame-telemetry refused 84.6% of
+# writes (28,562 of 33,776) for ~28h while /health said "ok" and this probe
+# stayed green — both checks above measure liveness, none measured whether a
+# write can land. /health now carries a rolling 15-minute refusal rate with a
+# server-side threshold (derived in frame_write_health.py: measured healthy
+# 3.1%, incident 84.6%, threshold 25%); this check only forwards it, the same
+# shape as the provider-ratio alert. An explicit unreadable sensor verdict
+# also alerts, even when its details are empty. /health needs no auth. An empty body is
+# NOT alerted on here: check (2) already reports API DOWN in that case.
+health_body=$(curl -fsS --max-time 8 "$API_URL/health" 2>/dev/null || true)
+if [ -n "$health_body" ]; then
+  write_alert=$(echo "$health_body" | jq -r '.frame_write.alert_recommended // false')
+  write_check=$(echo "$health_body" | jq -r '.status_checks.frame_write // "not_measured"')
+  if [ "$write_alert" = "true" ] || [ "$write_check" = "error" ] || [ "$write_check" = "degraded" ]; then
+    reason=$(echo "$health_body" | jq -r '.frame_write.alert_reason // .status_detail // "write-path sensor reports degradation"')
+    alerts+=("WRITE PATH DEGRADED: $reason")
   fi
 fi
 

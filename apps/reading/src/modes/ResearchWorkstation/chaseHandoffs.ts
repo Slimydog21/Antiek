@@ -1,8 +1,9 @@
+import { accountStorageKey } from "../../lib/accountWorkspaceOwner";
 import { useEffect, useState } from "react";
 
 export const CHASE_HANDOFFS_EVENT = "antiek:chase-handoffs-changed";
 const STORAGE_KEY = "antiek.chase.draftHandoffs.v1";
-let memoryHandoffs: ChaseDraftHandoff[] = [];
+const memoryHandoffs = new Map<string, ChaseDraftHandoff[]>();
 
 export type ChaseDraftHandoff = {
   kind: "antiek.chase.draft_handoff";
@@ -78,27 +79,28 @@ export function useChaseDraftHandoffs(parentInvestigationId: string): ChaseDraft
 }
 
 function readAll(): ChaseDraftHandoff[] {
-  if (typeof window === "undefined") return memoryHandoffs;
+  const key = accountStorageKey(STORAGE_KEY);
+  if (key === null) return [];
+  const cached = memoryHandoffs.get(key) ?? [];
+  if (typeof window === "undefined") return cached;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return memoryHandoffs;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return memoryHandoffs;
-    memoryHandoffs = parsed.filter(isHandoff);
-    return memoryHandoffs;
-  } catch {
-    return memoryHandoffs;
-  }
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return cached;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return cached;
+    const handoffs = parsed.filter(isHandoff);
+    memoryHandoffs.set(key, handoffs);
+    return handoffs;
+  } catch { return cached; }
 }
 
 function writeAll(handoffs: ChaseDraftHandoff[]): void {
-  memoryHandoffs = handoffs;
+  const key = accountStorageKey(STORAGE_KEY);
+  if (key === null) return;
+  memoryHandoffs.set(key, handoffs);
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(handoffs));
-  } catch {
-    // localStorage is only a handoff convenience; launch/copy still works.
-  }
+  try { window.localStorage.setItem(key, JSON.stringify(handoffs)); }
+  catch { /* The same owner's memory copy remains available. */ }
 }
 
 function dispatchChanged(): void {

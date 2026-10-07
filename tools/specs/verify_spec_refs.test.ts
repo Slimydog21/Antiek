@@ -12,20 +12,21 @@
  * `existsOnOriginMain`, so this is a genuine integration check, not a mock.
  */
 
-import { execSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { execFileSync, execSync } from "node:child_process";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   extractPathsFromHtml,
   extractRefsFromHtml,
   existsOnOriginMain,
+  createOriginMainResolver,
   lintRefs,
   lintHtmlFile,
   parseNewPrefix,
   looksLikeRepoPath,
   type RefResult,
 } from "./verify_spec_refs";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -158,6 +159,102 @@ describe("extractPathsFromHtml", () => {
   });
 });
 
+describe("glob dependencies", () => {
+  const dirs: string[] = [];
+  const MATCHING_GLOB = "apps/reading/src/AppShell.*.test.tsx";
+  const ABSENT_GLOB = "apps/reading/src/__ref_lint_absent_parent__/*.tsx";
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function lintChip(raw: string) {
+    const dir = mkdtempSync(join(tmpdir(), "ams-reflint-glob-"));
+    dirs.push(dir);
+    const fixture = join(dir, "glob.html");
+    writeFileSync(fixture, `<span class="file">${raw}</span>`);
+    return lintHtmlFile(fixture, REPO_ROOT);
+  }
+
+  it("PASSES a glob with tracked matches", () => {
+    const report = lintChip(MATCHING_GLOB);
+    expect(report.failed).toBe(false);
+    expect(report.results).toEqual([
+      { path: MATCHING_GLOB, declaredNew: false, verdict: "PASS", origin: "file-chip" },
+    ]);
+    expect(resolve("apps/reading/src/**/*.stories.tsx")).toBe(true);
+    expect(resolve("apps/reading/src/scene/Scen?.tsx")).toBe(true);
+    expect(resolve("apps/reading/src/scene/[S]cene.tsx")).toBe(true);
+  });
+
+  it("FAILS an undeclared glob under an absent parent", () => {
+    const report = lintChip(ABSENT_GLOB);
+    expect(report.failed).toBe(true);
+    expect(report.results).toEqual([
+      { path: ABSENT_GLOB, declaredNew: false, verdict: "FAIL", origin: "file-chip" },
+    ]);
+  });
+
+  it("preserves NEW: glob declarations and skips resolution", () => {
+    const report = lintChip(`NEW: ${ABSENT_GLOB}`);
+    expect(report.failed).toBe(false);
+    expect(report.results).toEqual([
+      { path: ABSENT_GLOB, declaredNew: true, verdict: "NEW", origin: "file-chip" },
+    ]);
+    const results = lintRefs(
+      extractRefsFromHtml(`<span class="file">NEW: ${MATCHING_GLOB}</span>`),
+      () => { throw new Error("declared-new globs must not be resolved"); },
+    );
+    expect(results[0].verdict).toBe("NEW");
+  });
+
+  it("keeps unmatched inline globs advisory", () => {
+    const results = lintRefs(extractRefsFromHtml(`<code>${ABSENT_GLOB}</code>`), resolve);
+    expect(results).toEqual([
+      { path: ABSENT_GLOB, declaredNew: false, verdict: "ADVISORY-ABSENT", origin: "inline-code" },
+    ]);
+  });
+
+  it("uses the pinned main tree, not the working tree or a later HEAD", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ams-reflint-git-"));
+    dirs.push(dir);
+    const git = (...args: string[]) => execFileSync("git", args, {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    const commit = () => git(
+      "-c", "user.name=Ref lint test", "-c", "user.email=ref-lint@example.invalid",
+      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+      "commit", "-m", "fixture",
+    );
+    git("init");
+    mkdirSync(join(dir, "apps/main-only"), { recursive: true });
+    writeFileSync(join(dir, "apps/main-only/kept.ts"), "export {};\n");
+    git("add", ".");
+    commit();
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    const pinned = createOriginMainResolver(dir);
+
+    rmSync(join(dir, "apps/main-only"), { recursive: true });
+    mkdirSync(join(dir, "apps/head-only"), { recursive: true });
+    writeFileSync(join(dir, "apps/head-only/added.ts"), "export {};\n");
+    git("add", "-A");
+    commit();
+    mkdirSync(join(dir, "apps/untracked-only"), { recursive: true });
+    writeFileSync(join(dir, "apps/untracked-only/local.ts"), "export {};\n");
+
+    // Move the ref before the lazy tree read: this resolver keeps its snapshot.
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    expect(pinned("apps/main-only/*.ts")).toBe(true);
+    expect(pinned("apps/head-only/*.ts")).toBe(false);
+    expect(pinned("apps/untracked-only/*.ts")).toBe(false);
+    expect(pinned("apps/main-only/kept.ts")).toBe(true);
+    expect(pinned("apps/head-only/added.ts")).toBe(false);
+    expect(createOriginMainResolver(dir)("apps/head-only/*.ts")).toBe(true);
+  });
+});
+
 describe("lintHtmlFile — end-to-end on a planted-fiction fixture", () => {
   it("flips `failed` true and names the fiction (proves it would exit non-zero)", () => {
     const dir = mkdtempSync(join(tmpdir(), "ams-reflint-"));
@@ -206,3 +303,56 @@ describe("lintHtmlFile — end-to-end on a planted-fiction fixture", () => {
     expect(verdicts).not.toContain("FAIL");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: a `.file` chip is a PATH, not a text container.
+//
+// Measured over the real 125-file spec corpus (specs/**/*.html +
+// docs/htmlspec/**/*.html), the chip branch reported 161 "fiction" entries, of
+// which 93 were prose fragments - "(per branch)", "call sites", "see each
+// wave's brief in the design workflow script" - pulled out of chips that never
+// contained a path. Only 22 were literal repo paths.
+//
+// The <code> branch has always applied looksLikeRepoPath(); the chip branch did
+// not. These cases pin that asymmetry shut from both directions: prose must be
+// rejected, and REAL paths - including ones under a directory that does not
+// exist - must still be extracted.
+// ---------------------------------------------------------------------------
+describe("chip extraction: prose is not a path, absent paths still are", () => {
+  const chip = (t: string) => `<p><span class="file">${t}</span></p>`;
+
+  it.each([
+    "(per branch)",
+    "call sites",
+    "see each wave&#x27;s brief in the design workflow script",
+    "(worktree setup only)",
+  ])("rejects prose inside a .file chip: %s", (prose) => {
+    const refs = extractRefsFromHtml(chip(decodeEntitiesish(prose)));
+    expect(refs.map((r) => r.raw)).toEqual([]);
+  });
+
+  it("still extracts a path under a directory that does NOT exist", () => {
+    // services/ is absent from the repository. Listing it in REPO_DIR_PREFIXES
+    // is what makes this VERIFIABLE, so the fictional tree is reported as
+    // fiction rather than silently dropped as a non-path.
+    const refs = extractRefsFromHtml(chip("services/mcp_server/server.py"));
+    expect(refs.map((r) => r.raw)).toContain("services/mcp_server/server.py");
+  });
+
+  it("still extracts the known fiction constant", () => {
+    const refs = extractRefsFromHtml(chip(FICTION));
+    expect(refs.map((r) => r.raw)).toContain(FICTION);
+  });
+
+  it("looksLikeRepoPath keeps rejecting prose and accepting paths", () => {
+    expect(looksLikeRepoPath("(per branch)")).toBe(false);
+    expect(looksLikeRepoPath("call sites")).toBe(false);
+    expect(looksLikeRepoPath("services/mcp_server/server.py")).toBe(true);
+  });
+});
+
+// The harness decodes entities the same way the extractor does, so prose that
+// arrives HTML-escaped is tested as prose rather than as a decoded path.
+function decodeEntitiesish(s: string): string {
+  return s.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}

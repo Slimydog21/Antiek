@@ -14,7 +14,8 @@ import {
   setPersistScope,
   useWorkspace,
 } from "./WorkspaceStore";
-import { EMPTY_SNAPSHOT } from "./panel.types";
+import { EMPTY_SNAPSHOT, type WorkspaceSnapshot } from "./panel.types";
+import { useWorkspaceOwner } from "../lib/accountWorkspaceOwner";
 
 /**
  * Hydrate the workspace on every route + investigation change.
@@ -68,6 +69,7 @@ export function investigationIdForPath(pathname: string): string | null {
 }
 
 export function useWorkspaceHydration() {
+  const owner = useWorkspaceOwner();
   const location = useLocation();
   const investigationId = investigationIdForPath(location.pathname);
   const route = routeKey(location.pathname);
@@ -83,6 +85,7 @@ export function useWorkspaceHydration() {
     // Disable persistence writes during hydration so we don't write
     // the partially-applied state to localStorage.
     disablePersistence();
+    if (owner.subject === null) return;
 
     // S5 acceptance: pinned panels survive cross-route navigation.
     // Capture pinned panels from the prior scope BEFORE we overwrite.
@@ -94,7 +97,9 @@ export function useWorkspaceHydration() {
       (p) => p.pinned,
     );
 
-    let next = { ...EMPTY_SNAPSHOT };
+    // Pinned carry mutates the map below. Never mutate the shared empty
+    // snapshot, which also supplies a different account's reset state.
+    let next: WorkspaceSnapshot = { ...EMPTY_SNAPSHOT, panels: {}, dockLeftIds: [], dockRightIds: [], dockBottomIds: [], floatingIds: [] };
 
     // 1. global
     const global = readScope({ kind: "global" });
@@ -160,5 +165,5 @@ export function useWorkspaceHydration() {
     lastScope.current = scopeKey;
 
     enablePersistence();
-  }, [route, investigationId]);
+  }, [route, investigationId, owner]);
 }

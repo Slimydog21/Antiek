@@ -1220,6 +1220,19 @@ _INVITEE_TRANSCRIBER: Any | None = None
 
 
 
+def _admitted_invite(con: Any, token: str) -> invitations.Invite | None:
+    iv = invitations.resolve_token(con, token)
+    if iv is not None:
+        under_takedown = con.execute(
+            "SELECT 1 FROM speak_takedowns "
+            "WHERE project_id = ? AND status = 'active' LIMIT 1",
+            [iv.project_id],
+        ).fetchone()
+        if under_takedown is not None:
+            return None
+    return iv
+
+
 def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
     """Resolve invite on a read connection; missing Speak schema → 404.
 
@@ -1227,7 +1240,7 @@ def _invite_read_or_404(con: Any, token: str) -> invitations.Invite | None:
     GETs use ``_read`` (no DDL); treat absent tables as unknown token.
     """
     try:
-        return invitations.resolve_token(con, token)
+        return _admitted_invite(con, token)
     except Exception as exc:  # noqa: BLE001 — catalog-absent → closed door
         name = type(exc).__name__
         msg = str(exc).lower()
@@ -1243,7 +1256,7 @@ def _require_token(con: Any, token: str) -> tuple[str, str]:
     token is the invitee's credential — a bad/expired token is the only
     thing standing between a stranger and this interview, so we fail
     closed."""
-    iv = invitations.resolve_token(con, token)
+    iv = _admitted_invite(con, token)
     if iv is None:
         raise HTTPException(status_code=404, detail="unknown or expired invite link")
     return iv.interview_id, iv.project_id
@@ -1437,7 +1450,14 @@ async def invitee_voice(
     def _precheck_sync() -> bool:
         try:
             with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
-                return _invite_read_or_404(_pre, token) is not None
+                invite = _invite_read_or_404(_pre, token)
+                if invite is None:
+                    return False
+                consent_mod.require_consent(
+                    _pre, invite.interview_id, ConsentScope.RECORD,
+                    action="transcribe_voice",
+                )
+                return True
         except FileNotFoundError:
             # No DB file yet means no invite can exist. Map to the same 404
             # rather than letting the writer create the database for an
@@ -1501,6 +1521,11 @@ async def invitee_voice(
         # write-side check exactly as before.
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
+            # Recheck after admission: consent may have been revoked while
+            # the body arrived. Never send unconsented audio to the provider.
+            consent_mod.require_consent(
+                con, interview_id, ConsentScope.RECORD, action="transcribe_voice",
+            )
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
         # — and off the loop, since Whisper is CPU-bound for seconds.
         with _translate():
@@ -1510,6 +1535,11 @@ async def invitee_voice(
                 transcriber=_INVITEE_TRANSCRIBER,
                 language=language,
             )
+            if not text.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="This recording yielded no words. Please try again or type your memory.",
+                )
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 /**
@@ -46,7 +46,7 @@ beforeEach(() => {
     mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [] }) },
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function mount() {
   return render(
@@ -59,6 +59,85 @@ function mount() {
 }
 
 describe("SpeakInvite — phone-first, voice-first", () => {
+  it("keeps consent retryable when the network fails", async () => {
+    apiFetchMock.mockImplementation((url: string) => url.endsWith("/consent")
+      ? Promise.reject(new TypeError("Failed to fetch"))
+      : Promise.resolve(landingResponse(NOT_CONSENTED)));
+    await act(async () => { mount(); });
+    fireEvent.click(screen.getByRole("button", { name: /i'll share a memory/i }));
+    expect(await screen.findByText(/couldn't start sharing/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /i'll share a memory/i }).hasAttribute("disabled")).toBe(false));
+    expect(screen.queryByText(/tap to talk/i)).toBeNull();
+  });
+
+  it("retains an unsent memory and allows retry after a network failure", async () => {
+    apiFetchMock.mockImplementation((url: string) => url.endsWith("/answer")
+      ? Promise.reject(new TypeError("Failed to fetch"))
+      : Promise.resolve(landingResponse(CONSENTED)));
+    await act(async () => { mount(); });
+    fireEvent.click(screen.getByRole("button", { name: /i'd rather type/i }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "My unsent memory" } });
+    fireEvent.click(screen.getByRole("button", { name: /send this memory/i }));
+    expect(await screen.findByText(/couldn't send your answer/i)).toBeTruthy();
+    const box = screen.getByRole("textbox");
+    if (!(box instanceof HTMLTextAreaElement)) throw new Error("Memory textbox missing");
+    expect(box.value).toBe("My unsent memory");
+    expect(screen.queryByText(/what you shared is saved/i)).toBeNull();
+  });
+
+  it("does not claim a decline was recorded when the server refuses it", async () => {
+    apiFetchMock.mockImplementation((url: string) => url.endsWith("/decline")
+      ? Promise.resolve({ ok: false, status: 503 })
+      : Promise.resolve(landingResponse(NOT_CONSENTED)));
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /not right now/i }));
+    expect(await screen.findByText(/couldn't save your choice/i)).toBeTruthy();
+    expect(screen.queryByText(/^thank you\.$/i)).toBeNull();
+  });
+
+  it("offers the next recording after voice submission and sends a typed followup to the displayed question", async () => {
+    let recorder: Recorder;
+    class Recorder {
+      state = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor() { recorder = this; }
+      start() { this.state = "recording"; }
+      stop() { this.state = "inactive"; }
+    }
+    vi.stubGlobal("MediaRecorder", Recorder);
+    let voiceShared = false;
+    const answers: unknown[] = [];
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/voice?")) {
+        voiceShared = true;
+        return Promise.resolve(landingResponse({ transcript: "Unit-test voice response" }));
+      }
+      if (url.endsWith("/answer")) {
+        answers.push(JSON.parse(String(init?.body)));
+        return Promise.resolve(landingResponse({}));
+      }
+      return Promise.resolve(landingResponse(voiceShared ? {
+        ...CONSENTED, pending_questions: [{ id: "q2", text: "What happened next?" }],
+      } : CONSENTED));
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /grant mic access/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /start recording/i }));
+    fireEvent.click(screen.getByRole("button", { name: /stop & upload/i }));
+    act(() => {
+      recorder.ondataavailable?.({ data: new Blob(["test audio"]) });
+      recorder.onstop?.();
+    });
+    expect(await screen.findByText("What happened next?")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /grant mic access/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /i'd rather type/i }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "A typed followup" } });
+    fireEvent.click(screen.getByRole("button", { name: /send this memory/i }));
+    await waitFor(() => expect(answers).toEqual([{ question_id: "q2", transcript: "A typed followup" }]));
+  });
+
   it("shows warm consent as one honest sentence with a safe default, not a checklist wall", async () => {
     apiFetchMock.mockResolvedValue(landingResponse(NOT_CONSENTED));
     mount();
