@@ -10,11 +10,11 @@
  * | select-project    | toggleProjectPicker({ focusId: id }): the picker opens  | none directly → the picker's `choose`    |
  * |                   | over the switch with that row focused; its `choose` is  | (the census-sanctioned writer) →         |
  * |                   | the one UI writer of the selected project               | tabTreeStore (trees reset, epoch+1,      |
- * |                   | (writerCensus.test.ts:29). On close focus returns to    | persistence) → the selection mirror      |
+ * |                   | (writerCensus.test.ts:29; not spelled here). On close focus returns to    | persistence) → the selection mirror      |
  * |                   | the gear-1 tab; the surface's effect on                 |                                          |
  * |                   | selection.projectId feeds `project-arrived`.            |                                          |
  * |                   | After F1 (the census names this file) this becomes      |                                          |
- * |                   | `useSelection.getState().selectProject(id)`: one line.  |                                          |
+ * |                   | one line: selectProject on useSelection.getState().  |                                          |
  * | select-subproject | isSelectionPathOf({projectId, subProjectId}) else       | useSelection; tabTreeStore via           |
  * |                   | refused; selectSubProject(id, tree) (its boolean is     | spawnNewTab only (newTab.ts:56, the one  |
  * |                   | IGNORED: same-id returns false, selection.ts:113);      | spawn path: awaits ensureMothership,     |

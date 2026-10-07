@@ -12,7 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { prefixState } from "../../components/hotkeys/prefixState";
 import { setFeatureFlag } from "../../lib/featureFlags";
-import { PROJECTS, SUMMARIES_ACYCLIC } from "../contracts/fixtures.test.helpers";
+import { PROJECTS, SUMMARIES_ACYCLIC, tabs as fixtureTabs } from "../contracts/fixtures.test.helpers";
 import { useSelection } from "../contracts/selection";
 import { EMPTY_TREE, useContextTreeStore } from "../contracts/treeStore";
 import { useCompanion } from "../companionStore";
@@ -24,6 +24,9 @@ import { createInMemoryTabTreeAdapter } from "../tabTree";
 import { TAB_PROJECT_ID, useTabTrees } from "../tabTreeStore";
 import { useWorkspace } from "../WorkspaceStore";
 import { GearSwitchHost } from "./GearSwitchHost";
+import { BrowserRouter } from "react-router-dom";
+import { DocumentTabStrip } from "../DocumentTabStrip";
+import { ProjectPicker } from "../ProjectPicker";
 
 const dialog = () => document.querySelector<HTMLElement>('[data-gear-switch]');
 const chip = (root: ParentNode = document) => root.querySelector<HTMLButtonElement>("[data-gear-chip]")!;
@@ -362,5 +365,151 @@ describe("M3 — the keymap rows through the real dispatcher", () => {
     await act(async () => {});
     expect(document.querySelector("[data-gear-switch]")).toBeNull();
     expect(document.querySelector("[data-gear-chip]")).toBeNull();
+  });
+});
+
+describe("M4 — gear actions through the surface", () => {
+  let uninstall: (() => void) | null = null;
+  beforeEach(() => {
+    uninstall = installShortcuts(vi.fn() as never);
+  });
+  afterEach(() => {
+    uninstall?.();
+    uninstall = null;
+  });
+
+  it("gear 1 Enter on another project opens the picker with that row focused; Enter there picks it and the switch clicks into gear 2", async () => {
+    await mountTopbar(<><GearSwitchHost surface="topbar" /><ProjectPicker /></>);
+    await open();
+    await key(dialog()!, { key: "ArrowRight" });
+    expect(cursorTab()!.id).toBe("gear-tab-project-p1");
+    await key(dialog()!, { key: "Enter" });
+    const picker = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-keymap-owner="project.select"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(dialog()).toBeTruthy(); // the switch stays open beneath
+    const row = await waitFor(() => {
+      const b = [...picker.querySelectorAll("button")].find((x) => x.textContent?.includes("Varda diligence"));
+      expect(b).toBeTruthy();
+      return b!;
+    });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    await act(async () => { fireEvent.click(row); });
+    await waitFor(() => expect(document.querySelector('[data-keymap-owner="project.select"]')).toBeNull());
+    expect(useTabTrees.getState().projectId).toBe("p1");
+    await waitFor(() => expect(dialog()!.getAttribute("data-gear")).toBe("2"));
+    expect(dialog()!.querySelector('[role="tablist"]')!.getAttribute("aria-label")).toBe("Investigations");
+    expect(dialog()!.textContent).toContain("Investigations aren't linked to projects yet");
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(focusContext(document.activeElement).kind).toBe("modal");
+  });
+
+  it("gear 2 Enter keeps the dialog open: after the strip consumes the navIntent, focus is still inside and the context is modal", async () => {
+    window.history.replaceState({}, "", "/");
+    await mountTopbar(<BrowserRouter><GearSwitchHost surface="topbar" /><DocumentTabStrip /></BrowserRouter>);
+    await open();
+    await key(dialog()!, { key: "Enter" });
+    expect(dialog()!.getAttribute("data-gear")).toBe("2");
+    expect(cursorTab()!.id).toBe("gear-tab-subproject-inv-root");
+    await key(dialog()!, { key: "Enter" });
+    await waitFor(() => expect(useTabTrees.getState().trees.research?.root_order).toEqual(["root:research:/inv/inv-root"]));
+    await waitFor(() => expect(useTabTrees.getState().navIntent).toBeNull());
+    await waitFor(() => expect(window.location.pathname).toBe("/inv/inv-root"));
+    expect(useSelection.getState().selection).toEqual({ projectId: "default", subProjectId: "inv-root" });
+    expect(dialog()).toBeTruthy();
+    expect(dialog()!.getAttribute("data-gear")).toBe("3");
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(cursorTab());
+    expect(focusContext(document.activeElement)).toEqual({ kind: "modal", owner: "gear.toggle", text: false });
+  });
+
+  /** The companion's real tabs (the feed reads useCompanion, not a fixture list). */
+  function openCompanionTabs() {
+    for (const t of fixtureTabs()) {
+      useCompanion.getState().openAgentTab({ kind: t.kind, title: t.title, ...(t.investigationId ? { investigationId: t.investigationId } : {}), ...(t.documentId ? { documentId: t.documentId } : {}) });
+    }
+  }
+
+  it("gear 3: drill to depth 3, then Backspace lands focus on the gear-2 tab that is selected", async () => {
+    openCompanionTabs();
+    await mountTopbar();
+    await open();
+    await key(dialog()!, { key: "Enter" }); // gear 2, inv-root
+    await key(dialog()!, { key: "Enter" }); // gear 3 under inv-root
+    await waitFor(() => expect(useSelection.getState().selection.subProjectId).toBe("inv-root"));
+    await waitFor(() => expect(cursorTab()!.id).toBe("gear-tab-subproject-inv-child-2"));
+    expect(dialog()!.querySelector('[role="tablist"]')!.getAttribute("aria-level")).toBe("3");
+    expect(tabsIn(dialog()!).map((t) => t.id)).toEqual([
+      "gear-tab-subproject-inv-child-2", "gear-tab-subproject-inv-child",
+      "gear-tab-agent-inv-child", "gear-tab-agent-agent:dialogue", "gear-tab-agent-inv-unknown", "gear-tab-agent-inv-member",
+    ]);
+    expect(dialog()!.textContent).toContain("Across projects");
+    await key(dialog()!, { key: "ArrowRight" });
+    await key(dialog()!, { key: "Enter" }); // drill into inv-child (depth 3 on the path)
+    await waitFor(() => expect(useSelection.getState().selection.subProjectId).toBe("inv-child"));
+    expect(dialog()!.getAttribute("data-gear")).toBe("3");
+    await waitFor(() => expect(tabsIn(dialog()!).map((t) => t.id)).toEqual([
+      "gear-tab-agent-inv-child", "gear-tab-agent-agent:dialogue", "gear-tab-agent-inv-unknown", "gear-tab-agent-inv-member",
+    ]));
+    expect(chip().textContent).toContain("Question inv-child");
+    await key(dialog()!, { key: "Backspace" });
+    expect(dialog()!.getAttribute("data-gear")).toBe("2");
+    const back = cursorTab()!;
+    expect(back.id).toBe("gear-tab-subproject-inv-root");
+    expect(back.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(back);
+    expect(tabsIn(dialog()!).filter((t) => t.getAttribute("aria-selected") === "true")).toHaveLength(1);
+  });
+
+  it("gear 3 agent: the dialog closes and the opener gets focus BEFORE the companion changes (close → focus → effect)", async () => {
+    openCompanionTabs();
+    useCompanion.getState().activateAgentTab("agent:dialogue");
+    await mountTopbar(<><div data-pane="right" tabIndex={-1} /><GearSwitchHost surface="topbar" /></>);
+    const opener = document.createElement("button");
+    opener.textContent = "opener";
+    document.body.append(opener);
+    opener.focus();
+    const order: string[] = [];
+    const origFocus = HTMLElement.prototype.focus;
+    vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, ...a) {
+      if (this === opener) order.push("focus-opener");
+      return origFocus.apply(this, a);
+    });
+    const unsub = useCompanion.subscribe((s, p) => { if (s.activeTabId !== p.activeTabId) order.push(`companion:${s.activeTabId}`); });
+    const unsubSel = useSelection.subscribe((s, p) => { if (s.selection.agentId !== p.selection.agentId) order.push(`agent:${s.selection.agentId}`); });
+    const observer = new MutationObserver(() => { if (!dialog() && !order.includes("closed")) order.push("closed"); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      await open();
+      await key(dialog()!, { key: "Enter" });
+      await key(dialog()!, { key: "Enter" });
+      await waitFor(() => expect(cursorTab()!.id).toBe("gear-tab-subproject-inv-child-2"));
+      await key(dialog()!, { key: "End" });
+      expect(cursorTab()!.id).toBe("gear-tab-agent-inv-member");
+      await key(dialog()!, { key: "ArrowLeft" });
+      await key(dialog()!, { key: "ArrowLeft" });
+      await key(dialog()!, { key: "ArrowLeft" });
+      expect(cursorTab()!.id).toBe("gear-tab-agent-inv-child");
+      await key(dialog()!, { key: "Enter" });
+      await waitFor(() => expect(useCompanion.getState().activeTabId).toBe("agent:thread:inv-child"));
+      await waitFor(() => expect(dialog()).toBeNull());
+      // The unmount commit removes the dialog and runs the opener-focus
+      // cleanup in one flushSync; the MutationObserver reports the removal
+      // on its own microtask, so the two are asserted as one "close" step
+      // that precedes every store write of the effect.
+      expect(new Set(order.slice(0, 2))).toEqual(new Set(["closed", "focus-opener"]));
+      expect(order[2]).toBe("agent:inv-child");
+      expect(order).toContain("companion:agent:thread:inv-child");
+      expect(order.indexOf("focus-opener")).toBeLessThan(order.indexOf("companion:agent:thread:inv-child"));
+      expect(useSelection.getState().selection).toEqual({ projectId: "default", subProjectId: "inv-root", agentId: "inv-child" });
+      expect(useWorkspace.getState().focusedPane).toBe("right");
+    } finally {
+      observer.disconnect();
+      unsub();
+      unsubSel();
+      vi.restoreAllMocks();
+    }
   });
 });

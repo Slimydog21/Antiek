@@ -7,7 +7,7 @@
  *                      set, the dialog with the current gear's tablist.
  *   GearSwitchContent  connected: derives the model from the SPR-06 tree
  *                      store + selection store; `surface="topbar"` mounts
- *                      the ONE <PreBackendTreeFeed /> line and owns the
+ *                      the ONE PreBackendTreeFeed mount line and owns the
  *                      dialog; `surface="zen"` is a click-only chip that
  *                      fires the same window toggle.
  *
@@ -34,6 +34,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+
+import { flushSync } from "react-dom";
 
 import { durationMs, notch, press } from "../../design/motion";
 import { prefersReducedMotion } from "../../design/theme";
@@ -336,8 +338,11 @@ function GearDialog({ model, dialogId, onClose }: GearDialogProps) {
       case "select-agent": {
         // Close first (the opener gets focus back on unmount), then run on
         // the next microtask (reviewer 2 graft 2).
-        closeRef.current();
+        // flushSync: the dialog unmounts and the opener gets focus back
+        // before this handler returns; without it the close would ride
+        // React's own microtask and race the effect under act().
         const tree = treeRef.current;
+        flushSync(() => closeRef.current());
         void Promise.resolve().then(() => runGearEffect(effect, tree));
         return;
       }
