@@ -66,7 +66,7 @@ export function beforeWorkspaceOwnerChange(listener: () => void): () => void {
 
 /** A validated /auth/me answer establishes a subject; invalidation may only retire it to null. */
 export function setWorkspaceOwner(subject: string | null): void {
-  if (subject === session.subject) return;
+  if (subject === session.subject && transition === "ready") return;
   if (transition === "retiring") throw new Error("Workspace owner replacement is already in progress");
   // Local cleanup still needs the outgoing subject, but no callback order or
   // resume may admit its token for outbound work after replacement begins.
