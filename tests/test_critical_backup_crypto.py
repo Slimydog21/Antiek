@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -141,3 +143,91 @@ def test_missing_and_invalid_recipient_are_value_free_refusals(tmp_path: Path, c
         encrypt_file(source, destination, invalid)
     assert not destination.exists()
     assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("operation", ["encrypt", "decrypt"])
+def test_directory_sync_failure_retires_its_completed_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str,
+) -> None:
+    recipient, identity = _keys(tmp_path)
+    source = _write(tmp_path / "plain", b"synthetic-private-recovery-state")
+    encrypted = tmp_path / "input.enc"
+    encrypt_file(source, encrypted, recipient)
+    destination = tmp_path / "refused-output"
+    unrelated = _write(tmp_path / "unrelated", b"preserve another recovery object")
+    actual_sync = os.fsync
+    observed: list[bool] = []
+
+    def fail_directory_sync(descriptor: int) -> None:
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            observed.append(destination.is_file())
+            raise OSError("synthetic destination-directory sync failure")
+        actual_sync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_directory_sync)
+    with pytest.raises(BackupCryptoError):
+        if operation == "encrypt":
+            encrypt_file(source, destination, recipient)
+        else:
+            decrypt_file(encrypted, destination, identity)
+    assert observed == [True]
+    assert not destination.exists()
+    assert unrelated.read_bytes() == b"preserve another recovery object"
+    assert not list(tmp_path.glob(".backup-*"))
+
+
+@pytest.mark.parametrize("operation", ["encrypt", "decrypt"])
+def test_failed_publication_keeps_a_replacement_owned_by_another_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str,
+) -> None:
+    recipient, identity = _keys(tmp_path)
+    source = _write(tmp_path / "plain", b"synthetic-private-recovery-state")
+    encrypted = tmp_path / "input.enc"
+    encrypt_file(source, encrypted, recipient)
+    destination = tmp_path / "refused-output"
+    replacement = _write(tmp_path / "replacement", b"another writer's protected object")
+    actual_sync = os.fsync
+
+    def replace_during_directory_sync(descriptor: int) -> None:
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            destination.unlink()
+            replacement.rename(destination)
+            raise OSError("synthetic failure after another writer replaces output")
+        actual_sync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", replace_during_directory_sync)
+    with pytest.raises(BackupCryptoError):
+        if operation == "encrypt":
+            encrypt_file(source, destination, recipient)
+        else:
+            decrypt_file(encrypted, destination, identity)
+    assert destination.read_bytes() == b"another writer's protected object"
+    assert not list(tmp_path.glob(".backup-*"))
+
+
+@pytest.mark.parametrize("operation", ["encrypt", "decrypt"])
+def test_interrupt_after_actual_link_retires_only_the_return_unknown_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str,
+) -> None:
+    recipient, identity = _keys(tmp_path)
+    source = _write(tmp_path / "plain", b"synthetic-private-recovery-state")
+    encrypted = tmp_path / "input.enc"
+    encrypt_file(source, encrypted, recipient)
+    destination = tmp_path / "interrupted-output"
+    actual_link = os.link
+    observed: list[bool] = []
+
+    def interrupt_after_link(source_path: Path, target_path: Path, *, follow_symlinks: bool) -> None:
+        actual_link(source_path, target_path, follow_symlinks=follow_symlinks)
+        observed.append(destination.is_file())
+        raise KeyboardInterrupt("synthetic interruption after successful native link")
+
+    monkeypatch.setattr(os, "link", interrupt_after_link)
+    with pytest.raises(KeyboardInterrupt):
+        if operation == "encrypt":
+            encrypt_file(source, destination, recipient)
+        else:
+            decrypt_file(encrypted, destination, identity)
+    assert observed == [True]
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".backup-*"))

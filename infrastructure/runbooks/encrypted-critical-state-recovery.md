@@ -41,6 +41,11 @@ Keep trusted object identities/digests outside the bucket; encryption alone
 does not prove who created an archive or prevent replay of an older archive.
 These controls do not protect against root on the live source host.
 
+Failed publication, including an interruption after the native link is acquired,
+retires only the new output inode. A file replaced by another writer is retained.
+If that owned cleanup itself fails, the helper refuses with an explicit incomplete
+cleanup error; reconcile the private staging state before continuing recovery.
+
 ## Source inventory and configuration
 
 Root owns the production inventory. Do not infer it from an account/email or

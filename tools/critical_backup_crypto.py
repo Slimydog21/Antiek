@@ -2,7 +2,7 @@
 
 Only the public Curve25519 recipient is needed on the source host. Libsodium
 SealedBox wraps a fresh secretstream key; XChaCha20-Poly1305 authenticates the
-ordered frames and final boundary. A failed restore never publishes plaintext.
+ordered frames and final boundary. Failed publication retires only owned output.
 This format is versioned separately from the existing DuckDB bundle contract.
 """
 
@@ -77,6 +77,7 @@ def _output(path: Path) -> Iterator[BinaryIO]:
     _safe_parent(path)
     temporary = path.with_name(".backup-" + secrets.token_hex(16))
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    owned = os.fstat(descriptor)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             yield stream
@@ -89,8 +90,22 @@ def _output(path: Path) -> Iterator[BinaryIO]:
             os.fsync(directory)
         finally:
             os.close(directory)
-    finally:
-        temporary.unlink(missing_ok=True)
+    except BaseException:
+        # A link may be acquired even when its native call never returns.
+        # Retire only our inode, including post-link sync/close failures.
+        cleanup_failed = False
+        for target in (path, temporary):
+            try:
+                current = target.lstat()
+                if (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+                    target.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise BackupCryptoError("backup publication failed; owned output cleanup is incomplete") from None
+        raise
 
 
 def _key(path: Path, *, private: bool) -> bytes:
