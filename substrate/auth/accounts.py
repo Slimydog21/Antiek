@@ -1,8 +1,8 @@
 """Persist verified account subjects without changing existing graph owners.
 
 The acct_ namespace matches account-memory/BYOT's existing email derivation.
-Verified email creates accounts. An explicitly bound, verified legacy session
-may retain the original operator; other session/passkey paths only resolve rows.
+Verified email creates accounts. Explicitly bound, verified legacy sessions and
+stored passkeys may retain the original operator; other auth paths only resolve rows.
 Roles are resolved separately from deployment policy, never from this store.
 """
 
