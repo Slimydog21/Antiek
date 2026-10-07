@@ -239,3 +239,38 @@ def test_unset_webhook_keeps_the_documented_stderr_fallback() -> None:
     assert result.returncode == 1
     assert "BRIDGE UNAUTH" in result.stderr
     assert MARKER not in result.stderr
+
+
+def test_delivery_failure_never_leaks_webhook_user_info() -> None:
+    server, port = _start_sink(hook_status=500)
+    username = "synthetic-webhook-user"
+    password = "synthetic-webhook-password"
+    try:
+        result = _run_probe(port, f"http://{username}:{password}@127.0.0.1:{port}/hook")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.returncode == 2
+    assert len(_Sink.posts) == 2
+    assert MARKER in result.stderr
+    assert "BRIDGE UNAUTH" in result.stderr
+    assert username not in result.stderr
+    assert password not in result.stderr
+    assert "webhook POST to configured sink failed" in result.stderr
+
+
+def test_delivery_failure_never_leaks_query_without_url_path() -> None:
+    server, port = _start_sink(hook_status=500)
+    secret = "synthetic-webhook-query-secret"
+    try:
+        result = _run_probe(port, f"http://127.0.0.1:{port}?token={secret}")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.returncode == 2
+    assert len(_Sink.posts) == 2
+    assert MARKER in result.stderr
+    assert "BRIDGE UNAUTH" in result.stderr
+    assert secret not in result.stderr
+    assert "?token=" not in result.stderr
+    assert "webhook POST to configured sink failed" in result.stderr

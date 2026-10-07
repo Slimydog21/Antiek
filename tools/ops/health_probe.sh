@@ -133,19 +133,14 @@ $joined"
 # never answers cannot hang the unit past its TimeoutStartSec, one bounded
 # retry for transient sink hiccups, and on failure a distinct greppable
 # journal line plus a distinct exit code — so a failed alert can never
-# look like a delivered one. Only the URL origin is printed: Slack-style
-# webhook paths carry a secret. No email fallback here on purpose: this
+# look like a delivered one. The diagnostic never prints the webhook URL:
+# user-info, paths and queries can carry secrets. No email fallback here: this
 # probe is state-free and refires every 5 minutes (BRIDGE UNAUTH fired 5x
 # in one audit hour), so a naive fallback would storm the fallback channel;
 # that needs a rate-limited design of its own.
 delivered=0
 post_rc=0
 if [ -n "$WEBHOOK" ]; then
-  case "$WEBHOOK" in
-    *://*/*) webhook_origin=$(printf '%s' "$WEBHOOK" | sed -E 's#^([a-zA-Z][a-zA-Z0-9+.-]*://[^/]+)/.*#\1#') ;;
-    *://*)   webhook_origin="$WEBHOOK" ;;
-    *)       webhook_origin="(unparseable webhook URL)" ;;
-  esac
   payload=$(jq -nc --arg t "$message" '{text: $t}')
   for attempt in 1 2; do
     if [ "$attempt" -gt 1 ]; then
@@ -161,7 +156,7 @@ if [ -n "$WEBHOOK" ]; then
     fi
   done
   if [ "$delivered" -eq 0 ]; then
-    echo "ALERT DELIVERY FAILED: webhook POST to ${webhook_origin} failed (last curl exit ${post_rc}, 2 attempts); the alert below was NOT delivered to the configured sink and exists only in this journal" >&2
+    echo "ALERT DELIVERY FAILED: webhook POST to configured sink failed (last curl exit ${post_rc}, 2 attempts); the alert below was NOT delivered to the configured sink and exists only in this journal" >&2
   fi
 fi
 
