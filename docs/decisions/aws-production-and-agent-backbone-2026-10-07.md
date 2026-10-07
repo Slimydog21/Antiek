@@ -314,7 +314,9 @@ these files on 2026-10-07; they are recorded here for the runtime owner who
 claims them.
 
 1. **Startup closes non-terminal trajectories.** `reconstruct_session`
-   defaults a started leaf to RUNNING (`orchestration/cascade_session.py:445`),
+   defaults a started leaf to RUNNING
+   (`orchestration/cascade_session.py:445-466`: the `def` at 445, the
+   `RunState.RUNNING` default at 466),
    and the stranded poller skips trajectories with no open request
    (`interfaces/research/api/stranded_dispatch_recovery.py:127`,
    `if not open_stack: continue`), so a run killed between `*.delivered` and

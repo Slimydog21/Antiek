@@ -146,13 +146,38 @@ at least 15 minutes against an instant flock release) [M, claims.md §2-3].
   compare-and-set (`cmd/bd/update.go:939-975`;
   `issueops/update_cas.go:34-58`) [M, correctness F4]. Swapping the status
   guard for the assignee guard alone (design B-3) would let compute reopen a
-  bead a person closed mid-job, erasing its close reason. `bd close` has no
-  compare-and-set at 1.3.x; it is fenced only by `AssigneeMatches`, which
-  refuses a non-assignee actor with exit **1**, not 13
-  (`cmd/bd/close_direct.go:83-87`; `internal/validation/issue.go:165-175`), so
-  callers classify that refusal by name, and `--force` is never the
-  workaround (it also waives the pinned, gate and open-children guards)
-  [M, correctness F2, fit F10].
+  bead a person closed mid-job, erasing its close reason. **The done write is
+  a guarded update, not `bd close`:** `bd update ID --status closed
+  --if-status in_progress --if-assignee compute:<job> --set-metadata
+  compute_ledger=<ref>`. `bd close` has no compare-and-set at 1.3.x
+  (`bd close --if-status` is "unknown flag"); it is fenced only by
+  `AssigneeMatches`, which refuses a non-assignee actor with exit **1**
+  (`cmd/bd/close_direct.go:83-87`; `internal/validation/issue.go:165-175`)
+  but lets the assignee overwrite any status. Measured on bd 1.3.1
+  (`c1c4b642a`) in a stealth scratch workspace, 2026-10-08: admit as
+  `compute:j3`, a person sets `blocked`, then `bd close --actor compute:j3`
+  exits 0 and the bead is `closed` (the person's block is erased); the
+  guarded update exits **13** and writes nothing on the same sequence, exits 0
+  and stamps `closed_at` when the bead is still `in_progress`, and the bead it
+  blocked appears in `bd ready`. The guarded update keeps the close-path
+  refusals: on a parent with an open `parent-child` child it exits 1 ("1 open
+  child issue(s)"), on a bead with an open blocker it exits 1 ("cannot close
+  blocked issue"), and `--set-metadata compute_ledger=<ref>` lands in the same
+  write. `bd update --help` says only `--force` lets `--status` close past
+  open children or a live blocker. Exit 13 means
+  "changed outside compute"; `--force` is never the workaround (it also
+  waives the pinned, gate and open-children guards) [M, correctness F2,
+  fit F10, durable-actors CRITIQUE item 10]. Every write that takes a bead out
+  of `in_progress` without closing it (blocked, released to `open`) clears the
+  assignee in the same guarded call (`-a ""` with `--if-assignee
+  compute:<job>`): left assigned, a blocked bead refuses a person's
+  `bd close` with exit 1 ("assignee is \"compute:j2\", actor is
+  \"operator\"; reclaim or use --force"), which this record forbids. Measured
+  on 1.3.1: the clearing blocked write exits 0 with assignee empty, the
+  person's close then exits 0, and the same write under a wrong
+  `--if-assignee` exits 13 and leaves status and assignee untouched. Should a
+  bead be left assigned anyway, the operator's path is `bd update ID -a ""`
+  then `bd close`, never `--force`.
 - **I9 Literal `closed` is done.** Only `closed`/`pinned` unblock dependents
   and only literal `closed` stamps `closed_at`
   (`issueops/blocked_state.go:270,317,324`) [M]. Antiek terminal states map to
@@ -217,10 +242,12 @@ Accepted: compute's dispatcher may write beads for `compute run --bead ID`,
 one embedded workspace per project at `~/.local/share/antiek-beads/<project>/`,
 the dispatcher the only writer, plain status writes (never `--claim`, so no
 lease to heartbeat and `bd reclaim` ignores these beads), with the job id in
-the actor and the ledger reference in the close reason. compute 1.6.0 already
-has this shape (`compute-1.6.0.py` `bead_admitted`, `bead_finish`: admission
-`--if-status <seen>`, terminal writes `--if-status in_progress`, exit 13 logged
-as "changed outside compute") [M].
+the actor and the ledger reference in bead metadata. compute 1.6.0 has most of
+this shape (`compute-1.6.0.py` `bead_admitted`, `bead_finish`: admission
+`--if-status <seen>`, blocked/open writes `--if-status in_progress`, exit 13
+logged as "changed outside compute") [M]. Its done write does not: it is an
+unguarded `bd close ID --reason ...` (`compute-1.6.0.py:1699`), which
+overwrites a person's mid-job block or reopen (I8); condition 6 fixes it.
 
 **Conditions before any project is configured with a beads workspace** (owner:
 the compute lane, `~/.agents/compute` release after 1.6.0; none is product
@@ -237,9 +264,19 @@ code):
 4. The I6 gate (version, branch, binary sha256) on the first call per process.
 5. The I2 lock moves into the workspace and every writer takes it, with a
    bounded wait.
-6. Guards per I8: blocked/released writes carry `--if-status in_progress
-   --if-assignee compute:<job>`; admission sets `-a compute:<job>`; the done
-   close classifies the exit-1 assignee refusal as "changed outside compute".
+6. Guards per I8: admission sets `-a compute:<job>`; every terminal write is
+   one `bd update` carrying `--if-status in_progress --if-assignee
+   compute:<job>`. Done is `--status closed` with the ledger reference in
+   `--set-metadata compute_ledger=<ref>` (not `bd close`, which has no status
+   guard); blocked and released (`--status open`) also pass `-a ""` so a
+   person can close or reassign the bead afterwards. Exit 13 on any of them is
+   "changed outside compute", logged and never retried with `--force`; exit 1
+   on done is a close-path refusal (open children, live blocker) and leaves
+   the bead `in_progress` for a person. Before the first gate bead is admitted,
+   verify once that a `gate`-type bead closes the same way through
+   `bd update --status closed` as through `bd close`. Handoff to the compute
+   lane: `bead_finish` at `compute-1.6.0.py:1699-1705` makes exactly this
+   change in the next compute release.
 
 With the first project that opts in, not before: admission only from
 `bd ready --json --limit 0 --readonly` (or a takeover of a bead held by a
