@@ -75,6 +75,60 @@ existing `antiek-api` credential instead, strictly sequentially:
    those reprices it from USD 36.99 to USD 101.49 (Hetzner price-adjustment
    page [M]).
 
+## Fresh-host sequence (authoritative for this host and for disaster recovery)
+
+The 2026-10-07 restore rehearsal on `Antiek-v1` (`REHEARSAL-REPORT.md` §2, §4,
+§5) measured that `disaster-recovery.md` followed step by step serves
+`setup.yml`'s unpinned editable install (D4), cannot take its next atomic
+deploy (D1, D2), rebuilds `secrets.env` without about 20 of its keys (D5),
+and mints an empty BYOT usage ledger on first boot (D12). Any rebuilt host,
+this AWS host included, is brought up in this order. Phases B and C below
+are this sequence with the AWS holds and the Hetzner freeze around it.
+
+| # | Step | Why this position |
+|---|---|---|
+| F0 | **Transfer artifacts in hand before the host exists:** the live `/etc/antiek/secrets.env` (46 keys on 2026-10-07; the template has 25), the tunnel credential, and the un-backed-up state set: `byok/` (master key and ciphertext together), `auth/`, `settings/`, `antiek.duckdb.research-spend.sqlite3.byot-usage.sqlite3`, `telemetry/`, `turbopuffer-shadow/`, `arxiv_oai_harvest.json`, `arxiv_oai_sync.json`, `arxiv_throttle.json`, `research*/`, `discovery_events/`, `budgets/`, `reports/` | the nightly R2 bundle holds only DuckDB, `research_events/` and `knowledge_skills/` (rehearsal §5). `secrets.env` is a transfer artifact and is never rebuilt from `secrets.env.j2` (D5) |
+| F1 | Provision, then `setup.yml --skip-tags deploy_key` (plus `cloudflared` for this host before T-55) | `setup.yml` also installs a code clone at `/opt/antiek`. It is bootstrap tooling only: its venv runs the bundle gate, IMPORT and `deploy_atomic.yml`'s pre-migration CHECKPOINT. It never serves |
+| F2 | `systemctl disable antiek` straight after `setup.yml` | `setup.yml` enables the unit. A reboot before F5 would start it on an empty state directory and create a fresh BYOT ledger and settings lock (D12), which a later copy must then overwrite instead of fill |
+| F3 | Restore the state with antiek stopped: either the cold rsync of the old host's state directory ("Copy commands" below, the faithful path), or `disaster-recovery.md` steps 4-8 from R2 **plus** the F0 state set; then `chown -R antiek:antiek /home/antiek/.antiek`. For an R2 IMPORT, first pin the tool to the lock: `/opt/antiek/.venv/bin/pip install "duckdb==$(awk '/^name = "duckdb"$/{getline; gsub(/[^0-9.]/,""); print}' /opt/antiek/uv.lock)"` | D12: everything the app creates on first boot must already be there. D4: the rehearsal's IMPORT ran on setup's duckdb 1.5.6 against the lock's 1.5.4; it migrated cleanly [M], but nothing guarantees the next minor will |
+| F4 | Install the transfer `secrets.env` (0640 root:antiek) | the deploy's health gate requires `registered_providers` non-empty, and the first start must see the real configuration |
+| F5 | `deploy_atomic.yml -e antiek_target_sha=<sha>` | migrates the **restored** database with the lock-exact release venv, cuts the public path over (the setup clone moves to `/opt/antiek-releases/<sha>`, or `legacy-<sha>` when it is at the target SHA: D2), and performs the first start. If `require_green.sh` fails closed on a GitHub API fault, see "GitHub check-runs fallback (D6)" |
+| F6 | Verify (loopback `/health`, `build_sha`, `duckdb_integrity_check`, an authenticated read), then `systemctl enable antiek` | F2 disabled it and `deploy_atomic.yml` starts without enabling |
+| F7 | After the next successful deploy, delete the setup clone: `rm -rf /opt/antiek-releases/legacy-<sha>` (or `/opt/antiek-releases/<old sha>`) | the release pruner matches only 40-hex names, so a `legacy-` directory is kept until removed by hand; it is the rollback target only until a second release exists |
+
+**Why `setup.yml` keeps its code clone for now.** The rehearsal's fix direction
+(D4, D8, D9) is a code-free `setup.yml` with the first release made by the
+deploy. `deploy_atomic.yml` cannot do that yet: its "checkpoint the quiesced
+previous database before snapshot" task runs `{{ antiek_public_dir }}/.venv/bin/python`
+and the snapshot copies an existing `antiek.duckdb`, so on a host with neither the
+live block enters rescue, where "No previous release exists" [I, read from the
+playbook]. It also always starts the service. A first-release mode (skip both
+tasks when there is no previous release, and a no-start switch so a restore can
+follow the build) belongs to the deploy lane; until it exists, F1-F5 is the order
+that works end to end, and it is the order the rehearsal measured (restore before
+the live phase, §2.4).
+
+### GitHub check-runs fallback (D6)
+
+`tools/deploy/require_green.sh` fails closed when GitHub answers
+`commits/<sha>/check-runs` with HTTP 5xx; on 2026-10-07 it did so for every
+recent main commit while githubstatus.com reported "All Systems Operational"
+[M rehearsal `03-deploy-build-attempt1-gate500.log`]. A DR deploy must not wait
+on that. Override only when **all** of these hold, and paste their output into
+the deploy record:
+
+```bash
+SHA=<40-hex target>
+gh api "repos/Slimydog21/Antiek/commits/$SHA/check-runs" -i 2>&1 | head -1    # the fault: HTTP 5xx, not a red or pending check
+gh api "repos/Slimydog21/Antiek/compare/$SHA...main" --jq '.status'          # identical or behind: the SHA is on main
+gh api "repos/Slimydog21/Antiek/actions/runs?head_sha=$SHA&per_page=50" \
+  --jq '.workflow_runs[] | [.name, .status, .conclusion] | @tsv'             # CI and deploy-backend completed/success
+```
+
+Then rerun with `-e antiek_force_deploy=true`. A red, pending or skipped check
+is never overridden this way; a 4xx is a credential problem, not an outage.
+Teaching `require_green.sh` this fallback is a follow-up for its owner (below).
+
 ## Phase 0. Preconditions (days before)
 
 | # | Check | Pass |
@@ -82,7 +136,7 @@ existing `antiek-api` credential instead, strictly sequentially:
 | P1 | AWS project on the **Paid** plan | `aws freetier get-account-plan-state --profile antiek --region us-east-1` shows `PAID` |
 | P2 | No project spend limit below ~USD 500/month (a limit pauses the whole project) | AWS Settings > Billing |
 | P3 | `infrastructure/terraform-aws/bootstrap` and the main root applied with `lane_host_count = 0` | `terraform output prod_public_ip` |
-| P4 | Restore-rehearsal defects D1/D2 fixed on main by the deploy lane, or this runbook's workaround in B4 used | `git log origin/main -- infrastructure/ansible/playbooks/deploy_atomic.yml` |
+| P4 | Restore-rehearsal defects D1/D2 fixed on main (the `deploy_atomic.yml` hunks and `tests/test_deploy_atomic_fresh_host.py` from branch `feat/aws-backbone-infra-20261007`), or this runbook's workaround in B4 used | `git log origin/main -- tests/test_deploy_atomic_fresh_host.py` is non-empty |
 | P5 | `cloudflared-creds.yml` and `r2-creds.yml` present (gitignored) in `infrastructure/ansible/`, and the tunnel credential in it is byte-identical to Hetzner's | `ssh root@$HZ sha256sum /etc/cloudflared/$TUNNEL.json` vs the Mac copy, hashes only |
 | P6 | Inventory of what is about to move, names only | `ssh root@$HZ "grep -oE '^[A-Z_0-9]+=' /etc/antiek/secrets.env | sort | uniq -c"` (46 keys on 2026-10-07; the template has 25: defect D5) |
 | P7 | Unit environment parity recorded: Hetzner has a hand-placed `antiek.service.d/flywheel-events.conf` no playbook renders | `ssh root@$HZ systemctl show antiek -p Environment` saved for B6 |
@@ -116,6 +170,8 @@ The R2 credentials are the real ones (the R2 restore in B5 reads with
 them); the backup units that could write with them are held. `deploy_key`
 is skipped because the repository is cloned over public HTTPS and the
 uploaded key would be an unneeded credential on the host (rehearsal D8).
+Then `ssh -i $KEY root@$AWS systemctl disable antiek` (fresh-host step F2:
+`setup.yml` enabled it, and no boot may start it before the real state is in).
 
 **B3. Throwaway secrets.** Replace the empty template `setup.yml` placed with
 a rehearsal file: `ANTIEK_AUTH_SECRET`, `ANTIEK_OPERATOR_TOKEN` and the two
@@ -131,14 +187,18 @@ Hetzner's SHA makes it pass *vacuously* (it reads Hetzner), so B6 is the
 real check.
 
 Defects D1/D2 (restore rehearsal): on a host where `setup.yml` cloned the
-repo into `/opt/antiek`, the first atomic deploy fails (`git rev-parse` as
-root on an antiek-owned clone) or refuses the cutover. Unless P4 shows them
-fixed, move the setup clone aside first; with no `/opt/antiek` the play
-takes its fresh-host branch (`ln -s`):
+repo into `/opt/antiek`, the first atomic deploy failed (`git rev-parse` as
+root on an antiek-owned clone) or refused the cutover (the clone was at the
+target SHA). With P4 met, the play reads the clone with a per-task
+`safe.directory` and moves a same-SHA clone to `/opt/antiek-releases/legacy-<sha>`,
+so no preparation is needed. Without P4 there is no clean workaround: the
+earlier advice here, moving the clone aside so the play takes its fresh-host
+`ln -s` branch, leaves the pre-migration CHECKPOINT task with no venv to run
+(see "Why `setup.yml` keeps its code clone"), and the live block enters
+rescue [I, read from the playbook]. Wait for P4.
 
 ```bash
 SHA=$(curl -s https://api.antiek.ai/health | python3 -c 'import json,sys; print(json.load(sys.stdin)["build_sha"])')
-ssh -i $KEY root@$AWS "systemctl stop antiek; mv /opt/antiek /opt/antiek-setup-clone"
 # control node: (cd ../../apps/reading && npm ci)   # the playbook builds the SPA but does not npm ci (D7)
 ansible-playbook -i inventory.aws.ini playbooks/deploy_atomic.yml -e antiek_target_sha=$SHA --skip-tags cloudflared
 ```
@@ -157,7 +217,9 @@ independently (`gh api repos/Slimydog21/Antiek/compare/$SHA...main`, the
 Actions runs for `$SHA`) and rerun with `-e antiek_force_deploy=true`,
 recording why.
 
-**B5. Restore rehearsal from R2 (measures the DR path on arm64).** Follow
+**B5. Restore rehearsal from R2 (measures the DR path on arm64).** On
+throwaway state B4 and B5 may run in either order; to rehearse F3-F5 exactly,
+run B5 first and B4 second. Follow
 `disaster-recovery.md` steps 4-8 with the *release* venv
 (`/opt/antiek/.venv`), antiek stopped. Record wall-clock per step. Pass:
 `tools.backup_bundle_contract` passes, IMPORT completes, 82/82 tables and
@@ -191,7 +253,7 @@ ssh -i $KEY root@$AWS 'for u in antiek-continuous-research antiek-arxiv-oai-sync
 
 Pass: every line ends `no` (skipped by the hold condition).
 
-**B8. Reset.** Stop antiek; empty the state directory's contents (not the
+**B8. Reset.** Stop and disable antiek; empty the state directory's contents (not the
 mountpoint); delete the throwaway secrets file and the operator token. The
 host waits, held, at the deployed SHA.
 
@@ -213,7 +275,7 @@ overlap the window.
 | T+2 | Write the source manifest on Hetzner (file hashes + DuckDB table counts). | manifest written |
 | T+3 | Final rsync Hetzner → AWS with `--delete`; copy `/etc/antiek/secrets.env`. | rsync exit 0 |
 | T+6 | **G1** on AWS: `chown -R antiek:antiek $STATE`; `sha256sum -c` of the manifest; DuckDB counts identical. Spot-check the never-backed-up set exists with matching hashes: `byok/byok_master.key`, `byok/credentials.enc`, `auth/passkeys.json`, `settings/user_models.json`, `settings/tool_connections.json`, `antiek.duckdb.research-spend.sqlite3.byot-usage.sqlite3`, `telemetry/preferences.sqlite`, `turbopuffer-shadow/active.json`, `arxiv_oai_harvest.json`. | **zero mismatches** |
-| T+8 | Start antiek on AWS (cloudflared still held). **G2**, on loopback: `status` ok; `build_sha`; `duckdb_ready`; `duckdb_integrity_check`; `registered_providers` non-empty (the real secrets arrived); `turbopuffer_active_pointer` and `turbopuffer_pointer_context_ok` true (the mount path is exact). | **all green** |
+| T+8 | Start antiek on AWS (cloudflared still held): `systemctl enable --now antiek` (F2/B2 left it disabled; the state and `secrets.env` it needs arrived at T+3, so this is the first production start, as D12 requires). **G2**, on loopback: `status` ok; `build_sha`; `duckdb_ready`; `duckdb_integrity_check`; `registered_providers` non-empty (the real secrets arrived); `turbopuffer_active_pointer` and `turbopuffer_pointer_context_ok` true (the mount path is exact). | **all green** |
 | T+10 | **Hetzner: stop the connector and make it and every writer unstartable** ("Retiring Hetzner's units"). | `cloudflared tunnel info $TUNNEL` (Mac, uses `~/.cloudflared/cert.pem`): **no connector**; public `/health` fails |
 | **T+12** | **Release the hold on AWS.** `rm /etc/antiek/STAGING_HOLD && systemctl daemon-reload && systemctl start cloudflared`, then start the consumers: `systemctl start antiek-continuous-research.service antiek-backup.timer antiek-health-probe.timer antiek-backup-freshness.timer antiek-arxiv-oai-sync.timer` | `cloudflared tunnel info $TUNNEL`: connectors only from `$AWS` |
 | T+14 | **G3**, public: `/health` ok with the same `build_sha`; `python3 tools/prod_parity/check.py --url https://api.antiek.ai --expected-sha $SHA`; one operator magic-link sign-in; one passkey sign-in (proves `auth/passkeys.json` arrived); one BYOK credential read (proves the master key arrived); the unknown-path probe answers as in the T-2 baseline. | **all green** |
@@ -423,5 +485,11 @@ then.
 **Follow-ups owned elsewhere (not in this runbook's scope):** the trust-centre
 processor list (Hetzner → AWS) ships with the cutover release; `CLAUDE.md`
 "What's running on prod"; `disaster-recovery.md` steps 1-3 and 10-11 rewritten
-for AWS (defect D13); D1/D2/D5/D7 fixed by the deploy lane; deploys moved off
-public SSH (terraform-aws README, "Hardening path").
+for AWS (defect D13); D5 (every prod key name in `secrets.env.j2`, and on AWS
+the file delivered from SSM Parameter Store/KMS instead of copied); D7 (build
+the SPA in CI as an artifact keyed by SHA and have the playbook fetch it,
+`deploy_backend.yml` is another lane's); a first-release mode for
+`deploy_atomic.yml` so `setup.yml` can drop its code clone (D4/D8/D9, "Why
+`setup.yml` keeps its code clone"); the GitHub check-runs fallback inside
+`require_green.sh` (D6); deploys moved off public SSH (terraform-aws README,
+"Hardening path"). D1, D2 and D11 are fixed on this branch.

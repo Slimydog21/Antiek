@@ -432,6 +432,39 @@ def test_rclone_build_follows_the_host_cpu() -> None:
     assert "linux-amd64" not in json.dumps([t for t in tasks if t is not select])
 
 
+_KEYS_ONLY = ("PasswordAuthentication no", "KbdInteractiveAuthentication no")
+
+
+def test_every_host_path_is_keys_only_ssh() -> None:
+    """Rehearsal D11: a fresh image had password SSH on and ~55k failed logins. Both
+    cloud-init paths and setup.yml's drop-in (for any other image) must turn it off,
+    and the drop-in must sort before the image's own 50-cloud-init.conf (sshd keeps
+    the first value it reads)."""
+    prod = _strip_comments((_TF / "prod.tf").read_text(encoding="utf-8"))
+    lane = _strip_comments((_TF / "lane_host.tf").read_text(encoding="utf-8"))
+    for name, text, root_rule in (
+        ("prod", prod, "PermitRootLogin prohibit-password"),
+        ("lane", lane, "PermitRootLogin no"),
+    ):
+        for line in (*_KEYS_ONLY, root_rule):
+            assert line in text, f"{name} cloud-init lacks {line!r}"
+    assert re.search(r"ssh_pwauth\s*=\s*false", prod)
+
+    tasks = yaml.safe_load(_SETUP.read_text(encoding="utf-8"))[0]["tasks"]
+    drop_in = next(t for t in tasks if t.get("name") == "sshd — keys-only drop-in")
+    copy = drop_in["ansible.builtin.copy"]
+    assert Path(copy["dest"]).parent == Path("/etc/ssh/sshd_config.d")
+    assert Path(copy["dest"]).name < "50-cloud-init.conf"
+    for line in (*_KEYS_ONLY, "PermitRootLogin prohibit-password"):
+        assert line in copy["content"].splitlines()
+    names = [t.get("name") for t in tasks]
+    validate = names.index("sshd — validate the full configuration before any reload")
+    reload = names.index("sshd — reload if running (open sessions survive a reload)")
+    assert names.index(drop_in["name"]) < validate < reload
+    assert tasks[validate]["ansible.builtin.command"] == "/usr/sbin/sshd -t"
+    assert "try-reload-or-restart" in tasks[reload]["ansible.builtin.command"]
+
+
 def _render_caddyfile(**extra: str) -> str:
     jinja2 = pytest.importorskip("jinja2")
     # Ansible's template module renders with trim_blocks=True.

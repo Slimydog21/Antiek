@@ -62,6 +62,27 @@
     antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
     antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
     antiek_previous_sha: ""
+    # A host built by setup.yml (fresh rebuild, DR, the AWS host) holds a
+    # plain git clone at the public path, owned by antiek, until its first
+    # atomic deploy moves it into the release root. Restore rehearsal
+    # 2026-10-07 on Antiek-v1 measured two refusals on that first deploy:
+    #   D1  root's `git rev-parse` on the antiek-owned clone exits 128
+    #       ("detected dubious ownership", git >= 2.35.2), so the live block
+    #       entered rescue before doing anything. The root-run git lookups
+    #       below therefore carry a per-task safe.directory for exactly the
+    #       path they read, as command-scope config (GIT_CONFIG_COUNT), which
+    #       git honours for safe.directory; nothing is written to any gitconfig.
+    #   D2  the clone was at the target SHA (normal for a same-day rebuild),
+    #       so moving it to <release root>/<sha> collided with the candidate
+    #       release itself and the cutover refused. A same-SHA legacy clone
+    #       now moves to <release root>/legacy-<sha>, and rollback returns to
+    #       wherever the previous release really is.
+    antiek_previous_was_directory: false
+    antiek_legacy_release_dir: >-
+      {{ antiek_release_root }}/{{ 'legacy-' if antiek_previous_sha == antiek_target_sha else '' }}{{ antiek_previous_sha }}
+    antiek_previous_release_dir: >-
+      {{ antiek_legacy_release_dir if (antiek_previous_was_directory | bool)
+         else antiek_release_root ~ '/' ~ antiek_previous_sha }}
     antiek_release_min_free_gb: 12
     antiek_release_retention_count: 4
     # The pre-migration DuckDB snapshot is ~940 MB per deploy and NOTHING
@@ -567,20 +588,28 @@
             set -euo pipefail
             if [ -L "{{ antiek_public_dir }}" ]; then
               basename "$(readlink "{{ antiek_public_dir }}")"
+              echo symlink
             elif [ -d "{{ antiek_public_dir }}" ]; then
               git -C "{{ antiek_public_dir }}" rev-parse HEAD
+              echo directory
             else
               echo ""
+              echo none
             fi
           args:
             executable: /bin/bash
+          environment:
+            GIT_CONFIG_COUNT: "1"
+            GIT_CONFIG_KEY_0: safe.directory
+            GIT_CONFIG_VALUE_0: "{{ antiek_public_dir }}"
           changed_when: false
           register: current_release_lookup
           tags: [code]
 
         - name: set the rollback release identity
           ansible.builtin.set_fact:
-            antiek_previous_sha: "{{ current_release_lookup.stdout | trim }}"
+            antiek_previous_sha: "{{ (current_release_lookup.stdout_lines | first | default('')) | trim }}"
+            antiek_previous_was_directory: "{{ (current_release_lookup.stdout_lines | last | default('')) == 'directory' }}"
           tags: [code]
 
         - name: stop the arxiv timer before observing its service
@@ -829,7 +858,7 @@
               ln -s "$TARGET" "$LINK"
               mv -Tf "$LINK" "$PUBLIC"
             elif [ -d "$PUBLIC" ]; then
-              OLD="$ROOT/{{ antiek_previous_sha }}"
+              OLD="{{ antiek_legacy_release_dir }}"
               if [ -e "$OLD" ]; then
                 echo "refusing to overwrite legacy release $OLD" >&2
                 exit 1
@@ -1212,7 +1241,7 @@
           ansible.builtin.shell: |
             set -euo pipefail
             PUBLIC="{{ antiek_public_dir }}"
-            MOVED="{{ antiek_release_root }}/{{ antiek_previous_sha }}"
+            MOVED="{{ antiek_legacy_release_dir }}"
             if [ -e "$PUBLIC" ] || [ -L "$PUBLIC" ] || [ ! -d "$MOVED" ]; then
               exit 0
             fi
@@ -1224,6 +1253,10 @@
             mv "$MOVED" "$PUBLIC"
           args:
             executable: /bin/bash
+          environment:
+            GIT_CONFIG_COUNT: "1"
+            GIT_CONFIG_KEY_0: safe.directory
+            GIT_CONFIG_VALUE_0: "{{ antiek_legacy_release_dir }}"
           changed_when: true
           tags: [rollback]
 
@@ -1237,7 +1270,7 @@
             PUBLIC="{{ antiek_public_dir }}"
             if [ -L "$PUBLIC" ]; then
               LINK="$PUBLIC.rollback.$$"
-              ln -s "{{ antiek_release_root }}/{{ antiek_previous_sha }}" "$LINK"
+              ln -s "{{ antiek_previous_release_dir }}" "$LINK"
               mv -Tf "$LINK" "$PUBLIC"
             elif [ -d "$PUBLIC" ]; then
               actual=$(git -C "$PUBLIC" rev-parse HEAD)
@@ -1251,6 +1284,10 @@
             fi
           args:
             executable: /bin/bash
+          environment:
+            GIT_CONFIG_COUNT: "1"
+            GIT_CONFIG_KEY_0: safe.directory
+            GIT_CONFIG_VALUE_0: "{{ antiek_public_dir }}"
           changed_when: true
           tags: [rollback]
 
