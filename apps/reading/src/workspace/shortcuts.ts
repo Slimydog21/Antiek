@@ -65,6 +65,7 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
+import { statusToastVisible } from "./agents/statusToastFlag";
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -79,6 +80,9 @@ export const SHORTCUT_EVENTS = {
   /** Toggle the account-project picker (prefix+shift+p / ctrl+alt+p;
    *  ProjectPicker). */
   PROJECT_SELECT_TOGGLE: "antiek:project-select:toggle",
+  /** SPR-10: toggle the agent goto picker (prefix+shift+g / ctrl+alt+g;
+   *  AgentGoto). */
+  AGENT_GOTO_TOGGLE: "antiek:agents-goto:toggle",
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -329,6 +333,21 @@ function onAgentTabs(run: (store: typeof import("./companionStore")["useCompanio
  * otherwise. The stores' cycles wrap across ALL tabs, so visual overflow is
  * never a boundary.
  */
+/**
+ * SPR-10 agents.gotoToast (herdr B7): land on the agent the visible status
+ * toast is about. With no status toast on screen the key is not ours
+ * (false: the browser keeps it). The toast module ships with the lazy
+ * agent monitor; a visible toast means it is loaded, so the import resolves
+ * from the module cache and the pane focus follows.
+ */
+function jumpToToastAgent(): boolean {
+  if (!statusToastVisible()) return false;
+  void import("./agents/statusToasts").then((m) => {
+    if (m.focusVisibleStatusToast()) focusPane("right");
+  });
+  return true;
+}
+
 function cycleRightPaneTab(direction: 1 | -1) {
   if (rightPaneHoldsBlocks()) {
     useWriteOutline.getState().cycle(direction);
@@ -404,6 +423,12 @@ export function toggleProjectPicker(): void {
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
 }
 
+/** Toggle the agent goto picker (SPR-10, herdr B6). AgentGoto (mounted once
+ *  in AppShell) listens and opens; the same key from inside closes it. */
+export function toggleAgentGoto(): void {
+  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.AGENT_GOTO_TOGGLE));
+}
+
 /**
  * prefix+a / ctrl+alt+a (SPR-07): open the selected project's agent pane,
  * or focus its composer when it is already open. The pane ships with the
@@ -477,6 +502,8 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "project.select": () => toggleProjectPicker(),
     "agent.openPane": () => openAgentPaneKey(),
+    "agents.gotoToast": () => jumpToToastAgent(),
+    "agents.goto": () => toggleAgentGoto(),
   } satisfies Partial<Record<ActionId, KeyHandler>>;
 }
 

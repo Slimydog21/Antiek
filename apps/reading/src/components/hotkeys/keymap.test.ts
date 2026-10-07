@@ -360,3 +360,42 @@ describe("the agent pane rows (SPR-07): one action, two aliases, one status, out
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
   });
 });
+describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shifted twins of o and g", () => {
+  it.each([
+    ["prefix-agents-toast", "agents.gotoToast", "shift+o", "ctrl+alt+shift+o"],
+    ["prefix-agents-goto", "agents.goto", "shift+g", "ctrl+alt+g"],
+  ])("%s binds %s as prefix+%s with the %s chord twin", (id, action, prefixKey, chord) => {
+    const prefixRow = KEYMAP.find((r) => r.id === id);
+    expect(prefixRow?.action).toBe(action);
+    expect(prefixRow?.prefixKey).toBe(prefixKey);
+    expect(prefixRow?.scope).toBe("outside-text");
+    expect(prefixRow?.origin).toBe("lane-A-proposed");
+    expect(prefixRow?.decision).toMatch(/SPR-10 agent monitoring 2026-10-07T23:06Z/);
+    const chordRow = KEYMAP.find((r) => r.action === action && r.chord === chord);
+    expect(chordRow?.scope).toBe("anywhere");
+    expect(chordRow?.origin).toBe("lane-A-proposed");
+  });
+
+  it("negative controls: the literal herdr keys o and g are duplicates here; a and ctrl+alt+a stay island.open's reserve", () => {
+    const probe = (over: Partial<KeymapRow>): KeymapRow => ({ id: "probe", action: "agents.gotoToast", scope: "outside-text", origin: "lane-A-proposed", decision: "probe", ...over } as KeymapRow);
+    expect(validateKeymap([...KEYMAP, probe({ prefixKey: "o" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-tab-child") }));
+    expect(validateKeymap([...KEYMAP, probe({ action: "agents.goto", prefixKey: "g" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-goto") }));
+    expect(validateKeymap([...KEYMAP, probe({ prefixKey: "a" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
+    expect(validateKeymap([...KEYMAP, probe({ chord: "ctrl+alt+a", scope: "anywhere" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
+    // ctrl+alt+shift+o is distinct from ctrl+alt+o under the physical-key check.
+    expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
+    expect(RESERVED_FOR_LATER.prefixKeys).toContain("a");
+    expect(RESERVED_FOR_LATER.chords).toContain("ctrl+alt+a");
+  });
+
+  it("the base rows prefix-tab-child, chord-tab-child and prefix-goto are byte-identical to the SPR-06 base", () => {
+    const src = readFileSync(resolve(import.meta.dirname, "keymap.ts"), "utf8");
+    for (const line of [
+      '  { id: "prefix-goto", action: "palette.toggle", status: "implemented", prefixKey: "g", scope: "outside-text", origin: "herdr-default", decision: D },',
+      '  { id: "prefix-tab-child", action: "tab.visitChild", status: "implemented", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },',
+      '  { id: "chord-tab-child", action: "tab.visitChild", status: "implemented", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },',
+    ]) {
+      expect(src.split("\n")).toContain(line);
+    }
+  });
+});

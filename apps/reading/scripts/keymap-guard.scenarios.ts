@@ -11,6 +11,9 @@ import { useCompanion } from "../src/workspace/companionStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
 import { isFeatureOn } from "../src/lib/featureFlags";
+import { useCompanion } from "../src/workspace/companionStore";
+import { _seedForGuard, resetStatusToasts } from "../src/workspace/agents/statusToasts";
+import { keyInit } from "../src/workspace/keymapTestKit";
 
 export async function until(predicate: () => boolean, message: string, timeout = 3000): Promise<void> {
   const end = performance.now() + timeout;
@@ -51,6 +54,8 @@ async function reset() {
   document.querySelectorAll<HTMLElement>("[data-guard-narrow]").forEach((el) => { el.style.removeProperty("max-width"); el.removeAttribute("data-guard-narrow"); });
   document.querySelectorAll("#guard-text").forEach((el) => el.remove());
   prefixState.disarm();
+  resetStatusToasts();
+  useCompanion.getState().reset();
   for (const button of document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button[aria-label="Close"]')) button.click();
   await settle();
   disablePersistence();
@@ -135,6 +140,27 @@ export const SCENARIOS = {
   // places flag is on; the guard runs with default flags, so the plain
   // Switcher is the visible effect either way).
   "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
+  // SPR-10: the picker opens on the key and the chord twin closes it from
+  // inside (the prefix never arms in a modal, so only the chord can).
+  "agents.goto": {
+    effect: async () => {
+      await see('[data-keymap-owner="agents.goto"]');
+      window.dispatchEvent(new KeyboardEvent("keydown", { ...keyInit("ctrl+alt+g", currentPlatform()), bubbles: true, cancelable: true }));
+      await until(() => !visible('[data-keymap-owner="agents.goto"]'), "agents.goto: second ctrl+alt+g did not close the picker");
+    },
+  },
+  // SPR-10: a seeded visible status toast about an open agent tab; the key
+  // lands on that tab.
+  "agents.gotoToast": {
+    prepare: () => {
+      resetStatusToasts();
+      useCompanion.getState().reset();
+      useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "guard-inv-b", title: "Guard agent B" });
+      useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "guard-inv-a", title: "Guard agent A" });
+      _seedForGuard({ runId: "guard-inv-b", viewId: "agent:thread:guard-inv-b", viewOpen: true, investigationId: "guard-inv-b", title: "Guard agent B", kind: "finished" });
+    },
+    effect: () => until(() => useCompanion.getState().activeTabId === "agent:thread:guard-inv-b", "agents.gotoToast: the toast's agent tab did not become active"),
+  },
   "reader.tocToggle": {
     prepare: async () => {
       const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');

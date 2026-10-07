@@ -12,6 +12,7 @@
 import { toast } from "../../components/lemon/LemonToast";
 import { subscribeReset, subscribeTransitions, type TransitionEvent } from "./agentStatusStore";
 import { focusAgent } from "./focusAgent";
+import { setStatusToastVisible } from "./statusToastFlag";
 
 export const STATUS_TOAST_QUEUE_MAX = 8;
 export const NEEDS_YOU_TTL_MS = 8000;
@@ -64,6 +65,7 @@ function targetOf(spec: StatusToast) {
 
 function show(spec: StatusToast): void {
   visible = spec;
+  setStatusToastVisible(true);
   const opts = {
     ttl: spec.kind === "needs-you" ? NEEDS_YOU_TTL_MS : FINISHED_TTL_MS,
     action: { label: "Open", run: () => { void focusAgent(targetOf(spec)); } },
@@ -76,6 +78,7 @@ function show(spec: StatusToast): void {
 
 function promote(): void {
   visible = null;
+  setStatusToastVisible(false);
   const next = queued.shift();
   if (next) show(next);
 }
@@ -112,6 +115,7 @@ export function focusVisibleStatusToast(): boolean {
 export function resetStatusToasts(): void {
   const v = visible;
   visible = null;
+  setStatusToastVisible(false);
   queued = [];
   if (v?.toastId !== undefined) toast.dismiss(v.toastId);
 }

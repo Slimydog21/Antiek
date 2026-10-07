@@ -94,6 +94,8 @@ export const ACTIONS = {
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "agent.openPane": { label: "Agent: open the project's agent pane (or focus its composer)" },
+  "agents.gotoToast": { label: "Agents: go to the agent the toast is about" },
+  "agents.goto": { label: "Agents: go to an agent (picker, filters by state)" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -242,6 +244,13 @@ export const KEYMAP: readonly KeymapRow[] = [
   // silently falls back to ctrl+b (readPrefix).
   { id: "prefix-agent-pane", action: "agent.openPane", status: "implemented", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-agent-pane", action: "agent.openPane", status: "implemented", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
+  // ── SPR-10 agents (herdr B7 toast jump, B6 goto picker). herdr binds o and g;
+  // here prefix+o is tab.visitChild (D2) and prefix+g is the Switcher, so the
+  // sibling meaning is the base key shifted (the shift+p / shift+c precedent).
+  { id: "prefix-agents-toast", action: "agents.gotoToast", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+o is tab.visitChild; shifted twin), pending ratification" },
+  { id: "chord-agents-toast", action: "agents.gotoToast", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z, pending ratification" },
+  { id: "prefix-agents-goto", action: "agents.goto", status: "implemented", prefixKey: "shift+g", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+g stays palette.toggle), pending ratification" },
+  { id: "chord-agents-goto", action: "agents.goto", status: "implemented", chord: "ctrl+alt+g", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z; the chord is what closes the picker from inside it (shortcuts.ts scopeAllows), pending ratification" },
 ];
 
 /**
