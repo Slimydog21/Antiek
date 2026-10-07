@@ -49,15 +49,11 @@ import type { FloatMenuSelection } from "./useFloatMenuSelection";
 
 type FloatMenuView =
   | { kind: "menu" }
-  | { kind: "note" }
-  | { kind: "dialogue" }
-  | { kind: "search" }
-  | { kind: "edit" };
+  | { kind: "note" | "dialogue" | "search" | "edit"; selection: FloatMenuSelection };
 
 export interface FloatMenuProps {
-  /** The live selection (text + raw rect + provenance) the host resolved, or
-   * null when there is no selection — the menu renders nothing (rigor #3:
-   * empty/collapsed selection → no window). */
+  /** The host's live selection. Null dismisses the idle menu; an open action
+   * retains its input until it closes or the user selects another passage. */
   selection: FloatMenuSelection | null;
   /** Investigation the surface is scoped to — the typed-event bucket for NOTE
    * + the dialogue session id. */
@@ -80,9 +76,8 @@ export interface FloatMenuProps {
   /** CK-5: deliverable/section context a Write host passes so the Edit
    *  panel can call POST /write/edit-selection. Omitted by non-Write hosts. */
   editContext?: { deliverableId: string; sectionId: string };
-  /** CK-5: apply the model's edited span. The host splices it into the
-   *  section prose (its own selection state identifies the span to replace). */
-  onApplyEdit?: (editedText: string) => void;
+  /** Apply the edited span to the passage captured when the panel opened. */
+  onApplyEdit?: (editedText: string, selection: FloatMenuSelection) => void;
   /** Anchor-first SPR-02: pin the selection as a PERSISTENT passage anchor
    *  alongside the action (Note/Dialogue/Search) or alone (the Pin button).
    *  The READING host wires this to the anchors API; hosts that omit it keep
@@ -132,7 +127,7 @@ function hashHit(documentTitle: string | null, label: string): string {
 }
 
 export default function FloatMenu({
-  selection,
+  selection: liveSelection,
   investigationId,
   onDeepResearch,
   hybridEnabled = false,
@@ -144,16 +139,25 @@ export default function FloatMenu({
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Reset to the menu whenever a NEW selection arrives (the user re-highlighted
-  // somewhere else). A null selection unmounts entirely (handled below).
-  const selText = selection?.text ?? null;
+  // Textarea focus clears the DOM selection, not the input to an open action.
+  const selection = view.kind === "menu" ? liveSelection : view.selection;
+  const selText = liveSelection?.text ?? null;
   useEffect(() => {
-    setView({ kind: "menu" });
+    if (selText !== null) setView({ kind: "menu" });
   }, [selText]);
 
-  // Dismiss on Esc (rigor #3). Click-away dismissal is the host's concern —
-  // a new (empty) selectionchange clears `selection` → unmount; we add an Esc
-  // handler that collapses the live selection so the menu closes.
+  useEffect(() => {
+    if (view.kind === "menu") return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (e.target instanceof Node && !rootRef.current?.contains(e.target)) {
+        setView({ kind: "menu" });
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [view.kind]);
+
+  // Escape closes an action even after focus has cleared the DOM selection.
   useEffect(() => {
     if (!selection) return;
     function onKey(e: KeyboardEvent) {
@@ -173,9 +177,7 @@ export default function FloatMenu({
     return () => removeKeyboardOwner();
   }, [selection]);
 
-  // Rigor #3: empty / collapsed / out-of-scope selection → no window. The host
-  // hands null in all those cases (useFloatMenuSelection), so this is the one
-  // dismissal point.
+  // An idle menu follows the live selection; an action uses its captured input.
   if (!selection) return null;
 
   const pos = clampPosition(
@@ -214,21 +216,21 @@ export default function FloatMenu({
               label="Note"
               onClick={() => {
                 onPinAnchor?.({ source: "floatmenu_note" }, selection);
-                setView({ kind: "note" });
+                setView({ kind: "note", selection });
               }}
             />
             <MenuButton
               label="Dialogue"
               onClick={() => {
                 onPinAnchor?.({ source: "floatmenu_dialogue" }, selection);
-                setView({ kind: "dialogue" });
+                setView({ kind: "dialogue", selection });
               }}
             />
             <MenuButton
               label="Search"
               onClick={() => {
                 onPinAnchor?.({ source: "floatmenu_search" }, selection);
-                setView({ kind: "search" });
+                setView({ kind: "search", selection });
               }}
             />
             <MenuButton
@@ -278,7 +280,7 @@ export default function FloatMenu({
                 }
               />
               {editContext && onApplyEdit && (
-                <MenuButton label="Edit…" onClick={() => setView({ kind: "edit" })} />
+                <MenuButton label="Edit…" onClick={() => setView({ kind: "edit", selection })} />
               )}
             </div>
           )}
@@ -680,7 +682,7 @@ function EditPanel({
 }: {
   selection: FloatMenuSelection;
   editContext: { deliverableId: string; sectionId: string };
-  onApplyEdit: (editedText: string) => void;
+  onApplyEdit: NonNullable<FloatMenuProps["onApplyEdit"]>;
   onClose: () => void;
 }) {
   const [instruction, setInstruction] = useState("");
@@ -703,7 +705,7 @@ function EditPanel({
         selection_text: safeText,
         instruction: instruction.trim(),
       });
-      onApplyEdit(res.edited_text);
+      onApplyEdit(res.edited_text, selection);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "edit failed");
