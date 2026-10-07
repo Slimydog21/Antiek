@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import stat
 import subprocess
 import sys
 from importlib.metadata import version
@@ -85,12 +86,6 @@ def _pretrained_control() -> dict[str, Any]:
     import torch
     from sentence_transformers import SentenceTransformer
 
-    from processing.embedding.embed import (
-        SentenceTransformerEmbedding as ProcessingEmbedding,
-    )
-    from processing.embedding.embed import embedding_provider_fingerprint
-    from substrate.graph.search import SentenceTransformerEmbedding as GraphEmbedding
-
     torch.set_num_threads(1)
     texts = [
         "Reading a paper and checking its cited evidence.",
@@ -99,19 +94,82 @@ def _pretrained_control() -> dict[str, Any]:
     baseline = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
     vectors = baseline.encode(texts)
     assert vectors.shape == (2, 384)
+    assert np.isfinite(vectors).all()
     weights = _weights(baseline)
     revision = baseline[0].auto_model.config._commit_hash
     assert isinstance(revision, str) and revision
-    # The baseline may use oneDNN. The new route must work with MDWE retained.
+    evidence = {
+        "weights_sha256": weights, "revision": revision,
+        "texts": texts, "vectors": vectors.tolist(),
+    }
+    encoded = json.dumps(evidence).encode()
+    assert len(encoded) <= 65536
+    path = Path(os.environ["HF_HOME"]) / "observed-baseline.json"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        assert os.write(fd, encoded) == len(encoded)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    # The new process inherits MDWE before Python/model startup, with no
+    # warmed model kernels. Only the private weight cache is reused offline.
     libc = _enforce_mdwe()
+    environment = os.environ.copy()
+    environment.update({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "pretrained-cold", str(path), hashlib.sha256(encoded).hexdigest()],
+        env=environment, capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    cold = json.loads(result.stdout.strip().splitlines()[-1])
+    assert cold["weights_sha256"] == weights and cold["revision"] == revision
+    assert libc.prctl(66, 0, 0, 0, 0) == 1
+    return {
+        "control": "pretrained_parity", "model": "all-MiniLM-L6-v2",
+        "revision": revision, "weights_sha256": weights, "dimension": 384,
+        "cold_child": cold, "mdwe": 1,
+        "torch": version("torch"), "transformers": version("transformers"),
+        "sentence_transformers": version("sentence-transformers"),
+    }
+
+
+def _pretrained_cold_control(path: str, expected_sha256: str) -> dict[str, Any]:
+    expected_path = Path(os.environ["HF_HOME"]) / "observed-baseline.json"
+    assert Path(path) == expected_path
+    fd = os.open(expected_path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(fd)
+        assert stat.S_ISREG(metadata.st_mode) and metadata.st_size <= 65536
+        encoded = os.read(fd, 65537)
+        assert hashlib.sha256(encoded).hexdigest() == expected_sha256
+        evidence = json.loads(encoded)
+    finally:
+        os.close(fd)
+    libc = _enforce_mdwe()
+    import numpy as np
+    import torch
+
+    from processing.embedding.embed import (
+        SentenceTransformerEmbedding as ProcessingEmbedding,
+    )
+    from processing.embedding.embed import embedding_provider_fingerprint
+    from substrate.graph.search import SentenceTransformerEmbedding as GraphEmbedding
+
+    torch.set_num_threads(1)
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
+    vectors = np.asarray(evidence["vectors"])
+    assert vectors.shape == (2, 384) and np.isfinite(vectors).all()
     identities = {}
+    maximum_error = 0.0
     for constructor in (GraphEmbedding, ProcessingEmbedding):
         provider = constructor()
         assert provider.dimension == 384
-        assert _weights(provider._model) == weights
-        assert provider._model[0].auto_model.config._commit_hash == revision
-        actual = np.asarray([provider.encode(text) for text in texts])
+        assert _weights(provider._model) == evidence["weights_sha256"]
+        assert provider._model[0].auto_model.config._commit_hash == evidence["revision"]
+        actual = np.asarray([provider.encode(text) for text in evidence["texts"]])
+        assert np.isfinite(actual).all()
         np.testing.assert_allclose(actual, vectors, atol=2e-6, rtol=2e-5)
+        maximum_error = max(maximum_error, float(np.abs(actual - vectors).max()))
         identities[constructor.__module__] = embedding_provider_fingerprint(provider)
     assert identities == {
         "substrate.graph.search": "embedding-provider-id-v1:substrate.graph.search.SentenceTransformerEmbedding:SentenceTransformerEmbedding-dim-384:384",
@@ -120,14 +178,15 @@ def _pretrained_control() -> dict[str, Any]:
     assert torch.backends.mkldnn.enabled is False
     assert libc.prctl(66, 0, 0, 0, 0) == 1
     return {
-        "control": "pretrained_parity",
+        "control": "cold_pretrained_parity",
         "model": "all-MiniLM-L6-v2",
-        "revision": revision,
-        "weights_sha256": weights,
+        "revision": evidence["revision"],
+        "weights_sha256": evidence["weights_sha256"],
         "dimension": 384,
         "identities": identities,
         "mdwe": 1,
         "mkldnn_enabled": False,
+        "max_absolute_error": maximum_error,
         "torch": version("torch"),
         "transformers": version("transformers"),
         "sentence_transformers": version("sentence-transformers"),
@@ -145,6 +204,8 @@ def _run_control(control: str, timeout: int, cache: Path) -> dict[str, Any]:
         "HF_HUB_OFFLINE": "0" if control == "pretrained" else "1",
         "TRANSFORMERS_OFFLINE": "0" if control == "pretrained" else "1",
         "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
+        "HF_TOKEN_PATH": str(cache / "unused-token"), "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+        "XDG_CACHE_HOME": str(cache / "xdg"), "TORCH_HOME": str(cache / "torch"),
         "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
     })
     result = subprocess.run(
@@ -179,11 +240,12 @@ def test_real_pretrained_weights_vectors_dimensions_and_fingerprints_match(tmp_p
 
 if __name__ == "__main__":
     controls = {"gelu": _gelu_control, "pretrained": _pretrained_control}
-    if len(sys.argv) != 2 or sys.argv[1] not in controls:
+    cold = len(sys.argv) == 4 and sys.argv[1] == "pretrained-cold"
+    if not cold and (len(sys.argv) != 2 or sys.argv[1] not in controls):
         raise SystemExit("Expected one finite control: gelu or pretrained")
-    if sys.argv[1] == "pretrained" and (
+    if sys.argv[1] in {"pretrained", "pretrained-cold"} and (
         os.environ.get("GITHUB_ACTIONS") != "true"
         and os.environ.get("ANTIEK_TEST_PRETRAINED_EMBEDDINGS") != "1"
     ):
         raise SystemExit("Pretrained native control is not enabled")
-    print(json.dumps(controls[sys.argv[1]]()))
+    print(json.dumps(_pretrained_cold_control(sys.argv[2], sys.argv[3]) if cold else controls[sys.argv[1]]()))
