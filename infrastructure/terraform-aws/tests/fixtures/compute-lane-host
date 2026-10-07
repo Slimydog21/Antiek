@@ -1,0 +1,16 @@
+#!/usr/bin/python3 -I
+"""Test stand-in for compute's bin/compute-lane-host (~/.agents/compute).
+
+tests/offline.tftest.hcl points compute_lane_host_helper here so the plan
+can render the lane-host cloud-config without the compute checkout. It
+carries the two markers lane_host.tf's precondition checks and nothing else.
+"""
+import sys
+
+
+def op_sweep():
+    sys.exit("fixture: not compute-lane-host")
+
+
+if __name__ == "__main__":
+    op_sweep()

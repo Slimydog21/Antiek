@@ -30,7 +30,8 @@ output "prod_state_dir" {
 }
 
 output "availability_zone" {
-  value = local.availability_zone
+  description = "Pin this as availability_zone in terraform.tfvars after the first apply (README.md, Apply order)."
+  value       = local.availability_zone
 }
 
 output "staging_hold_file" {
@@ -48,8 +49,18 @@ output "lane_host_names" {
 }
 
 output "lane_host_compute_ssh" {
-  description = "The `ssh:` value for each host's compute policy entry."
-  value       = [for n in local.lane_host_names : "lanes@${n}"]
+  description = "The `ssh:` value for each host's compute policy entry (the control account)."
+  value       = [for n in local.lane_host_names : "${local.lane_host_control_user}@${n}"]
+}
+
+output "lane_host_helper_sha256" {
+  description = "sha256 of the compute-lane-host each lane host was given (also the instance tag ComputeHelperSha256)."
+  value       = var.lane_host_count > 0 ? filesha256(local.lane_host_helper_src) : null
+}
+
+output "lane_host_cap_usd" {
+  description = "Instance-hour limit of the cap budget: the approved cap minus fixed EBS/IPv4 per host and the egress allowance."
+  value       = var.lane_host_count > 0 ? format("%.2f", local.lane_host_cap_usd) : null
 }
 
 output "inventory_aws_ini_line" {

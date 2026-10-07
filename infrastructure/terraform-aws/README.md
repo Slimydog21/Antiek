@@ -69,6 +69,11 @@ get-service-quota`, `ssm get-parameter`, `iam simulate-principal-policy`,
    action below, which touches lane hosts only.
 6. Account defaults today: EBS encryption by default **off**, IMDS defaults
    unset (`ManagedBy: account`) [M]. `bootstrap/` turns both on.
+7. EventBridge Scheduler (the lane-host wake) answers in eu-north-1:
+   `scheduler list-schedules` returned an empty list on 2026-10-07, and the
+   policy simulator returns `allowed` / `AllowedByOrganizations=true` for
+   `scheduler:CreateSchedule`, `budgets:CreateBudgetAction` and
+   `iam:CreatePolicy` with `aws:RequestedRegion=eu-north-1` [M].
 
 ## Apply order
 
@@ -96,14 +101,20 @@ root_authorized_keys = [
 ]
 EOF
 terraform init -backend-config=backend.hcl
-terraform plan -out tfplan && terraform apply tfplan
+terraform plan -out tfplan && terraform apply tfplan   # tfplan is gitignored: it holds account data
+# Pin the AZ the first apply derived from the prod type, so no later edit or
+# AWS event can move prod, its data volume or the subnet:
+echo "availability_zone = \"$(terraform output -raw availability_zone)\"" >> terraform.tfvars
 
 # 3. infrastructure/runbooks/aws-cutover.md (the host is born HELD)
 
-# 4. Later, a lane host: Tailscale key into SSM, then lane_host_count = 1
+# 4. Later, a lane host (infrastructure/runbooks/lane-host.md, Bring-up):
+#    a single-use Tailscale key into SSM (the bootstrap deletes it after joining),
 aws ssm put-parameter --region eu-north-1 --type SecureString \
   --name /antiek/lane-host/tailscale-authkey --value file://tskey.txt   # file://, so the key is not in argv
-#   tfvars: lane_host_count = 1, lane_host_dispatcher_authorized_keys = ["ssh-ed25519 ... compute@mini"]
+#    the dispatcher key compute pins: ssh-keygen -t ed25519 -f ~/.ssh/compute_lanes_ed25519 -C compute@mini
+#    tfvars: lane_host_count = 1, lane_host_dispatcher_authorized_keys = ["ssh-ed25519 ... compute@mini"]
+#    (compute_lane_host_helper defaults to ~/.agents/compute/bin/compute-lane-host)
 terraform plan -out tfplan && terraform apply tfplan
 ```
 
@@ -115,7 +126,11 @@ terraform plan -out tfplan && terraform apply tfplan
 | `ssh_ingress_cidrs` | main | IPv4 CIDRs for tcp/22 on prod | no |
 | `root_authorized_keys` | main | operator + GitHub deploy **public** keys, root on prod | no (public keys) |
 | `lane_host_count` | main | 0 (default), 1 or 2 | no |
-| `lane_host_dispatcher_authorized_keys` | main | the Mini dispatcher's **public** key for `lanes@` | no |
+| `lane_host_dispatcher_authorized_keys` | main | the Mini dispatcher's **public** key for `compute@` (the control account) | no |
+| `compute_lane_host_helper` | main | path of compute's `bin/compute-lane-host`, installed byte for byte | no |
+| `lane_host_projects`, `lane_host_provider_keys` | main | tenants (with retention) and key **names**, as in compute's policy | no |
+| `lane_host_expected_monthly_usd`, `lane_host_wake_schedule` | main | alerting level (USD 100) and the daily wake (05:00 UTC; null disables) | no |
+| `availability_zone` | main | pin after the first apply | no |
 | `tailscale_authkey_param` | main | the *name* of an SSM SecureString | no; the key itself never enters Terraform |
 | `prod_arch` | main | `arm64` (default) or `x86_64` | no |
 
@@ -150,16 +165,29 @@ The path is exact because TurboPuffer's servable pointer hashes the resolved
 DuckDB path (`substrate/graph/retrieval_adapters/turbopuffer.py`); a symlink or
 another mountpoint silently turns the default search mount off.
 
-**Lane host** (`lane_host.tf`): account `lanes` (no sudo) with the dispatcher's
-key restricted to Tailscale source addresses; root has no SSH login (SSM
-Session Manager is break-glass); `PermitRootLogin no`, `AllowUsers lanes`;
-data volume at `/srv/lanes`; lingering user manager with memory/pids/cpu
-delegated; `~lanes/.config/systemd/user/lanes.slice` (MemoryHigh 24G,
-MemoryMax 26G, TasksMax 12288) under a root-owned `user-.slice` ceiling of
-28G; ufw admitting only `tailscale0:22`; Tailscale joined with an auth key
-read from SSM at boot into a 0600 file under `/run`; `lanes-idle-stop.timer`
-(power off after 60 idle minutes). No Antiek code or credential. Per-node
-provider keys and prime-agent are installed later (`lane-host.md`).
+**Lane host** (`lane_host.tf`): the host half of compute's node contract,
+which compute owns and `compute doctor` verifies: control account `compute`
+(the dispatcher's key, Tailscale source addresses only; `AllowUsers
+compute`; root has no SSH login, SSM is break-glass); a system user and group
+`lane-<project>` per tenant; compute's helper installed byte for byte at
+`/usr/local/sbin/compute-lane-host` with its one sudoers line and
+`/etc/compute/lane-host.json`; `/etc/compute/keys` (root 0700, filled by the
+operator); a system `lanes.slice` (MemoryHigh 24G, MemoryMax 26G, TasksMax
+12288); data volume at `/srv/lanes`; the helper's sweep timer (dead man,
+TTLs, stop when idle). Added outside that contract: a boot failsafe armed
+before anything can fail (power off 60 minutes after a boot that is not
+provisioned, mounted and sweeping); the metadata service for root only
+(nftables); tmpfs `/tmp` and `/var/tmp`; ufw admitting only `tailscale0:22`
+in and nothing out into the tailnet; Tailscale joined with a single-use key
+read from SSM at boot into a 0600 file under `/run`, then deleted. No Antiek
+code or credential. Per-node provider keys and prime-agent are installed
+later (`lane-host.md`).
+
+A lane-host user_data change (a rotated dispatcher key, a slice size, a new
+compute helper) plans as `~ update in-place`, which stops and starts the
+host; it is never a replacement, but cloud-init does not re-run on a restart.
+Apply it with the reprovision step in `lane-host.md` ("Changing the host's
+configuration").
 
 ## Cost (USD per month, 730 h, eu-north-1)
 
@@ -192,10 +220,20 @@ IPv4 USD 0.005/h); data transfer `.../datatransfer/USD/current/datatransfer.json
 
 Reading it:
 
-- The lane host's instance-hours are capped at USD 250/month by the budget
-  action (operator approval, 2026-10-07); 24x7 on-demand is USD 182.92, so
-  the cap is a backstop. A Savings Plan bills the commitment whether the host
-  runs or not, so it pays only for a host that is busy most of the month.
+- Lane-host spend is capped at USD 250/month (operator approval,
+  2026-10-07). Budgets can filter only instance-hours, so the cap budget's
+  limit is 250 minus each host's fixed EBS and IPv4 (USD 18.70 at the
+  defaults) and a USD 10 egress allowance: USD 221.30 for one host,
+  202.60 for two. At 100% it stops the hosts and detaches the daily wake.
+  One on-demand host cannot reach it (USD 186.43 in a 31-day month), so the
+  day-to-day control is the alerting budget at expected spend (USD 100, ~55%
+  uptime), which fires for a host stuck running. A Savings Plan bills the
+  commitment whether the host runs or not, so it pays only for a host that
+  is busy most of the month.
+- The main root adds up to three budgets to bootstrap's one (prod,
+  lane-host expected, lane-host cap), two of them action-enabled. AWS
+  Budgets bills beyond a free allowance per budget-day [A: price page not
+  re-read today]; at this count it is cents to about a dollar a month.
 - Buy no Savings Plan before 30 days of measured prod CPU/RAM on AWS. An
   EC2 Instance SP is locked to family and Region; a Compute SP is portable.
 - Hetzner today: the CCX23 is grandfathered at about USD 37/month, and any
@@ -252,9 +290,15 @@ rebuild, and the state survives it because it lives on the data volume:
 - IMDSv2 only, hop limit 1, on every instance and as the account default.
   Termination and stop protection on prod; neither on lane hosts (the budget
   action and idle stop must be able to stop them).
-- IAM: prod gets `AmazonSSMManagedInstanceCore` only. The lane host adds
-  `ssm:GetParameter` on one parameter. The budget-action role may stop only
-  instances tagged `Role=lane-host`.
+- IAM: `AmazonSSMManagedInstanceCore` (both instance roles) itself allows
+  `ssm:GetParameter(s)` on every parameter, so scoping an extra Allow proves
+  nothing. What keeps the Tailscale join key contained: an explicit Deny on
+  the `/antiek/lane-host` path for the prod role; the key is single use and
+  the bootstrap deletes it after joining; and on the lane host only root can
+  reach the metadata service, so no lane and not the control account ever
+  holds the role's credentials. The budget-action role may stop only
+  instances tagged `Role=lane-host` (via SSM) and attach one deny policy to
+  the wake role; the wake role may start only `Role=lane-host` instances.
 
 ## Verification (offline)
 
@@ -267,4 +311,6 @@ cd bootstrap && terraform init -backend=false && terraform validate && terraform
 The `terraform test` suites use a mocked provider: no account, no
 credentials, no API calls. They render the real cloud-config and assert on
 it (mount path, held units, origin-TLS file, lane-host user and limits,
-budget filters, the stop action's targets, arch and quota preconditions).
+budget filters and limits, both cap actions and the wake, the lane host's
+compute contract (helper bytes, `lane-host.json`, failsafe-first runcmd),
+arch, AZ and quota preconditions).

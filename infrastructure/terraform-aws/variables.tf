@@ -19,7 +19,7 @@ variable "region" {
 }
 
 variable "availability_zone" {
-  description = "AZ for the single public subnet. Null picks the first AZ (sorted) that offers both the prod and lane-host instance types."
+  description = "AZ for the single public subnet. Null derives it from the prod type alone (first AZ, sorted, offering it). Pin it in terraform.tfvars after the first apply (output availability_zone): prod, its data volume and the subnet are single-AZ and a moved AZ would plan their replacement."
   type        = string
   default     = null
 }
@@ -161,9 +161,16 @@ variable "alert_email" {
 }
 
 variable "prod_monthly_budget_usd" {
-  description = "Alert-only budget on prod instance-hours. On-demand m8g.xlarge in eu-north-1 is USD 0.19076/h = USD 139.25 per 730 h month; more than that means a second prod-type instance or a type change."
+  description = <<-EOT
+    Alert-only budget on prod instance-hours. Null derives it from the prod
+    type: 1.05 x the longest month (744 h) at the on-demand rate in
+    local.prod_hourly_usd, rounded up (m8g.xlarge: USD 150; m7i.xlarge:
+    USD 168). One instance can never reach it, so it fires only for a second
+    instance of the prod type. A type change moves the filter with it; an
+    instance of the old type left running shows up in the account budget.
+  EOT
   type        = number
-  default     = 160
+  default     = null
 }
 
 # ── Lane host (agent-CPU backbone) ───────────────────────────────────────────
@@ -202,8 +209,9 @@ variable "lane_host_use_spot" {
 }
 
 variable "lane_host_root_volume_gib" {
-  type    = number
-  default = 30
+  description = "Root gp3. Lanes cannot write to it: their units run ProtectSystem=strict with only their workdir writable, and /tmp and /var/tmp are tmpfs (charged to the writing lane's memory cgroup)."
+  type        = number
+  default     = 30
 }
 
 variable "lane_host_data_volume_gib" {
@@ -213,15 +221,38 @@ variable "lane_host_data_volume_gib" {
 }
 
 variable "lane_host_monthly_budget_usd" {
-  description = "Operator-approved hard cap (2026-10-07). At 100% actual, a budget action stops every lane host."
+  description = <<-EOT
+    Operator-approved cap on ALL lane-host spend (2026-10-07). The stop
+    action watches instance-hours only (the Budgets filter is the instance
+    type), so it fires at this cap minus every host's fixed EBS + public
+    IPv4 cost and the egress allowance (budgets.tf, local.lane_host_cap_usd).
+  EOT
   type        = number
   default     = 250
 }
 
+variable "lane_host_expected_monthly_usd" {
+  description = <<-EOT
+    What the lane host(s) are expected to cost in instance-hours with idle
+    stop and the daily wake: the alerting budget. 100 is ~55% uptime of one
+    r8g.xlarge (USD 182.92 at 730 h). Alerts at 80% and 100% actual and at
+    100% forecast, so a host stuck running is flagged well before the cap,
+    which one on-demand host cannot reach (USD 186.43 in a 31-day month).
+  EOT
+  type        = number
+  default     = 100
+}
+
+variable "lane_host_egress_allowance_usd" {
+  description = "Egress the cap reserves room for (not in the instance-type filter). compute stops placing on a host at egress_gib_month (100 GiB in policy 1.6.0), which is <= USD 9 at USD 0.09/GB."
+  type        = number
+  default     = 10
+}
+
 variable "lane_host_name_prefix" {
-  description = "Hostname and Tailscale node name prefix; host N is <prefix>-N. Must match the compute policy entry hosts.nodes.lanes-eun1-1 (ssh: lanes@lanes-eun1-1)."
+  description = "Hostname and Tailscale node name prefix; host N is <prefix>-N. Must match the compute policy entry hosts.nodes.lanes-1 (ssh: compute@lanes-1)."
   type        = string
-  default     = "lanes-eun1"
+  default     = "lanes"
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,40}$", var.lane_host_name_prefix))
@@ -231,11 +262,12 @@ variable "lane_host_name_prefix" {
 
 variable "lane_host_dispatcher_authorized_keys" {
   description = <<-EOT
-    Public key(s) the compute dispatcher on the Mini uses to reach the lanes
-    account (ssh lanes@<host> over Tailscale, BatchMode). Installed for the
-    `lanes` user only, with a from= restriction to Tailscale address space;
-    root has no SSH login on a lane host (break-glass is SSM Session
-    Manager). The security group admits nothing inbound either way.
+    Public key(s) the compute dispatcher on the Mini uses for the host's
+    control account (ssh compute@<host> over Tailscale; compute pins
+    -i ~/.ssh/compute_lanes_ed25519). Installed for `compute` only, with a
+    from= restriction to Tailscale address space; root has no SSH login on a
+    lane host (break-glass is SSM Session Manager). The security group
+    admits nothing inbound either way.
   EOT
   type        = list(string)
   default     = []
@@ -246,14 +278,52 @@ variable "lane_host_dispatcher_authorized_keys" {
   }
 }
 
+variable "lane_host_projects" {
+  description = "Tenants allowed on the host (compute policy hosts.nodes.<host>.projects) and whether their finished workdirs are kept for compute-lane-host's TTLs. Each gets a system user and group lane-<project>."
+  type        = map(object({ retention = bool }))
+  default = {
+    solcoa   = { retention = true }
+    inferact = { retention = true }
+    volantis = { retention = false }
+  }
+
+  validation {
+    condition     = alltrue([for p in keys(var.lane_host_projects) : can(regex("^[a-z0-9][a-z0-9_-]{0,23}$", p)) && !contains(["antiek", "lch", "_default"], p)])
+    error_message = "lane_host_projects: lowercase names of at most 24 characters; antiek (D-18/D-36) and Mini-only lch never run on a lane host."
+  }
+}
+
+variable "lane_host_provider_keys" {
+  description = "NAMES of the per-node provider keys (compute policy hosts.nodes.<host>.keys). The operator provisions each as /etc/compute/keys/<NAME>.env (root 0600); values never enter Terraform."
+  type        = list(string)
+  default     = ["DEEPSEEK_API_KEY", "XIAOMI_API_KEY", "ZAI_API_KEY"]
+
+  validation {
+    condition     = alltrue([for k in var.lane_host_provider_keys : can(regex("^[A-Z][A-Z0-9_]{0,63}$", k))])
+    error_message = "lane_host_provider_keys are environment variable names (A-Z, 0-9, _)."
+  }
+}
+
+variable "compute_lane_host_helper" {
+  description = <<-EOT
+    Path, on the machine running Terraform, of compute's bin/compute-lane-host
+    (the one privileged helper on a lane host). compute owns it; cloud-init
+    installs exactly that file root-owned at /usr/local/sbin/compute-lane-host
+    and the instance carries its sha256 as a tag. Read only when
+    lane_host_count > 0.
+  EOT
+  type        = string
+  default     = "~/.agents/compute/bin/compute-lane-host"
+}
+
 variable "tailscale_authkey_param" {
-  description = "Name of an SSM SecureString holding a pre-authorised, tagged Tailscale auth key. Created by the operator out of band; Terraform only references it, so the key never enters user_data or state."
+  description = "Name of an SSM SecureString holding a single-use, pre-authorised, tagged Tailscale auth key. Created by the operator out of band; Terraform only references it, so the key never enters user_data or state. The bootstrap deletes it after a successful join."
   type        = string
   default     = "/antiek/lane-host/tailscale-authkey"
 
   validation {
-    condition     = startswith(var.tailscale_authkey_param, "/")
-    error_message = "tailscale_authkey_param must be a fully qualified SSM parameter name."
+    condition     = can(regex("^(/[A-Za-z0-9_.-]+){2,}$", var.tailscale_authkey_param))
+    error_message = "tailscale_authkey_param must be a fully qualified SSM parameter name with at least one path level (the prod role's deny covers that path)."
   }
 }
 
@@ -263,13 +333,13 @@ variable "tailscale_tags" {
 }
 
 variable "lanes_slice_memory_high" {
-  description = "The lanes user's lanes.slice MemoryHigh (all lanes together): reclaim pressure starts here."
+  description = "lanes.slice MemoryHigh (all lanes together): reclaim pressure starts here."
   type        = string
   default     = "24G"
 }
 
 variable "lanes_slice_memory_max" {
-  description = "The lanes user's lanes.slice MemoryMax (compute 1.6.0 host check: an aggregate ~26G of 32 GiB). The OOM killer acts inside the slice, never on sshd, tailscaled or the SSM agent."
+  description = "lanes.slice MemoryMax (compute doctor: below physical RAM; 26G of 32 GiB). The OOM killer acts inside the slice, never on sshd, tailscaled or the SSM agent."
   type        = string
   default     = "26G"
 }
@@ -280,16 +350,32 @@ variable "lanes_slice_tasks_max" {
   default     = 12288
 }
 
-variable "lane_host_user_slice_memory_max" {
-  description = "Root-owned ceiling on every user-<uid>.slice. The lanes account owns its lanes.slice file and could raise it; it cannot raise this."
-  type        = string
-  default     = "28G"
-}
-
 variable "lane_host_idle_stop_minutes" {
-  description = "Power off (instance stops; EBS keeps billing, compute does not) after this many minutes with no task in lanes.slice and no login session. 0 disables."
+  description = "compute-lane-host's idle_poweroff_min: its sweep powers the host off (the instance stops; EBS keeps billing, compute does not) after this many minutes with no live lane unit. 0 disables."
   type        = number
   default     = 60
+}
+
+variable "lane_host_failsafe_minutes" {
+  description = "Minutes after every boot at which the host powers itself off unless it is provisioned, its workroot is mounted and the sweep timer is active. Covers a failed or hung first boot, which the sweep cannot (it may never have been installed)."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.lane_host_failsafe_minutes >= 30
+    error_message = "lane_host_failsafe_minutes below 30 can cut off a healthy first boot (the data-volume wait alone allows 10 minutes)."
+  }
+}
+
+variable "lane_host_wake_schedule" {
+  description = <<-EOT
+    EventBridge Scheduler expression (UTC) that starts the lane host(s) again
+    after an idle stop; null disables the wake. Default: daily at 05:00 UTC
+    (08:00 Riyadh). The budget cap also detaches the wake's permission, so a
+    capped host stays stopped (budgets.tf).
+  EOT
+  type        = string
+  default     = "cron(0 5 * * ? *)"
 }
 
 variable "extra_tags" {

@@ -14,8 +14,16 @@
 # most tcp/22 to prod and nothing at all to lane hosts.
 # ──────────────────────────────────────────────────────────────────────────────
 
+# No state filter: an AZ that reports "impaired" or "information" during an
+# AWS event must not drop out of the list and move the derived AZ, which
+# would plan a replacement of the subnet, prod and its data volume exactly
+# when an apply is most likely (incident, DR). Local and Wavelength Zones are
+# excluded by their opt-in status.
 data "aws_availability_zones" "available" {
-  state = "available"
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 data "aws_ec2_instance_type_offerings" "by_az" {
@@ -28,18 +36,19 @@ data "aws_ec2_instance_type_offerings" "by_az" {
 }
 
 locals {
-  # AZs that offer every instance type this root may launch.
-  azs_offering_all = sort([
-    for az in data.aws_availability_zones.available.names : az
-    if alltrue([
-      for t in distinct([local.prod_instance_type, var.lane_host_instance_type]) :
-      contains([
-        for i, loc in data.aws_ec2_instance_type_offerings.by_az.locations : loc
-        if data.aws_ec2_instance_type_offerings.by_az.instance_types[i] == t
-      ], az)
+  # AZs offering an instance type, from the one offerings lookup.
+  azs_offering = {
+    for t in distinct([local.prod_instance_type, var.lane_host_instance_type]) : t => sort([
+      for i, loc in data.aws_ec2_instance_type_offerings.by_az.locations : loc
+      if data.aws_ec2_instance_type_offerings.by_az.instance_types[i] == t && contains(data.aws_availability_zones.available.names, loc)
     ])
-  ])
-  availability_zone = coalesce(var.availability_zone, try(local.azs_offering_all[0], null))
+  }
+
+  # Derived from the PROD type only: the lane-host type (even at count 0)
+  # must never be able to move production. lane_host.tf instead refuses a
+  # lane type that the chosen AZ does not offer. Pin the result in
+  # terraform.tfvars after the first apply (README.md).
+  availability_zone = var.availability_zone != null ? var.availability_zone : try(local.azs_offering[local.prod_instance_type][0], null)
 }
 
 resource "aws_vpc" "this" {
@@ -69,7 +78,7 @@ resource "aws_subnet" "public" {
   lifecycle {
     precondition {
       condition     = local.availability_zone != null
-      error_message = "No available AZ in ${var.region} offers every instance type in use (${join(", ", distinct([local.prod_instance_type, var.lane_host_instance_type]))}). Set availability_zone or change a type."
+      error_message = "No AZ in ${var.region} offers the prod type ${local.prod_instance_type}. Set availability_zone or change the type."
     }
   }
 }

@@ -16,6 +16,13 @@
 backend.hcl
 
 .terraform/
+
+# Saved plans (`terraform plan -out tfplan`, README.md) hold the full
+# configuration and planned values: account id, addresses, alert email,
+# instance and volume ids. This repository is public.
+tfplan
+*.tfplan
+*.plan
 crash.log
 crash.*.log
 

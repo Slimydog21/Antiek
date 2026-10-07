@@ -37,7 +37,9 @@ _ANSIBLE = _REPO / "infrastructure" / "ansible"
 _SETUP = _ANSIBLE / "playbooks" / "setup.yml"
 _DEPLOY = _ANSIBLE / "playbooks" / "deploy_atomic.yml"
 _CADDYFILE = _ANSIBLE / "templates" / "Caddyfile.j2"
-_IDLE_STOP = _TF / "scripts" / "lanes-idle-stop.sh"
+_BOOTSTRAP = _TF / "scripts" / "lane-host-bootstrap.sh"
+_FAILSAFE = _TF / "scripts" / "lane-host-failsafe.sh"
+_LANE_RUNBOOK = _REPO / "infrastructure" / "runbooks" / "lane-host.md"
 
 _REGION = "eu-north-1"
 
@@ -173,17 +175,61 @@ def test_backend_is_s3_with_native_locking_in_the_project_region() -> None:
     assert _REGION in (_TF / "backend.hcl.example").read_text(encoding="utf-8")
 
 
-def test_lane_host_budget_cap_and_stop_action() -> None:
+def test_lane_host_budgets_can_fire_and_the_cap_stops_and_unwakes() -> None:
     text = _tf_text(_TF)
-    cap = _blocks(text, "variable", None)["lane_host_monthly_budget_usd"]
-    assert re.search(r"default\s*=\s*250\b", cap), "operator-approved cap is USD 250"
-    action = _blocks(text, "resource", "aws_budgets_budget_action")["stop_lane_hosts"]
-    assert '"STOP_EC2_INSTANCES"' in action and '"AUTOMATIC"' in action
-    assert "aws_instance.lane_host[*].id" in action
+    variables = _blocks(text, "variable", None)
+    assert re.search(r"default\s*=\s*250\b", variables["lane_host_monthly_budget_usd"]), (
+        "operator-approved cap is USD 250"
+    )
+    # L17: one r8g.xlarge for 744 h is USD 186.43, so an alert above that can
+    # never fire. The alerting budget must sit at expected spend.
+    expected = float(
+        re.search(r"default\s*=\s*([\d.]+)", variables["lane_host_expected_monthly_usd"]).group(1)
+    )
+    assert expected < 744 * 0.25058 * 0.8, (
+        "the lane-host alert cannot fire for a host stuck running"
+    )
+    budgets = _blocks(text, "resource", "aws_budgets_budget")
+    assert "var.lane_host_expected_monthly_usd" in budgets["lane_host"]
+    assert "local.lane_host_cap_usd" in budgets["lane_host_cap"]
+    assert re.search(
+        r"lane_host_cap_usd\s*=\s*var\.lane_host_monthly_budget_usd\s*-\s*var\.lane_host_count\s*\*\s*local\.lane_host_fixed_usd\s*-\s*var\.lane_host_egress_allowance_usd",
+        text,
+    ), "the cap must leave room for the fixed costs its filter cannot see"
+    actions = _blocks(text, "resource", "aws_budgets_budget_action")
+    stop, unwake = actions["stop_lane_hosts"], actions["block_lane_host_wake"]
+    assert '"STOP_EC2_INSTANCES"' in stop and '"AUTOMATIC"' in stop
+    assert "aws_instance.lane_host[*].id" in stop and "lane_host_cap[0]" in stop
+    assert '"APPLY_IAM_POLICY"' in unwake and "aws_iam_role.lane_host_wake[0].name" in unwake
     policy = _blocks(text, "data", "aws_iam_policy_document")["budget_action"]
     assert re.search(r'"aws:ResourceTag/Role"[^]]*"lane-host"', policy, re.S), (
         "stop must be tag-scoped to lane hosts"
     )
+    # The resources AWS's own budget-action policy lists (v2, 2026-04-07);
+    # with the automation definition alone SSM denies the execution.
+    for resource in (
+        "document/AWS-StopEC2Instance",
+        "automation-definition/AWS-StopEC2Instance:*",
+        "automation-execution/*",
+    ):
+        assert resource in policy, f"budget-action role lacks {resource}"
+    assert "AWS-StartEC2Instance" not in policy, "the cap role must never start instances"
+    wake = _blocks(text, "data", "aws_iam_policy_document")["lane_host_wake"]
+    assert '"ec2:StartInstances"' in wake and re.search(
+        r'"aws:ResourceTag/Role"[^]]*"lane-host"', wake, re.S
+    )
+
+
+def test_prod_role_cannot_read_lane_host_parameters() -> None:
+    # SSM core allows ssm:GetParameter* on "*"; only an explicit Deny keeps an
+    # internet-facing host away from the tailnet join key.
+    text = _tf_text(_TF)
+    deny = _blocks(text, "data", "aws_iam_policy_document")["prod_deny_lane_host_params"]
+    assert re.search(r'effect\s*=\s*"Deny"', deny)
+    assert '"ssm:GetParameter"' in deny and '"ssm:GetParametersByPath"' in deny
+    assert "local.tailscale_authkey_param_arn" in deny
+    attach = _blocks(text, "resource", "aws_iam_role_policy")["prod_deny_lane_host_params"]
+    assert "aws_iam_role.prod.id" in attach
 
 
 _SECRET_PATTERNS = {
@@ -218,8 +264,147 @@ def test_tailscale_key_is_read_at_boot_never_templated() -> None:
     assert not re.search(r'variable "tailscale_auth_?key"', text), (
         "the key itself must never be a variable"
     )
-    bootstrap = (_TF / "scripts" / "lane-host-bootstrap.sh").read_text(encoding="utf-8")
+    bootstrap = _BOOTSTRAP.read_text(encoding="utf-8")
     assert "--with-decryption" in bootstrap and '--auth-key="file:$keyfile"' in bootstrap
+    # Single use: deleted after the join, so no instance role can read it later.
+    assert bootstrap.index("tailscale up") < bootstrap.index("ssm delete-parameter")
+    lane_role = _blocks(text, "data", "aws_iam_policy_document")["lane_host_tailscale_key"]
+    assert '"ssm:DeleteParameter"' in lane_role
+
+
+def test_lane_host_bootstrap_bounds_every_wait_and_arms_the_sweep_before_the_network() -> None:
+    """L11/L21: runcmd runs once per instance, so a step that hangs or fails
+    must not leave a host that never stops. The sweep (idle poweroff) is on
+    before anything that talks to the network, and every external wait has a
+    bound."""
+    body = _strip_comments(_BOOTSTRAP.read_text(encoding="utf-8"))
+    sweep = body.index("systemctl enable --now compute-lane-host-sweep.timer")
+    for later in ("apt-get update", "snap wait", "ssm get-parameter", "tailscale up"):
+        assert sweep < body.index(later), f"the sweep is armed after {later!r}"
+    for cmd in (
+        "curl ",
+        "apt-get update",
+        "apt-get install",
+        "snap wait",
+        "snap install",
+        "/snap/bin/aws",
+    ):
+        for line in (
+            ln for ln in body.splitlines() if cmd in ln and not ln.lstrip().startswith("--")
+        ):
+            assert "timeout " in line, f"unbounded wait: {line.strip()}"
+    assert re.search(r"tailscale up[^\n]*\n(?:[^\n]*\\\n)*[^\n]*--timeout=", body), (
+        "tailscale up has no --timeout"
+    )
+    assert "--accept-dns=false" in body
+    assert "ufw deny out on tailscale0" in body, "lane code must not reach the tailnet (the Mini)"
+    assert (
+        body.rstrip().splitlines()[-2].startswith('date -u +%FT%TZ > "$state_dir/provisioned"')
+    ), "the provisioned marker must be the last step"
+
+
+def test_lane_host_runcmd_arms_the_failsafe_first() -> None:
+    lane = _strip_comments((_TF / "lane_host.tf").read_text(encoding="utf-8"))
+    runcmd = re.search(r"runcmd = \[(.*?)\n\s*\]\n", lane, re.S)
+    assert runcmd, "lane-host runcmd not found"
+    steps = runcmd.group(1)
+    assert (
+        steps.index("lane-host-failsafe.timer")
+        < steps.index("attach-data-volume")
+        < steps.index("lane-host-bootstrap")
+    )
+
+
+def test_lane_host_user_data_edit_is_not_a_replacement() -> None:
+    body = _blocks(_tf_text(_TF), "resource", "aws_instance")["lane_host"]
+    assert re.search(r"user_data_replace_on_change\s*=\s*false", body)
+
+
+def test_idle_poweroff_has_exactly_one_owner() -> None:
+    lane = _tf_text(_TF)
+    assert "idle-stop" not in lane and "idle_stop.sh" not in lane
+    assert not (_TF / "scripts" / "lanes-idle-stop.sh").exists()
+    assert "idle_poweroff_min = var.lane_host_idle_stop_minutes" in lane
+    assert "ExecStart=${local.lane_host_helper_path} sweep" in lane
+
+
+def test_saved_plans_are_gitignored() -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    for rel in ("tfplan", "bootstrap/tfplan", "x.tfplan"):
+        r = subprocess.run(
+            ["git", "check-ignore", "-q", str(_TF / rel)],
+            cwd=_REPO,
+            capture_output=True,
+            timeout=30,
+        )
+        assert r.returncode == 0, f"infrastructure/terraform-aws/{rel} is not ignored (public repo)"
+
+
+def _compute_policy() -> tuple[dict, Path] | None:
+    path = Path(
+        os.environ.get("COMPUTE_POLICY", Path.home() / ".agents" / "compute" / "policy.yaml")
+    )
+    if not path.is_file():
+        return None
+    policy = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return (policy, path) if (policy.get("hosts") or {}).get("nodes") else None
+
+
+def _tf_default(text: str, name: str) -> str:
+    body = _blocks(text, "variable", None)[name]
+    return re.search(r'default\s*=\s*("[^"]*"|[\d.]+|\[[^]]*\])', body).group(1)
+
+
+def test_lane_host_matches_the_compute_contract() -> None:
+    """compute owns the host contract (policy.yaml hosts.nodes + backends.node,
+    bin/compute-lane-host); this root installs it. Runs wherever a compute
+    policy with a hosts.nodes entry exists (COMPUTE_POLICY, else
+    ~/.agents/compute/policy.yaml); CI has none and skips."""
+    found = _compute_policy()
+    if found is None:
+        pytest.skip(
+            "no compute policy with hosts.nodes (COMPUTE_POLICY / ~/.agents/compute/policy.yaml)"
+        )
+    policy, path = found
+    text = _tf_text(_TF)
+    prefix = json.loads(_tf_default(text, "lane_host_name_prefix"))
+    name, node = next(
+        (n, h) for n, h in sorted(policy["hosts"]["nodes"].items()) if n.endswith("-1")
+    )
+    backend = policy["backends"]["node"]
+    local = {
+        k: json.loads(v)
+        for k, v in re.findall(r'^\s*(lane_host_[a-z_]+)\s*=\s*("[^"]*")\s*$', text, re.M)
+    }
+    assert name == f"{prefix}-1", f"policy host {name} != {prefix}-1"
+    assert node["ssh"] == f"{local['lane_host_control_user']}@{name}"
+    assert node["workroot"] == local["lane_host_workroot"]
+    assert node["slice"] == local["lane_host_slice"]
+    assert backend["helper"] == local["lane_host_helper_path"]
+    assert node["region"] == json.loads(_tf_default(text, "region"))
+    assert node["instance_type"] == json.loads(_tf_default(text, "lane_host_instance_type"))
+    assert float(node["budget_usd_month"]) == float(
+        _tf_default(text, "lane_host_monthly_budget_usd")
+    )
+    assert set(node["keys"]) <= set(json.loads(_tf_default(text, "lane_host_provider_keys")))
+    projects = set(
+        re.findall(
+            r"^\s*([a-z0-9_-]+)\s*=\s*\{ retention",
+            _blocks(text, "variable", None)["lane_host_projects"],
+            re.M,
+        )
+    )
+    assert set(node["projects"]) == projects
+    runbook = _LANE_RUNBOOK.read_text(encoding="utf-8")
+    assert backend["ssh_identity"] in runbook, "the runbook must create the key compute pins"
+    assert node["prime_agent"] in runbook
+    example = path.parent / "bin" / "compute-lane-host.example.json"
+    if example.is_file():
+        config = re.search(r"lane_host_helper_config = jsonencode\(\{(.*?)\}\)", text, re.S)
+        assert config, "lane-host.json is no longer rendered"
+        rendered = set(re.findall(r"^\s*([a-z_]+)\s*=", config.group(1), re.M))
+        assert set(json.loads(example.read_text(encoding="utf-8"))) <= rendered
 
 
 # ── Ansible hunks this root depends on ───────────────────────────────────────
@@ -483,84 +668,76 @@ def test_every_prod_dependency_has_a_linux_wheel_for_the_prod_arch(arch: str) ->
     assert not blockers, f"no linux-{arch} wheel in uv.lock for: {blockers}"
 
 
-# ── lane-host idle stop ──────────────────────────────────────────────────────
+# ── lane-host boot failsafe ─────────────────────────────────────────────────
 
 
 @pytest.fixture
-def idle_stop(tmp_path: Path):
-    """Run lanes-idle-stop.sh against a fake cgroup tree and stub binaries."""
+def failsafe(tmp_path: Path):
+    """Run lane-host-failsafe.sh against a temporary state dir and stubs."""
     if shutil.which("bash") is None:
         pytest.skip("bash not available")
     stubs = tmp_path / "bin"
     stubs.mkdir()
     calls = tmp_path / "calls"
-    (stubs / "systemctl").write_text(f'#!/bin/sh\necho "systemctl $*" >> "{calls}"\n')
+    mounted, timer = tmp_path / "mounted", tmp_path / "timer-active"
+    (stubs / "systemctl").write_text(
+        f'#!/bin/sh\nif [ "$1" = is-active ]; then [ -e "{timer}" ]; exit $?; fi\n'
+        f'echo "systemctl $*" >> "{calls}"\n'
+    )
+    (stubs / "mountpoint").write_text(f'#!/bin/sh\n[ -e "{mounted}" ]\n')
     (stubs / "logger").write_text("#!/bin/sh\nexit 0\n")
-    sessions = tmp_path / "sessions"
-    sessions.write_text("")
-    (stubs / "loginctl").write_text(f'#!/bin/sh\ncat "{sessions}"\n')
     for stub in stubs.iterdir():
         stub.chmod(0o755)
     defaults = tmp_path / "defaults"
-    defaults.write_text("LANES_IDLE_STOP_MINUTES=60\n")
-    slice_dir = (
-        tmp_path / "cg/user.slice/user-1001.slice/user@1001.service/lanes.slice/lane-x.service"
-    )
-    slice_dir.mkdir(parents=True)
-    procs = slice_dir / "cgroup.procs"
-    procs.write_text("")
+    defaults.write_text(f"LANES_WORKROOT={tmp_path / 'srv'}\n")
     state = tmp_path / "state"
+    state.mkdir()
     env = {
         "PATH": f"{stubs}:/usr/bin:/bin",
         "LANE_HOST_DEFAULTS": str(defaults),
-        "LANES_IDLE_STATE_DIR": str(state),
-        "LANES_CGROUP_ROOT": str(tmp_path / "cg"),
-        "LANES_UID": "1001",
+        "LANE_HOST_STATE_DIR": str(state),
     }
 
     def run() -> list[str]:
-        subprocess.run(["bash", str(_IDLE_STOP)], env=env, check=True, timeout=30)
+        subprocess.run(
+            ["bash", str(_FAILSAFE)], env=env, check=True, timeout=30, capture_output=True
+        )
         return calls.read_text().splitlines() if calls.exists() else []
 
-    return run, state, procs, sessions, defaults
+    def healthy() -> None:
+        (state / "provisioned").write_text("2026-10-07T00:00:00Z\n")
+        mounted.touch()
+        timer.touch()
+
+    return run, healthy, state, mounted, timer
 
 
-def test_idle_stop_first_tick_after_boot_only_stamps(idle_stop) -> None:
-    run, state, *_ = idle_stop
+def test_failsafe_leaves_a_provisioned_mounted_sweeping_host_up(failsafe) -> None:
+    run, healthy, *_ = failsafe
+    healthy()
     assert run() == []
-    assert (state / "last-busy").exists()
 
 
-def test_idle_stop_powers_off_after_the_limit_with_nothing_running(idle_stop) -> None:
-    run, state, *_ = idle_stop
-    state.mkdir()
-    (state / "last-busy").write_text("1\n")
+def test_failsafe_powers_off_when_the_bootstrap_never_finished(failsafe) -> None:
+    # The finding's case: SSM parameter missing -> bootstrap exits -> no marker.
+    run, healthy, state, *_ = failsafe
+    healthy()
+    (state / "provisioned").unlink()
     assert run() == ["systemctl poweroff"]
 
 
-def test_idle_stop_keeps_a_host_with_a_running_lane(idle_stop) -> None:
-    run, state, procs, _, _ = idle_stop
-    state.mkdir()
-    (state / "last-busy").write_text("1\n")
-    procs.write_text("4242\n")
-    assert run() == []
-    assert int((state / "last-busy").read_text()) > 1
+def test_failsafe_powers_off_without_the_data_volume(failsafe) -> None:
+    run, healthy, _, mounted, _ = failsafe
+    healthy()
+    mounted.unlink()
+    assert run() == ["systemctl poweroff"]
 
 
-def test_idle_stop_keeps_a_host_with_a_login_session(idle_stop) -> None:
-    run, state, _, sessions, _ = idle_stop
-    state.mkdir()
-    (state / "last-busy").write_text("1\n")
-    sessions.write_text("  3 1001 lanes - pts/0\n")
-    assert run() == []
-
-
-def test_idle_stop_disabled_at_zero(idle_stop) -> None:
-    run, state, _, _, defaults = idle_stop
-    defaults.write_text("LANES_IDLE_STOP_MINUTES=0\n")
-    state.mkdir()
-    (state / "last-busy").write_text("1\n")
-    assert run() == []
+def test_failsafe_powers_off_when_nothing_would_idle_stop(failsafe) -> None:
+    run, healthy, _, _, timer = failsafe
+    healthy()
+    timer.unlink()
+    assert run() == ["systemctl poweroff"]
 
 
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck not on PATH")

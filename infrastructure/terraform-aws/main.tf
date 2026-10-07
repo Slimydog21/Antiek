@@ -4,10 +4,10 @@
 # File map:
 #   network.tf   VPC, one public subnet, IGW, default-SG lockdown
 #   prod.tf      production host, its data volume, EIP, security group
-#   lane_host.tf lane host(s) for the compute dispatcher's node backend
-#   iam.tf       instance roles (SSM core only), DLM and budget-action roles
+#   lane_host.tf lane host(s) for the compute dispatcher's node backend, daily wake
+#   iam.tf       instance roles, DLM, budget-action and wake roles
 #   dlm.tf       daily snapshots of the prod data volume
-#   budgets.tf   prod alert budget, lane-host cap + stop action
+#   budgets.tf   prod alert budget, lane-host expected-spend alerts, cap + actions
 #   outputs.tf   values the runbooks need (EIP, ids, ...)
 # ──────────────────────────────────────────────────────────────────────────────
 

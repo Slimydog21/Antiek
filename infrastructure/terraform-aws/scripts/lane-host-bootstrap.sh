@@ -1,111 +1,149 @@
 #!/bin/bash
-# First-boot setup of a lane host (lane_host.tf), after cloud-init has
-# created the `lanes` account and mounted the data volume at /srv/lanes.
-# Reads /etc/default/antiek-lane-host. Safe to re-run.
+# First-boot setup of a lane host (lane_host.tf): the host half of compute's
+# node contract (policy.yaml hosts.nodes + backends.node, and the helper
+# bin/compute-lane-host), after cloud-init has written the config files,
+# created the `compute` control account and mounted the data volume at the
+# workroot. Reads /etc/default/antiek-lane-host. Idempotent: the reprovision
+# path in infrastructure/runbooks/lane-host.md re-runs it.
 #
-# What it does, in order:
-#   1. The compute 1.6.0 host contract for the lanes account: a lingering
-#      user manager (so user units run with nobody logged in), the user
-#      lanes.slice that caps every lane together, ~/.config/compute/ for
-#      the per-node key file, and the workroot owned by lanes. It then
-#      checks that memory, pids and cpu are delegated to the user manager
-#      and fails loudly if not: per-lane MemoryMax would otherwise be
-#      silently unenforced.
-#   2. Host firewall: deny inbound except SSH on tailscale0. The security
-#      group already admits nothing; this is the second layer.
-#   3. Tailscale from its signed apt repository (plus rsync for stage-in
-#      and stage-out), then joins the tailnet with an auth key read at boot
-#      from SSM Parameter Store (SecureString). The key is never in
-#      user_data, Terraform state, argv or the journal: it is fetched into a
-#      0600 file under /run (tmpfs) and passed as file:PATH.
-#   4. The idle-stop timer, when enabled.
+# The order is chosen so that a failure part-way still leaves a host that
+# stops itself:
+#   0. (cloud-init runcmd, before this script) lane-host-failsafe.timer is
+#      armed: unless this script reaches its last step, the host powers off
+#      LANE_HOST_FAILSAFE_MINUTES after boot.
+#   1. Accounts: one system user and group lane-<project> per tenant (no
+#      login shell, no home); `compute` joins systemd-journal and every lane
+#      group. Lanes never run as `compute`.
+#   2. /etc/compute (keys directory root 0700; lane-host.json from
+#      cloud-init), the workroot layout, the helper's one sudoers line
+#      (checked by visudo before it is installed).
+#   3. lanes.slice loaded and the sweep timer enabled. From here on,
+#      compute-lane-host owns idle poweroff, the dead man and the workdir
+#      TTLs, whether or not the Tailscale join below succeeds.
+#   4. Host firewall: inbound only SSH on tailscale0, nothing outbound into
+#      the tailnet (the Mini opens every connection; replies pass by
+#      conntrack). The security group already admits nothing.
+#   5. Packages (Tailscale's signed repository, rsync, nftables), then the
+#      nftables table that leaves the metadata service to root only.
+#   6. Tailscale join with a single-use auth key read from SSM Parameter
+#      Store into a 0600 file under /run (never user_data, state, argv or the
+#      journal); the parameter is deleted after a successful join.
+#   7. The provisioned marker the failsafe checks.
 #
-# What it never does: install Antiek code or any Antiek credential (D-18 /
-# D-19). The per-node provider keys and prime-agent are the operator's
-# later steps (infrastructure/runbooks/lane-host.md).
+# Every external wait is bounded. Any failure is logged and leaves
+# /var/lib/antiek-lane-host/bootstrap-failed for the SSM check in the runbook.
+#
+# Never installed here: Antiek code or credentials, provider keys (the
+# operator writes /etc/compute/keys/<NAME>.env), prime-agent, bd.
 set -euo pipefail
 
 # shellcheck source=/dev/null
 . /etc/default/antiek-lane-host
 : "${AWS_REGION:?}" "${TAILSCALE_AUTHKEY_PARAM:?}" "${TAILSCALE_HOSTNAME:?}" "${TAILSCALE_TAGS:?}"
-: "${LANES_USER:?}" "${LANES_WORKROOT:?}" "${LANES_SLICE_MEMORY_HIGH:?}" "${LANES_SLICE_MEMORY_MAX:?}" "${LANES_SLICE_TASKS_MAX:?}"
+: "${LANES_CONTROL_USER:?}" "${LANES_USER_PREFIX:?}" "${LANES_PROJECTS:?}" "${LANES_WORKROOT:?}"
+: "${LANES_HELPER:?}" "${LANES_SLICE:?}"
 
-# ── 1. lanes account: workroot, key dir, user slice, linger, delegation ─────
-lanes_home="$(getent passwd "$LANES_USER" | cut -d: -f6)"
-lanes_uid="$(id -u "$LANES_USER")"
-[ -n "$lanes_home" ] || { echo "lane-host-bootstrap: no home for $LANES_USER" >&2; exit 1; }
+state_dir=/var/lib/antiek-lane-host
+install -d -m 0755 "$state_dir"
+rm -f "$state_dir/provisioned"
+on_error() {
+  local rc=$? line=$1
+  echo "line $line exit $rc $(date -u +%FT%TZ)" > "$state_dir/bootstrap-failed"
+  logger -t lane-host-bootstrap "FAILED at line $line (exit $rc); lane-host-failsafe powers the host off ${LANE_HOST_FAILSAFE_MINUTES:-60} min after boot"
+}
+trap 'on_error $LINENO' ERR
 
-install -d -o "$LANES_USER" -g "$LANES_USER" -m 0750 "$LANES_WORKROOT"
-for d in .config .config/systemd .config/systemd/user .config/compute; do
-  install -d -o "$LANES_USER" -g "$LANES_USER" -m 0700 "$lanes_home/$d"
+systemd_version="$(systemctl --version | awk 'NR == 1 { print $2 }')"
+if [ "${systemd_version:-0}" -lt 254 ]; then
+  echo "lane-host-bootstrap: systemd $systemd_version < 254 (compute needs --expand-environment)" >&2
+  exit 1
+fi
+
+# ── 1. accounts ──────────────────────────────────────────────────────────────
+read -r -a projects <<< "$LANES_PROJECTS"
+control_groups=(systemd-journal)
+for p in "${projects[@]}"; do
+  u="${LANES_USER_PREFIX}${p}"
+  getent group "$u" >/dev/null || groupadd --system "$u"
+  id -u "$u" >/dev/null 2>&1 \
+    || useradd --system --gid "$u" --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$u"
+  control_groups+=("$u")
 done
+usermod -aG "$(IFS=,; echo "${control_groups[*]}")" "$LANES_CONTROL_USER"
 
-slice="$lanes_home/.config/systemd/user/lanes.slice"
-cat > "$slice.tmp" <<EOF
-# lane-host-bootstrap (infrastructure/terraform-aws). Every compute lane is
-# a transient user unit in this slice; these limits cap them together.
-# Per-lane limits come from the compute policy on each systemd-run.
-[Unit]
-Description=compute lanes (systemd-run --user --slice=lanes.slice)
+# ── 2. /etc/compute, workroot, helper + sudoers ─────────────────────────────
+install -d -o root -g root -m 0755 /etc/compute
+install -d -o root -g root -m 0700 /etc/compute/keys
+chown root:root /etc/compute/keys
+chmod 0700 /etc/compute/keys
+python3 -c 'import json, sys; json.load(open(sys.argv[1]))' /etc/compute/lane-host.json
 
-[Slice]
-MemoryAccounting=yes
-MemoryHigh=$LANES_SLICE_MEMORY_HIGH
-MemoryMax=$LANES_SLICE_MEMORY_MAX
-TasksAccounting=yes
-TasksMax=$LANES_SLICE_TASKS_MAX
-CPUAccounting=yes
-EOF
-chown "$LANES_USER:$LANES_USER" "$slice.tmp"
-chmod 0644 "$slice.tmp"
-mv -f "$slice.tmp" "$slice"
+if [ "$(stat -c %U:%a "$LANES_HELPER")" != "root:755" ] || [ "$(head -c 18 "$LANES_HELPER")" != "#!/usr/bin/python3" ]; then
+  echo "lane-host-bootstrap: $LANES_HELPER is not the root-owned compute helper" >&2
+  exit 1
+fi
 
+if ! mountpoint -q "$LANES_WORKROOT"; then
+  echo "lane-host-bootstrap: $LANES_WORKROOT is not mounted" >&2
+  exit 1
+fi
+chown root:root "$LANES_WORKROOT"
+chmod 0755 "$LANES_WORKROOT"
+for p in "${projects[@]}"; do
+  u="${LANES_USER_PREFIX}${p}"
+  install -d -o "$u" -g "$u" -m 2770 "$LANES_WORKROOT/$p"
+  chown "$u:$u" "$LANES_WORKROOT/$p"
+  chmod 2770 "$LANES_WORKROOT/$p"
+done
+# Exit records (a root ExecStopPost writes them) and the dispatcher's
+# heartbeats: writable by the control account, unreadable by lanes.
+install -d -o "$LANES_CONTROL_USER" -g "$LANES_CONTROL_USER" -m 0750 "$LANES_WORKROOT/.records"
+
+sudoers_tmp="$(mktemp)"
+printf '%s ALL=(root) NOPASSWD: %s\n' "$LANES_CONTROL_USER" "$LANES_HELPER" > "$sudoers_tmp"
+visudo -cqf "$sudoers_tmp"
+install -o root -g root -m 0440 "$sudoers_tmp" /etc/sudoers.d/compute-lane-host
+rm -f "$sudoers_tmp"
+
+# ── 3. lanes.slice + the sweep (idle poweroff, dead man, TTLs) ──────────────
 systemctl daemon-reload
-loginctl enable-linger "$LANES_USER"
-for _ in $(seq 1 30); do
-  systemctl is-active --quiet "user@$lanes_uid.service" && break
-  sleep 1
-done
+systemctl start "$LANES_SLICE"
+if [ "$(systemctl show -p MemoryMax --value "$LANES_SLICE")" = "infinity" ]; then
+  echo "lane-host-bootstrap: $LANES_SLICE has no MemoryMax" >&2
+  exit 1
+fi
+systemctl enable --now compute-lane-host-sweep.timer
 
-controllers="/sys/fs/cgroup/user.slice/user-$lanes_uid.slice/user@$lanes_uid.service/cgroup.controllers"
-for c in memory pids cpu; do
-  if ! grep -qw "$c" "$controllers" 2>/dev/null; then
-    echo "lane-host-bootstrap: controller '$c' is not delegated to user@$lanes_uid.service ($controllers)" >&2
-    exit 1
-  fi
-done
-# The user manager loads lanes.slice on first reference anyway; the reload
-# only matters on a re-run that changed the limits.
-runuser -u "$LANES_USER" -- env XDG_RUNTIME_DIR="/run/user/$lanes_uid" systemctl --user daemon-reload \
-  || echo "lane-host-bootstrap: warning: user daemon-reload failed; lanes.slice loads on first use" >&2
-
-# ── 2. firewall ──────────────────────────────────────────────────────────────
+# ── 4. firewall ──────────────────────────────────────────────────────────────
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow in on tailscale0 to any port 22 proto tcp
+ufw deny out on tailscale0
 ufw --force enable
 
-# ── 3. Tailscale (+ rsync), join the tailnet ────────────────────────────────
+# ── 5. packages, metadata service for root only ─────────────────────────────
 # shellcheck source=/dev/null
 codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
-curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
+timeout 120 curl -fsSL --retry 3 "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
   -o /usr/share/keyrings/tailscale-archive-keyring.gpg
-curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.tailscale-keyring.list" \
+timeout 120 curl -fsSL --retry 3 "https://pkgs.tailscale.com/stable/ubuntu/${codename}.tailscale-keyring.list" \
   -o /etc/apt/sources.list.d/tailscale.list
-apt-get update -q
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q tailscale rsync
+timeout 600 apt-get update -q
+DEBIAN_FRONTEND=noninteractive timeout 900 apt-get install -y -q tailscale rsync nftables
 systemctl enable --now tailscaled
+systemctl enable --now imds-root-only.service
 
+# ── 6. Tailscale ─────────────────────────────────────────────────────────────
 if tailscale status >/dev/null 2>&1; then
   echo "lane-host-bootstrap: already joined the tailnet; not re-authenticating"
 else
-  snap wait system seed.loaded
-  snap list aws-cli >/dev/null 2>&1 || snap install aws-cli --classic
+  timeout 300 snap wait system seed.loaded
+  snap list aws-cli >/dev/null 2>&1 || timeout 600 snap install aws-cli --classic
 
   umask 077
   keyfile="$(mktemp /run/tailscale-authkey.XXXXXX)"
   trap 'rm -f "$keyfile"' EXIT
-  /snap/bin/aws ssm get-parameter \
+  timeout 120 /snap/bin/aws ssm get-parameter \
     --region "$AWS_REGION" \
     --name "$TAILSCALE_AUTHKEY_PARAM" \
     --with-decryption \
@@ -115,15 +153,21 @@ else
     echo "lane-host-bootstrap: SSM parameter $TAILSCALE_AUTHKEY_PARAM is empty" >&2
     exit 1
   fi
+  # --accept-dns=false: the host never resolves tailnet names (the Mini
+  # opens every connection), and outbound into tailscale0 is denied above.
   tailscale up \
     --auth-key="file:$keyfile" \
     --hostname="$TAILSCALE_HOSTNAME" \
-    --advertise-tags="$TAILSCALE_TAGS"
+    --advertise-tags="$TAILSCALE_TAGS" \
+    --accept-dns=false \
+    --timeout=5m
   rm -f "$keyfile"
+  # Single use: once joined, nothing on any instance can read the key again.
+  timeout 120 /snap/bin/aws ssm delete-parameter --region "$AWS_REGION" --name "$TAILSCALE_AUTHKEY_PARAM" \
+    || logger -t lane-host-bootstrap "warning: could not delete $TAILSCALE_AUTHKEY_PARAM; delete it by hand (lane-host.md)"
 fi
 
-# ── 4. idle stop ─────────────────────────────────────────────────────────────
-if [ "${LANES_IDLE_STOP_MINUTES:-0}" -gt 0 ]; then
-  systemctl enable --now lanes-idle-stop.timer
-fi
+# ── 7. done ──────────────────────────────────────────────────────────────────
+rm -f "$state_dir/bootstrap-failed"
+date -u +%FT%TZ > "$state_dir/provisioned"
 echo "lane-host-bootstrap: done ($(tailscale ip -4 2>/dev/null | head -n1))"

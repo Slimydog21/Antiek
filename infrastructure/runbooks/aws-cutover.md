@@ -140,8 +140,17 @@ takes its fresh-host branch (`ln -s`):
 SHA=$(curl -s https://api.antiek.ai/health | python3 -c 'import json,sys; print(json.load(sys.stdin)["build_sha"])')
 ssh -i $KEY root@$AWS "systemctl stop antiek; mv /opt/antiek /opt/antiek-setup-clone"
 # control node: (cd ../../apps/reading && npm ci)   # the playbook builds the SPA but does not npm ci (D7)
-ansible-playbook -i inventory.aws.ini playbooks/deploy_atomic.yml -e antiek_target_sha=$SHA
+ansible-playbook -i inventory.aws.ini playbooks/deploy_atomic.yml -e antiek_target_sha=$SHA --skip-tags cloudflared
 ```
+
+`--skip-tags cloudflared` on every `deploy_atomic.yml` run before T-55: B2
+skipped the tunnel role, so `/etc/cloudflared/` does not exist, and the play's
+tunnel-ID lookup falls back to `cloudflared_tunnel_id`, which no group_vars
+define; the UUID assert would fail the deploy. Never work around it by
+passing the tunnel ID or credential: the production tunnel credential first
+reaches AWS at T-55 (Invariant 4 keeps every real secret off the host until
+the freeze, and STAGING_HOLD must not be the only thing between a second
+connector and the tunnel).
 
 If `require_green.sh` fails closed on a GitHub API 500 (D6), confirm
 independently (`gh api repos/Slimydog21/Antiek/compare/$SHA...main`, the
@@ -193,7 +202,7 @@ overlap the window.
 
 | T | Step | Gate |
 |---|---|---|
-| **T-24h** | **G0: Faisal approves the window.** Then `gh workflow disable deploy_backend.yml`. Hetzner's SHA is now frozen; merges to main continue and deploy after T+20. If B4 deployed an older SHA, redeploy AWS to Hetzner's current SHA now. Post the maintenance notice. | no deploy run in progress: `gh run list --workflow=deploy_backend.yml --limit 3` |
+| **T-24h** | **G0: Faisal approves the window.** Then `gh workflow disable deploy_backend.yml`. Hetzner's SHA is now frozen; merges to main continue and deploy after T+20. If B4 deployed an older SHA, redeploy AWS to Hetzner's current SHA now, with `--skip-tags cloudflared` as in B4. Post the maintenance notice. | no deploy run in progress: `gh run list --workflow=deploy_backend.yml --limit 3` |
 | **T-60** | **Final go from Faisal** (G0 still stands). Verifier re-runs B1 and B7 on AWS. | go recorded; B1, B7 pass |
 | T-55 | Install the tunnel credential on AWS under the hold: `ansible-playbook -i inventory.aws.ini playbooks/setup.yml -e @r2-creds.yml -e @cloudflared-creds.yml --tags cloudflared`. | `systemctl show cloudflared -p ActiveState,ConditionResult` = `inactive`, `no`; `cloudflared tunnel info $TUNNEL` lists connectors from Hetzner only |
 | T-50 | Hot pre-sync of everything that does not change under a running API, so the freeze copies only deltas (see "Copy commands"). | rsync exit 0 |
@@ -347,8 +356,14 @@ secrets, no variables [M]):
 **A. AWS has taken no user writes** (any time up to and including a failed
 G3 when the `write_log` count on AWS still equals the T+2 manifest's):
 
-1. AWS: `systemctl stop cloudflared antiek antiek-continuous-research` and
-   `touch /etc/antiek/STAGING_HOLD && systemctl daemon-reload`.
+1. AWS: `systemctl disable --now cloudflared antiek antiek-continuous-research`
+   and `touch /etc/antiek/STAGING_HOLD && systemctl daemon-reload`.
+   *Disable*, not just stop: `antiek.service` is not covered by the hold
+   (rehearsal needs the API), and deploy_atomic enabled it, so after a
+   reboot a stopped-but-enabled unit would start a second production
+   instance, with the real secrets copied at T+3, beside the restored
+   Hetzner writer (its startup workers write the diverged DuckDB copy). A
+   later retry re-enables it through the deploy.
 2. Hetzner (if T+10 ran): `rm /etc/antiek/RETIRED && mv /root/retired/*.json /etc/cloudflared/ && systemctl daemon-reload`;
    then `systemctl enable --now antiek antiek-continuous-research antiek-arxiv-oai-sync.timer antiek-backup.timer antiek-backup-freshness.timer antiek-health-probe.timer`
    and, once `cloudflared tunnel info $TUNNEL` shows no AWS connector,

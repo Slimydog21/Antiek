@@ -61,8 +61,10 @@ are restated here so it stands without them.
 - These tenants run under the Mini's `compute` dispatcher, which already has
   a Modal and a Prime backend, budgets, an exit-code taxonomy and a ledger.
   Its policy declares a `node` backend (D-19, adapter `ssh_systemd_run`)
-  that compute 1.6.0 implements (user units on a Linux host) [M,
-  `~/.agents/compute/policy.yaml`, compute CHANGELOG 1.6.0].
+  that compute 1.6.0 implements: system units started as `lane-<project>`
+  by one validating root helper on a Linux host [M, compute 1.6.0 at
+  `406a856` (review fixes, which replaced the user-unit design of `457ddcf`):
+  `policy.yaml` `backends.node` / `hosts.nodes`, `bin/compute-lane-host`].
 - **Metered sandboxes bill the wait.** Per right-sized lane-month: Prime
   ~USD 24.5 at the launch rate (no public rate after 2026-12-22), Modal
   Sandbox ~USD 30.5 (Sandboxes bill 3x Function rates; Functions are what
@@ -87,13 +89,21 @@ are restated here so it stands without them.
 
 Lane host #1 is an AWS **r8g.xlarge** (Graviton4, 4 vCPU / 32 GiB) in the
 same account and VPC as production, a separate instance that is never the
-production box. About 24 lanes at ≤1-2 GiB fit under a user `lanes.slice`
+production box. About 24 lanes at ≤1-2 GiB fit under a system `lanes.slice`
 (MemoryMax 26G). The dispatcher on the Mini stays the control plane: it holds
-the lease, admits by PSI and slots, starts one transient systemd user unit per
-lane over SSH (`systemd-run --user --unit=lane-<project>-<lane>__<sha8>`), and
-collects the terminal state. Cost: ~USD 202/month all-in 24x7 on-demand,
-under the approved USD 250 cap, which AWS Budgets enforces with an automatic
-stop action; an idle host powers itself off after 60 minutes.
+the lease, admits by PSI and slots, and over SSH as the host's control
+account asks compute's one privileged helper (`sudo -n
+/usr/local/sbin/compute-lane-host start …`) to start one transient system
+unit per lane, run as `lane-<project>` under `lanes.slice`; it collects the
+terminal state from a root-written exit record. compute owns that host
+contract and `compute doctor` verifies it; Terraform installs it (the helper
+byte for byte from the operator's compute checkout) and re-encodes none of
+it. Cost: ~USD 202/month all-in 24x7 on-demand. The approved USD 250 cap
+covers all lane-host spend; AWS Budgets enforces it on instance-hours at
+250 minus fixed EBS/IPv4 and an egress allowance (USD 221.30 for one host),
+stopping the hosts and detaching their daily wake. The helper's sweep powers
+an idle host off after 60 minutes, a daily schedule starts it again, and an
+alerting budget at expected spend (USD 100) flags a host stuck running.
 
 Why not a sandbox vendor as the backbone: lanes spend almost all their time
 waiting on model APIs, and per-sandbox metering bills that wait. Packing
@@ -228,14 +238,15 @@ and the beads-fleet skill]. So:
 
 | Lesson (mini-lessons) | Where it is structural here |
 |---|---|
-| L1 admission before create; L5 per-project caps don't sum | the dispatcher admits before any remote start; the host's lanes.slice and the root-owned user-slice ceiling cap the sum, not each lane |
+| L1 admission before create; L5 per-project caps don't sum | the dispatcher admits before any remote start; the host's system lanes.slice (root-owned, MemoryMax 26G of 32 GiB) caps the sum, not each lane |
 | L2 retry must prove the prior attempt gone | node-local dedupe: a duplicate `lane-…` unit name is refused (exit 3) |
 | L4 lease held by the thing doing the work | the Mini's supervising process holds the lease; the unit's ExecStopPost record is the terminal state |
-| L8 TMPDIR runaway / ENOSPC | lanes write only under `/srv/lanes` on their own volume; the root disk is not theirs |
+| L8 TMPDIR runaway / ENOSPC | a lane unit can write only its workdir on `/srv/lanes` (ProtectSystem=strict, ProtectHome, HOME = the workdir) and its PrivateTmp, which lives on tmpfs `/tmp` and `/var/tmp` charged to its own memory cgroup; the root volume that sshd, journald and tailscaled need is not writable by lanes. (The 10-07 draft's lanes account had its HOME on the root volume.) |
 | L9 storage at rest is the billing trap | snapshots capped at 14, state-bucket old versions expire after 90 days, the lane data volume is not backed up (the Mini is the data of record) |
-| L17 vacuous gates | budgets filter on instance type, which reads from the first hour, not on a tag that reads USD 0 until activated; the stop action is tag-scoped and tested; the quota check fails at plan |
+| L11 / L21 one-shot boot work fails silently, nothing retries | the boot failsafe is armed before any step that can fail and powers off a host that is not provisioned, mounted and sweeping 60 minutes after boot; every external wait in the bootstrap is bounded; a `bootstrap-failed` marker is left for the SSM check |
+| L17 vacuous gates | budgets filter on instance type, which reads from the first hour, not on a tag that reads USD 0 until activated; each budget is sized so it can fire for its failure (one prod instance cannot trip the prod budget, two do; the lane-host alert sits at expected spend, below one host's month); the stop action is tag-scoped and carries the SSM resources of AWS's own budget-action policy. It has not run against the live account: the runbook's Budgets-path drill is the bar, owed before it is relied on. The quota and AZ checks fail at plan |
 | L18 low CPU with long wall time is billed waiting | the backbone is a packed host, not per-sandbox metering |
-| L24 control-plane checks must not run on the overloaded host | lane-host health is PSI read over SSH by the dispatcher; budget enforcement is AWS-side |
+| L24 control-plane checks must not run on the overloaded host | lane-host health is PSI read over SSH by the dispatcher; budget enforcement and the daily wake are AWS-side |
 | L27 a terminal-state contract | the ExecStopPost exit record plus `.DONE` tested on the node |
 
 ## Consequences
@@ -244,6 +255,20 @@ and the beads-fleet skill]. So:
   (~USD 112-119 on a 1-year EC2 Instance Savings Plan, bought only after 30
   days of measurements). Against a Hetzner rebuild (USD 101.49) that is
   1.1-1.6x. One lane host adds up to ~USD 202 at 24x7, less when idle.
+- Idle stop trades offload for money. A lane submitted while the host is
+  stopped falls through to the Mini (compute warns `node_unreachable`); the
+  daily 05:00 UTC wake bounds that to the hours between an idle stop and the
+  next wake or manual start: lanes the tenants start overnight land on the
+  Mini whenever the host idled off in the evening (how often that happens
+  is not measured yet; compute's `node_unreachable` warns count it). If the
+  Mini's load returns, move the wake earlier or add a second one, or raise
+  `idle_poweroff_min`, and accept the cost.
+- The lane host keeps an instance profile, where compute's host comment asks
+  for none: the SSM agent (break-glass, reprovision) and the boot-time
+  Tailscale key fetch need it, both as root. The metadata service is
+  rejected for every other uid, which is what `compute doctor` measures
+  ("no instance role reachable" from the control account), and the key is
+  single use and deleted after the join.
 - The rebuild path becomes code: Terraform for the machine, cloud-init for
   the mount, root access, hold and origin-TLS declaration, Ansible for
   everything above, the cutover runbook for the state. The restore
