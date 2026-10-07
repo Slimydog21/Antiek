@@ -5,7 +5,10 @@ import { recordAdImpressions } from "../../api/books";
 import type { ImpressionItem } from "../../api/books";
 import {
   beforeWorkspaceOwnerChange,
+  awaitWorkspaceOwnerSession,
   isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission,
+  workspaceOwnerAdmission,
   useWorkspaceOwner,
   type WorkspaceOwnerSession,
 } from "../../lib/accountWorkspaceOwner";
@@ -50,6 +53,7 @@ export interface ReaderDwell {
 
 interface DwellSession {
   readonly owner: WorkspaceOwnerSession;
+  readonly controller: AbortController;
   active: boolean;
   dwellMs: number;
   focusedSince: number | null;
@@ -77,6 +81,7 @@ export function useReaderImpressions(
   // Account retirement discards it before any cleanup can use a new cookie.
   const measurement = useMemo<DwellSession>(() => ({
     owner,
+    controller: new AbortController(),
     active: true,
     dwellMs: 0,
     focusedSince: null,
@@ -91,7 +96,6 @@ export function useReaderImpressions(
   }, [measurement, onDwell]);
 
   const accumulate = useCallback(() => {
-    if (!isCurrent(measurement)) return;
     if (measurement.focusedSince !== null) {
       const delta = nowMs() - measurement.focusedSince;
       measurement.dwellMs += delta;
@@ -122,19 +126,22 @@ export function useReaderImpressions(
       focused_dwell_ms: dwell,
       tab_focused: tabFocused,
     }));
-    if (items.length > 0 && isCurrent(measurement)) {
-      void recordAdImpressions(documentId, sessionId, items).catch(() => {
-        /* best-effort — never disrupt reading */
-      });
-    }
-    // Report the SESSION-cumulative dwell evidence (SPR-07 M4). The consumer
-    // decides the source.read "read" verdict from this; the hook just measures.
-    if (isCurrent(measurement)) {
-      measurement.onDwell?.({
-        totalDwellMs: measurement.totalDwellMs,
-        pagesSeen: measurement.pages.size,
-      });
-    }
+    const evidence = { totalDwellMs: measurement.totalDwellMs, pagesSeen: measurement.pages.size };
+    const callback = measurement.onDwell;
+    // A flush owns its captured sample, including a legitimate same-owner
+    // leave. Retirement aborts it; a ready observer alone cannot release it.
+    void (async () => {
+      do {
+        if (!await awaitWorkspaceOwnerSession(measurement.owner, measurement.controller.signal)) return;
+      } while (!isWorkspaceOwnerSession(measurement.owner));
+      if (measurement.controller.signal.aborted) return;
+      if (items.length > 0) {
+        void recordAdImpressions(documentId, sessionId, items).catch(() => {
+          /* best-effort — never disrupt reading */
+        });
+      }
+      if (isWorkspaceOwnerSession(measurement.owner) && !measurement.controller.signal.aborted) callback?.(evidence);
+    })();
     resume();
   }, [accumulate, resume, documentId, sessionId, measurement]);
 
@@ -143,11 +150,13 @@ export function useReaderImpressions(
    * one. */
   const observePage = useCallback(
     (pageIndex: number, slots: { slotId: string; fill: AdFillView }[]) => {
-      if (!isCurrent(measurement)) return;
+      const admission = workspaceOwnerAdmission();
+      if (!measurement.active || admission.session !== measurement.owner
+        || (admission.state !== "ready" && admission.state !== "suspended")) return;
       if (measurement.page && measurement.page.pageIndex !== pageIndex) {
-        flush();
+        if (isCurrent(measurement)) flush();
+        else measurement.dwellMs = 0;
       }
-      if (!isCurrent(measurement)) return;
       measurement.pages.add(pageIndex);
       measurement.page = { pageIndex, slots };
       // (Re)start the dwell clock for the page now showing.
@@ -160,9 +169,23 @@ export function useReaderImpressions(
   useEffect(() => {
     measurement.active = true;
     resume();
+    const onAdmission = (admission: ReturnType<typeof workspaceOwnerAdmission>) => {
+      if (admission.session !== measurement.owner || admission.state === "retiring" || admission.state === "failed") {
+        accumulate();
+        measurement.active = false;
+        measurement.controller.abort();
+      } else if (admission.state === "suspended") {
+        accumulate();
+      } else {
+        resume();
+      }
+    };
+    const unsubscribeAdmission = subscribeWorkspaceOwnerAdmission(onAdmission);
+    onAdmission(workspaceOwnerAdmission());
     const unsubscribeRetirement = beforeWorkspaceOwnerChange(() => {
       measurement.active = false;
       measurement.focusedSince = null;
+      measurement.controller.abort();
     });
     const onVisibility = () => {
       if (document.hidden) accumulate();
@@ -172,6 +195,7 @@ export function useReaderImpressions(
     window.addEventListener("pagehide", flush);
     return () => {
       unsubscribeRetirement();
+      unsubscribeAdmission();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
       try {

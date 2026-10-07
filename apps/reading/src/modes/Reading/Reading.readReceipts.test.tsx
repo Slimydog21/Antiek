@@ -78,6 +78,7 @@ async function readTwoPages(id: string) {
   await screen.findByText(`Unit ${id} passage 2.`);
   clock += 10_000;
   act(() => window.dispatchEvent(new Event("pagehide")));
+  await act(async () => {});
 }
 
 it("emits once for each ad-free book, with no duplicate on a same-session revisit", async () => {
