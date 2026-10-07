@@ -157,25 +157,57 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
     };
     // Confirm the real gait advances before pausing it for capture. Seeking a
     // missing, paused or zero-rate animation must not make a frozen sprite pass.
-    const gait = await bob.evaluateHandle(async (el) => {
+    const observedGait = await bob.evaluateHandle(async (el) => {
       const animation = el.getAnimations().find((candidate) =>
         candidate instanceof CSSAnimation && candidate.animationName === "mascot-step",
       );
       if (!(animation instanceof CSSAnimation) || animation.playState !== "running") {
         throw new Error("directed mascot gait is not running");
       }
+      const observe = () => ({
+        currentTime: animation.currentTime,
+        currentTimeType: typeof animation.currentTime,
+        startTime: animation.startTime,
+        pending: animation.pending,
+        playState: animation.playState,
+        playbackRate: animation.playbackRate,
+        timelineTime: animation.timeline?.currentTime ?? null,
+        documentTime: document.timeline.currentTime,
+        performanceTime: performance.now(),
+        visibility: document.visibilityState,
+        focused: document.hasFocus(),
+        connected: el.isConnected,
+        installed: el.getAnimations().includes(animation),
+      });
+      const acquiring = observe();
+      await animation.ready;
+      if (animation.pending || animation.playState !== "running" || animation.playbackRate <= 0 ||
+        !el.isConnected || !el.getAnimations().includes(animation)) {
+        throw new Error(`directed mascot gait lost running admission: ${JSON.stringify({ acquiring, current: observe() })}`);
+      }
       const before = animation.currentTime;
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const initial = observe();
+      const rafTimes: number[] = [];
+      await new Promise<void>((resolve) => requestAnimationFrame((first) => {
+        rafTimes.push(first);
+        requestAnimationFrame((second) => { rafTimes.push(second); resolve(); });
+      }));
       const after = animation.currentTime;
+      const evidence = { acquiring, before, after, initial, final: observe(), rafTimes };
       if (typeof before !== "number" || typeof after !== "number" || after <= before) {
-        throw new Error("directed mascot gait timeline did not advance");
+        throw new Error(`directed mascot gait timeline did not advance: ${JSON.stringify(evidence)}`);
       }
       // Incidental breathing must not supply the positive pixel difference.
       const animations = el.getAnimations({ subtree: true });
       for (const current of animations) current.pause();
       await Promise.all(animations.map((current) => current.ready));
-      return animation;
+      return { animation, evidence };
     });
+    await testInfo.attach("gait-advance-evidence", {
+      body: Buffer.from(JSON.stringify(await observedGait.evaluate((value) => value.evidence))),
+      contentType: "application/json",
+    });
+    const gait = await observedGait.getProperty("animation");
     const duration = await gait.evaluate((animation) => animation.effect?.getComputedTiming().duration);
     if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
       throw new Error("directed mascot gait has no finite positive duration");
@@ -199,6 +231,10 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
     const a = decodePng(first);
     const b = decodePng(second);
     const diff = frameMeanAbsDiff(a, b);
+    await testInfo.attach("gait-pixel-evidence", {
+      body: Buffer.from(JSON.stringify({ meanAbsoluteDifference: diff })),
+      contentType: "application/json",
+    });
     // With translation pinned, the waddle bob/step cadence must move mascot
     // pixels between opposing phases; a fully frozen sprite diffs near 0 and
     // FAILS.
