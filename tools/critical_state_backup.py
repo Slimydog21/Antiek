@@ -21,8 +21,8 @@ import sys
 import tarfile
 import tempfile
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Generator, Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
@@ -335,6 +335,69 @@ def _tree(root: Path, inventory: _Inventory) -> Iterator[Path]:
                 raise SnapshotError("critical directory contains a special file")
 
 
+def _sqlite_candidates(
+    sources: SnapshotSources, inventory: _Inventory, excluded: list[str],
+) -> Generator[Path]:
+    """Discover metadata only; each yielded ledger still needs strict admission.
+
+    The fixed model-cache directory is reconstructible and is not enumerated.
+    No other symlink or subtree is skipped. Owned descriptors bind traversal
+    without following a replacement link; writable non-source directories do
+    not make an otherwise unrelated durable ledger unsafe.
+    """
+    root = sources.state
+    model_cache = root / "cache/sentence-transformers"
+    _parents(root, inventory)
+    before = root.lstat()
+    if not stat.S_ISDIR(before.st_mode) or before.st_uid not in inventory.uids or before.st_mode & 0o022:
+        raise SnapshotError("critical state discovery root is unsafe")
+
+    def scan(descriptor: int, directory: Path) -> Iterator[Path]:
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                inventory.visit()
+                path = directory / entry.name
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode):
+                    raise SnapshotError("critical discovery contains a symlink outside the model cache")
+                if path == model_cache:
+                    if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in inventory.uids
+                        or info.st_gid not in inventory.gids):
+                        raise SnapshotError("fixed reconstructible model-cache directory is unsafe")
+                    after = os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)
+                    if _identity(after)[:5] != _identity(info)[:5]:
+                        raise SnapshotError("fixed model-cache directory changed during discovery")
+                    excluded.append(str(path))
+                elif stat.S_ISDIR(info.st_mode):
+                    if info.st_uid not in inventory.uids:
+                        raise SnapshotError("critical discovery directory owner is unsafe")
+                    child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                    try:
+                        if _identity(os.fstat(child))[:5] != _identity(info)[:5]:
+                            raise SnapshotError("critical discovery directory changed while opening")
+                        yield from scan(child, path)
+                        after = os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)
+                        if _identity(after)[:5] != _identity(info)[:5]:
+                            raise SnapshotError("critical discovery directory was replaced")
+                    finally:
+                        os.close(child)
+                elif stat.S_ISREG(info.st_mode):
+                    if path.suffix in {".sqlite", ".sqlite3", ".db"}:
+                        yield path
+                else:
+                    raise SnapshotError("critical discovery contains a special file")
+
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if _identity(os.fstat(descriptor))[:5] != _identity(before)[:5]:
+            raise SnapshotError("critical state discovery root changed while opening")
+        yield from scan(descriptor, root)
+        if _identity(root.lstat())[:5] != _identity(before)[:5]:
+            raise SnapshotError("critical state discovery root was replaced")
+    finally:
+        os.close(descriptor)
+
+
 def snapshot(sources: SnapshotSources, destination: Path, escrow: Path) -> dict[str, object]:
     """Snapshot required durable state into two newly owned private locations.
 
@@ -387,8 +450,9 @@ def snapshot(sources: SnapshotSources, destination: Path, escrow: Path) -> dict[
         for index, root in enumerate((*sources.settings, sources.turbopuffer)):
             for path in _tree(root, inventory):
                 copy(path, destination / "trees" / str(index) / path.relative_to(root), "settings-or-pointer")
-        for path in _tree(sources.state, inventory):
-            if path.suffix in {".sqlite", ".sqlite3", ".db"}:
+        excluded: list[str] = []
+        with closing(_sqlite_candidates(sources, inventory, excluded)) as candidates:
+            for path in candidates:
                 copy(path, destination / "state" / path.relative_to(sources.state), "sqlite-online-backup")
         for index, path in enumerate(sources.extra_sqlite):
             if path == sources.byok_key:
@@ -402,6 +466,11 @@ def snapshot(sources: SnapshotSources, destination: Path, escrow: Path) -> dict[
             "files": inventory.records,
             "bytes": inventory.total,
             "namespace_entries_inspected": inventory.entries,
+            "automatic_sqlite_discovery": {
+                "excluded_model_cache": str(sources.state / "cache/sentence-transformers"),
+                "excluded_model_cache_observed": bool(excluded),
+                "excluded_descendants_inspected": False,
+            },
             "ephemeral_authority_restored": False,
             "byok_key_storage": "separate-encrypted-object",
         }

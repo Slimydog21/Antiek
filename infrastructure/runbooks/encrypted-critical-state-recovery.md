@@ -105,11 +105,27 @@ The current source resolves these durable paths independently:
 | TurboPuffer | `ANTIEK_TURBOPUFFER_MANIFEST_DIR`, including its current promote pointer |
 | Settings | Include every actual settings directory; do not assume all callers resolve `ANTIEK_HOME` identically |
 
-The snapshot discovers regular `.sqlite`, `.sqlite3` and `.db` ledgers under
-the configured state directory and snapshots each through SQLite's online
-backup API. List all active SQLite paths outside that root, or with other
+Automatic SQLite discovery inspects bounded metadata under the configured state
+directory. It does not read ordinary non-ledger file contents. It excludes only
+the fixed real owned `cache/sentence-transformers` directory, which contains
+reconstructible model blobs and snapshot links. It records the exclusion and
+whether that directory was observed in the manifest; excluded descendants are
+not enumerated or backed up. A symlink instead of that directory, a symlink in
+another cache subtree, or any outside-cache symlink still refuses discovery.
+Other cache siblings and state directories remain traversed, including writable
+directories that are not themselves admitted durable sources.
+
+Every discovered `.sqlite`, `.sqlite3` and `.db` ledger still passes the unchanged
+strict file and parent admission before a source-owner worker opens it. Discovery
+of a `0644` database or a database under a `0775` parent does not admit its bytes.
+Root must reconcile those actual permissions before deployment; this source change
+does not chmod or chown live state. Required settings, keys, accounts, passkeys and
+configuration continue to use strict traversal and admission, without cache waivers.
+
+List all active SQLite paths outside the configured state root, or with other
 filenames, explicitly in `extra_sqlite`. Every explicitly named ledger goes
-through SQLite online backup and integrity checking regardless of its suffix.
+through SQLite online backup and integrity checking regardless of its suffix or
+the automatic model-cache exclusion. No configurable arbitrary exclusions exist.
 Root must confirm the complete active-store inventory before readiness;
 bounded state traversal is not a global store census. A link anywhere in an
 included tree refuses rather than following or silently omitting it. If a

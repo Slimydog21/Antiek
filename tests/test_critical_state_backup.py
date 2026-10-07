@@ -12,7 +12,8 @@ import sqlite3
 import subprocess
 import sys
 import tarfile
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, closing
 from dataclasses import replace
 from pathlib import Path
 
@@ -579,3 +580,120 @@ def test_interruption_retires_owned_plaintext_and_preserves_live_sources(
     assert not list(tmp_path.glob(".critical-restore-*"))
     assert unrelated.read_bytes() == b"another recovery operation"
     assert {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected} == before
+
+
+def private_ledger(path: Path, value: int = 27) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with closing(sqlite3.connect(path)) as writer:
+        writer.execute("CREATE TABLE ledger(value INTEGER)")
+        writer.execute("INSERT INTO ledger VALUES (?)", (value,))
+        writer.commit()
+    path.chmod(0o600)
+    return path
+
+
+@pytest.mark.parametrize("writable_discovery", [False, True])
+def test_model_cache_exclusion_keeps_strict_durable_and_external_sqlite_coverage(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+    writable_discovery: bool,
+) -> None:
+    cache = sources.state / "cache"
+    model = cache / "sentence-transformers"
+    blob = private_file(model / "models--synthetic/blobs/tokenizer", b"reconstructible-model-cache")
+    snapshot = model / "models--synthetic/snapshots/fixed-revision"
+    snapshot.mkdir(parents=True, mode=0o700)
+    (snapshot / "tokenizer.json").symlink_to(blob)
+    if writable_discovery:
+        cache.chmod(0o775)
+        unrelated_directory = sources.state / "research-artifacts"
+        unrelated_directory.mkdir(mode=0o775)
+        unrelated_directory.chmod(0o775)
+        private_file(unrelated_directory / "not-a-ledger.txt", b"not included by SQLite discovery")
+    durable = private_ledger(sources.state / "durable.sqlite3")
+    external = private_ledger(tmp_path / "external/accounting.ledger", 41)
+    sources = replace(sources, extra_sqlite=(external,))
+    model_info = model.stat()
+    original_scan = os.scandir
+
+    def no_model_scan(path: Path | int) -> AbstractContextManager[Iterator[os.DirEntry[str]]]:
+        info = os.fstat(path) if isinstance(path, int) else os.stat(path, follow_symlinks=False)
+        assert (info.st_dev, info.st_ino) != (model_info.st_dev, model_info.st_ino)
+        return original_scan(path)
+
+    monkeypatch.setattr(os, "scandir", no_model_scan)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    manifest = backup.snapshot(sources, destination, escrow)
+    assert manifest["automatic_sqlite_discovery"] == {
+        "excluded_model_cache": str(model), "excluded_model_cache_observed": True,
+        "excluded_descendants_inspected": False,
+    }
+    rows = {row["source"]: row for row in manifest["files"]}
+    for source, expected in ((durable, 27), (external, 41)):
+        assert rows[str(source)]["kind"] == "sqlite-online-backup"
+        with closing(sqlite3.connect(destination / rows[str(source)]["path"])) as restored:
+            assert restored.execute("SELECT value FROM ledger").fetchall() == [(expected,)]
+    assert not any(row["source"].startswith(str(model) + "/") for row in manifest["files"])
+    assert (snapshot / "tokenizer.json").is_symlink()
+    assert blob.read_bytes() == b"reconstructible-model-cache"
+
+
+def test_explicit_sqlite_inside_fixed_model_cache_is_not_silently_omitted(
+    tmp_path: Path, sources: backup.SnapshotSources,
+) -> None:
+    ledger = private_ledger(sources.state / "cache/sentence-transformers/explicit.accounting", 63)
+    sources = replace(sources, extra_sqlite=(ledger,))
+    destination = tmp_path / "snapshot"
+    manifest = backup.snapshot(sources, destination, tmp_path / "key")
+    row = next(row for row in manifest["files"] if row["source"] == str(ledger))
+    assert row["kind"] == "sqlite-online-backup"
+    with closing(sqlite3.connect(destination / row["path"])) as restored:
+        assert restored.execute("SELECT value FROM ledger").fetchall() == [(63,)]
+
+
+@pytest.mark.parametrize("location", ["cache-sibling", "outside-cache", "cache-root", "model-root"])
+def test_automatic_discovery_refuses_links_outside_fixed_real_model_directory(
+    tmp_path: Path, sources: backup.SnapshotSources, location: str,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    target = private_file(outside / "protected", b"not a reconstructible model")
+    if location == "cache-sibling":
+        link = sources.state / "cache/another-cache/model-link"
+    elif location == "outside-cache":
+        link = sources.state / "research-artifacts/foreign-link"
+    elif location == "cache-root":
+        link = sources.state / "cache"
+    else:
+        link = sources.state / "cache/sentence-transformers"
+    link.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    link.symlink_to(outside if location.endswith("root") else target)
+    with pytest.raises(backup.SnapshotError):
+        backup.snapshot(sources, tmp_path / "snapshot", tmp_path / "key")
+    assert not (tmp_path / "snapshot").exists() and not (tmp_path / "key").exists()
+    assert link.is_symlink() and target.read_bytes() == b"not a reconstructible model"
+
+
+@pytest.mark.parametrize("unsafe", ["file-permission", "parent-permission", "hardlink"])
+def test_discovered_ledger_still_refuses_unsafe_durable_admission_before_worker(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, unsafe: str,
+) -> None:
+    ledger = private_ledger(sources.state / "telemetry/preferences.sqlite")
+    if unsafe == "file-permission":
+        ledger.chmod(0o644)
+    elif unsafe == "parent-permission":
+        ledger.parent.chmod(0o775)
+    else:
+        (ledger.parent / "second-name").hardlink_to(ledger)
+    original = hashlib.sha256(ledger.read_bytes()).hexdigest()
+    calls: list[object] = []
+
+    def refuse_worker(*args: object, **kwargs: object) -> None:
+        calls.append(args)
+        raise AssertionError("unsafe discovered SQLite must refuse before native worker startup")
+
+    monkeypatch.setattr(backup.subprocess, "Popen", refuse_worker)
+    with pytest.raises(backup.SnapshotError):
+        backup.snapshot(sources, tmp_path / "snapshot", tmp_path / "key")
+    assert calls == []
+    assert hashlib.sha256(ledger.read_bytes()).hexdigest() == original
+    assert not (tmp_path / "snapshot").exists() and not (tmp_path / "key").exists()
