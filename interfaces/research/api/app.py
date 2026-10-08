@@ -7872,9 +7872,7 @@ def create_app(
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
-        # Tables to summarize. Each entry maps the response key →
-        # the SQL table. Missing tables are skipped (the substrate
-        # may not have provisioned them yet on a fresh install).
+        # Each entry maps the response key to its SQL table.
         TABLES = [
             ("investigations", "syntheses"),
             ("documents", "documents"),
@@ -7896,17 +7894,27 @@ def create_app(
         warnings: list[str] = []
         try:
             with connect_read(default_db_path()) as con:
+                present_tables = {
+                    row[0]
+                    for row in con.execute(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema()"
+                    ).fetchall()
+                }
                 for key, table in TABLES:
+                    if table not in present_tables:
+                        counts[key] = 0
+                        if table != "skill_rules":
+                            warnings.append(f"table {table!r} not present")
+                        continue
                     try:
                         row = con.execute(
                             f"SELECT COUNT(*) FROM {table}"
                         ).fetchone()
                         counts[key] = int(row[0]) if row else 0
-                    except Exception:
-                        # Table missing — substrate is partially
-                        # provisioned (legit for fresh deployments).
-                        warnings.append(f"table {table!r} not present")
+                    except Exception as exc:
                         counts[key] = 0
+                        warnings.append(f"count for table {table!r} failed: {exc!r}")
         except Exception as exc:
             warnings.append(f"stats partially unavailable: {exc!r}")
 
