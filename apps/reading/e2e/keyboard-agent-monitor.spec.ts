@@ -6,11 +6,11 @@
  *      (ctrl+alt+g, / search, Enter); the first refocused so the second is
  *      in the background;
  *   2. the scripted list flips the background agent to completed → the
- *      "finished" toast → prefix+shift+o lands on it → its dot reads idle
+ *      "finished" toast → prefix+shift+j lands on it → its dot reads idle
  *      (done persisted until that focus);
  *   3. the blocked leg through the DEV seam `window.__antiekAgentStatus
  *      .setNeedsInput` (no wire carries needs-input; handoff §6.1, weaker
- *      than a wire) → "needs you" → prefix+shift+o → the agent is active;
+ *      than a wire) → "needs you" → prefix+shift+j → the agent is active;
  *      cleared, then completed while ACTIVE → stays done (no toast, not
  *      seen) until the picker focuses it again → idle;
  *   4. axe on the companion strip; zero clicks (a document-level counter).
@@ -122,7 +122,7 @@ async function leaveText(page: Page): Promise<void> {
 async function toastJump(page: Page): Promise<void> {
   await leaveText(page);
   await page.keyboard.press("Control+b");
-  await page.keyboard.press("Shift+O");
+  await page.keyboard.press("Shift+J");
 }
 
 test.afterAll(() => {

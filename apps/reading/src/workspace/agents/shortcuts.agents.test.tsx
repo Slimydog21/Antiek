@@ -1,6 +1,6 @@
 /**
  * shortcuts.agents.test.tsx — SPR-10 M4: the two agent keys through the real
- * dispatcher (installShortcuts + keymapTestKit). prefix+shift+o lands on the
+ * dispatcher (installShortcuts + keymapTestKit). prefix+shift+j lands on the
  * visible status toast's agent and marks it seen; ctrl+alt+g / prefix+shift+g
  * toggle the goto picker through SHORTCUT_EVENTS; the prefix never arms
  * inside the picker's modal, so the chord is what closes it.
@@ -57,7 +57,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("agents.gotoToast (prefix+shift+o / ctrl+alt+shift+o)", () => {
+describe("agents.gotoToast (prefix+shift+j / ctrl+alt+shift+j)", () => {
   it("with a visible toast whose target is open: activates that tab, focuses the right pane, marks it seen, promotes the next", async () => {
     act(() => { comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", title: "A" }); });
     act(() => { comp().openAgentTab({ kind: "research-thread", investigationId: "inv-b", title: "B" }); });
@@ -71,7 +71,7 @@ describe("agents.gotoToast (prefix+shift+o / ctrl+alt+shift+o)", () => {
     expect(lastSeenAt("inv-a")).toBeNull();
     key("ctrl+b");
     expect(prefixState.isArmed()).toBe(true);
-    const e = key("shift+o");
+    const e = key("shift+j");
     expect(e.defaultPrevented).toBe(true);
     await settle();
     expect(comp().activeTabId).toBe("agent:thread:inv-a");
@@ -83,7 +83,7 @@ describe("agents.gotoToast (prefix+shift+o / ctrl+alt+shift+o)", () => {
   it("with a target whose view is closed: opens a new research-thread tab with that investigationId", async () => {
     act(() => { _seedForGuard({ runId: "inv-z", viewId: "agent:thread:inv-z", viewOpen: false, investigationId: "inv-z", title: "Z", kind: "finished" }); });
     expect(comp().tabs).toHaveLength(0);
-    const e = key("ctrl+alt+shift+o");
+    const e = key("ctrl+alt+shift+j");
     expect(e.defaultPrevented).toBe(true);
     await settle();
     expect(comp().tabs.map((t) => [t.kind, t.investigationId])).toEqual([["research-thread", "inv-z"]]);
@@ -93,7 +93,7 @@ describe("agents.gotoToast (prefix+shift+o / ctrl+alt+shift+o)", () => {
 
   it("with nothing visible: the key is not ours (not prevented on the chord), activeTabId unchanged", async () => {
     act(() => { comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", title: "A" }); });
-    const e = key("ctrl+alt+shift+o");
+    const e = key("ctrl+alt+shift+j");
     expect(e.defaultPrevented).toBe(false);
     await settle();
     expect(comp().activeTabId).toBe("agent:thread:inv-a");
@@ -138,7 +138,7 @@ describe("agents.goto (prefix+shift+g / ctrl+alt+g)", () => {
   it("the agent keys add no window keydown listener (the dispatcher's two owners are the only ones)", () => {
     const spy = vi.spyOn(window, "addEventListener");
     key("ctrl+alt+g");
-    key("ctrl+alt+shift+o");
+    key("ctrl+alt+shift+j");
     expect(spy.mock.calls.filter((c) => c[0] === "keydown")).toHaveLength(0);
     spy.mockRestore();
   });

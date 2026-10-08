@@ -322,6 +322,7 @@ describe("the prefix is configurable, never onto a taken key", () => {
   });
 });
 
+<<<<<<< HEAD
 // ─── SPR-07 (agent pane): prefix+a / ctrl+alt+a taken under D2 (invariant 33) ───
 
 describe("the agent pane rows (SPR-07): one action, two aliases, one status, out of RESERVED_FOR_LATER", () => {
@@ -360,9 +361,9 @@ describe("the agent pane rows (SPR-07): one action, two aliases, one status, out
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
   });
 });
-describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shifted twins of o and g", () => {
+describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shift+j (jump to the toast's agent) and shift+g (the shifted Switcher key)", () => {
   it.each([
-    ["prefix-agents-toast", "agents.gotoToast", "shift+o", "ctrl+alt+shift+o"],
+    ["prefix-agents-toast", "agents.gotoToast", "shift+j", "ctrl+alt+shift+j"],
     ["prefix-agents-goto", "agents.goto", "shift+g", "ctrl+alt+g"],
   ])("%s binds %s as prefix+%s with the %s chord twin", (id, action, prefixKey, chord) => {
     const prefixRow = KEYMAP.find((r) => r.id === id);
@@ -376,16 +377,34 @@ describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shifted twi
     expect(chordRow?.origin).toBe("lane-A-proposed");
   });
 
-  it("negative controls: the literal herdr keys o and g are duplicates here; a and ctrl+alt+a stay island.open's reserve", () => {
+  it("negative controls: the literal herdr keys o and g are duplicates here, and so is #3751's shift+o; a and ctrl+alt+a stay island.open's reserve", () => {
     const probe = (over: Partial<KeymapRow>): KeymapRow => ({ id: "probe", action: "agents.gotoToast", scope: "outside-text", origin: "lane-A-proposed", decision: "probe", ...over } as KeymapRow);
     expect(validateKeymap([...KEYMAP, probe({ prefixKey: "o" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-tab-child") }));
+    // The sprint's first binding (shift+o / ctrl+alt+shift+o) is #3751's switcher.open; with those rows present it is a duplicate.
+    const switcher: KeymapRow = { id: "prefix-switcher-open", action: "switcher.open" as ActionId, status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: "probe" };
+    expect(validateKeymap([...KEYMAP, switcher, probe({ prefixKey: "shift+o" })], [...handlerIds, "switcher.open"])).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-switcher-open") }));
     expect(validateKeymap([...KEYMAP, probe({ action: "agents.goto", prefixKey: "g" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-goto") }));
     expect(validateKeymap([...KEYMAP, probe({ prefixKey: "a" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
     expect(validateKeymap([...KEYMAP, probe({ chord: "ctrl+alt+a", scope: "anywhere" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
-    // ctrl+alt+shift+o is distinct from ctrl+alt+o under the physical-key check.
+    // ctrl+alt+shift+j carries shift in the physical-key check, so a later plain ctrl+alt+j stays free.
     expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
     expect(RESERVED_FOR_LATER.prefixKeys).toContain("a");
     expect(RESERVED_FOR_LATER.chords).toContain("ctrl+alt+a");
+  });
+
+  it("no collision with the open lanes' rows: #3751's switcher.open (prefix+shift+o / ctrl+alt+shift+o) and SPR-07's agent.openPane (a / ctrl+alt+a) added to KEYMAP leave validateKeymap at [] on both platforms", () => {
+    const D = "probe";
+    const lanes: KeymapRow[] = [
+      { id: "prefix-switcher-open", action: "switcher.open" as ActionId, status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: D },
+      { id: "chord-switcher-open", action: "switcher.open" as ActionId, status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-A-proposed", decision: D },
+      { id: "prefix-agent-pane", action: "agent.openPane" as ActionId, status: "implemented", prefixKey: "a", scope: "outside-text", origin: "lane-A-proposed", decision: D },
+      { id: "chord-agent-pane", action: "agent.openPane" as ActionId, status: "implemented", chord: "ctrl+alt+a", scope: "anywhere", origin: "lane-A-proposed", decision: D },
+    ];
+    const ids = [...handlerIds, "switcher.open", "agent.openPane"];
+    // (a / ctrl+alt+a read as reserved-key here because SPR-07 moves them out
+    // of RESERVED_FOR_LATER in its own lane; only duplicates are the question.)
+    const findings = validateKeymap([...KEYMAP, ...lanes], ids).filter((f) => f.kind === "duplicate");
+    expect(findings).toEqual([]);
   });
 
   it("the base rows prefix-tab-child, chord-tab-child and prefix-goto are byte-identical to the SPR-06 base", () => {

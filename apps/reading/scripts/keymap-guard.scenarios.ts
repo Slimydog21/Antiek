@@ -2,6 +2,9 @@ import { createElement, Fragment, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { LemonModal } from "../src/components/lemon/LemonModal";
 import { WriteEditor } from "../src/modes/Write/Editor/Editor";
+import { useCompanion } from "../src/workspace/companionStore";
+import { _seedForGuard, resetStatusToasts } from "../src/workspace/agents/statusToasts";
+import { keyInit } from "../src/workspace/keymapTestKit";
 import { KEYMAP, ACTIONS, currentPlatform, isActiveOn, readPrefix, validateKeymap, type ActionId } from "../src/components/hotkeys/keymap";
 import { createActionHandlers } from "../src/workspace/shortcuts";
 import { readKeyboardOwnership } from "../src/workspace/keyboardOwnership";
@@ -11,9 +14,6 @@ import { useCompanion } from "../src/workspace/companionStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
 import { isFeatureOn } from "../src/lib/featureFlags";
-import { useCompanion } from "../src/workspace/companionStore";
-import { _seedForGuard, resetStatusToasts } from "../src/workspace/agents/statusToasts";
-import { keyInit } from "../src/workspace/keymapTestKit";
 
 export async function until(predicate: () => boolean, message: string, timeout = 3000): Promise<void> {
   const end = performance.now() + timeout;
@@ -130,16 +130,6 @@ export const SCENARIOS = {
   "tab.next": { prepare: () => tabs(), effect: () => readerAt("c") },
   "tab.prev": { prepare: () => tabs(), effect: () => readerAt("a") },
   "tab.new": { effect: () => see('[data-keymap-owner="tab.new"]') },
-  "tab.parent": { prepare: () => tabs("c", true), effect: () => readerAt("a") },
-  "tab.visitChild": { prepare: () => tabs("a", true), effect: () => readerAt("c") },
-  "tab.close": { prepare: () => tabs(), effect: () => until(() => location.pathname !== "/read/guard-b" && !document.querySelector('[data-document-strip] [role="tab"][aria-selected="true"]')?.textContent?.includes("Guard book B"), "tab.close: closed tab B still on screen") },
-  "tab.reopen": { prepare: async () => { await tabs(); useTabTrees.getState().closeActiveTab("reading", "prune"); await settle(); }, effect: () => readerAt("b") },
-  "tab.treeToggle": { prepare: () => tabs(), effect: () => see('[data-tab-tree-panel]') },
-  "project.select": { effect: () => see('[data-keymap-owner="project.select"]') },
-  // SPR-02 M5: opens the same Switcher (narrowed to Open only when the
-  // places flag is on; the guard runs with default flags, so the plain
-  // Switcher is the visible effect either way).
-  "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
   // SPR-10: the picker opens on the key and the chord twin closes it from
   // inside (the prefix never arms in a modal, so only the chord can).
   "agents.goto": {
@@ -161,6 +151,16 @@ export const SCENARIOS = {
     },
     effect: () => until(() => useCompanion.getState().activeTabId === "agent:thread:guard-inv-b", "agents.gotoToast: the toast's agent tab did not become active"),
   },
+  "tab.parent": { prepare: () => tabs("c", true), effect: () => readerAt("a") },
+  "tab.visitChild": { prepare: () => tabs("a", true), effect: () => readerAt("c") },
+  "tab.close": { prepare: () => tabs(), effect: () => until(() => location.pathname !== "/read/guard-b" && !document.querySelector('[data-document-strip] [role="tab"][aria-selected="true"]')?.textContent?.includes("Guard book B"), "tab.close: closed tab B still on screen") },
+  "tab.reopen": { prepare: async () => { await tabs(); useTabTrees.getState().closeActiveTab("reading", "prune"); await settle(); }, effect: () => readerAt("b") },
+  "tab.treeToggle": { prepare: () => tabs(), effect: () => see('[data-tab-tree-panel]') },
+  "project.select": { effect: () => see('[data-keymap-owner="project.select"]') },
+  // SPR-02 M5: opens the same Switcher (narrowed to Open only when the
+  // places flag is on; the guard runs with default flags, so the plain
+  // Switcher is the visible effect either way).
+  "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
   "reader.tocToggle": {
     prepare: async () => {
       const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');
