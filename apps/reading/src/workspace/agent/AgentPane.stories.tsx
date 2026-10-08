@@ -53,6 +53,7 @@ const meta = {
   title: "Workspace/AgentPane",
   component: StoryPane,
   args: { width: 320, seeded: true },
+  parameters: { router: false },
 } satisfies Meta<typeof StoryPane>;
 export default meta;
 
