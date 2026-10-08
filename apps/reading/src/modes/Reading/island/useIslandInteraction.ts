@@ -1,7 +1,7 @@
 import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 import { useCallback, useEffect, useRef } from "react";
 
-import { topModal } from "../../../workspace/escapeOverlay";
+import { topEscOverlay, topModal } from "../../../workspace/escapeOverlay";
 
 export function useIslandInteraction({ expanded, onCollapse }: {
   expanded: boolean;
@@ -40,7 +40,15 @@ export function useIslandInteraction({ expanded, onCollapse }: {
           !card || card.closest('[hidden], [aria-hidden="true"], [inert]')) return;
       if (topModal()) return;
       const target = event.target instanceof Element ? event.target : document.activeElement;
-      if (!target || !card.contains(target) || !card.contains(document.activeElement) ||
+      // Universal popover rule (wave repair, design-lead call 2026-10-08): an
+      // Esc with body/global focus closes the TOP floating card — so an
+      // untargeted Esc is this card's exactly when the card is the top
+      // overlay. An Esc targeted at an element stays that element's own
+      // overlay's key (an inner element claimed by another overlay still wins).
+      const untargeted = target === document.body || target === document.documentElement;
+      if (untargeted) {
+        if (topEscOverlay() !== card) return;
+      } else if (!target || !card.contains(target) || !card.contains(document.activeElement) ||
           target.closest("[data-esc-overlay]") !== card) return;
       event.preventDefault();
       event.stopPropagation();

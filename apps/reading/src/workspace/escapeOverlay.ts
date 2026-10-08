@@ -64,3 +64,17 @@ export function topModal(root: ParentNode = document): HTMLElement | null {
     return !details || details.open;
   }).at(-1) ?? null;
 }
+
+/** The topmost visible overlay of any kind (data-esc-overlay or aria-modal),
+ *  same DOM-order convention as topModal: the last visible match owns Escape.
+ *  Universal popover rule (wave repair, design-lead call 2026-10-08): an Esc
+ *  with body/global focus closes the top floating card, so a card must be able
+ *  to ask whether it IS that top overlay. */
+export function topEscOverlay(root: ParentNode = document): HTMLElement | null {
+  const overlays = Array.from(root.querySelectorAll<HTMLElement>(SELECTOR));
+  return overlays.filter((el) => {
+    if (el.closest('[hidden], [aria-hidden="true"]')) return false;
+    const details = el.parentElement?.closest("details");
+    return !details || details.open;
+  }).at(-1) ?? null;
+}

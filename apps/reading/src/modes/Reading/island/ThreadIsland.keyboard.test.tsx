@@ -100,6 +100,26 @@ describe("actual anchored island keyboard ownership", () => {
     const input = screen.getByRole("textbox", { name: "Modal input" }); input.focus(); fireEvent.keyDown(input, { key: "Escape" });
     expect(close).toHaveBeenCalledTimes(1); expect(card()).toBeTruthy();
   });
+  // Universal popover rule (wave repair, design-lead call 2026-10-08): a
+  // body-targeted Escape closes the top floating card — PR 3757's
+  // ThreadIsland.escape.test.tsx control is the acceptance oracle.
+  it("accepts a body-targeted Escape when the card is the top overlay", () => {
+    mount(); expand();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /Research thread island/ })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Expand the island/ }));
+  });
+  it("refuses a body-targeted Escape while another overlay is above the card", () => {
+    mount(); expand();
+    const above = document.createElement("div");
+    above.setAttribute("data-esc-overlay", "");
+    document.body.append(above);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(card()).toBeTruthy();
+    above.remove();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /Research thread island/ })).toBeNull();
+  });
   it("click-away collapses without taking focus from the clicked control", () => {
     mount(); expand(); const outside = screen.getByRole("button", { name: "Outside" });
     fireEvent.mouseDown(outside); outside.focus(); fireEvent.click(outside);
