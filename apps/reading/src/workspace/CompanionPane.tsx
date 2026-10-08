@@ -213,7 +213,7 @@ function HiddenAgentPlaceholder({ tab }: { tab: AgentTabDescriptor }) {
           type="button"
           className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
           title={tab.projectId ? `Open the project picker (choose ${tab.projectId})` : "Open the project picker"}
-          onClick={toggleProjectPicker}
+          onClick={() => toggleProjectPicker()}
         >
           Switch project…
         </button>
