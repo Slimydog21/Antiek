@@ -41,7 +41,7 @@ import { registerKeyboardOwner, traceKeyboardAction } from "./keyboardOwnership"
 import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
-import { useWorkspace } from "./WorkspaceStore";
+import { focusedSide, useWorkspace } from "./WorkspaceStore";
 import { companionVisible } from "./companionVisibility";
 import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./writeOutlineStore";
 import { mothershipForPath } from "./mothershipForPath";
@@ -298,15 +298,11 @@ function focusPane(side: "left" | "right") {
 /**
  * Which pane the tab keys act on (the lane-A cockpit decision): the FOCUSED
  * pane, as herdr's tabs belong to their pane; the left when neither is.
- *   inset   the pane shown alone by fullscreen, else the pane with the focus
- *           ring (PanelLayout sets it as focus enters a pane).
- *   docked  "right" while a right-dock panel has focus (the companion, the
- *           outline), otherwise "left".
+ * The rule is WorkspaceStore's `focusedSide` (shared with the /inv/:id
+ * pane's seen marks, SPR-10).
  */
 function tabKeySide(): "left" | "right" {
-  const ws = useWorkspace.getState();
-  if (ws.layoutPreset === "omarchy-inset") return ws.fullscreenPane ?? ws.focusedPane ?? "left";
-  return ws.focusedPanelId !== null && ws.dockRightIds.includes(ws.focusedPanelId) ? "right" : "left";
+  return focusedSide(useWorkspace.getState());
 }
 
 /** Writing with the outline visible: the right pane holds block tabs (C5),
