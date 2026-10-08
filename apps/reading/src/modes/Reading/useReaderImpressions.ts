@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import type { AdFillView } from "./AdBorder";
 import { recordAdImpressions } from "../../api/books";
 import type { ImpressionItem } from "../../api/books";
+import {
+  beforeWorkspaceOwnerChange,
+  awaitWorkspaceOwnerSession,
+  isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission,
+  workspaceOwnerAdmission,
+  useWorkspaceOwner,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 
 /**
  * Reader ad-impression flushing (Read SPR-05 → SPR-09).
@@ -42,6 +51,23 @@ export interface ReaderDwell {
   pagesSeen: number;
 }
 
+interface DwellSession {
+  readonly owner: WorkspaceOwnerSession;
+  readonly controller: AbortController;
+  active: boolean;
+  dwellMs: number;
+  focusedSince: number | null;
+  page: PageContext | null;
+  totalDwellMs: number;
+  pages: Set<number>;
+  onDwell: ((dwell: ReaderDwell) => void) | undefined;
+}
+
+function isCurrent(measurement: DwellSession): boolean {
+  return measurement.active && measurement.owner.subject !== null
+    && isWorkspaceOwnerSession(measurement.owner);
+}
+
 export function useReaderImpressions(
   documentId: string,
   sessionId: string,
@@ -50,41 +76,47 @@ export function useReaderImpressions(
    * per session on the dwell threshold — reusing this clock, not adding one. */
   onDwell?: (dwell: ReaderDwell) => void,
 ) {
-  // Accumulated focused dwell for the current page + the wall-clock at
-  // which the current focused interval started (null while hidden).
-  const dwellMsRef = useRef(0);
-  const focusedSinceRef = useRef<number | null>(nowMs());
-  const pageRef = useRef<PageContext | null>(null);
-  // Session-cumulative dwell + the distinct pages dwelled on — the source.read
-  // evidence. Separate from dwellMsRef (which the ad flush zeroes per page); this
-  // never resets within a session, so it measures total time-on-book.
-  const sessionDwellMsRef = useRef(0);
-  const seenPagesRef = useRef<Set<number>>(new Set());
-  const onDwellRef = useRef(onDwell);
-  onDwellRef.current = onDwell;
+  const owner = useWorkspaceOwner();
+  // A same-owner document/session change flushes its previous measurement.
+  // Account retirement discards it before any cleanup can use a new cookie.
+  const measurement = useMemo<DwellSession>(() => ({
+    owner,
+    controller: new AbortController(),
+    active: true,
+    dwellMs: 0,
+    focusedSince: null,
+    page: null,
+    totalDwellMs: 0,
+    pages: new Set(),
+    onDwell: undefined,
+  }), [documentId, sessionId, owner]);
+
+  useEffect(() => {
+    measurement.onDwell = onDwell;
+  }, [measurement, onDwell]);
 
   const accumulate = useCallback(() => {
-    if (focusedSinceRef.current !== null) {
-      const delta = nowMs() - focusedSinceRef.current;
-      dwellMsRef.current += delta;
-      sessionDwellMsRef.current += delta;
-      focusedSinceRef.current = null;
+    if (measurement.focusedSince !== null) {
+      const delta = nowMs() - measurement.focusedSince;
+      measurement.dwellMs += delta;
+      measurement.totalDwellMs += delta;
+      measurement.focusedSince = null;
     }
-  }, []);
+  }, [measurement]);
 
   const resume = useCallback(() => {
-    if (focusedSinceRef.current === null) focusedSinceRef.current = nowMs();
-  }, []);
+    if (isCurrent(measurement) && measurement.page && measurement.focusedSince === null
+      && (typeof document === "undefined" || !document.hidden)) {
+      measurement.focusedSince = nowMs();
+    }
+  }, [measurement]);
 
   const flush = useCallback(() => {
+    if (!isCurrent(measurement) || !measurement.page) return;
     accumulate();
-    const ctx = pageRef.current;
-    const dwell = Math.round(dwellMsRef.current);
-    dwellMsRef.current = 0;
-    if (!ctx || ctx.slots.length === 0) {
-      resume();
-      return;
-    }
+    const ctx = measurement.page;
+    const dwell = Math.round(measurement.dwellMs);
+    measurement.dwellMs = 0;
     const tabFocused = typeof document === "undefined" || !document.hidden;
     const items: ImpressionItem[] = ctx.slots.map(({ slotId, fill }) => ({
       slot_id: slotId,
@@ -94,36 +126,67 @@ export function useReaderImpressions(
       focused_dwell_ms: dwell,
       tab_focused: tabFocused,
     }));
-    void recordAdImpressions(documentId, sessionId, items).catch(() => {
-      /* best-effort — never disrupt reading */
-    });
-    // Report the SESSION-cumulative dwell evidence (SPR-07 M4). The consumer
-    // decides the source.read "read" verdict from this; the hook just measures.
-    onDwellRef.current?.({
-      totalDwellMs: sessionDwellMsRef.current,
-      pagesSeen: seenPagesRef.current.size,
-    });
+    const evidence = { totalDwellMs: measurement.totalDwellMs, pagesSeen: measurement.pages.size };
+    const callback = measurement.onDwell;
+    // A flush owns its captured sample, including a legitimate same-owner
+    // leave. Retirement aborts it; a ready observer alone cannot release it.
+    void (async () => {
+      do {
+        if (!await awaitWorkspaceOwnerSession(measurement.owner, measurement.controller.signal)) return;
+      } while (!isWorkspaceOwnerSession(measurement.owner));
+      if (measurement.controller.signal.aborted) return;
+      if (items.length > 0) {
+        void recordAdImpressions(documentId, sessionId, items).catch(() => {
+          /* best-effort — never disrupt reading */
+        });
+      }
+      if (isWorkspaceOwnerSession(measurement.owner) && !measurement.controller.signal.aborted) callback?.(evidence);
+    })();
     resume();
-  }, [accumulate, resume, documentId, sessionId]);
+  }, [accumulate, resume, documentId, sessionId, measurement]);
 
   /** The reader calls this whenever the visible page changes. It flushes
    * the page that was showing, then starts the dwell clock for the new
    * one. */
   const observePage = useCallback(
     (pageIndex: number, slots: { slotId: string; fill: AdFillView }[]) => {
-      if (pageRef.current && pageRef.current.pageIndex !== pageIndex) {
-        flush();
+      const admission = workspaceOwnerAdmission();
+      if (!measurement.active || admission.session !== measurement.owner
+        || (admission.state !== "ready" && admission.state !== "suspended")) return;
+      if (measurement.page && measurement.page.pageIndex !== pageIndex) {
+        if (isCurrent(measurement)) flush();
+        else measurement.dwellMs = 0;
       }
-      seenPagesRef.current.add(pageIndex); // distinct-pages evidence (M4)
-      pageRef.current = { pageIndex, slots };
+      measurement.pages.add(pageIndex);
+      measurement.page = { pageIndex, slots };
       // (Re)start the dwell clock for the page now showing.
-      if (focusedSinceRef.current === null) focusedSinceRef.current = nowMs();
+      resume();
     },
-    [flush],
+    [flush, resume, measurement],
   );
 
   // Pause/resume the dwell timer with tab visibility, and flush on unload.
   useEffect(() => {
+    measurement.active = true;
+    resume();
+    const onAdmission = (admission: ReturnType<typeof workspaceOwnerAdmission>) => {
+      if (admission.session !== measurement.owner || admission.state === "retiring" || admission.state === "failed") {
+        accumulate();
+        measurement.active = false;
+        measurement.controller.abort();
+      } else if (admission.state === "suspended") {
+        accumulate();
+      } else {
+        resume();
+      }
+    };
+    const unsubscribeAdmission = subscribeWorkspaceOwnerAdmission(onAdmission);
+    onAdmission(workspaceOwnerAdmission());
+    const unsubscribeRetirement = beforeWorkspaceOwnerChange(() => {
+      measurement.active = false;
+      measurement.focusedSince = null;
+      measurement.controller.abort();
+    });
     const onVisibility = () => {
       if (document.hidden) accumulate();
       else resume();
@@ -131,11 +194,18 @@ export function useReaderImpressions(
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flush);
     return () => {
+      unsubscribeRetirement();
+      unsubscribeAdmission();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
-      flush(); // flush the last page on unmount
+      try {
+        flush();
+      } finally {
+        measurement.active = false;
+        measurement.focusedSince = null;
+      }
     };
-  }, [accumulate, resume, flush]);
+  }, [accumulate, resume, flush, measurement]);
 
   return { observePage, flush };
 }

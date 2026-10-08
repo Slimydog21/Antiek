@@ -30,7 +30,7 @@ def register_library_routes(app: FastAPI) -> None:
     """Mount the library catalog route."""
 
     @app.get("/library", response_model=LibraryPage, tags=["library"])
-    async def list_library(
+    def list_library(
         filter: Literal["servable", "gated", "all"] = "all",
         search: str = "",
         page: int = Query(default=1, ge=1),
