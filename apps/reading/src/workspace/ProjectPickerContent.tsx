@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { LemonModal } from "../components/lemon/LemonModal";
 import { ErrorState, LoadingState } from "../components/states";
@@ -49,9 +49,20 @@ const DEFAULT_ROW: ProjectRow = {
   subtitle: "Where your tabs file before you choose a project",
 };
 
-export default function ProjectPickerContent({ onClose }: { onClose: () => void }) {
+export default function ProjectPickerContent({ onClose, initialFocusId }: { onClose: () => void; initialFocusId?: string }) {
   const projectId = useTabTrees((s) => s.projectId);
   const [load, setLoad] = useState<LoadState>({ status: "loading", projects: [], detail: null });
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // SPR-04 gear 1: once the list is up, focus the row the switch asked for
+  // (the modal's own trap put focus on the first focusable at mount, while
+  // the list was still loading). An unknown id leaves the trap's choice.
+  useEffect(() => {
+    if (load.status !== "ready" || !initialFocusId) return;
+    const row = [...(listRef.current?.querySelectorAll<HTMLButtonElement>("button[data-project-row]") ?? [])]
+      .find((b) => b.dataset.projectRow === initialFocusId);
+    row?.focus();
+  }, [load.status, initialFocusId]);
 
   const reload = () => {
     setLoad((s) => ({ ...s, status: "loading", detail: null }));
@@ -102,13 +113,14 @@ export default function ProjectPickerContent({ onClose }: { onClose: () => void 
             onRetry={reload}
           />
         ) : (
-          <ul className="max-h-[60vh] overflow-auto" aria-label="Projects">
+          <ul ref={listRef} className="max-h-[60vh] overflow-auto" aria-label="Projects">
             {rows.map((row) => {
               const current = row.id === projectId;
               return (
                 <li key={row.id}>
                   <button
                     type="button"
+                    data-project-row={row.id}
                     onClick={() => choose(row.id)}
                     aria-current={current ? "true" : undefined}
                     className="flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"

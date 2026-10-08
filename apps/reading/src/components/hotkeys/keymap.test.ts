@@ -353,8 +353,11 @@ describe("the agent pane rows (SPR-07): one action, two aliases, one status, out
   it("a and ctrl+alt+a left RESERVED_FOR_LATER; the remaining reserved keys still refuse a probe", () => {
     expect(RESERVED_FOR_LATER.prefixKeys).not.toContain("a");
     expect(RESERVED_FOR_LATER.chords).not.toContain("ctrl+alt+a");
+    // The probe key must be one still reserved in the merged keymap: SPR-04
+    // took prefix+w for gear.toggle, so "m" stands in (the same probe
+    // cockpitKeysStage3 uses).
     const probe = validateKeymap(
-      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "w", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
+      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "m", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
       handlerIds,
     );
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));

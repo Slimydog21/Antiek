@@ -1,3 +1,4 @@
+import { topModal } from "../../workspace/escapeOverlay";
 import { registerKeyboardOwner } from "../../workspace/keyboardOwnership";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -241,8 +242,21 @@ export function SlashMenu({ editor, query, onClose }: Props) {
     setHoverIdx(0);
   }, [filtered.length]);
 
+  // The menu's keys are its own only while nothing above it claimed them:
+  // a key another handler already handled (defaultPrevented) and a key
+  // pressed inside an open aria-modal dialog that does not contain the
+  // menu (the geared switch, a LemonModal) are that owner's, never the
+  // editor's (one Esc reaches exactly one handler, escapeOverlay.ts; the
+  // same gate as FloatMenu's). The menu stays open under the dialog and
+  // takes the next key once the dialog is gone.
   useEffect(() => {
+    const ours = (e: KeyboardEvent): boolean => {
+      if (e.defaultPrevented) return false;
+      const modal = topModal();
+      return !modal || !!(containerRef.current && modal.contains(containerRef.current));
+    };
     function onKey(e: KeyboardEvent) {
+      if (!ours(e)) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHoverIdx((i) => (i + 1) % Math.max(1, filtered.length));
@@ -263,7 +277,7 @@ export function SlashMenu({ editor, query, onClose }: Props) {
     }
     const removeKeyboardOwner = registerKeyboardOwner(window, {
       id: "notebook.slash-menu", scope: "overlay",
-      eligible: (e) => ["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx]),
+      eligible: (e) => ours(e) && (["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx])),
     }, onKey);
     return () => removeKeyboardOwner();
   }, [filtered, hoverIdx, editor, onClose]);

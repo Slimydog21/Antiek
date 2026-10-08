@@ -91,6 +91,7 @@ export const ACTIONS = {
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
   "project.select": { label: "Project: choose the account project" },
   "switcher.open": { label: "Switcher: open panes, windows and tabs (in:open)" },
+  "gear.toggle": { label: "Switch gear" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "agent.openPane": { label: "Agent: open the project's agent pane (or focus its composer)" },
@@ -242,6 +243,14 @@ export const KEYMAP: readonly KeymapRow[] = [
   // silently falls back to ctrl+b (readPrefix).
   { id: "prefix-agent-pane", action: "agent.openPane", status: "implemented", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-agent-pane", action: "agent.openPane", status: "implemented", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
+  // ── SPR-04 the geared switch (specs/antiek-keyboard-panes-agents-20261007/sprint-04-geared-switcher.html M3) ──
+  // prefix+w: herdr's "workspace navigate" (refs/omarchy-herdr.md:254) is the same gesture, so "w" leaves
+  // RESERVED_FOR_LATER.prefixKeys in this diff. ctrl+alt+w STAYS reserved: SPR-04's page assumed SPR-01 takes it
+  // for pane.close; SPR-01's page plans prefix+x / ctrl+alt+x (sprint-01-leader-key-tiling.html:630); no branch
+  // binds either, so this sprint claims neither. The chord twin is ctrl+alt+shift+w (unbound, unreserved;
+  // ctrl+alt+shift+o is the SPR-02 M5 precedent). herdr's prefix+shift+w ("rename workspace") is kept clear.
+  { id: "prefix-gear-toggle", action: "gear.toggle", status: "implemented", prefixKey: "w", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-04 M3 — specs/antiek-keyboard-panes-agents-20261007/sprint-04-geared-switcher.html (herdr workspace navigate on prefix+w)" },
+  { id: "chord-gear-toggle", action: "gear.toggle", status: "implemented", chord: "ctrl+alt+shift+w", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-04 M3 — specs/antiek-keyboard-panes-agents-20261007/sprint-04-geared-switcher.html (herdr workspace navigate on prefix+w)" },
 ];
 
 /**
@@ -259,7 +268,7 @@ export const KEYMAP: readonly KeymapRow[] = [
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
-    "w", "shift+n", "m", "shift+m",
+    "shift+n", "m", "shift+m",
     "r",
   ],
   chords: [

@@ -1,3 +1,4 @@
+import { topModal } from "../../../workspace/escapeOverlay";
 import { registerKeyboardOwner } from "../../../workspace/keyboardOwnership";
 /**
  * ThreadIsland — the research-thread island component (island SPR-02). ONE
@@ -132,18 +133,28 @@ export default function ThreadIsland({
   }, []);
 
   // Esc (element-scoped — the card's own key, never a global binding) and
-  // click-away collapse the open card. Dismiss is the same collapse.
+  // click-away collapse the open card. Dismiss is the same collapse. The
+  // Esc is the card's only when nothing above it claimed it: an Esc another
+  // handler already handled (defaultPrevented, e.g. the geared switch
+  // closing) or one pressed inside an open aria-modal dialog that does not
+  // contain the card is that owner's (one Esc reaches exactly one handler,
+  // workspace/escapeOverlay.ts; the gate FloatMenu uses).
   useEffect(() => {
     if (!expanded) return;
+    const ours = (e: KeyboardEvent): boolean => {
+      if (e.key !== "Escape" || e.defaultPrevented) return false;
+      const modal = topModal();
+      return !modal || !!(cardRef.current && modal.contains(cardRef.current));
+    };
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") collapse();
+      if (ours(e)) collapse();
     }
     function onDocMouseDown(e: MouseEvent) {
       if (cardRef.current && !cardRef.current.contains(e.target as Node)) collapse();
     }
     const removeKeyboardOwner = registerKeyboardOwner(document, {
       id: "reader.island.escape", scope: "overlay",
-      eligible: (e) => e.key === "Escape",
+      eligible: ours,
     }, onKey);
     document.addEventListener("mousedown", onDocMouseDown);
     return () => {

@@ -78,6 +78,21 @@ export const surfaceSpring = {
   damping: 30,
 } as const;
 
+/**
+ * NOTCH — the geared switch's click (SPR-04 M2, specs/antiek-keyboard-
+ * panes-agents-20261007/sprint-04-geared-switcher.html): the hard shadow
+ * steps one notch down (z2 → z1) with a 1px travel for the `fast` beat,
+ * driven by a `data-notch` attribute the surface sets on each accepted key
+ * and clears after `durationMs.fast`. Transition only, no keyframes (the
+ * anti-noise guard's net); under reduced motion the surface never sets the
+ * attribute, so the click is instant and the final state is unchanged.
+ * Assumes a base `shadow-z2`.
+ */
+export const notch =
+  "transition-[transform,box-shadow] duration-fast ease-standard " +
+  "data-[notch=true]:translate-x-[1px] data-[notch=true]:translate-y-[1px] " +
+  "data-[notch=true]:shadow-z1 dark:data-[notch=true]:shadow-z1-night";
+
 /** Duration tokens in ms (numbers), for JS timers matched to a beat. */
 export const durationMs = {
   fast: Number.parseInt(motion.duration.fast, 10),

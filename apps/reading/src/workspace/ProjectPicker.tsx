@@ -31,11 +31,16 @@ export interface ProjectPickerProps {
 export function ProjectPicker({ open: controlledOpen, onClose }: ProjectPickerProps) {
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
+  // SPR-04 gear 1: the geared switch asks for a row to land on
+  // (toggleProjectPicker({ focusId })); a plain toggle carries none.
+  const [focusId, setFocusId] = useState<string | undefined>(undefined);
   const open = isControlled ? controlledOpen : internalOpen;
 
   useEffect(() => {
     if (isControlled) return;
-    function onToggle() {
+    function onToggle(e: Event) {
+      const detail = (e as CustomEvent<{ focusId?: string } | undefined>).detail;
+      setFocusId(typeof detail?.focusId === "string" ? detail.focusId : undefined);
       setInternalOpen((v) => !v);
     }
     window.addEventListener(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE, onToggle);
@@ -51,7 +56,7 @@ export function ProjectPicker({ open: controlledOpen, onClose }: ProjectPickerPr
 
   return (
     <Suspense fallback={null}>
-      <ProjectPickerContent onClose={handleClose} />
+      <ProjectPickerContent onClose={handleClose} initialFocusId={focusId} />
     </Suspense>
   );
 }

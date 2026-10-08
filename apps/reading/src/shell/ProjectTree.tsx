@@ -215,7 +215,7 @@ export function ProjectTree({
           trees under the chosen project. */}
       <button
         type="button"
-        onClick={toggleProjectPicker}
+        onClick={() => toggleProjectPicker()}
         aria-label="Choose the account project (prefix shift p)"
         title="Choose the account project (prefix shift p)"
         className="flex w-full items-center justify-between gap-2 px-3 py-2 border-b border-rule dark:border-charcoal-1 text-left hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"

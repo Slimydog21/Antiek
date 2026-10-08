@@ -38,6 +38,9 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "tab.treeToggle": "panels",
   "project.select": "find",
   "switcher.open": "find",
+  // SPR-04: no "Navigate" KeymapTask exists; the switch sits with the
+  // other switching keys under "Find and switch" (deviation recorded).
+  "gear.toggle": "find",
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
   "agent.openPane": "panels",
@@ -90,6 +93,8 @@ export const NOTES: Partial<Record<ActionId, string>> = {
     "When the reader's pane is too narrow to keep the contents beside the text, this opens them over the page. Esc or a chapter closes them.",
   "project.select":
     "Opens the account projects from the registry and files your tabs under the one you pick; each project's tabs are its own. The sidebar's project row opens the same picker.",
+  "gear.toggle":
+    "Opens the geared switch at gear 1, your projects. Enter clicks into the selected project's investigations, Enter again into its agents (and deeper investigations). ← → hop, Backspace clicks back, Esc closes. Picking another project goes through the project picker for now. Investigations are called sub-projects only once the backend names them.",
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
   "agent.openPane":
     "Opens the agent for the selected project beside your work, with the composer focused; in writing the outline keeps the right pane and the key does nothing.",

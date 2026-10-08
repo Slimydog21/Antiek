@@ -6,6 +6,7 @@ import LemonButton from "../lemon/LemonButton";
 import { toast } from "../lemon/LemonToast";
 import { useAuth } from "../../lib/auth";
 import { rootRefForPath } from "../../workspace/routeRef";
+import { GearSwitchHost } from "../../workspace/switcher/GearSwitchHost";
 import "./topbar.css";
 
 // A record crumb is named like its tab (title via tabTitles + labelForTab),
@@ -88,6 +89,12 @@ export function Topbar() {
       className="h-11 shrink-0 flex items-center gap-3 px-4 bg-card border-b border-hairline"
       role="banner"
     >
+      {/* SPR-04 M5 (specs/antiek-keyboard-panes-agents-20261007/sprint-04-
+          geared-switcher.html): the geared switch's entry-safe host, behind
+          antiek.flag.nav.switcher; renders nothing with the flag off. The
+          breadcrumb stays route-derived and untouched. */}
+      <GearSwitchHost surface="topbar" />
+
       {/* breadcrumbs: the page named in words (sans); ids stay data (mono) */}
       <nav aria-label="Breadcrumb" className="flex-1 min-w-0">
         <ol className="flex items-center gap-1.5 text-sm text-2 overflow-x-auto whitespace-nowrap">
