@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import type { BookDocumentAnchor, DeliverableDocumentAnchor } from "../contracts/anchor";
 import type { ReadingFocus } from "../../lib/readingFocus";
-import { QUOTE_CAP, capNoSurrogateSplit, chipText, normalizeForMatch, selectionContextBlock, verifyQuoteAgainstFocus } from "./anchorContext";
+import { formatReadingFocusSystemContext } from "../../lib/readingFocus";
+import { QUOTE_CAP, capAtGraphemeBoundary, chipText, normalizeForMatch, selectionContextBlock, verifyQuoteAgainstFocus } from "./anchorContext";
 
 const book = (quote: string | null): BookDocumentAnchor => ({
   space: "book", documentId: "doc-1", kind: "text",
@@ -43,10 +44,31 @@ describe("verifyQuoteAgainstFocus", () => {
     expect(QUOTE_CAP).toBe(2000);
     const emoji = "😀"; // a surrogate pair
     const s = "a".repeat(QUOTE_CAP - 1) + emoji + "tail";
-    const capped = capNoSurrogateSplit(s, QUOTE_CAP);
+    const capped = capAtGraphemeBoundary(s, QUOTE_CAP);
     expect(capped.length).toBe(QUOTE_CAP - 1);
     expect(capped.at(-1)).toBe("a");
-    expect(capNoSurrogateSplit("short", QUOTE_CAP)).toBe("short");
+    expect(capAtGraphemeBoundary("short", QUOTE_CAP)).toBe("short");
+  });
+
+  it("the cap lands on a grapheme boundary (repair C6): a combining mark at the cap is never split, so a legitimate quote still verifies", () => {
+    const base = "a".repeat(QUOTE_CAP - 1);
+    const page = `${base}e\u0301 and more`; // "é" as base + combining acute, straddling the cap
+    const capped = capAtGraphemeBoundary(`${base}e\u0301 and more`, QUOTE_CAP);
+    expect(capped).toBe(base); // the whole grapheme is dropped, never half of it
+    expect(verifyQuoteAgainstFocus(book(`${base}e\u0301 and more`), focus(page))).toEqual({ quote: base });
+    // A ZWJ sequence straddling the cap is dropped whole too.
+    const family = "👨\u200d👩\u200d👧";
+    expect(capAtGraphemeBoundary(`${"b".repeat(QUOTE_CAP - 3)}${family}x`, QUOTE_CAP)).toBe("b".repeat(QUOTE_CAP - 3));
+  });
+
+  it("verification runs against the same capped page text the model receives (repair C7): a quote beyond the 4 000-char mount is a mismatch", () => {
+    const page = `${"x".repeat(4000)} the beak depth`;
+    const f = focus(page);
+    expect(formatReadingFocusSystemContext(f)).not.toContain("beak depth");
+    expect(verifyQuoteAgainstFocus(book("the beak depth"), f)).toEqual({ quote: null, reason: "mismatch" });
+    const inside = focus(`the beak depth ${"x".repeat(4000)}`);
+    expect(formatReadingFocusSystemContext(inside)).toContain("beak depth");
+    expect(verifyQuoteAgainstFocus(book("the beak depth"), inside)).toEqual({ quote: "the beak depth" });
   });
 });
 
