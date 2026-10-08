@@ -27,6 +27,7 @@ import { GearSwitchHost } from "./GearSwitchHost";
 import { BrowserRouter } from "react-router-dom";
 import { DocumentTabStrip } from "../DocumentTabStrip";
 import { ProjectPicker } from "../ProjectPicker";
+import { SlashMenu } from "../../modes/Notebook/SlashMenu";
 
 const dialog = () => document.querySelector<HTMLElement>('[data-gear-switch]');
 const chip = (root: ParentNode = document) => root.querySelector<HTMLButtonElement>("[data-gear-chip]")!;
@@ -117,6 +118,8 @@ describe("M2 — the surface: a11y, focus, notch, hygiene", () => {
     expect(chip().getAttribute("aria-haspopup")).toBe("dialog");
     expect(chip().getAttribute("aria-expanded")).toBe("false");
     expect(chip().textContent).toContain("Default project");
+    // The accessible name is the breadcrumb, not a constant that hides it (F3).
+    expect(chip().getAttribute("aria-label")).toBe("Switch gear: Default project Default project");
     await open();
     const d = dialog()!;
     expect(d.getAttribute("role")).toBe("dialog");
@@ -158,16 +161,24 @@ describe("M2 — the surface: a11y, focus, notch, hygiene", () => {
     expect(chip().getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("Escape reaches the gear.escape owner while focus is inside, and not when it is outside", async () => {
+  it("Escape reaches the gear.escape owner while focus is inside, and not from a modal above it (the only place focus can be while the switch is open)", async () => {
     await mountTopbar();
     await open();
     expect(readKeyboardOwnership().registrations.filter((r) => r.id === "gear.escape")).toHaveLength(1);
+    // Focus cannot sit outside the open switch (the focus guard pulls it
+    // back) unless another modal is above it: that modal's Esc is its own.
+    const above = document.createElement("div");
+    above.setAttribute("role", "dialog");
+    above.setAttribute("aria-modal", "true");
     const outside = document.createElement("input");
-    document.body.append(outside);
-    outside.focus();
+    above.append(outside);
+    document.body.append(above);
+    await act(async () => { outside.focus(); });
+    expect(document.activeElement).toBe(outside);
     await key(window, { key: "Escape" });
     expect(dialog()).toBeTruthy();
-    cursorTab()!.focus();
+    above.remove();
+    await act(async () => { cursorTab()!.focus(); });
     await key(window, { key: "Escape" });
     await waitFor(() => expect(dialog()).toBeNull());
     expect(readKeyboardOwnership().registrations.filter((r) => r.id === "gear.escape")).toHaveLength(0);
@@ -344,16 +355,111 @@ describe("M3 — the keymap rows through the real dispatcher", () => {
     await keys("ctrl+b", "h");
     expect(calls).toEqual({});
     expect(dialog()).toBeTruthy();
-    // Keys land on the focused tab, never on the editor underneath.
+    // Keys land on the focused tab, never on the editor underneath. (jsdom
+    // inserts nothing on a synthetic keydown, so `area.value` proves
+    // nothing; what is provable here is that the editor's own listener
+    // never sees the key and focus never leaves the dialog. The real-
+    // browser typing proof is e2e/keyboard-switcher.spec.ts.)
+    const seen: string[] = [];
+    area.addEventListener("keydown", (e) => seen.push(e.key));
     for (const k of ["a", "b", "ArrowRight"]) await key(document.activeElement!, { key: k });
     expect(document.activeElement?.tagName).toBe("BUTTON");
     expect(dialog()!.contains(document.activeElement)).toBe(true);
-    expect(area.value).toBe("");
+    expect(seen).toEqual([]);
     expect(area).not.toBe(document.activeElement);
     // The chord closes it and focus returns to the textarea.
     await keys("ctrl+alt+shift+w");
     await waitFor(() => expect(dialog()).toBeNull());
     expect(document.activeElement).toBe(area);
+  });
+
+  it("focus is kept inside while open: a programmatic focus() from outside is pulled back to the cursor tab, Esc still closes and returns focus to the opener", async () => {
+    await mountTopbar();
+    const area = document.createElement("textarea");
+    document.body.append(area);
+    area.focus();
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(document.activeElement).toBe(cursorTab());
+    // An editor's chain().focus(), a late autofocus: focus leaves without any ui change.
+    await act(async () => { area.focus(); });
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(cursorTab());
+    expect(focusContext(document.activeElement).kind).toBe("modal");
+    // Over an EMPTY strip (no cursor tab) the dialog itself holds focus.
+    const esc = await key(document.activeElement!, { key: "Escape" });
+    expect(esc.defaultPrevented).toBe(true);
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(document.activeElement).toBe(area);
+  });
+
+  it("focus is kept inside over a loading strip too (no cursor tab): the dialog root reclaims it", async () => {
+    stubApi({ hang: true });
+    render(<GearSwitchHost surface="topbar" />);
+    await waitFor(() => expect(chip()).toBeTruthy(), { timeout: 5000 });
+    const ed = document.createElement("div");
+    ed.setAttribute("contenteditable", "true");
+    ed.tabIndex = 0;
+    document.body.append(ed);
+    ed.focus();
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(useContextTreeStore.getState().tree.status).toBe("loading");
+    expect(cursorTab()).toBeNull();
+    expect(document.activeElement).toBe(dialog());
+    await act(async () => { ed.focus(); });
+    expect(document.activeElement).toBe(dialog());
+    expect(focusContext(document.activeElement).kind).toBe("modal");
+    await key(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(document.activeElement).toBe(ed);
+  });
+
+  it("the gear-1 picker above the switch owns focus: the switch does not steal it back", async () => {
+    await mountTopbar(<><GearSwitchHost surface="topbar" /><ProjectPicker /></>);
+    await open();
+    await key(dialog()!, { key: "ArrowRight" });
+    await key(dialog()!, { key: "Enter" });
+    const picker = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-keymap-owner="project.select"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    await waitFor(() => expect(picker.contains(document.activeElement)).toBe(true));
+    await act(async () => {});
+    expect(picker.contains(document.activeElement)).toBe(true);
+    expect(dialog()).toBeTruthy();
+  });
+
+  it("a Notebook slash menu underneath never acts on the switch's keys, and the switch's Esc is not its Esc", async () => {
+    const ed = document.createElement("div");
+    ed.setAttribute("contenteditable", "true");
+    ed.tabIndex = 0;
+    document.body.append(ed);
+    const calls: string[] = [];
+    const chain: Record<string, unknown> = new Proxy({}, {
+      get: (_t, p: string) => (...args: unknown[]) => {
+        void args;
+        calls.push(p);
+        if (p === "focus") ed.focus();
+        return p === "run" ? true : chain;
+      },
+    });
+    const editor = { state: { selection: { from: 2 }, doc: { resolve: () => ({ start: () => 1 }), textBetween: () => "/" } }, chain: () => chain };
+    const onClose = vi.fn();
+    await mountTopbar(<><GearSwitchHost surface="topbar" /><SlashMenu editor={editor as never} query="" onClose={onClose} /></>);
+    ed.focus();
+    await keys("ctrl+alt+shift+w");
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    await key(document.activeElement!, { key: "Enter" }); // gear 1 → gear 2 (Enter is the slash menu's key too)
+    expect(dialog()!.getAttribute("data-gear")).toBe("2");
+    expect(calls).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    await key(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(dialog()).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(ed);
   });
 
   it("the flag off: the key is inert and nothing mounts", async () => {
@@ -500,9 +606,9 @@ describe("M4 — gear actions through the surface", () => {
       // on its own microtask, so the two are asserted as one "close" step
       // that precedes every store write of the effect.
       expect(new Set(order.slice(0, 2))).toEqual(new Set(["closed", "focus-opener"]));
-      expect(order[2]).toBe("agent:inv-child");
-      expect(order).toContain("companion:agent:thread:inv-child");
-      expect(order.indexOf("focus-opener")).toBeLessThan(order.indexOf("companion:agent:thread:inv-child"));
+      // Both store writes of the effect follow the close; the companion is
+      // written before the selection so an open failure writes nothing.
+      expect(order.slice(2)).toEqual(["companion:agent:thread:inv-child", "agent:inv-child"]);
       expect(useSelection.getState().selection).toEqual({ projectId: "default", subProjectId: "inv-root", agentId: "inv-child" });
       expect(useWorkspace.getState().focusedPane).toBe("right");
     } finally {

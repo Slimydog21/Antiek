@@ -41,6 +41,7 @@ import { durationMs, notch, press } from "../../design/motion";
 import { prefersReducedMotion } from "../../design/theme";
 import { useContextTree, useIsSelected, useSelection } from "../contracts";
 import { PreBackendTreeFeed } from "../contracts/adapters/preBackend";
+import { topModal } from "../escapeOverlay";
 import { registerKeyboardOwner } from "../keyboardOwnership";
 import { runGearEffect } from "./gearActions";
 import { normalizeUi, openUi, stepSwitcher, type GearEffect, type SwitcherInput, type SwitcherKey, type SwitcherUi } from "./switcherKeys";
@@ -109,6 +110,15 @@ export interface GearChipProps {
   onClick?: () => void;
 }
 
+/** The chip's accessible name: the status when not ready, else the
+ *  breadcrumb path itself (the name must not hide what the chip shows). */
+export function chipLabel(model: SwitcherModel): string {
+  const status = statusCopy(model);
+  if (status) return `Switch gear: ${status}`;
+  if (model.path.length === 0) return "Switch gear";
+  return `Switch gear: ${model.path.map((t) => `${t.kindLabel} ${t.label}`).join(" · ")}`;
+}
+
 export function GearChip({ model, open, dialogId, onClick }: GearChipProps) {
   const status = statusCopy(model);
   return (
@@ -117,7 +127,7 @@ export function GearChip({ model, open, dialogId, onClick }: GearChipProps) {
       aria-haspopup="dialog"
       aria-expanded={open === undefined ? undefined : open}
       aria-controls={open && dialogId ? dialogId : undefined}
-      aria-label={status ? `Switch gear: ${status}` : "Switch gear"}
+      aria-label={chipLabel(model)}
       data-gear-chip=""
       className={CHIP}
       onClick={onClick}
@@ -286,9 +296,6 @@ function GearDialog({ model, dialogId, onClose }: GearDialogProps) {
   const [notchOn, setNotchOn] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
-  const tree = useContextTree();
-  const treeRef = useRef(tree);
-  treeRef.current = tree;
   const modelRef = useRef(model);
   modelRef.current = model;
   const uiRef = useRef(liveUi);
@@ -296,24 +303,53 @@ function GearDialog({ model, dialogId, onClose }: GearDialogProps) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
-  // Focus returns to whatever had it when the switch opened.
+  /** The cursor tab, or the dialog itself over an empty strip. */
+  const focusCursor = useCallback(() => {
+    const root = ref.current;
+    if (!root) return;
+    const cursor = uiRef.current.cursor;
+    const target = cursor === null
+      ? root
+      : [...root.querySelectorAll<HTMLElement>("[data-gear-tab]")].find((el) => el.dataset.gearTab === cursor) ?? root;
+    if (document.activeElement !== target) target.focus();
+  }, []);
+
+  // Focus returns to whatever had it when the switch opened, and while
+  // open it never leaves: a programmatic focus() from outside (an editor's
+  // chain().focus(), a late autofocus) is pulled back to the cursor tab,
+  // unless another modal sits above the switch (the gear-1 picker), which
+  // then owns focus. One effect, so the guard is gone BEFORE the opener
+  // is refocused on unmount (the root is still in the DOM at that point).
   useLayoutEffect(() => {
     const opener = document.activeElement;
+    const root = ref.current;
+    const reclaim = () => {
+      if (!root?.isConnected || root.contains(document.activeElement) || topModal() !== root) return;
+      focusCursor();
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      if (e.target instanceof Node && root?.contains(e.target)) return;
+      reclaim();
+    };
+    // A blur to nowhere (activeElement → body) raises no focusin.
+    const onFocusOut = (e: FocusEvent) => {
+      if (e.relatedTarget !== null) return;
+      queueMicrotask(reclaim);
+    };
+    document.addEventListener("focusin", onFocusIn);
+    root?.addEventListener("focusout", onFocusOut);
     return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      root?.removeEventListener("focusout", onFocusOut);
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
-  }, []);
+  }, [focusCursor]);
 
   // The cursor tab (or the dialog itself over an empty strip) holds focus
   // on open and on every ui change.
   useLayoutEffect(() => {
-    const root = ref.current;
-    if (!root) return;
-    const target = liveUi.cursor === null
-      ? root
-      : [...root.querySelectorAll<HTMLElement>("[data-gear-tab]")].find((el) => el.dataset.gearTab === liveUi.cursor) ?? root;
-    if (document.activeElement !== target) target.focus();
-  }, [liveUi.cursor, liveUi.gear]);
+    focusCursor();
+  }, [liveUi.cursor, liveUi.gear, focusCursor]);
 
   const bump = useCallback(() => {
     if (prefersReducedMotion()) return;
@@ -337,18 +373,18 @@ function GearDialog({ model, dialogId, onClose }: GearDialogProps) {
         return;
       case "select-agent": {
         // Close first (the opener gets focus back on unmount), then run on
-        // the next microtask (reviewer 2 graft 2).
+        // the next microtask (reviewer 2 graft 2). The effect reads the
+        // stores' CURRENT tree, never a snapshot from this keypress.
         // flushSync: the dialog unmounts and the opener gets focus back
         // before this handler returns; without it the close would ride
         // React's own microtask and race the effect under act().
-        const tree = treeRef.current;
         flushSync(() => closeRef.current());
-        void Promise.resolve().then(() => runGearEffect(effect, tree));
+        void Promise.resolve().then(() => runGearEffect(effect));
         return;
       }
       default:
         // Gear 1 and 2 keep the dialog open and focus inside it.
-        void runGearEffect(effect, treeRef.current);
+        void runGearEffect(effect);
     }
   }, []);
 
