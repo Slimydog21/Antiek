@@ -25,6 +25,13 @@ describe("threadScroll", () => {
     expect(reduceFollow(false, { type: "scroll", direction: "down", metrics: near })).toBe(true);
   });
 
+  it("an upward scroll unfollows even inside the 80 px band (repair C8): a scrollbar or keyboard peek is a peek", () => {
+    const near = { scrollHeight: 1000, clientHeight: 400, scrollTop: 590 }; // 10 px from the end
+    expect(reduceFollow(true, { type: "scroll", direction: "up", metrics: near })).toBe(false);
+    const far = { scrollHeight: 1000, clientHeight: 400, scrollTop: 100 };
+    expect(reduceFollow(true, { type: "scroll", direction: "up", metrics: far })).toBe(false);
+  });
+
   it("jump ⇒ following", () => {
     expect(reduceFollow(false, { type: "jump" })).toBe(true);
   });

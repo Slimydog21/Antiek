@@ -70,7 +70,7 @@ describe("AgentThread", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("Jump to latest is pointer-only (aria-hidden, tabIndex -1) and appears once the reader scrolls away", () => {
+  it("Jump to latest is keyboard-reachable (not aria-hidden, in the tab order) and appears once the reader scrolls away (repair C8)", () => {
     const { container } = mount([turn({ status: "done", answer: "a" })]);
     const scroller = container.querySelector<HTMLElement>("[data-agent-thread-scroll]")!;
     Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
@@ -78,10 +78,75 @@ describe("AgentThread", () => {
     fireEvent.wheel(scroller, { deltaY: -10 });
     const jump = container.querySelector<HTMLButtonElement>("[data-jump-to-latest]")!;
     expect(jump).not.toBeNull();
-    expect(jump.getAttribute("aria-hidden")).toBe("true");
-    expect(jump.tabIndex).toBe(-1);
+    expect(jump.getAttribute("aria-hidden")).toBeNull();
+    expect(jump.tabIndex).toBe(0);
+    jump.focus();
+    expect(document.activeElement).toBe(jump);
     fireEvent.click(jump);
     expect(container.querySelector("[data-jump-to-latest]")).toBeNull();
+  });
+});
+
+/** A fake scroll container: geometry fixed, scrollTop writable and readable
+ *  (jsdom's own scrollTop is inert), so the snap's write is observable. */
+function fakeScroller(container: HTMLElement) {
+  const el = container.querySelector<HTMLElement>("[data-agent-thread-scroll]")!;
+  let top = 0;
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: 1000 });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+  Object.defineProperty(el, "scrollTop", { configurable: true, get: () => top, set: (v: number) => { top = v; } });
+  const scrollTo = (v: number) => { top = v; fireEvent.scroll(el); };
+  const jump = () => container.querySelector("[data-jump-to-latest]");
+  return { el, scrollTo, jump };
+}
+
+describe("follow-the-tail with the fake scroll container (M3, repair C8)", () => {
+  it("the snap's own scroll event never re-follows after a pointerdown unfollow; the user's downward scroll into the band does", () => {
+    const view = render(
+      <AgentThread turns={[turn({ status: "streaming", answer: "a" })]} transportKind="whole" lifecycle={IDLE} interview={false} reducedMotion={false} onRetry={() => {}} />,
+    );
+    const { el, scrollTo, jump } = fakeScroller(view.container);
+    // A chunk lands while following: the snap writes the end position.
+    view.rerender(
+      <AgentThread turns={[turn({ status: "streaming", answer: "ab" })]} transportKind="whole" lifecycle={IDLE} interview={false} reducedMotion={false} onRetry={() => {}} />,
+    );
+    expect(el.scrollTop).toBe(1000);
+    expect(jump()).toBeNull();
+    fireEvent.pointerDown(el);
+    expect(jump()).not.toBeNull();
+    // The snap's pending scroll event lands AFTER the pointerdown: same
+    // position, "down", near the end — it must not re-follow.
+    scrollTo(1000);
+    expect(jump()).not.toBeNull();
+    // A later chunk while unfollowed never snaps the user back.
+    view.rerender(
+      <AgentThread turns={[turn({ status: "streaming", answer: "a longer answer" })]} transportKind="whole" lifecycle={IDLE} interview={false} reducedMotion={false} onRetry={() => {}} />,
+    );
+    expect(el.scrollTop).toBe(1000);
+    expect(jump()).not.toBeNull();
+    // The user scrolls up, then back down into the 80 px band: re-follow.
+    scrollTo(500);
+    expect(jump()).not.toBeNull();
+    scrollTo(960);
+    expect(jump()).toBeNull();
+  });
+
+  it("an upward scroll inside the 80 px band unfollows (a scrollbar/keyboard peek), and a wheel up does too", () => {
+    const view = render(
+      <AgentThread turns={[turn({ status: "streaming", answer: "a" })]} transportKind="whole" lifecycle={IDLE} interview={false} reducedMotion={false} onRetry={() => {}} />,
+    );
+    const { el, scrollTo, jump } = fakeScroller(view.container);
+    view.rerender(
+      <AgentThread turns={[turn({ status: "streaming", answer: "ab" })]} transportKind="whole" lifecycle={IDLE} interview={false} reducedMotion={false} onRetry={() => {}} />,
+    );
+    expect(el.scrollTop).toBe(1000);
+    expect(jump()).toBeNull();
+    scrollTo(990); // 10 px up from the end, inside the band
+    expect(jump()).not.toBeNull();
+    fireEvent.click(jump()!);
+    expect(jump()).toBeNull();
+    fireEvent.wheel(el, { deltaY: -1 });
+    expect(jump()).not.toBeNull();
   });
 });
 

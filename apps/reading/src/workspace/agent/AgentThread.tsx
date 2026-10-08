@@ -152,13 +152,14 @@ export function AgentThread({ turns, transportKind, lifecycle, interview, reduce
         ) : null}
       </div>
       {!following ? (
+        // Keyboard-reachable (repair C8): a real button in the tab order,
+        // named for assistive tech; it leaves with the follow state.
         <button
           type="button"
-          aria-hidden="true"
-          tabIndex={-1}
           data-jump-to-latest
+          aria-label="Jump to latest reply"
           onClick={jump}
-          className={`absolute bottom-2 right-3 h-9 px-3 rounded-full border border-hairline bg-ice-0 dark:bg-charcoal-2 text-xs text-ink dark:text-bright shadow-z2 ${reducedMotion ? "" : "transition-[opacity,transform] duration-200"}`}
+          className={`absolute bottom-2 right-3 h-9 px-3 rounded-full border border-hairline bg-ice-0 dark:bg-charcoal-2 text-xs text-ink dark:text-bright shadow-z2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${reducedMotion ? "" : "transition-[opacity,transform] duration-200"}`}
         >
           Jump to latest
         </button>
