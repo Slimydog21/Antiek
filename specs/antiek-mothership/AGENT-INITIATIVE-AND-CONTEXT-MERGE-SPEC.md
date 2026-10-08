@@ -36,13 +36,13 @@ interface AgentInitiative {
 Rules:
 
 - **Badge**: the agent's tab and its tree node (#3752) show the attention badge; the monitor (#3758) orders it by the existing attention order. No toast unless the run *transitions into* blocked/needs-you (the existing transition-only toast rule).
-- **open_pane**: honored only when (a) no composer has unsent text, (b) the reading focus is idle (no pinned selection, no IME open), and (c) the same initiative has not been dismissed in this session. Otherwise it degrades to badge. This is the "it opens the second pane" case — it opens *beside* the user, never *over* them.
+- **open_pane**: honored only when (a) no composer has unsent text, (b) the reading focus is idle (no pinned selection, no IME open), and (c) the same initiative has not been dismissed in this session. Otherwise it degrades to badge — and the degrade is **spoken, not silent**: the badge's tooltip/aria-description names the reason in plain copy ("didn't open — you're mid-edit; press prefix+a when ready") so the keyboard user can see the cause without a mouse (Grok review G3). An honored `open_pane` must additionally not move geometry: the pane opens within the existing layout's companion region, and any arrangement shift is asserted zero in the e2e (focus unchanged AND layout box unchanged).
 - The user gesture equivalents stay exactly as on #3756: `prefix+a` / `ctrl+alt+a`, composer chips, deep links.
 
 ### D7.2 Consent and provenance
 
 - Every initiative is recorded on the run's thread (agentThreadStore) with `origin: "agent"`, so the human-facing companion document can show *why* a pane appeared. AI-initiated UI is AI output: it carries the same "AI reply" labelling discipline as #3756's thread.
-- Dismissal is remembered per run per session (`dismissedInitiatives` in agentPaneStore, session-scoped like drafts). A dismissed initiative never re-fires; a *new* initiative (different intent or headline) may.
+- Dismissal is remembered per run per session (`dismissedInitiatives` in agentPaneStore, session-scoped like drafts), keyed by **(agentId, intent, anchor identity)** — never by headline text, so a reworded headline cannot re-fire a dismissed initiative (Grok review G1). A genuinely new initiative (different intent, or the same intent against a different anchor) may badge again. A dismissed initiative never re-opens the pane.
 - The canned trio the operator named — "what should I read", "what is missing in my research", "what is weak in my writing" — are first-class intents with fixed copy, not free text, so the monitor can group them.
 
 ### D7.3 Where it lands in the cockpit
@@ -75,7 +75,10 @@ interface AgentNode {
 
 - **Manual**: the user selects two agent tabs (switcher multi-select or tree panel) → "Merge contexts" → confirmation names the survivor (default: the older run; the user may flip). Provenance: the merge event records `initiated_by: "user"`.
 - **Automatic**: the backend (SPR-B, ffx-nav-agent-bridge) may *propose* a merge when embeddings/themes converge — but a proposal is an **initiative (D7.1), never an action**. The user confirms or dismisses. No silent merge, ever: merging rewrites what "the agent" knows, and silent context mutation is exactly the blurred line the operator's provenance ask forbids.
-- **Split (undo)**: a merged agent can be split back along `mergedFrom` lines. The survivor's transcript keeps merged turns labelled with their contributor (`via: <agentId>`), so a split is lossless re-partitioning, not reconstruction.
+- **Chains**: merges are flat by construction — merging INTO a survivor absorbs its `mergedFrom` list into the new survivor's (union, deduped, order-preserved); a node with `mergedInto` set is terminal and cannot itself absorb others. Depth never exceeds one hop, so split stays lossless (Grok review G2).
+- **Greyed-node delivery**: a merged participant's pane tab stays openable read-only; asking it anything routes to the survivor with the participant's id attached as `via`, and the composer says so. No writes land on a `mergedInto` node.
+- **Authority never widens on merge**: a cross-project merge lifts *visibility of the merged context* to cross-project scope, but every participant's content keeps its origin project tag, and an answer rendered inside project A's context may cite only participants whose origin is A or whose scope was cross-project before the merge. The merge widens who the user talks to, never what evidence may cross a project boundary without the user seeing the boundary named.
+- **Split (undo)**: a merged agent can be split back along `mergedFrom` lines. The survivor's transcript keeps merged turns labelled with their contributor (`via: <agentId>`), so a split is lossless re-partitioning, not reconstruction. The split-compares-bytes acceptance test below is the oracle this claim lives or dies by.
 
 ### D8.3 The one-agent-in-control surface
 
@@ -99,6 +102,9 @@ Already listed in the review synthesis as backend-owned; restated so sprint-B's 
 - [ ] Split after merge restores both threads byte-identical (round-trip property test).
 - [ ] Every merge/initiative event appears in the human-facing companion document and the agent-facing evidence base with provenance intact.
 - [ ] No silent mutations: any automatic proposal requires user confirmation; the UI copy never calls a pre-backend node "Sub-project" (rigor #1 holds).
+- [ ] Dismissal-key property test: reworded headlines with the same (agentId, intent, anchor) never re-fire; a different anchor with the same intent may (G1).
+- [ ] Degrade-visibility test: every suppressed `open_pane` renders its reason in the badge's accessible description; honored opens assert focus AND layout box unchanged (G3).
+- [ ] Merge-algebra tests: chain merges flatten to depth one; greyed-node prompts route to the survivor with `via`; a cross-project merge cannot cite another project's participant content without naming the boundary (G2).
 
 ## Non-goals
 
