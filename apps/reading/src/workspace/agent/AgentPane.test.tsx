@@ -18,7 +18,7 @@ import { useAgentPaneStore } from "./agentPaneStore";
 import { useAgentThreads } from "./agentThreadStore";
 import type { AgentTransport, AgentTransportRequest } from "./agentTransport";
 import type { AgentPaneTab } from "./agentTypes";
-import { PROJECT_INTAKE_SEED_EVENT } from "./interviewMode";
+import { resetProjectSeedSeam, subscribeProjectSeed, type ProjectSeed } from "./interviewMode";
 
 beforeAll(() => {
   Element.prototype.getClientRects = function () {
@@ -62,6 +62,7 @@ beforeEach(() => {
   useCompanion.getState().reset();
   useAgentThreads.getState().reset();
   useAgentPaneStore.getState().reset();
+  resetProjectSeedSeam();
   window.sessionStorage.clear();
   setReadingFocus(null);
   // The pane's own tab exists in the store (Phase A: a research-thread id stands in).
@@ -193,15 +194,14 @@ describe("every send carries the project summary and the reading focus (invarian
 });
 
 describe("interview mode (invariant 26)", () => {
-  it("hidden first turn, two option cards in order (only the newest targetable), a confirm-only seed, one window event, no project POST", async () => {
+  it("hidden first turn, two option cards in order (only the newest targetable), a confirm-only seed reaching a subscribed consumer exactly once, no project POST", async () => {
     const { transport, requests } = scripted([
       "Which era?\n\n@@options\n{\"question\":\"Which era?\",\"options\":[\"1830s\",\"1970s\"],\"allowCustom\":true}\n@@end",
       "Which island?\n\n@@options\n{\"question\":\"Which island?\",\"options\":[\"Daphne\",\"Genovesa\"]}\n@@end",
       "Here is a seed.\n\n@@actions\n[{\"kind\":\"project_seed\",\"title\":\"Finches\",\"prompt\":\"Did beak depth track the 1977 drought?\",\"sources\":[\"doc-1\"]}]\n@@end",
     ]);
-    const seeds: unknown[] = [];
-    const onSeed = (e: Event) => seeds.push((e as CustomEvent).detail);
-    window.addEventListener(PROJECT_INTAKE_SEED_EVENT, onSeed);
+    const seeds: ProjectSeed[] = [];
+    const off = subscribeProjectSeed((s) => { seeds.push(s); });
     host(transport, { interview: true });
     expect(requests).toHaveLength(1);
     expect(requests[0].prompt).toBe("Begin the interview.");
@@ -228,7 +228,24 @@ describe("interview mode (invariant 26)", () => {
     fireEvent.click(within(seedCard as HTMLElement).getByRole("button", { name: /create this project/i }));
     expect(seeds).toEqual([{ title: "Finches", prompt: "Did beak depth track the 1977 drought?", sources: ["doc-1"] }]);
     expect(transport.send).toHaveBeenCalledTimes(3);
-    window.removeEventListener(PROJECT_INTAKE_SEED_EVENT, onSeed);
+    act(() => { vi.advanceTimersByTime(60); });
+    expect(document.querySelector('[role="status"]')!.textContent).toBe("Project seed handed to the intake");
+    off();
+  });
+
+  it("with no intake mounted the confirm announces that the seed is held, and the first intake to subscribe receives it once", async () => {
+    const { transport } = scripted([
+      "Here is a seed.\n\n@@actions\n[{\"kind\":\"project_seed\",\"title\":\"Finches\",\"prompt\":\"P\"}]\n@@end",
+    ]);
+    host(transport, { interview: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    fireEvent.click(within(document.querySelector("[data-seed-card]") as HTMLElement).getByRole("button", { name: /create this project/i }));
+    act(() => { vi.advanceTimersByTime(60); });
+    expect(document.querySelector('[role="status"]')!.textContent).toBe("No project intake is open yet; the seed is held for it");
+    const seeds: ProjectSeed[] = [];
+    const off = subscribeProjectSeed((s) => { seeds.push(s); });
+    off();
+    expect(seeds).toEqual([{ title: "Finches", prompt: "P" }]);
   });
 });
 

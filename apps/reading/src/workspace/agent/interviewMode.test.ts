@@ -1,7 +1,7 @@
 /** interviewMode.test.ts — SPR-07 M8 (patterns 18/20): the option card parser and the seed hand-off. */
 import { describe, expect, it, vi } from "vitest";
 
-import { INTERVIEW_FIRST_TURN, INTERVIEW_SYSTEM_PROMPT, PROJECT_INTAKE_SEED_EVENT, dispatchProjectSeed, parseOptionCard, seedFromActions } from "./interviewMode";
+import { INTERVIEW_FIRST_TURN, INTERVIEW_SYSTEM_PROMPT, dispatchProjectSeed, parseOptionCard, seedFromActions, subscribeProjectSeed, type ProjectSeed } from "./interviewMode";
 
 describe("interviewMode", () => {
   it("the hidden first turn and the prompt exist", () => {
@@ -17,17 +17,60 @@ describe("interviewMode", () => {
     expect(parseOptionCard("x\n\n@@options\n{\"options\":\"nope\"}\n@@end").card).toBeNull();
   });
 
-  it("seedFromActions picks the first project_seed; dispatchProjectSeed emits exactly one window event", () => {
+  it("seedFromActions picks the first project_seed", () => {
     expect(seedFromActions([{ kind: "toast", level: "info", message: "m" }])).toBeNull();
     const seed = seedFromActions([{ kind: "project_seed", title: "T", prompt: "P", sources: ["doc-1"] }]);
     expect(seed).toEqual({ title: "T", prompt: "P", sources: ["doc-1"] });
-    const seen: unknown[] = [];
-    const onSeed = (e: Event) => seen.push((e as CustomEvent).detail);
-    window.addEventListener(PROJECT_INTAKE_SEED_EVENT, onSeed);
-    dispatchProjectSeed(seed!);
-    window.removeEventListener(PROJECT_INTAKE_SEED_EVENT, onSeed);
-    expect(PROJECT_INTAKE_SEED_EVENT).toBe("antiek:project-intake:seed");
-    expect(seen).toEqual([{ title: "T", prompt: "P", sources: ["doc-1"] }]);
     vi.restoreAllMocks();
+  });
+
+  describe("the seed seam (repair C2): subscribeProjectSeed is the intake's ONE consumer path", () => {
+    const seed: ProjectSeed = { title: "T", prompt: "P", sources: ["doc-1"] };
+
+    it("a dispatched seed reaches a registered consumer exactly once, and the consumer is told it was delivered", () => {
+      const seen: ProjectSeed[] = [];
+      const off = subscribeProjectSeed((s) => { seen.push(s); });
+      try {
+        expect(dispatchProjectSeed(seed)).toEqual({ delivered: 1 });
+        expect(seen).toEqual([seed]);
+        expect(dispatchProjectSeed({ ...seed, title: "U" })).toEqual({ delivered: 1 });
+        expect(seen.map((s) => s.title)).toEqual(["T", "U"]);
+      } finally {
+        off();
+      }
+      // Unsubscribed: nothing reaches it, and the dispatcher says so.
+      expect(dispatchProjectSeed(seed)).toEqual({ delivered: 0 });
+      expect(seen).toHaveLength(2);
+    });
+
+    it("a seed dispatched before the intake mounts is held and handed to the FIRST consumer once, never twice", () => {
+      expect(dispatchProjectSeed(seed)).toEqual({ delivered: 0 });
+      const a: ProjectSeed[] = [];
+      const b: ProjectSeed[] = [];
+      const offA = subscribeProjectSeed((s) => { a.push(s); });
+      const offB = subscribeProjectSeed((s) => { b.push(s); });
+      try {
+        expect(a).toEqual([seed]);
+        expect(b).toEqual([]);
+        expect(dispatchProjectSeed({ ...seed, title: "V" })).toEqual({ delivered: 2 });
+        expect(a.map((s) => s.title)).toEqual(["T", "V"]);
+        expect(b.map((s) => s.title)).toEqual(["V"]);
+      } finally {
+        offA(); offB();
+      }
+    });
+
+    it("the seed is a value copy: a consumer mutating it never changes what the next consumer sees", () => {
+      const offA = subscribeProjectSeed((s) => { s.title = "mutated"; });
+      const b: ProjectSeed[] = [];
+      const offB = subscribeProjectSeed((s) => { b.push(s); });
+      try {
+        dispatchProjectSeed(seed);
+        expect(b[0].title).toBe("T");
+        expect(seed.title).toBe("T");
+      } finally {
+        offA(); offB();
+      }
+    });
   });
 });

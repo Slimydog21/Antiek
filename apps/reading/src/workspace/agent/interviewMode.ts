@@ -3,8 +3,9 @@
  * patterns 18/20). The same pane with a HIDDEN first turn ("Begin the
  * interview."), one question at a time, options as cards from a fenced
  * `@@options` JSON block, and a confirm-only `project_seed` action that
- * hands {title, prompt, sources} to SPR-03's intake by a window event —
- * never submitProject (the intake owns the paid POST; handoff F6).
+ * hands {title, prompt, sources} to SPR-03's intake through ONE seam,
+ * `subscribeProjectSeed` (repair C2; SEAMS.md §1) — never submitProject
+ * (the intake owns the paid POST; handoff F6).
  *
  * INTERVIEW_SYSTEM_PROMPT duplicates SPR-03's INTERVIEW_PROMPT text until
  * #3749 lands a shared export (F6): one de-dup edit then.
@@ -21,8 +22,6 @@ export const INTERVIEW_SYSTEM_PROMPT = [
   "append exactly one project_seed action {title, prompt, sources?} in the @@actions block. The user",
   "confirms the seed; never assume the project exists.",
 ].join(" ");
-
-export const PROJECT_INTAKE_SEED_EVENT = "antiek:project-intake:seed";
 
 export interface OptionCard {
   question: string;
@@ -70,7 +69,50 @@ export function seedFromActions(actions: readonly AiAction[]): ProjectSeed | nul
   return null;
 }
 
-/** The ONLY hand-off: one CustomEvent the intake subscribes to. */
-export function dispatchProjectSeed(seed: ProjectSeed): void {
-  window.dispatchEvent(new CustomEvent(PROJECT_INTAKE_SEED_EVENT, { detail: seed }));
+export type ProjectSeedConsumer = (seed: ProjectSeed) => void;
+
+const consumers = new Set<ProjectSeedConsumer>();
+/** A seed confirmed while no intake was mounted: held (latest only) for the
+ *  first consumer to subscribe, delivered to it exactly once. */
+let pending: ProjectSeed | null = null;
+
+const copyOf = (s: ProjectSeed): ProjectSeed => ({ title: s.title, prompt: s.prompt, ...(s.sources ? { sources: [...s.sources] } : {}) });
+
+/**
+ * The intake's ONE consumer path (SPR-03's useProjectIntake calls this in
+ * an effect: `useEffect(() => subscribeProjectSeed(applySeed), [applySeed])`).
+ * Every consumer receives each dispatched seed exactly once, as its own
+ * value copy; a seed confirmed before any consumer existed is handed to
+ * the first subscriber, once. Returns the unsubscribe.
+ */
+export function subscribeProjectSeed(consumer: ProjectSeedConsumer): () => void {
+  consumers.add(consumer);
+  if (pending !== null) {
+    const held = pending;
+    pending = null;
+    consumer(copyOf(held));
+  }
+  return () => { consumers.delete(consumer); };
+}
+
+/** The ONLY hand-off. `delivered` is how many consumers received it; 0
+ *  means no intake is mounted (the seed is held for the first one). */
+export function dispatchProjectSeed(seed: ProjectSeed): { delivered: number } {
+  const snapshot = copyOf(seed);
+  if (consumers.size === 0) {
+    pending = snapshot;
+    return { delivered: 0 };
+  }
+  let delivered = 0;
+  for (const c of [...consumers]) {
+    c(copyOf(snapshot));
+    delivered += 1;
+  }
+  return { delivered };
+}
+
+/** Test seam: forget every consumer and any held seed. */
+export function resetProjectSeedSeam(): void {
+  consumers.clear();
+  pending = null;
 }
