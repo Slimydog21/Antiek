@@ -23,6 +23,7 @@ import { toast } from "../components/lemon/LemonToast";
 import type { DocumentAnchor } from "./contracts/anchor";
 import type { AgentScope } from "./contracts/tree";
 import { useWorkspace } from "./WorkspaceStore";
+import { agentTabIdFor } from "./agent/agentPaneId";
 
 export type AgentTabKind = "research-thread" | "dialogue";
 
@@ -46,8 +47,17 @@ export interface AgentTabDescriptor {
    *  Present iff scope === "project" and the opener knew it; absent for
    *  every existing caller (so the project filter never hides them). */
   projectId?: string;
-  /** SPR-07 (additive): the agent pane's own id (agentPaneId.ts). */
+  /** SPR-07 (additive): the agent pane's own id (agentPaneId.ts). PRESENT
+   *  ⇒ this tab IS the agent second pane: its id is `agent:pane:<agentId>`
+   *  and the registry resolves its surface to AgentPane (surfaceFor). On
+   *  the frozen SPR-06 vocabulary its `kind` stays "dialogue" — the run
+   *  kind F1(a) maps kind "agent" to — because AgentTabKind is consumed by
+   *  the frozen contracts (tree.ts AGENT_RUN_KIND_OF_TAB, adapters/
+   *  preBackend.ts, tree.test.ts T5) and cannot be widened on this branch.
+   *  F1 promotes the discriminator to kind "agent" in one edit. */
   agentId?: string;
+  /** SPR-07 (additive): the pane runs the project-creation interview (M8). */
+  interview?: true;
 }
 
 export interface OpenAgentTabInput {
@@ -59,6 +69,7 @@ export interface OpenAgentTabInput {
   anchor?: DocumentAnchor;
   projectId?: string;
   agentId?: string;
+  interview?: boolean;
 }
 
 /** SPR-07, kind-agnostic (graft c): a tab is hidden only when it is
@@ -110,6 +121,9 @@ export function sourceDocumentOf(
 }
 
 function agentTabId(input: OpenAgentTabInput): string {
+  // SPR-07: an agent pane has its own id space (one tab per agentId), so a
+  // project's pane never collapses onto the single one-shot dialogue tab.
+  if (input.agentId !== undefined) return agentTabIdFor(input.agentId);
   if (input.kind === "research-thread") {
     return `agent:thread:${input.investigationId ?? ""}`;
   }
@@ -219,6 +233,7 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         ...anchorPatch,
         ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
         ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+        ...(input.interview ? { interview: true as const } : {}),
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id, seq }));
     }

@@ -9,18 +9,14 @@ import { useId, useState } from "react";
 
 import type { AiAction } from "../../components/ai/aiActions";
 import LemonButton from "../../components/lemon/LemonButton";
-import type { AgentTabKind } from "../companionStore";
 import { openDocumentFromAgent, type OpenDocumentFromAgentResult } from "../contracts/openers";
-import type { AgentPaneTab } from "./agentTypes";
+import { AGENT_PANE_TAB_KIND, type AgentPaneTab } from "./agentTypes";
 import type { ProjectSeed } from "./interviewMode";
 
-/**
- * The AgentRef kind the pane reports to the opener. Phase A: "dialogue" —
- * the run kind F1(a) maps kind "agent" to is "dialogue", so the opened
- * tab's branch origin (`agentKind`) is identical either way and the frozen
- * union is never widened here. Phase B flips this to "agent".
- */
-export const AGENT_REPLY_AGENT_KIND: AgentTabKind = "dialogue";
+/** The AgentRef kind the pane reports to the opener: the tab's own kind
+ *  (agentTypes.AGENT_PANE_TAB_KIND), so the opened document's branch
+ *  origin (`agentKind`) matches the tree's `runKind` for this tab. */
+export const AGENT_REPLY_AGENT_KIND = AGENT_PANE_TAB_KIND;
 
 const REFUSAL_COPY: Record<Exclude<OpenDocumentFromAgentResult, { ok: true }>["reason"], string> = {
   document_mismatch: "That passage is in another document",

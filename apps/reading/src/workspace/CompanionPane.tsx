@@ -26,7 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
-import { AGENT_TAB_KINDS } from "./companionRegistry";
+import { metaFor } from "./companionRegistry";
 import { sourceDocumentOf, tabVisible, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
 import { agentTabDomId } from "./agentTabDomId";
@@ -236,7 +236,7 @@ function ActiveAgentSurface({
   tab: AgentTabDescriptor;
   summary?: InvestigationSummary;
 }) {
-  const meta = AGENT_TAB_KINDS[tab.kind];
+  const meta = metaFor(tab);
   const Surface = meta.Surface;
   return <Surface tab={tab} summary={summary} />;
 }
@@ -262,7 +262,7 @@ function AgentTab({
   onActivate: () => void;
   onClose: () => void;
 }) {
-  const meta = AGENT_TAB_KINDS[tab.kind];
+  const meta = metaFor(tab);
   const glyph = meta.glyph(tab, summary);
   const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
   // The tab IS the button (the ARIA tabs pattern: a tab's children are
@@ -409,7 +409,7 @@ function OverflowMenu({
           ) : null}
           <div className="max-h-[50vh] overflow-y-auto">
             {shown.map((tab) => {
-              const meta = AGENT_TAB_KINDS[tab.kind];
+              const meta = metaFor(tab);
               const glyph = meta.glyph(tab, summaryOf(tab));
               return (
                 <button

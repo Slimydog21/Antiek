@@ -66,7 +66,7 @@ describe("PaneResizer pointer drag", () => {
   it("previews below the threshold at PANE_MIN; release closes the ACTIVE AGENT tab and restores the pre-drag width", () => {
     const onPreview = vi.fn();
     usePaneWidthStore.getState().setPreferred(320);
-    useCompanion.setState({ tabs: [{ id: "agent:pane:p:1", kind: "agent" as never, title: "a", seq: 1, scope: "project" }], activeTabId: "agent:pane:p:1" });
+    useCompanion.setState({ tabs: [{ id: "agent:pane:p:1", kind: "dialogue", title: "a", seq: 1, scope: "project", projectId: "1", agentId: "p:1" }], activeTabId: "agent:pane:p:1" });
     render(<Host max={600} onPreview={onPreview} />);
     drag(100, "up"); // moving right shrinks the right pane: 320 - 100 = 220 < 244
     expect(onPreview).toHaveBeenCalledWith(PANE_MIN);
@@ -91,7 +91,7 @@ describe("PaneResizer pointer drag", () => {
 
   it("Escape and pointercancel mid-drag restore and close nothing", () => {
     const onPreview = vi.fn();
-    useCompanion.setState({ tabs: [{ id: "agent:pane:p:1", kind: "agent" as never, title: "a", seq: 1, scope: "project" }], activeTabId: "agent:pane:p:1" });
+    useCompanion.setState({ tabs: [{ id: "agent:pane:p:1", kind: "dialogue", title: "a", seq: 1, scope: "project", projectId: "1", agentId: "p:1" }], activeTabId: "agent:pane:p:1" });
     render(<Host max={600} onPreview={onPreview} />);
     drag(100, "escape");
     expect(closeAgentPane).not.toHaveBeenCalled();

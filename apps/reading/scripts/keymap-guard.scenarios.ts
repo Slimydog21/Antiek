@@ -7,6 +7,7 @@ import { createActionHandlers } from "../src/workspace/shortcuts";
 import { readKeyboardOwnership } from "../src/workspace/keyboardOwnership";
 import { useWorkspace, disablePersistence } from "../src/workspace/WorkspaceStore";
 import { useTabTrees } from "../src/workspace/tabTreeStore";
+import { useCompanion } from "../src/workspace/companionStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
 import { isFeatureOn } from "../src/lib/featureFlags";
@@ -54,6 +55,9 @@ async function reset() {
   await settle();
   disablePersistence();
   useWorkspace.getState().reset();
+  // SPR-07: an agent tab a previous scenario opened would make the next
+  // press a refocus, not an open; every scenario starts with no agents.
+  useCompanion.getState().reset();
   useWorkspace.getState().setLayoutPreset("omarchy-inset");
   await route("/read/guard-a");
   await see('[data-pane="left"]');

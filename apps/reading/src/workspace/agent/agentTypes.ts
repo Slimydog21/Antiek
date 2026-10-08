@@ -1,12 +1,13 @@
 /**
  * agentTypes.ts — the agent pane's own tab shape (SPR-07, Phase A).
  *
- * Structural on purpose: Phase A never names companion kind "agent" (the
- * frozen SPR-06 contracts key AGENT_RUN_KIND_OF_TAB by AgentTabKind and
- * cannot be widened here; handoff finding F1). Every file under
- * workspace/agent/ is developed against this type; Phase B registers the
- * kind and maps AgentTabDescriptor onto it.
+ * Structural on purpose: the frozen SPR-06 contracts key
+ * AGENT_RUN_KIND_OF_TAB by AgentTabKind and cannot be widened here (handoff
+ * finding F1). Every file under workspace/agent/ is developed against this
+ * type; companionRegistry.AgentPaneSurface maps an AgentTabDescriptor that
+ * carries `agentId` onto it (repair C1).
  */
+import type { AgentTabKind } from "../companionStore";
 import type { DocumentAnchor } from "../contracts/anchor";
 import type { AgentScope } from "../contracts/tree";
 
@@ -30,10 +31,17 @@ export const AGENT_PANE_SCOPE = "__agent__";
 /** The pane the draft key names; the only host today. */
 export const PANE = "companion";
 
-/** The companion kind the pane will register under (Phase B). Phase A
- *  compares by string so the frozen union is never widened here. */
+/** The companion kind F1 will register the pane under. Until the SPR-06
+ *  owner lands that row the pane is a "dialogue"-kind tab carrying
+ *  `agentId` (companionStore.ts); the discriminator below is that field,
+ *  never the kind, so the frozen union is not widened here. */
 export const AGENT_TAB_KIND = "agent";
 
-export function isAgentPaneTab(tab: { kind: string } | null | undefined): boolean {
-  return (tab?.kind as string | undefined) === AGENT_TAB_KIND;
+/** The companion kind the pane's tab carries on the frozen vocabulary: the
+ *  run kind F1(a) maps kind "agent" to, so the opener's `agentKind` and the
+ *  tree's `runKind` are identical either way. F1 flips this to "agent". */
+export const AGENT_PANE_TAB_KIND: AgentTabKind = "dialogue";
+
+export function isAgentPaneTab(tab: { agentId?: string } | null | undefined): boolean {
+  return tab?.agentId !== undefined;
 }

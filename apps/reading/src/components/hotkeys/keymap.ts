@@ -235,13 +235,13 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
 
   // ── SPR-07 the agent pane: prefix+a / ctrl+alt+a under D2's "a" ("ask about
-  // this"; DESIGN-MODEL §2). ONE action: open-or-focus is idempotent. Declared
-  // unimplemented until the SPR-06 owner lands the tree.ts row for kind
-  // "agent" (handoff F1); Phase B flips both rows to implemented in one
-  // commit with the handler and the guard scenario. A saved prefix of
-  // ctrl+alt+a silently falls back to ctrl+b (readPrefix).
-  { id: "prefix-agent-pane", action: "agent.openPane", status: "unimplemented", blockedBy: "ffx-kpa-spr-07 F1: tree.ts AGENT_RUN_KIND_OF_TAB row for kind 'agent' (SPR-06 owner, INBOX 2026-10-07T22:40Z)", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-agent-pane", action: "agent.openPane", status: "unimplemented", blockedBy: "ffx-kpa-spr-07 F1: tree.ts AGENT_RUN_KIND_OF_TAB row for kind 'agent' (SPR-06 owner, INBOX 2026-10-07T22:40Z)", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
+  // this"; DESIGN-MODEL §2). ONE action: open-or-focus is idempotent (a
+  // second press refocuses the composer, never a second tab). Handler:
+  // shortcuts.ts openAgentPaneKey → agent/openAgentPane.ts (lazy); guard
+  // scenario asserts the composer takes focus. A saved prefix of ctrl+alt+a
+  // silently falls back to ctrl+b (readPrefix).
+  { id: "prefix-agent-pane", action: "agent.openPane", status: "implemented", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-pane", action: "agent.openPane", status: "implemented", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**

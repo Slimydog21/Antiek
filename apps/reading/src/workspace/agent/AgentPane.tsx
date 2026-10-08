@@ -18,9 +18,10 @@
  *   Every handled Esc is preventDefault + stopPropagation, so PanelLayout's
  *   fullscreen Escape owner never double-fires.
  *
- * Phase A: hosted standalone (the story and the vitest host); the registry
- * entry that mounts it under companion kind "agent" waits on F1 (Phase B).
- * Scope is enforced in this browser only (rigor #1): the server sees one
+ * HOSTS: companionRegistry.AgentPaneSurface (a companion tab carrying
+ * `agentId`; opened by openAgentPane.ts from prefix+a / ctrl+alt+a and the
+ * #pane=agent:<id> deep link), the story, and the vitest hosts. Scope is
+ * enforced in this browser only (rigor #1): the server sees one
  * /thought-partner route with no project identity; the badge says so.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
