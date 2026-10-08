@@ -40,7 +40,7 @@ def library_accounts(account_api: Any) -> tuple[Any, Path, dict[str, TestClient]
 def seed_book(
     con: db_lock.LockedConnection,
     document_id: str,
-    owner: str | None,
+    owner: str,
     content_class: str | None,
     *,
     order: int = 0,
@@ -148,7 +148,7 @@ def test_library_admission_does_not_open_a_prefix(library_accounts: Any, path: s
     assert response.json() == {"detail": "operator_access_required"}
 
 
-def test_public_and_all_three_private_owners_coexist_without_unowned_disclosure(
+def test_public_and_all_three_private_owners_coexist_without_unknown_owner_disclosure(
     library_accounts: Any,
 ) -> None:
     _app, root, clients, subjects = library_accounts
@@ -157,8 +157,8 @@ def test_public_and_all_three_private_owners_coexist_without_unowned_disclosure(
         seed_book(con, "alice", subjects[ALICE], "personal_reading")
         seed_book(con, "bob", subjects[BOB], "user_owned")
         seed_book(con, "legacy", "__operator__", "personal_reading")
-        seed_book(con, "unowned-null", None, None)
-        seed_book(con, "unowned-private", None, "user_owned")
+        seed_book(con, "unowned-null", "unresolved-library-owner", None)
+        seed_book(con, "unowned-private", "unresolved-library-owner", "user_owned")
     public_rows = []
     for email, own in ((ALICE, "alice"), (BOB, "bob"), (OPERATOR, "legacy")):
         result = page(clients[email])
