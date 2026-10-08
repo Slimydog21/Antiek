@@ -20,6 +20,10 @@ from processing.embedding import (
 from runtime.db_lock import LockedConnection
 
 
+class EmbeddingCompatibilityError(ValueError):
+    """Eligible stored vectors belong to a different embedding identity."""
+
+
 def _identity(provider: Any) -> tuple[str, str, int, str]:
     return (
         embedding_provider_name(provider),
@@ -85,7 +89,7 @@ def assert_embedding_compatible(
         return
 
     stored_provider, stored_model, stored_dim, stored_fingerprint = row
-    raise ValueError(
+    raise EmbeddingCompatibilityError(
         "Stored chunk embeddings are pinned to "
         f"{stored_provider}/{stored_model} dim={stored_dim} "
         f"({stored_fingerprint}), but search is using "
