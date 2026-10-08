@@ -1,5 +1,17 @@
 # Disaster Recovery — VM Is Gone, Restore From Backup
 
+> **Read first: order of operations (restore rehearsal, 2026-10-07).** A full
+> rebuild on `Antiek-v1` that followed this runbook step by step ended with a
+> host that served `setup.yml`'s unpinned editable install instead of an
+> atomic release (D4), started with an empty BYOT usage ledger because the
+> un-backed-up state arrived after the first boot (D12), and was missing about
+> 20 of production's 46 `secrets.env` keys (D5). The authoritative fresh-host
+> order is `aws-cutover.md`, section "Fresh-host sequence": transfer artifacts
+> in hand, `setup.yml`, keep antiek disabled, restore (Steps 4-8 here **plus**
+> the un-backed-up state set), install the transfer `secrets.env`, then
+> `deploy_atomic.yml`, which performs the first start. Steps 3 and 7 below are
+> maintained by other lanes and are unchanged; use them inside that order.
+
 **Scenarios this covers**:
 - Hetzner DC fire / hardware failure / your VM disappears.
 - You accidentally `terraform destroy`'d.
@@ -234,12 +246,21 @@ chown -R antiek:antiek /home/antiek/.antiek/
 
 ## Step 9 — Populate the secrets file
 
-Same as first-deploy.md step 11:
+Install the live file you carried off the old host (or its 1Password copy),
+mode 0640 root:antiek. Do not rebuild it from `secrets.env.j2`: on 2026-10-07
+production held 46 keys and the template 25, and the missing ones include
+behaviour flags (`ANTIEK_AGENT_WORK_BRIDGE_ENABLED`, `ANTIEK_FEEDBACK_ENABLED`,
+`ANTIEK_ACCOUNT_STORE`, `ANTIEK_PASSKEY_STORE`, the public/API base URLs) as
+well as provider keys (rehearsal D5). Only if no copy survives, start from
+first-deploy.md step 11 and reconstruct every key name from
+`aws-cutover.md` precondition P6's inventory:
 
 ```bash
 sudoedit /etc/antiek/secrets.env
-# Paste OPENROUTER_API_KEY=sk-or-v1-...
 ```
+
+Do this before the first start. In the fresh-host order that start is
+`deploy_atomic.yml` (its health gate needs the provider keys), not Step 10.
 
 ## Step 10 — Start the substrate
 

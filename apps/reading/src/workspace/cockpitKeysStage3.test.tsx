@@ -382,7 +382,8 @@ describe("the table after the decision", () => {
   });
 
   it("the reserved list still refuses the later sprints' keys", () => {
-    for (const k of ["1", "w", "m", "r", "a"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
+    // SPR-07 took prefix+a for the agent pane; the rest stay reserved.
+    for (const k of ["1", "w", "m", "r"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
     const probe = validateKeymap(
       [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "w", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
       handlerIds,

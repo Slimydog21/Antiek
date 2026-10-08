@@ -3,13 +3,15 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { LemonModal } from "../components/lemon/LemonModal";
 import { ErrorState, LoadingState } from "../components/states";
 import { listProjects, type Project } from "../lib/api/projects";
+import { useSelection } from "./contracts/selection";
 import { TAB_PROJECT_ID, useTabTrees } from "./tabTreeStore";
 
 /**
  * ProjectPickerContent — the account-project picker (lazy-loaded by
  * ProjectPicker): the registry's projects (lib/api/projects.ts,
  * THREAD-CONTRACT §1.5), one pick filing the tab trees under it
- * (tabTreeStore.selectProject).
+ * (contracts/selection.selectProject, the one writer, which calls
+ * tabTreeStore.selectProject).
  *
  * The default project is always a row: it is where the trees file before
  * any choice, and picking it back clears the stored selection. Picking the
@@ -77,7 +79,7 @@ export default function ProjectPickerContent({ onClose }: { onClose: () => void 
 
   const choose = (id: string) => {
     onClose();
-    useTabTrees.getState().selectProject(id);
+    useSelection.getState().selectProject(id);
   };
 
   const rows: ProjectRow[] = [DEFAULT_ROW, ...load.projects.map(registryRow)];

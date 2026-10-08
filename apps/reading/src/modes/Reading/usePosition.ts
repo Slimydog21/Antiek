@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useWorkspaceOwner, workspaceOwnerAdmission, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 /**
  * Reading position (Read SPR-03; reused by SPR-08 return-to-reading).
@@ -69,8 +70,16 @@ export function usePosition(
   documentId: string | null,
   pageCount: number,
 ): { pageIndex: number; setPageIndex: (i: number) => void } {
-  usePositionOwner();
+  const epoch = usePositionOwnerEpoch();
+  const account = useWorkspaceOwner();
   const storageKey = documentId ? positionStorageKey(documentId) : null;
+  const resource = useMemo(() => ({ storageKey, epoch, account, active: false }), [storageKey, epoch, account]);
+  const resourceRef = useRef(resource);
+  useLayoutEffect(() => {
+    resourceRef.current = resource;
+    resource.active = true;
+    return () => { resource.active = false; };
+  }, [resource]);
   const [position, setPosition] = useState(() => ({
     key: storageKey,
     pageIndex: documentId ? readStored(documentId) : 0,
@@ -95,10 +104,18 @@ export function usePosition(
     }
   }, [documentId, pageCount, storageKey]);
 
+  const pageCountRef = useRef(pageCount);
+  useLayoutEffect(() => { pageCountRef.current = pageCount; }, [pageCount]);
+
   const setPageIndex = useCallback(
     (i: number) => {
+      const admission = workspaceOwnerAdmission();
+      if (!resource.active || resourceRef.current !== resource || resource.epoch !== readingPositionOwnerEpoch()
+        || resource.account !== workspaceOwnerSession()
+        || admission.state === "retiring" || admission.state === "failed") return;
       if (documentId && storageKey !== positionStorageKey(documentId)) return;
-      const clamped = pageCount > 0 ? Math.max(0, Math.min(i, pageCount - 1)) : Math.max(0, i);
+      const count = pageCountRef.current;
+      const clamped = count > 0 ? Math.max(0, Math.min(i, count - 1)) : Math.max(0, i);
       setPosition({ key: storageKey, pageIndex: clamped });
       if (storageKey) {
         try {
@@ -109,7 +126,7 @@ export function usePosition(
         }
       }
     },
-    [documentId, pageCount, storageKey],
+    [documentId, storageKey, resource, resourceRef, pageCountRef],
   );
 
   return { pageIndex, setPageIndex };
