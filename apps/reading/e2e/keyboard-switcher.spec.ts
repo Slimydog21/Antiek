@@ -149,17 +149,56 @@ test.describe("J3b — the geared switch from the keyboard", () => {
     await expect(page.locator("[data-gear-chip]")).toContainText("What sets a tidal locking timescale?");
     await expect(page.locator("[data-gear-chip]")).toContainText("dialogue");
 
-    // Esc: reopen and close without selecting; focus returns where it was.
+    // Esc: reopen and close without selecting; focus returns where it was
+    // (the right pane the gear-3 Enter focused), not merely "somewhere".
+    const openerPane = () => page.evaluate(() => document.activeElement?.closest("[data-pane]")?.getAttribute("data-pane") ?? null);
+    expect(await openerPane()).toBe("right");
     await page.keyboard.press("Control+Alt+Shift+KeyW");
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page)).toHaveAttribute("data-gear", "1");
+    await expect(cursor(page)).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(dialog(page)).toHaveCount(0);
     await expect(page).toHaveURL(/\/inv\/inv-b(\?|$)/);
+    expect(await openerPane()).toBe("right");
   });
 
-  test("modal scope in the real browser: with the switch open, ctrl+alt+l does not move the pane focus and prefix keys do nothing", async ({ page }) => {
+  test("modal scope in the real browser: typed characters never reach a text field beneath, Esc returns focus to it; ctrl+alt+l does not move the pane focus and prefix keys do nothing", async ({ page }) => {
     await boot(page);
+    // A text field beneath, focused (a notebook block, a composer): the
+    // chord has scope "anywhere" and opens the switch from inside it. Real
+    // key events through Chromium, which jsdom cannot give (GearSwitch.test
+    // can only show the field's listener never fires).
+    await page.evaluate(() => {
+      const field = document.createElement("textarea");
+      field.id = "e2e-beneath";
+      field.setAttribute("aria-label", "beneath");
+      document.body.append(field);
+      field.focus();
+    });
+    const beneath = page.locator("#e2e-beneath");
+    await expect(beneath).toBeFocused();
+    await page.keyboard.press("Control+Alt+Shift+KeyW");
+    await expect(dialog(page)).toBeVisible();
+    await expect(cursor(page)).toBeFocused();
+    await page.keyboard.type("abc hl");
+    await expect(dialog(page)).toBeVisible();
+    await expect(beneath).toHaveValue("");
+    expect(await page.evaluate(() => document.activeElement?.closest("[data-gear-switch]") !== null)).toBe(true);
+    // A programmatic focus() from beneath (what an editor's chain().focus()
+    // does) is pulled back into the switch.
+    await page.evaluate(() => document.getElementById("e2e-beneath")?.focus());
+    await expect(cursor(page)).toBeFocused();
+    await page.keyboard.type("xy");
+    await expect(beneath).toHaveValue("");
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(beneath).toBeFocused();
+    await page.keyboard.type("ok");
+    await expect(beneath).toHaveValue("ok");
+    await page.evaluate(() => document.getElementById("e2e-beneath")?.remove());
+    await page.locator("body").click({ position: { x: 4, y: 4 } });
+
     await page.keyboard.press("Control+Alt+Shift+KeyW");
     await expect(dialog(page)).toBeVisible();
     const before = await page.evaluate(() => document.activeElement?.id ?? null);
