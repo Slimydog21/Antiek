@@ -200,4 +200,101 @@ describe("the elapsed timer pauses while the document is hidden (M3, repair C4)"
       vi.useRealTimers();
     }
   });
+
+  it("a SETTLED turn is frozen at the visible time it had when endedAt was stamped: looking at it for 20 s, then hiding and showing, never moves it (second repair, finding 1)", () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      const start = performance.now();
+      const view = mount([turn({ status: "pending", startedAt: start })]);
+      const row = () => view.container.querySelector("[data-turn-status]")!.textContent!;
+      const settled = (endedAt: number) => (
+        <AgentThread turns={[turn({ status: "done", answer: "a", startedAt: start, endedAt })]} transportKind="whole" lifecycle={IDLE}
+          interview={false} reducedMotion={false} onRetry={() => {}} />
+      );
+      act(() => { vi.advanceTimersByTime(10000); });
+      view.rerender(settled(performance.now()));
+      expect(row()).toContain("· 10s");
+      // The reader keeps looking at the finished turn.
+      act(() => { vi.advanceTimersByTime(20000); });
+      expect(row()).toContain("· 10s");
+      // Then hides the tab and comes back: the first hide used to add the 20 s of looking.
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      act(() => { vi.advanceTimersByTime(5000); });
+      hidden = false;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      expect(row()).toContain("· 10s");
+      expect(row()).not.toContain("30s");
+      // Showing the tab must not reopen a stretch on a settled turn: 20 s
+      // later, a re-render of the same settled turn still reads 10 s.
+      act(() => { vi.advanceTimersByTime(20000); });
+      view.rerender(settled(start + 10000));
+      expect(row()).toContain("· 10s");
+      // A second cycle, then a re-render, still read 10 s.
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      hidden = false;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      view.rerender(settled(start + 10000));
+      expect(row()).toContain("· 10s");
+    } finally {
+      delete (document as unknown as Record<string, unknown>).hidden;
+      vi.useRealTimers();
+    }
+  });
+
+  it("a turn that settles WHILE hidden freezes at the visible time it had, and a late heal (endedAt cleared, running again) resumes from there", () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      const start = performance.now();
+      const view = mount([turn({ status: "pending", startedAt: start })]);
+      const row = () => view.container.querySelector("[data-turn-status]")!.textContent!;
+      const at = (over: Partial<AgentTurn>) => (
+        <AgentThread turns={[turn({ startedAt: start, ...over })]} transportKind="whole" lifecycle={IDLE}
+          interview={false} reducedMotion={false} onRetry={() => {}} />
+      );
+      act(() => { vi.advanceTimersByTime(3000); });
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      act(() => { vi.advanceTimersByTime(5000); });
+      // The 8 s fallback stamps endedAt while the tab is hidden: 3 s of visible time, not 8.
+      view.rerender(at({ status: "failed", endedAt: performance.now() }));
+      expect(row()).toContain("· 3s");
+      hidden = false;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      act(() => { vi.advanceTimersByTime(4000); });
+      expect(row()).toContain("· 3s");
+      // The late reply heals the turn: it runs again, from the 3 s it had.
+      view.rerender(at({ status: "streaming", answer: "par", endedAt: undefined }));
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(row()).toContain("· 5s");
+    } finally {
+      delete (document as unknown as Record<string, unknown>).hidden;
+      vi.useRealTimers();
+    }
+  });
+
+  it("the settle folds up to endedAt, never up to the render: a render 2 s after the stamp still reads the stamp", () => {
+    vi.useFakeTimers();
+    try {
+      const start = performance.now();
+      const view = mount([turn({ status: "pending", startedAt: start })]);
+      const row = () => view.container.querySelector("[data-turn-status]")!.textContent!;
+      act(() => { vi.advanceTimersByTime(10000); });
+      const endedAt = performance.now();
+      act(() => { vi.advanceTimersByTime(2000); });
+      view.rerender(
+        <AgentThread turns={[turn({ status: "done", answer: "a", startedAt: start, endedAt })]} transportKind="whole" lifecycle={IDLE}
+          interview={false} reducedMotion={false} onRetry={() => {}} />,
+      );
+      expect(row()).toContain("· 10s");
+      expect(row()).not.toContain("12s");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -34,27 +34,49 @@ const docHidden = () => typeof document !== "undefined" && document.hidden;
  * C4): the value is an accumulator of visible stretches, never a wall-clock
  * span, so a tab hidden for a minute comes back at the number it left and a
  * re-render while hidden (a streaming chunk) cannot advance it. Ticks once a
- * second only while the turn runs and the document is visible. A settled
- * turn freezes at the visible time it had when `endedAt` was stamped.
+ * second only while the turn runs and the document is visible.
+ *
+ * A settled turn freezes at the visible time it had when `endedAt` was
+ * stamped (second repair, finding 1): the open stretch is folded into the
+ * accumulator at that moment, clamped to `endedAt`, and no stretch is open
+ * while the turn is settled — so looking at a finished turn, then hiding and
+ * showing the tab, never moves its number. A late reply that heals a failed
+ * turn clears `endedAt`; the stretch reopens then, and the timer resumes
+ * from the visible time the turn had, not from the time spent looking at
+ * the failure.
  */
 function useElapsed(startedAt: number, endedAt: number | undefined, running: boolean): number {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const [hidden, setHidden] = useState(docHidden);
   /** ms of visible time before the current visible stretch. */
   const acc = useRef(0);
-  /** When the current visible stretch began; null while hidden. */
+  /** When the current visible stretch began; null while hidden or settled. */
   const since = useRef<number | null>(null);
+  /** The `endedAt` the accumulator was last reconciled with. */
+  const settledAt = useRef<number | undefined>(undefined);
   const seededFor = useRef<number | null>(null);
   if (seededFor.current !== startedAt) {
     seededFor.current = startedAt;
     acc.current = 0;
+    settledAt.current = undefined;
     since.current = docHidden() ? null : startedAt;
   }
+  if (endedAt !== undefined && settledAt.current === undefined) {
+    // Settling: fold the open stretch up to endedAt (never past it) and close it.
+    if (since.current !== null) {
+      acc.current += Math.max(0, Math.min(now(), endedAt) - since.current);
+      since.current = null;
+    }
+  } else if (endedAt === undefined && settledAt.current !== undefined && !docHidden()) {
+    // Healed (a late reply after the fallback): a new visible stretch starts now.
+    since.current = now();
+  }
+  settledAt.current = endedAt;
   useEffect(() => {
     const onVisibility = () => {
       if (docHidden()) {
         if (since.current !== null) { acc.current += now() - since.current; since.current = null; }
-      } else if (since.current === null) {
+      } else if (since.current === null && settledAt.current === undefined) {
         since.current = now();
       }
       setHidden(docHidden());
@@ -68,8 +90,7 @@ function useElapsed(startedAt: number, endedAt: number | undefined, running: boo
     const timer = setInterval(bump, 1000);
     return () => clearInterval(timer);
   }, [running, hidden]);
-  const end = endedAt ?? now();
-  const ms = acc.current + (since.current === null ? 0 : Math.max(0, end - since.current));
+  const ms = acc.current + (since.current === null ? 0 : Math.max(0, now() - since.current));
   return Math.max(0, Math.round(ms / 1000));
 }
 
