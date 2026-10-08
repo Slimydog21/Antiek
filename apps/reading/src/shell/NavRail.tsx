@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 import { useViewportTier } from "../workspace/useViewportTier";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
@@ -169,7 +169,7 @@ function RailButton({
   icon: ReactNode;
   label: string;
   active?: boolean;
-  onClick: () => void;
+  onClick: MouseEventHandler<HTMLButtonElement>;
   title: string;
   variant?: "workflow" | "utility" | "more";
   orientation?: Orientation;
@@ -281,6 +281,21 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
+  const launcherOpenRef = useRef(false);
+  const launcherOpenerRef = useRef<HTMLElement | null>(null);
+  const openLauncher = useCallback((opener: HTMLElement | null) => {
+    if (launcherOpenRef.current) return;
+    launcherOpenRef.current = true;
+    launcherOpenerRef.current = opener?.isConnected ? opener : null;
+    setLauncherOpen(true);
+  }, []);
+  const closeLauncher = useCallback(() => {
+    launcherOpenRef.current = false;
+    setLauncherOpen(false);
+    const opener = launcherOpenerRef.current;
+    launcherOpenerRef.current = null;
+    if (opener?.isConnected) opener.focus();
+  }, []);
   // SPR-02 M4a (specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html)
   // — with places on, the bottom dock folds into its compact five-key layout
   // at every width (captions kept — SPR-07's "no caption-less bar control"
@@ -295,17 +310,21 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE, { detail: { query: "in:scenes" } }));
   useEffect(() => {
     const onProductActivate = (event: Event) => {
-      if (!(event instanceof CustomEvent)) return;
+      if (!(event instanceof CustomEvent) || event.defaultPrevented) return;
       const detail: unknown = event.detail;
-      if (detail && typeof detail === "object" && "productId" in detail && "source" in detail
-        && detail.productId === "more" && detail.source === "hotkey") {
-        if (placesOn) openScenesSwitcher();
-        else setLauncherOpen(true);
-      }
+      if (!detail || typeof detail !== "object" ||
+          !("productId" in detail) || detail.productId !== "more" ||
+          !("source" in detail) || detail.source !== "hotkey" ||
+          ("route" in detail && detail.route !== undefined) ||
+          ("actionId" in detail && detail.actionId !== undefined) ||
+          ("entityId" in detail && detail.entityId !== undefined)) return;
+      if (placesOn) { openScenesSwitcher(); return; }
+      const active = document.activeElement;
+      openLauncher(active instanceof HTMLElement ? active : null);
     };
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
     return () => window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
-  }, [placesOn]);
+  }, [openLauncher, placesOn]);
 
   // The left rail is the phone overlay (absolute, behind a toggle) only at
   // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
@@ -367,6 +386,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
 
   if (isMobile && collapsed) {
     return (
+      <>
       <button
         type="button"
         title="Open navigation"
@@ -381,6 +401,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
       </button>
+      <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
+      </>
     );
   }
 
@@ -493,9 +515,9 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       label="More"
       title={placesOn ? "More - every scene, in the Switcher" : "More - all products, Operator, Trust, Settings"}
       active={launcherOpen}
-      onClick={() => {
+      onClick={(event) => {
         if (placesOn) openScenesSwitcher();
-        else setLauncherOpen(true);
+        else openLauncher(event.currentTarget);
         // SPR-08/SPR-10 — More OPENS the launcher (no nav), so it emits a
         // routeless activation, identical to the `g m` hotkey path.
         emitProductActivate({ productId: "more", source: "click" });
@@ -547,7 +569,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           <span data-mascot-station aria-hidden="true" className="w-16 shrink-0" />
         </aside>
 
-        <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+        <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
       </>
     );
   }
@@ -606,7 +628,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <span data-mascot-station aria-hidden="true" className="mt-auto mx-auto h-16 w-16 shrink-0" />
       </aside>
 
-      <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+      <ProductsLauncher open={launcherOpen} onClose={closeLauncher} />
     </>
   );
 }

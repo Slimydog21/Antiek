@@ -164,83 +164,73 @@ describe("windowsStore — rect + expand/restore", () => {
   });
 });
 
-describe("windowsStore — bounded fan-out (cap)", () => {
-  it("caps at MAX_WINDOWS and does not exceed it", () => {
-    const ids: string[] = [];
-    for (let i = 0; i < MAX_WINDOWS + 4; i++) {
-      ids.push(w().open("stats", {}, { id: `s${i}` }));
-    }
-    expect(w().order.length).toBe(MAX_WINDOWS);
-    expect(Object.keys(w().windows).length).toBe(MAX_WINDOWS);
+describe("windowsStore logical admission", () => {
+  it.each([9, 15])("opens the requested %dth identity without changing its peers", (count) => {
+    const ids = Array.from({ length: count - 1 }, (_, i) => `existing:${i}`);
+    for (const id of ids) w().open("stats", { fixtureId: id }, { id });
+    const before = w();
+    const id = `requested:${count}`;
+    const payload = { fixtureId: id };
+    const rect = { x: 200, y: 150, width: 800, height: 600 };
+    const returned = w().open("library", payload, { id, title: "Requested window", rect, mode: "full" });
+
+    expect(returned).toBe(id);
+    expect(w().windows[id]).toMatchObject({ id, kind: "library", title: "Requested window", payload, rect, mode: "full" });
+    expect(w().windows[id].payload).toBe(payload);
+    expect(Object.keys(w().windows)).toHaveLength(count);
+    expect(w().order).toEqual([...ids, id]);
+    expect(w().cycleOrder).toEqual([...ids, id]);
+    expect(w().focusedId).toBe(id);
+    expect(w().zCounter).toBe(before.zCounter + 1);
+    expect(w().windows[id].z).toBe(w().zCounter);
+    for (const peer of ids) expect(w().windows[peer]).toBe(before.windows[peer]);
   });
 
-  it("at the cap, opening focuses the oldest rather than creating a new window", () => {
-    for (let i = 0; i < MAX_WINDOWS; i++) {
-      w().open("stats", {}, { id: `s${i}` });
-    }
-    const oldest = w().order[0];
-    const returned = w().open("library", {}, { id: "overflow" });
-    expect(w().windows.overflow).toBeUndefined();
-    // The overflow open returns the oldest id and focuses it.
-    expect(returned).toBe(oldest);
-    expect(w().focusedId).toBe(oldest);
+  it.each([9, 15])("reopens an existing identity among %d windows without replacing its content", (count) => {
+    for (let i = 0; i < count; i++) w().open("stats", { fixtureIndex: i }, { id: `existing:${i}` });
+    const id = "existing:0";
+    w().setRect(id, { x: 123, width: 600 });
+    w().expand(id);
+    const before = w();
+    const original = before.windows[id];
+    const returned = w().open("library", { replacement: true }, { id, title: "Replacement", mode: "floating" });
+
+    expect(returned).toBe(id);
+    expect(Object.keys(w().windows)).toHaveLength(count);
+    expect(w().windows[id]).toEqual({ ...original, z: before.zCounter + 1 });
+    expect(w().windows[id].payload).toBe(original.payload);
+    expect(w().windows[id].rect).toBe(original.rect);
+    expect(w().cycleOrder).toEqual(before.cycleOrder);
+    expect(w().order).toEqual([...before.order.filter((peer) => peer !== id), id]);
+    expect(w().focusedId).toBe(id);
+    for (const peer of before.order.filter((peer) => peer !== id)) expect(w().windows[peer]).toBe(before.windows[peer]);
   });
 
-  it("freeing a slot lets a new window open again", () => {
-    for (let i = 0; i < MAX_WINDOWS; i++) {
-      w().open("stats", {}, { id: `s${i}` });
-    }
-    w().close("s0");
+  it.each([false, true])("legacy replacement option %s cannot evict a different identity", (replaceOldestAtLimit) => {
+    for (let i = 0; i < 8; i++) w().open("stats", {}, { id: `existing:${i}` });
+    w().focus("existing:0");
+    const before = w();
+    const id = w().open("library", {}, { id: "requested", replaceOldestAtLimit });
+
+    expect(id).toBe("requested");
+    expect(w().order).toEqual([...before.order, id]);
+    expect(w().cycleOrder).toEqual([...before.cycleOrder, id]);
+    expect(w().focusedId).toBe(id);
+    expect(Object.keys(w().windows)).toHaveLength(9);
+    for (const peer of before.order) expect(w().windows[peer]).toBe(before.windows[peer]);
+  });
+
+  it("closing one of fifteen windows preserves its peers and admits a fresh identity", () => {
+    for (let i = 0; i < 15; i++) w().open("stats", {}, { id: `existing:${i}` });
+    w().close("existing:7");
+    const before = w();
     const id = w().open("library", {}, { id: "fresh" });
-    expect(w().windows.fresh).toBeDefined();
     expect(id).toBe("fresh");
-    expect(w().order.length).toBe(MAX_WINDOWS);
-  });
-
-  it("can replace the oldest at the cap when exact asset identity is load-bearing", () => {
-    for (let i = 0; i < MAX_WINDOWS; i++) {
-      w().open("stats", {}, { id: `s${i}` });
-    }
-    const oldest = w().order[0];
-    const returned = w().open(
-      "reader",
-      { documentId: "doc-9" },
-      { id: "reader:doc-9", replaceOldestAtLimit: true },
-    );
-
-    expect(returned).toBe("reader:doc-9");
-    expect(w().windows[oldest]).toBeUndefined();
-    expect(w().windows[returned].payload).toEqual({ documentId: "doc-9" });
-    expect(w().focusedId).toBe(returned);
-    expect(w().order).toHaveLength(MAX_WINDOWS);
-  });
-
-  // AMS2-SPR-04: windows are now the DEFAULT, so the cap must hold on the hot
-  // path. The MINIMAL over-cap case (MAX_WINDOWS + 1) is the load-bearing one:
-  // the count never exceeds 8 and the over-cap open() returns the focused-oldest
-  // id (a REAL id, never a phantom new window).
-  it("opening MAX_WINDOWS + 1 never exceeds the cap and the +1 open returns the focused-oldest id", () => {
-    const ids: string[] = [];
-    for (let i = 0; i < MAX_WINDOWS; i++) {
-      ids.push(w().open("stats", {}, { id: `s${i}` }));
-    }
-    const oldest = w().order[0];
-    expect(oldest).toBe(ids[0]);
-
-    // The (MAX_WINDOWS + 1)-th open — a fresh kind/id that WOULD be a new window.
-    const returned = w().open("library", {}, { id: "overflow" });
-
-    // No phantom: the over-cap window was never created.
-    expect(w().windows.overflow).toBeUndefined();
-    // Count is pinned at exactly the cap — never 9.
-    expect(w().order.length).toBe(MAX_WINDOWS);
-    expect(Object.keys(w().windows).length).toBe(MAX_WINDOWS);
-    // open() returns the focused-oldest id (a real, existing id) ...
-    expect(returned).toBe(oldest);
-    expect(w().windows[returned]).toBeDefined();
-    // ... and that oldest is now the focused + topmost window.
-    expect(w().focusedId).toBe(oldest);
-    expect(w().order[w().order.length - 1]).toBe(oldest);
+    expect(w().windows["existing:7"]).toBeUndefined();
+    expect(w().order).toEqual([...before.order, id]);
+    expect(w().cycleOrder).toEqual([...before.cycleOrder, id]);
+    expect(Object.keys(w().windows)).toHaveLength(15);
+    for (const peer of before.order) expect(w().windows[peer]).toBe(before.windows[peer]);
   });
 });
 
@@ -260,5 +250,52 @@ describe("windowsStore — cascade + reset", () => {
     expect(w().order).toEqual([]);
     expect(w().focusedId).toBeNull();
     expect(w().zCounter).toBe(WINDOW_Z_BASE);
+  });
+});
+
+
+describe("windowsStore stable cycle order", () => {
+  function openIds(ids: string[]) { for (const id of ids) w().open("stats", { id }, { id }); }
+  it("cycles backward across every member independently of z-order", () => {
+    openIds(["10", "2", "é:opaque"]);
+    for (const id of ["2", "10", "é:opaque", "2"]) {
+      expect(w().cycleFocus(-1)).toBe(true); expect(w().focusedId).toBe(id);
+      expect(w().cycleOrder).toEqual(["10", "2", "é:opaque"]);
+      expect(w().order.at(-1)).toBe(id);
+    }
+  });
+  it("preserves stable order on focus/reopen/geometry/mode and cycles forward", () => {
+    openIds(["a", "b", "c", "d"]); w().focus("b"); w().open("stats", {}, { id: "a" });
+    w().setRect("a", { x: 123 }); w().expand("a"); w().restore("a");
+    expect(w().cycleOrder).toEqual(["a", "b", "c", "d"]);
+    for (const id of ["b", "c", "d", "a"]) { expect(w().cycleFocus(1)).toBe(true); expect(w().focusedId).toBe(id); }
+    expect(w().windows.a.rect.x).toBe(123);
+  });
+  it("removes closed members, appends reopens, and clears on reset", () => {
+    openIds(["a", "b", "c"]); w().close("b"); expect(w().cycleOrder).toEqual(["a", "c"]);
+    w().close("c"); expect(w().focusedId).toBe("a"); expect(w().cycleOrder).toEqual(["a"]);
+    w().open("stats", {}, { id: "b" }); expect(w().cycleOrder).toEqual(["a", "b"]);
+    w().close("absent"); expect(w().cycleOrder).toEqual(["a", "b"]);
+    w().reset(); expect(w().cycleOrder).toEqual([]); expect(w().cycleFocus(1)).toBe(false);
+  });
+  it("appends new identities beyond eight without phantom or evicted cycle members", () => {
+    const ids = Array.from({ length: MAX_WINDOWS }, (_, i) => `id:${i}`); openIds(ids);
+    w().focus(ids[0]); const before = w();
+    const result = w().open("stats", {}, { id: "new-window" });
+    expect(result).toBe("new-window"); expect(w().cycleOrder).toEqual([...ids, "new-window"]);
+    const legacy = w().open("stats", {}, { id: "legacy-window", replaceOldestAtLimit: true });
+    expect(legacy).toBe("legacy-window");
+    expect(w().cycleOrder).toEqual([...ids, "new-window", "legacy-window"]);
+    expect(new Set(w().cycleOrder).size).toBe(ids.length + 2);
+    expect([...w().cycleOrder].sort()).toEqual(Object.keys(w().windows).sort());
+    for (const id of ids) expect(w().windows[id]).toBe(before.windows[id]);
+    expect(w().cycleFocus(1)).toBe(true); expect(w().focusedId).toBe(ids[0]);
+  });
+  it("refuses empty/single/absent cursors without changing focus or z", () => {
+    expect(w().cycleFocus(-1)).toBe(false); openIds(["a"]);
+    const before = w().zCounter; expect(w().cycleFocus(1)).toBe(false); expect(w().zCounter).toBe(before);
+    openIds(["b"]); useWindows.setState({ focusedId: null }); expect(w().cycleFocus(1)).toBe(false);
+    useWindows.setState({ focusedId: "absent" }); expect(w().cycleFocus(-1)).toBe(false);
+    expect(w().focusedId).toBe("absent");
   });
 });

@@ -1,3 +1,4 @@
+import { isFeatureOn } from "../../lib/featureFlags";
 /**
  * keymap.ts — Every built-in global binding is a row in {@link KEYMAP}.
  * Widgets and editors own local keys; user-defined bindings use the dispatcher.
@@ -69,18 +70,26 @@ export interface ActionMeta {
   route?: string;
 }
 
+// Landing gate (SPR-01 M1, antiek.flag.pane.flow, default OFF), read ONCE at
+// load: with the flag off the pane rows AND their labels are main's; with it
+// on they are the packet's flow rows (S05 ctrl+alt+l → arrangement toggle,
+// arrow focus, shift+arrow reorder) and wording.
+const PANE_FLOW_ON = isFeatureOn("pane.flow");
+
 export const ACTIONS = {
   "palette.toggle": { label: "Switcher (command palette)" },
   "keysheet.toggle": { label: "Key sheet (this list)" },
   "projecttree.toggle": { label: "Toggle the sidebar (project tree)" },
   "aisidecar.toggle": { label: "Toggle the AI sidecar" },
-  "panel.focusPrev": { label: "Focus the previous panel" },
-  "panel.focusNext": { label: "Focus the next panel" },
+  "panel.focusPrev": { label: PANE_FLOW_ON ? "Focus the previous panel or product window" : "Focus the previous panel" },
+  "panel.focusNext": { label: PANE_FLOW_ON ? "Focus the next panel or product window" : "Focus the next panel" },
   "panel.closeFloating": { label: "Close the focused floating panel" },
-  "pane.focusLeft": { label: "Pane: focus the left pane" },
-  "pane.focusRight": { label: "Pane: focus the right pane" },
+  "pane.focusLeft": { label: PANE_FLOW_ON ? "Pane: focus the previous pane" : "Pane: focus the left pane" },
+  "pane.focusRight": { label: PANE_FLOW_ON ? "Pane: focus the next pane" : "Pane: focus the right pane" },
+  "pane.reorderLeft": { label: "Pane: move the focused pane left" },
+  "pane.reorderRight": { label: "Pane: move the focused pane right" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
-  "layout.togglePreset": { label: "Layout: cockpit inset ⇄ docked" },
+  "layout.togglePreset": { label: PANE_FLOW_ON ? "Layout: horizontal ⇄ tiled" : "Layout: cockpit inset ⇄ docked" },
   "tab.next": { label: "Tab: next tab in the focused pane" },
   "tab.prev": { label: "Tab: previous tab in the focused pane" },
   "tab.new": { label: "Tab: new tab (picker)" },
@@ -136,6 +145,46 @@ export type KeymapRow = KeymapBinding & (
 );
 
 const D = KEYMAP_DECISION;
+const FLOW_DECISION = D + "; specs/codex-design-takeover-20260927/horizontal-pane-flow-20261002/contract.md (U1 cb8f0dd8)";
+
+const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
+  { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-right", action: "pane.focusRight", status: "implemented", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-full", action: "pane.fullscreen", status: "implemented", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-full", action: "pane.fullscreen", status: "implemented", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
+  // The stored preset defaults to DOCKED -- "a stored preset never surprises an
+  // operator who never chose one" (workspace/persistence.ts) -- so this is not a
+  // rarely-needed toggle but the key that brings the cockpit in. It sits behind
+  // prefix+shift+i with no chord, and i stays the inbox's.
+  { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
+  // The reorder actions exist in ACTIONS (the ActionId type is static); with
+  // the flag off they are declared pending on it — unimplemented rows on keys
+  // main does not use, so the sheet says why and the dispatcher binds nothing.
+  { id: "prefix-pane-reorder-left", action: "pane.reorderLeft", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+];
+const FLOW_PANE_ROWS: readonly KeymapRow[] = [
+  { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-right", action: "pane.focusRight", status: "implemented", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-left-arrow", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-left-arrow", action: "pane.focusLeft", status: "implemented", prefixKey: "arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-right-arrow", action: "pane.focusRight", status: "implemented", prefixKey: "arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", chord: "ctrl+alt+shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "chord-pane-reorder-right", action: "pane.reorderRight", status: "implemented", chord: "ctrl+alt+shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", prefixKey: "shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "implemented", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  { id: "prefix-pane-full", action: "pane.fullscreen", status: "implemented", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-full", action: "pane.fullscreen", status: "implemented", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
+  // L switches the connected hosts between horizontal flow and tiles.
+  // Retain prefix+shift+i; i stays the inbox's.
+  { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-layout-preset", action: "layout.togglePreset", status: "implemented", chord: "ctrl+alt+l", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+];
+
 
 export const KEYMAP: readonly KeymapRow[] = [
   // ── legacy-SPR-08: the ⌘ scheme, unchanged keys ─────────────────────
@@ -169,17 +218,7 @@ export const KEYMAP: readonly KeymapRow[] = [
   // ── D2 cockpit pane keys (C3, 2026-09-24): prefix twin + chord twin ────
   // h/l are herdr's pane-focus keys; f is fullscreen (Omarchy's gesture).
   // Never Cmd+Left/Right/F: the browser owns those (history, find).
-  { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-pane-right", action: "pane.focusRight", status: "implemented", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-right", action: "pane.focusRight", status: "implemented", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-pane-full", action: "pane.fullscreen", status: "implemented", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-pane-full", action: "pane.fullscreen", status: "implemented", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
-  // The stored preset defaults to DOCKED -- "a stored preset never surprises an
-  // operator who never chose one" (workspace/persistence.ts) -- so this is not a
-  // rarely-needed toggle but the key that brings the cockpit in. It sits behind
-  // prefix+shift+i with no chord, and i stays the inbox's.
-  { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
+  ...(PANE_FLOW_ON ? FLOW_PANE_ROWS : LEGACY_PANE_ROWS),
 
   // ── D2 tab keys (lane-A cockpit decision, 2026-09-26) ─────────────────
   // n/p + ctrl+alt+]/[ are herdr's next/previous tab, and herdr's tabs
@@ -371,6 +410,8 @@ const CODE_KEYS: Record<string, string> = {
   Minus: "-",
   Equal: "=",
   Quote: "'",
+  ArrowLeft: "arrowleft",
+  ArrowRight: "arrowright",
 };
 
 /** The unshifted key printed on the physical key `code` (US layout), or "". */
@@ -435,6 +476,7 @@ export function eventMatchesCombo(e: KeyboardEvent, spec: string): boolean {
   if (e.altKey !== c.alt) return false;
   const code = codeToKey(e.code ?? "");
   if (c.alt) return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
+  if (c.key === "arrowleft" || c.key === "arrowright") return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
   if (!c.mod && !c.ctrl && !c.meta && !/^[a-z]$/.test(c.key)) return e.key === c.key;
   return e.shiftKey === c.shift && (logicalKey(e) === c.key || (c.ctrl && code === c.key));
 }

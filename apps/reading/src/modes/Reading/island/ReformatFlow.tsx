@@ -15,6 +15,8 @@
  * the library whenever the operator wants it).
  */
 import { useState } from "react";
+import type { KeyboardEvent } from "react";
+import { ESC_OVERLAY_PROPS, topModal } from "../../../workspace/escapeOverlay";
 
 import { linkAnchorInvestigation } from "../../../lib/api";
 import type { BookAnchor } from "../../../lib/api";
@@ -97,9 +99,20 @@ export default function ReformatFlow({
     setPhase("done");
   }
 
+  function onEscape(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing ||
+        event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.getModifierState("AltGraph") ||
+        event.currentTarget.closest('[hidden], [aria-hidden="true"], [inert]') || topModal()) return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest("[data-esc-overlay]") !== event.currentTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (phase !== "busy") onClose();
+  }
+
   if (phase === "ask" && result) {
     return (
-      <div data-reformat-ask className="mb-2 border-t border-hairline pt-2">
+      <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-reformat-ask className="mb-2 border-t border-hairline pt-2">
         <p className="text-shadow-1 dark:text-moonlight mb-1.5" role="status">
           Your reformatted version is ready — open it beside this book?
         </p>
@@ -122,7 +135,7 @@ export default function ReformatFlow({
 
   if (phase === "done") {
     return (
-      <div data-reformat-done className="mb-2 border-t border-hairline pt-2">
+      <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-reformat-done className="mb-2 border-t border-hairline pt-2">
         <p className="text-shadow-1 dark:text-moonlight mb-1.5" role="status">
           {result ? "Reformatted — it's yours in the library whenever you want it." : "Closed."}
         </p>
@@ -138,7 +151,7 @@ export default function ReformatFlow({
   }
 
   return (
-    <div data-reformat-flow className="mb-2 border-t border-hairline pt-2">
+    <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-reformat-flow className="mb-2 border-t border-hairline pt-2">
       <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1">
         Reformat this book
       </label>
@@ -161,6 +174,7 @@ export default function ReformatFlow({
         </button>
       </div>
       <LemonTextarea
+        autoFocus
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         disabled={phase === "busy"}
@@ -177,6 +191,7 @@ export default function ReformatFlow({
         <button
           type="button"
           onClick={onClose}
+          disabled={phase === "busy"}
           className="text-shadow-1 hover:text-ink dark:hover:text-bright"
         >
           Cancel

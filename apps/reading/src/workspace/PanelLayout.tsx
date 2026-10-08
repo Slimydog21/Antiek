@@ -19,6 +19,8 @@ import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
 import { WRITE_OUTLINE_PANEL_ID } from "./writeOutlineStore";
+import { usePaneFlowFrame } from "./PaneFlowLayout";
+import { CORE_PANE, COMPANION_PANE } from "./paneFlowGeometry";
 
 // The document tab strip (D6) and the tab-tree model it renders load on
 // first show, not with the entry chunk, which has a hard gzip budget (npm
@@ -113,6 +115,9 @@ export function PanelLayout({ mainSlot }: Props) {
   // router's location context: PanelLayout also renders without a router.
   const location = useContext(UNSAFE_LocationContext)?.location;
   const writing = location ? mothershipForPath(location.pathname, location.search) === "writing" : false;
+  const coreFlow = usePaneFlowFrame(CORE_PANE);
+  const companionFlow = usePaneFlowFrame(COMPANION_PANE);
+  const paneZoom = useWorkspace((s) => s.paneZoom);
 
   // S11 (the docked preset) — at tier "lg" the two side docks can't both be
   // visible; if both have panels we collapse the right one (operator can
@@ -195,21 +200,24 @@ export function PanelLayout({ mainSlot }: Props) {
   // escapeOverlay.ts) stays theirs; that Esc closes the overlay and the
   // next one restores the panes.
   useEffect(() => {
-    if (!fullscreenPane) return;
+    if (!fullscreenPane && !paneZoom) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target && isTextEditing(target)) return;
       if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
       if (escOverlayOpen()) return;
-      setFullscreenPane(null);
+      if (paneZoom) {
+        if (!e.repeat) coreFlow.restoreZoom(e);
+      }
+      else setFullscreenPane(null);
     };
     const removeKeyboardOwner = registerKeyboardOwner(document, {
       id: "pane.fullscreen.escape", scope: "overlay",
       eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !(e.target instanceof Element && (isTextEditing(e.target) || e.target.closest("[role=dialog], [role=alertdialog]"))) && !escOverlayOpen(),
     }, onKeyDown);
     return () => removeKeyboardOwner();
-  }, [fullscreenPane, setFullscreenPane]);
+  }, [fullscreenPane, setFullscreenPane, paneZoom, coreFlow.restoreZoom]);
 
   // Tier `sm` (< 768px) is the phone layout: one column, the route view
   // alone and scrollable. The docks and floating panels stay out of it (a
@@ -318,26 +326,30 @@ export function PanelLayout({ mainSlot }: Props) {
 
   return (
     <div
-      className="relative h-full w-full flex bg-transparent overflow-hidden"
-      style={inset ? { padding: INSET_GAP, gap: INSET_GAP } : undefined}
+      className={coreFlow.active ? "contents" : "relative h-full w-full flex bg-transparent overflow-hidden"}
+      style={!coreFlow.active && inset ? { padding: INSET_GAP, gap: INSET_GAP } : undefined}
       data-layout-preset={inset ? "omarchy-inset" : undefined}
     >{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
       {/* LEFT: the primary pane (inset) or a transparent wrapper (docked) */}
       <div
-        {...(inset
+        {...(inset || coreFlow.active
           ? {
               "data-pane": "left",
               role: "region",
               "aria-label": "Primary pane",
               tabIndex: -1,
-              style: { borderRadius: radius.lg },
+              style: coreFlow.style ?? { borderRadius: radius.lg },
               onFocusCapture: () => setFocusedPane("left"),
             }
           : {})}
-        hidden={leftHidden || undefined}
-        className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
+        ref={coreFlow.ref}
+        data-pane-host={coreFlow.hostKey}
+        hidden={(coreFlow.active ? coreFlow.hidden : leftHidden) || undefined}
+        className={coreFlow.active
+          ? `${coreFlow.hidden ? "hidden" : "flex"} flex-col min-w-0 min-h-0 overflow-hidden border-2 rounded-none bg-ice-1 dark:bg-charcoal-1 ${coreFlow.focused ? "border-sun" : "border-hairline"}`
+          : inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
       >
-        <div className={inset ? "relative flex-1 min-h-0 w-full flex overflow-hidden" : "contents"}>
+        <div className={inset || coreFlow.active ? "relative flex-1 min-h-0 w-full flex overflow-hidden" : "contents"}>
           {/* LEFT DOCK */}
           <aside
             hidden={leftDockHidden || undefined}
@@ -362,7 +374,7 @@ export function PanelLayout({ mainSlot }: Props) {
 
       {/* RIGHT: the companion pane (inset) or a transparent wrapper (docked) */}
       <div
-        {...(inset
+        {...(inset || companionFlow.active
           ? {
               "data-pane": "right",
               role: "region",
@@ -372,15 +384,19 @@ export function PanelLayout({ mainSlot }: Props) {
               tabIndex: -1,
               // Right-pane fullscreen is fullscreen: the companion takes the
               // whole cockpit, never its column beside an empty scene.
-              style: rightFull
+              style: companionFlow.style ?? (rightFull
                 ? { borderRadius: radius.lg }
-                : { width: rightPaneWidth, borderRadius: radius.lg },
+                : { width: rightPaneWidth, borderRadius: radius.lg }),
               onFocusCapture: () => setFocusedPane("right"),
             }
           : {})}
-        hidden={rightHidden || undefined}
+        ref={companionFlow.ref}
+        data-pane-host={companionFlow.hostKey}
+        hidden={(companionFlow.active ? companionFlow.hidden : rightHidden) || undefined}
         className={
-          inset
+          companionFlow.active
+            ? `${companionFlow.hidden ? "hidden" : "flex"} flex-col min-w-0 min-h-0 overflow-hidden border-2 rounded-none bg-ice-1 dark:bg-charcoal-1 ${companionFlow.focused ? "border-sun" : "border-hairline"}`
+          : inset
             ? rightHidden
               ? "hidden"
               : `${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`
@@ -398,7 +414,8 @@ export function PanelLayout({ mainSlot }: Props) {
                 : "flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
               : `flex flex-col shrink-0 ${dockRightIds.length ? "border-l border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`
           }
-          style={inset ? undefined : { width: rightDockWidth }}
+          style={companionFlow.active && !inset ? { width: "100%", flex: 1, minHeight: 0 }
+            : inset ? undefined : { width: rightDockWidth }}
           aria-label="Right dock"
         >
           {rightDockPanelIds.map((id) => (
@@ -411,11 +428,11 @@ export function PanelLayout({ mainSlot }: Props) {
 
       {/* Fullscreen is never invisible state: a chip says it is on and is
           the pointer path back (Esc restores from any focus too). */}
-      {fullscreenPane ? (
+      {fullscreenPane || paneZoom ? (
         <button
           type="button"
           data-fullscreen-chip
-          onClick={() => setFullscreenPane(null)}
+          onClick={() => paneZoom ? coreFlow.restoreZoom() : setFullscreenPane(null)}
           aria-label="Exit fullscreen (Esc)"
           title="Exit fullscreen (Esc)"
           className="absolute right-4 top-3 z-30 rounded-full border border-hairline bg-ice-0 dark:bg-charcoal-2 px-2.5 py-0.5 text-xxs text-ink-soft dark:text-moonlight shadow-z1 dark:shadow-z1-night hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"

@@ -2,6 +2,9 @@ import { AnimatePresence } from "framer-motion";
 import { Suspense } from "react";
 
 import { useWindows } from "../../workspace/windowsStore";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { useSharedPaneOrigin } from "../../workspace/PaneFlowLayout";
+import { useViewportTier } from "../../workspace/useViewportTier";
 import { WINDOW_PAGES } from "./openWindow";
 import { WorkspaceWindow } from "./WorkspaceWindow";
 
@@ -29,9 +32,14 @@ import { WorkspaceWindow } from "./WorkspaceWindow";
 export function WindowsLayer() {
   const order = useWindows((s) => s.order);
   const windows = useWindows((s) => s.windows);
+  const sharedOrigin = useSharedPaneOrigin();
+  const arrangement = useWorkspace((s) => s.paneArrangement);
+  const tier = useViewportTier();
+  const flowing = sharedOrigin && tier !== "sm" && arrangement !== "legacy";
 
   return (
-    <div data-windows-layer className="absolute inset-0 pointer-events-none z-30">
+    <div data-windows-layer={sharedOrigin ? undefined : true}
+      className={flowing ? "contents" : "absolute inset-0 pointer-events-none z-30"}>
       <AnimatePresence>
         {order.map((id) => {
           const win = windows[id];

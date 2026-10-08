@@ -1,41 +1,24 @@
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 
-import { shadowForStackDepth } from "../../design/elevation";
 import { surfaceSpring } from "../../design/motion";
+import { escOverlayOpen } from "../../workspace/escapeOverlay";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
+import { focusConnectedPaneHost, paneEventTarget, toggleActivePaneZoom, togglePaneHostZoom, usePaneFlowFrame } from "../../workspace/PaneFlowLayout";
 import type { AdFillView } from "../../modes/Reading/AdBorder";
 import { WindowHostProvider } from "./windowHostContext";
 import { WindowAdBorder } from "./WindowAdBorder";
 import type { WindowAdEdge } from "./WindowAdBorder";
+import { windowKeyboardHints, windowCommand } from "./windowKeyboard";
 
-/**
- * WorkspaceWindow — a transparent, ad-bordered, draggable/expandable frame
- * that hosts a whole product page over the mountainscape (SPR-09 M1 + M7 + M8).
- *
- * Built ON the real floating primitives (not a reinvented window manager):
- *   - geometry + z-order + focus live in windowsStore (the SPR-09 slice),
- *   - drag/resize reuse the pointer-capture + clampRectToViewport pattern
- *     from PanelHandle / panelLayoutLogic,
- *   - reduced-motion + the glass tokens come straight from SPR-01.
- *
- * Body is glass (`bg-glass` + `backdrop-blur-glass`) so the scene shows
- * through; the page it hosts drops its own opaque bg via the window-adaptation
- * contract (useInWindow). Clicking anywhere in the window raises it.
- *
- * PERFORMANCE (M7): an unfocused window pauses its backdrop blur (the most
- * expensive transparent-surface cost) and dims slightly, so N windows + the
- * animated scene stay within budget — only the focused window pays for live
- * glass. A maximized ("full") window goes opaque, which lets the shell pause
- * the scene blur entirely behind it (documented degradation strategy).
- */
+/** A product window with stable store identity, local frame keys and parent-supplied ads. */
 
 export interface WorkspaceWindowProps {
   id: string;
-  /** The hosted product page. Rendered inside the glass body, under the
+  /** The hosted product page. Rendered inside the opaque body, under the
    *  WindowHostProvider so it adapts per the contract. */
   children: ReactNode;
   /** Parent-supplied ad fills for the Times-Square border (never fetched). */
@@ -62,7 +45,6 @@ export function WorkspaceWindow({
   onOpenHouse,
 }: WorkspaceWindowProps) {
   const win = useWindows((s) => s.windows[id]);
-  const orderIndex = useWindows((s) => Math.max(0, s.order.indexOf(id)));
   const isFocused = useWindows((s) => s.focusedId === id);
   const focus = useWindows((s) => s.focus);
   const close = useWindows((s) => s.close);
@@ -71,21 +53,54 @@ export function WorkspaceWindow({
   const reduceMotion = usePrefersReducedMotion();
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const titleRef = useRef<HTMLDivElement | null>(null);
+  const keyboardHelpId = useId();
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const paneFrame = usePaneFlowFrame({ kind: "window", id });
+  const keyboardHints = useMemo(() => windowKeyboardHints(paneFrame.active), [paneFrame.active]);
+  const frameRef = useCallback((node: HTMLDivElement | null) => {
+    rootRef.current = node;
+    paneFrame.ref(node);
+  }, [paneFrame.ref]);
 
   // M8 focus management — when a window mounts, remember what had focus and
   // move focus into the window; restore it on unmount (close).
   useEffect(() => {
-    restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    const active = document.activeElement;
+    restoreFocusRef.current = active instanceof HTMLElement ? active : null;
     // Defer so the element exists + framer-motion's initial frame has run.
-    const t = window.setTimeout(() => rootRef.current?.focus(), 0);
+    const t = window.setTimeout(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      if (root.closest("[data-pane-flow-root]")?.getAttribute("data-pane-arrangement") !== "legacy"
+          && root.hasAttribute("data-pane-host")) focusConnectedPaneHost(root, { kind: "window", id });
+      else root.focus();
+    }, 0);
     return () => {
       window.clearTimeout(t);
+      // Landing (pane-flow packet → main, S04 "resolve the actual focused host
+      // first; no stale fallback"): this cleanup runs AFTER the exit animation,
+      // i.e. after the store has already moved focus to the retained topmost
+      // window and that window's own effect focused its root. Restoring the
+      // pre-mount element here (often the launcher's More key) would steal
+      // focus back from that host — the failure the packet's own
+      // productEntry.keyboard "entry after N windows" cases recorded. So the
+      // Rule (S04, "resolve the actual focused host first"): focus returns to
+      // the HOST you came from — a pane host, another window, a cockpit pane
+      // — even when the store has moved focus to the next-topmost window
+      // (paneFlowKeyboard: "returns to the connected opener"). A chrome
+      // control (the rail's More key, a launcher row) is not a host: then the
+      // retained window the store focused keeps focus (productEntry: "Back
+      // restores the retained topmost pane"). This window still being the
+      // focused id (an unmount without a store close) keeps the M8 restore.
+      const owner = useWindows.getState().focusedId;
       const prev = restoreFocusRef.current;
+      const prevIsHost = !!prev?.closest("[data-pane-host], [data-workspace-window], [data-pane]");
+      if (owner !== null && owner !== id && !prevIsHost) return;
       if (prev && typeof prev.focus === "function" && document.contains(prev)) {
-        prev.focus();
+        if (!prev.closest("[data-pane-flow-root]") || (!prev.closest("[hidden], [inert]") && !escOverlayOpen())) prev.focus();
       }
     };
   }, []);
@@ -96,9 +111,10 @@ export function WorkspaceWindow({
   useEffect(() => {
     const root = rootRef.current;
     if (isFocused && root && !root.contains(document.activeElement)) {
-      root.focus();
+      if (paneFrame.active) focusConnectedPaneHost(root, { kind: "window", id });
+      else root.focus();
     }
-  }, [isFocused]);
+  }, [isFocused, win?.z, paneFrame.active, paneFrame.focused]);
 
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
@@ -169,68 +185,75 @@ export function WorkspaceWindow({
     resizeStart.current = null;
   }, []);
 
-  // M8 keyboard control — when the window (or its chrome) has focus, arrows
-  // move it, ⌘/Ctrl+arrows resize it, Enter/F toggles full, Escape closes.
-  // We only act when focus is on the window root or its title bar, so typing
-  // inside the hosted page is never intercepted.
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!win) return;
-      const active = document.activeElement;
-      const onChrome =
-        active === rootRef.current ||
-        (active instanceof HTMLElement && active.closest("[data-window-titlebar]"));
-      if (!onChrome) return;
+  const onFocusCapture = useCallback((event: React.FocusEvent) => {
+    if (!(event.target instanceof Element) ||
+        event.target.closest("[data-workspace-window]") !== rootRef.current) return;
+    const current = useWindows.getState();
+    if (current.focusedId !== id) current.focus(id);
+  }, [id]);
 
-      const STEP = 24;
-      const mod = e.metaKey || e.ctrlKey;
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close(id);
-        return;
-      }
-      if (e.key === "Enter" || e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        toggleMode(id);
-        return;
-      }
-      if (win.mode !== "floating") return;
-      const arrow: Record<string, [number, number]> = {
-        ArrowLeft: [-STEP, 0],
-        ArrowRight: [STEP, 0],
-        ArrowUp: [0, -STEP],
-        ArrowDown: [0, STEP],
-      };
-      const delta = arrow[e.key];
-      if (!delta) return;
-      e.preventDefault();
-      focus(id);
-      if (mod) {
-        setRect(id, {
-          width: Math.max(MIN_W, win.rect.width + delta[0]),
-          height: Math.max(MIN_H, win.rect.height + delta[1]),
-        });
-      } else {
-        const viewport = {
-          width: typeof window !== "undefined" ? window.innerWidth : 1440,
-          height: typeof window !== "undefined" ? window.innerHeight : 900,
-        };
-        const clamped = clampRectToViewport(
-          { ...win.rect, x: win.rect.x + delta[0], y: win.rect.y + delta[1] },
-          viewport,
-        );
-        setRect(id, { x: clamped.x, y: clamped.y });
-      }
-    },
-    [id, win, close, focus, setRect, toggleMode],
-  );
+  const onKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (paneFrame.active && paneFrame.zoomed && event.key === "Escape"
+        && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+        && toggleActivePaneZoom(event.nativeEvent)) {
+      event.preventDefault();
+      return;
+    }
+    const target = event.target;
+    if (target !== document.activeElement ||
+        (target !== rootRef.current && target !== titleRef.current) || !(target instanceof Element) || escOverlayOpen()) return;
+    const command = windowCommand(event.nativeEvent);
+    if (!command) return;
+    const current = useWindows.getState();
+    const currentWindow = current.windows[id];
+    if (!currentWindow) return;
+    if (paneFrame.active && command.kind === "close" && !paneEventTarget(event.nativeEvent)) return;
+    if (paneFrame.active && event.repeat && command.kind === "close") return;
+    if (paneFrame.active && (command.kind === "move" || command.kind === "resize")) return;
+    if (paneFrame.active && command.kind === "toggle") {
+      if (!event.repeat && togglePaneHostZoom({ kind: "window", id }, target)) event.preventDefault();
+      return;
+    }
+    if (paneFrame.active && paneFrame.zoomed && command.kind === "close") {
+      if (!event.repeat && togglePaneHostZoom({ kind: "window", id }, target)) event.preventDefault();
+      return;
+    }
+    if ((command.kind === "move" || command.kind === "resize") && currentWindow.mode !== "floating") return;
+    event.preventDefault();
+    if (command.kind === "close") {
+      current.close(id);
+      return;
+    }
+    if (command.kind === "toggle") {
+      current.toggleMode(id);
+      return;
+    }
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const rect = currentWindow.rect;
+    if (command.kind === "resize") {
+      const maxWidth = Math.max(MIN_W, viewport.width - Math.max(0, rect.x));
+      const maxHeight = Math.max(MIN_H, viewport.height - Math.max(0, rect.y));
+      current.setRect(id, {
+        width: Math.min(maxWidth, Math.max(MIN_W, rect.width + command.dx)),
+        height: Math.min(maxHeight, Math.max(MIN_H, rect.height + command.dy)),
+      });
+    } else {
+      const clamped = clampRectToViewport(
+        { ...rect, x: rect.x + command.dx, y: rect.y + command.dy }, viewport,
+      );
+      current.setRect(id, { x: clamped.x, y: clamped.y });
+    }
+  }, [id, paneFrame.active, paneFrame.zoomed]);
 
   if (!win) return null;
 
-  const isFull = win.mode === "full";
+  const isFull = paneFrame.active ? paneFrame.zoomed : win.mode === "full";
+  const visibleFocused = paneFrame.active ? paneFrame.focused : isFocused;
 
   // Geometry. Full = fill the working region (inset-0); floating = the rect.
-  const geometry: React.CSSProperties = isFull
+  const geometry: React.CSSProperties = paneFrame.active
+    ? { ...paneFrame.style, zIndex: WINDOW_Z_BASE, display: paneFrame.hidden ? "none" : undefined }
+    : isFull
     ? { position: "absolute", inset: 0, zIndex: WINDOW_Z_BASE + win.z }
     : {
         position: "absolute",
@@ -241,63 +264,53 @@ export function WorkspaceWindow({
         zIndex: WINDOW_Z_BASE + win.z,
       };
 
-  // PERF (M7): the focused floating window gets live glass blur; unfocused
-  // windows drop the blur (cheapest big win) and dim slightly. A full window
-  // goes opaque (bg-glass-solid) so the shell can pause the scene blur behind
-  // it entirely — nothing of the scene is visible through a maximized window.
-  const surfaceClass = isFull
-    ? "bg-glass-solid"
-    : isFocused
-      ? "bg-glass backdrop-blur-glass"
-      : "bg-glass opacity-95";
-
-  let titleDepth = orderIndex;
-  if (isFocused) {
-    titleDepth = Math.min(3, titleDepth + 1);
-  }
-  const titleBarShadow = shadowForStackDepth(titleDepth, "glass-scene");
-
   return (
     <motion.div
-      ref={rootRef}
+      ref={frameRef}
       data-workspace-window={id}
+      data-pane-host={paneFrame.hostKey}
+      hidden={paneFrame.hidden || undefined}
       data-window-mode={win.mode}
-      data-window-focused={isFocused ? "true" : "false"}
+      data-window-focused={visibleFocused ? "true" : "false"}
       role="dialog"
       aria-label={win.title}
+      aria-describedby={keyboardHelpId}
+      aria-keyshortcuts={keyboardHints.shortcuts}
       tabIndex={-1}
       initial={reduceMotion ? false : { scale: 0.97, opacity: 0 }}
-      animate={{ scale: 1, opacity: isFull ? 1 : isFocused ? 1 : 0.95 }}
+      animate={{ scale: 1, opacity: 1 }}
       exit={reduceMotion ? undefined : { scale: 0.97, opacity: 0 }}
       transition={reduceMotion ? { duration: 0 } : surfaceSpring}
       style={geometry}
       className={
-        surfaceClass +
-        " border-edge border-glass rounded-hog flex flex-col overflow-hidden " +
-        (isFocused
-          ? " outline outline-2 outline-offset-[3px] outline-sun"
-          : "")
+        "bg-glass-solid border-2 rounded-none flex flex-col overflow-hidden " +
+        (visibleFocused ? "border-sun" : "border-glass")
       }
+      onFocusCapture={onFocusCapture}
       onMouseDownCapture={() => focus(id)}
       onKeyDown={onKeyDown}
     >
       {/* TITLE BAR — drag handle + window actions */}
       <div
+        ref={titleRef}
         data-window-titlebar
         tabIndex={0}
         aria-label={`${win.title} — window controls`}
+        aria-describedby={keyboardHelpId}
+        aria-keyshortcuts={keyboardHints.shortcuts}
         className={
-          "shrink-0 flex items-center gap-2 px-2.5 py-1.5 select-none " +
-          "border-b-edge border-glass bg-glass " +
-          titleBarShadow +
-          " " +
-          (isFull ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
+          "h-[26px] shrink-0 flex items-center gap-2 px-2 select-none text-xs " +
+          "border-b border-glass bg-glass-solid " +
+          (isFull || paneFrame.active ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
+          // Landing: main's focus ring kept (design/focus.guard.test requires a
+          // focus-visible ring wherever focus:outline-none appears in a Feel dir);
+          // the packet had switched this frame to a 1 px outline.
           " focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
         }
-        onPointerDown={onDragDown}
-        onPointerMove={onDragMove}
-        onPointerUp={onDragUp}
-        onPointerCancel={onDragUp}
+        onPointerDown={paneFrame.active ? undefined : onDragDown}
+        onPointerMove={paneFrame.active ? undefined : onDragMove}
+        onPointerUp={paneFrame.active ? undefined : onDragUp}
+        onPointerCancel={paneFrame.active ? undefined : onDragUp}
       >
         <span aria-hidden="true" className="font-mono text-shadow-1 dark:text-moonlight leading-none">
           ⋮⋮
@@ -309,9 +322,10 @@ export function WorkspaceWindow({
           type="button"
           data-window-action="toggle"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => toggleMode(id)}
-          aria-label={isFull ? "Restore window to floating" : "Expand window to full"}
-          className="px-1.5 leading-none text-sm text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+          onClick={(event) => paneFrame.active ? togglePaneHostZoom({ kind: "window", id }, event.currentTarget) : toggleMode(id)}
+          aria-label={paneFrame.active ? (isFull ? "Restore pane layout" : "Zoom pane")
+            : isFull ? "Restore window to floating" : "Expand window to full"}
+          className="px-1.5 leading-none text-xs text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
         >
           {isFull ? "❐" : "▢"}
         </button>
@@ -321,16 +335,17 @@ export function WorkspaceWindow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => close(id)}
           aria-label="Close window"
-          className="px-1.5 leading-none text-sm text-shadow-1 dark:text-moonlight hover:text-emperor"
+          className="px-1.5 leading-none text-xs text-shadow-1 dark:text-moonlight hover:text-emperor"
         >
           ✕
         </button>
       </div>
 
-      {/* BODY — glass; hosts the product page. The page reads useInWindow()
-          and drops its opaque bg + uses h-full (the window-adaptation
-          contract). Padded by BORDER_INSET top/bottom so the ad rails never
-          overlap the page. */}
+      <p id={keyboardHelpId} className="shrink-0 m-0 px-2 py-1 font-mono text-xs leading-4 text-shadow-1 dark:text-moonlight">
+        {keyboardHints.help}
+      </p>
+
+      {/* Ad insets keep the mounted product clear of the border rails. */}
       <div
         className="relative flex-1 min-h-0"
         style={{ paddingTop: BORDER_INSET, paddingBottom: BORDER_INSET }}
@@ -351,7 +366,7 @@ export function WorkspaceWindow({
       </div>
 
       {/* RESIZE GRIP — floating only (bottom-right). */}
-      {!isFull && (
+      {!isFull && !paneFrame.active && (
         <div
           title="Resize window"
           data-window-action="resize"

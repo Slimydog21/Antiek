@@ -1,3 +1,4 @@
+import { isFeatureOn } from "../lib/featureFlags";
 import { registerKeyboardOwner, traceKeyboardAction } from "./keyboardOwnership";
 /**
  * The keymap dispatcher: the ONE window-level owner of every global key.
@@ -42,6 +43,9 @@ import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { panelFocusId } from "./panelFocusId";
+import { useWindows } from "./windowsStore";
+import { escOverlayOpen, topModal } from "./escapeOverlay";
 import { companionVisible } from "./companionVisibility";
 import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./writeOutlineStore";
 import { mothershipForPath } from "./mothershipForPath";
@@ -65,6 +69,13 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
+import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneZoom,
+  togglePaneArrangementAt } from "./PaneFlowLayout";
+
+// Landing gate (antiek.flag.pane.flow): read ONCE at load, like the keymap
+// rows it must agree with — a flag that flipped mid-session would bind rows
+// to the wrong handlers.
+const PANE_FLOW_ON = isFeatureOn("pane.flow");
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -250,20 +261,70 @@ function closeFocusedFloat(): boolean {
 }
 
 /** Cycle focus across visible panels (docked + floating, ignoring popout). */
-function cycleFocus(direction: 1 | -1) {
+function cycleFocus(direction: 1 | -1): boolean {
+  const active = document.activeElement;
+  if (topModal() || active?.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+  const region = active?.closest('[role="region"]');
+  const ownerTitle = region?.querySelector<HTMLElement>("[data-panel-title]");
+  const ownerId = ownerTitle?.getAttribute("data-panel-title");
+  const ownsRegion = ownerId !== null && ownerId !== undefined &&
+    Object.hasOwn(useWorkspace.getState().panels, ownerId) && ownerTitle?.closest('[role="region"]') === region;
+  const overlay = active?.closest('[data-esc-overlay], [aria-modal="true"]');
+  if (overlay && (!ownsRegion || overlay !== region)) return false;
+  if (ownsRegion && region && escOverlayOpen(region)) return false;
   const ws = useWorkspace.getState();
-  const visible = [
-    ...ws.dockLeftIds,
-    ...ws.floatingIds,
-    ...ws.dockBottomIds,
-    ...ws.dockRightIds,
-  ];
-  if (visible.length === 0) return;
-  const cur = ws.focusedPanelId
-    ? visible.indexOf(ws.focusedPanelId)
-    : -1;
-  const next = (cur + direction + visible.length) % visible.length;
-  ws.focus(visible[next]);
+  const order = ws.panelCycleOrder;
+  const cursor = ws.focusedPanelId === null ? -1 : order.indexOf(ws.focusedPanelId);
+  for (let step = 1; step <= order.length; step += 1) {
+    const index = cursor < 0 ? (direction === 1 ? step - 1 : order.length - step)
+      : (cursor + direction * step + order.length) % order.length;
+    const id = order[index];
+    if (!Object.hasOwn(ws.panels, id) || ws.panels[id].mode === "popout") continue;
+    const title = document.getElementById(panelFocusId(id));
+    if (!title?.isConnected || title.getAttribute("data-panel-title") !== id ||
+        title.closest('[hidden], [aria-hidden="true"], [inert]')) continue;
+    title.focus();
+    if (document.activeElement !== title) continue;
+    const current = useWorkspace.getState();
+    if (!title.isConnected || !Object.hasOwn(current.panels, id) || current.panels[id].mode === "popout") continue;
+    if (current.focusedPanelId !== id) current.focus(id);
+    return true;
+  }
+  return false;
+}
+
+type CycleDestination = "panels" | "window" | "refuse";
+
+function cycleDestination(event: KeyboardEvent): CycleDestination {
+  const active = document.activeElement;
+  const target = event.target instanceof Element && event.target !== document.body &&
+    event.target !== document.documentElement ? event.target : active;
+  const frame = target?.closest("[data-workspace-window]");
+  if (!frame) return active?.closest("[data-workspace-window]") ? "refuse" : "panels";
+  if (target !== active || !target?.isConnected ||
+      target.closest('[hidden], [aria-hidden="true"], [inert]') ||
+      event.defaultPrevented || event.isComposing || event.getModifierState("AltGraph") ||
+      event.altKey || event.shiftKey || (event.ctrlKey && event.metaKey) || topModal()) return "refuse";
+  const id = frame.getAttribute("data-workspace-window");
+  if (id === null || !Object.hasOwn(useWindows.getState().windows, id)) return "refuse";
+  const ownTitlebar = target.hasAttribute("data-window-titlebar") && target.parentElement === frame;
+  if (target !== frame && !ownTitlebar) return "refuse";
+  // An open child overlay owns this frame; unrelated nonmodal overlays do not.
+  if (escOverlayOpen(frame)) return "refuse";
+  return "window";
+}
+
+function cycleAtFocus(event: KeyboardEvent, direction: 1 | -1): boolean | void {
+  const destination = cycleDestination(event);
+  switch (destination) {
+    case "refuse": return false;
+    case "window": return useWindows.getState().cycleFocus(direction);
+    case "panels": return cycleFocus(direction);
+    default: {
+      const exhaustive: never = destination;
+      return exhaustive;
+    }
+  }
 }
 
 /**
@@ -404,6 +465,49 @@ export function toggleProjectPicker(): void {
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE));
 }
 
+let executingPrefixEvent: KeyboardEvent | null = null;
+
+function modernPaneAt(event: KeyboardEvent): boolean {
+  const root = event.target instanceof Element ? event.target.closest("[data-pane-flow-root]") : null;
+  return Boolean(root && root.getAttribute("data-pane-arrangement") !== "legacy");
+}
+
+function paneFocusKey(event: KeyboardEvent, side: "left" | "right"): boolean | void {
+  // Landing gate (antiek.flag.pane.flow OFF): main's handler, verbatim — the
+  // cockpit's named-pane focus works from any focus (cockpitInset contract).
+  // The packet's admission rules (actual target inside a pane-flow host) apply
+  // only once the flow arrangement exists, i.e. with the flag on.
+  if (!PANE_FLOW_ON) { focusPane(side); return; }
+  if (modernPaneAt(event)) return focusAdjacentPane(event, side === "left" ? -1 : 1, executingPrefixEvent === event);
+  // Retained h/l aliases keep the old named-pane behavior. New arrows need
+  // the actual shared host arrangement, never a z/focusedId fallback.
+  if (event.code === "ArrowLeft" || event.code === "ArrowRight") return false;
+  if (!legacyPaneEventTarget(event, executingPrefixEvent === event)) return false;
+  const before = document.activeElement;
+  focusPane(side);
+  return document.activeElement !== before;
+}
+
+function paneFullscreenKey(event: KeyboardEvent): boolean | void {
+  // Landing gate (antiek.flag.pane.flow OFF): main's handler, verbatim.
+  if (!PANE_FLOW_ON) { useWorkspace.getState().toggleFullscreenPane(); return; }
+  if (modernPaneAt(event)) return toggleActivePaneZoom(event, executingPrefixEvent === event);
+  const target = legacyPaneEventTarget(event, executingPrefixEvent === event);
+  if (target?.kind === "window") {
+    if (!Object.hasOwn(useWindows.getState().windows, target.id)) return false;
+    useWindows.getState().toggleMode(target.id);
+    return true;
+  }
+  if (target) {
+    const state = useWorkspace.getState();
+    if (state.layoutPreset === "docked" && state.dockLeftIds.length + state.dockRightIds.length + state.dockBottomIds.length === 0) return false;
+    const side = target.kind === "companion" ? "right" : "left";
+    state.setFullscreenPane(state.fullscreenPane === side ? null : side);
+    return true;
+  }
+  return false;
+}
+
 /**
  * One handler per keymap action. keymap.test.ts fails if a table row names
  * an action missing here; the Record type makes tsc fail first.
@@ -442,13 +546,32 @@ export function createActionHandlers(navigate: NavigateFunction) {
     },
     "projecttree.toggle": () => toggleProjectTree(),
     "aisidecar.toggle": () => toggleAISidecar(),
-    "panel.focusPrev": () => cycleFocus(-1),
-    "panel.focusNext": () => cycleFocus(1),
+    "panel.focusPrev": (event) => cycleAtFocus(event, -1),
+    "panel.focusNext": (event) => cycleAtFocus(event, 1),
     "panel.closeFloating": () => closeFocusedFloat(),
-    "pane.focusLeft": () => focusPane("left"),
-    "pane.focusRight": () => focusPane("right"),
-    "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
-    "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "pane.focusLeft": (event) => paneFocusKey(event, "left"),
+    "pane.focusRight": (event) => paneFocusKey(event, "right"),
+    // Landing gate: the reorder rows exist only with antiek.flag.pane.flow on,
+    // and keymap.test requires handlers to match the table exactly.
+    ...(PANE_FLOW_ON ? {
+      "pane.reorderLeft": (event: KeyboardEvent) => reorderActivePane(event, -1, executingPrefixEvent === event),
+      "pane.reorderRight": (event: KeyboardEvent) => reorderActivePane(event, 1, executingPrefixEvent === event),
+    } : {}),
+    "pane.fullscreen": (event) => paneFullscreenKey(event),
+    "layout.togglePreset": (event) => {
+      if (event.target instanceof Element && event.target.closest("[data-pane-flow-root]")) {
+        return togglePaneArrangementAt(event, executingPrefixEvent === event);
+      }
+      // Landing gate: with antiek.flag.pane.flow OFF the key keeps main's
+      // meaning — docked ⇄ omarchy-inset. With the flag ON the packet's rule
+      // holds: outside a measured pane-flow root (legacy arrangement, invalid
+      // bounds) the key is refused before any preference write.
+      if (!PANE_FLOW_ON) {
+        useWorkspace.getState().toggleLayoutPreset();
+        return true;
+      }
+      return false;
+    },
     "tab.next": () => cycleTab(1),
     "tab.prev": () => cycleTab(-1),
     "tab.new": () => toggleNewTabPicker(),
@@ -523,13 +646,18 @@ export function installShortcuts(
       // Focus moved into a field or a dialog since the prefix armed (a
       // click): the key is theirs, and the prefix just lapses.
       if (focusContext(e.target).kind !== "default") return prefixState.disarm();
+      const claimedBeforePrefix = e.defaultPrevented;
       consume(e);
       // A held prefix auto-repeats; it stays armed and the repeats go nowhere.
       if (isPrefix && e.repeat) return;
       prefixState.disarm();
       if (e.key === "Escape" || isPrefix) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
-      if (row && row.status !== "unimplemented") run(row, e);
+      if (row && row.status !== "unimplemented") {
+        executingPrefixEvent = claimedBeforePrefix ? null : e;
+        try { run(row, e); }
+        finally { executingPrefixEvent = null; }
+      }
       return;
     }
     // Never steal the prefix from text (ctrl+b moves the caret on macOS) or

@@ -58,15 +58,13 @@ WindowsSnapshot = { windows, order /* bottom→top */, focusedId, zCounter }
   only that window.
 - **Focus restacks z + order.** Newest-focused is topmost; on close, focus
   falls back to the next-topmost (or null when none remain).
-- **Bounded fan-out.** `MAX_WINDOWS = 8` (hard cap). At the cap, `open()`
-  focuses the oldest window instead of exceeding the cap and returns *its* id
-  (a real id, never a phantom) — surfaced honestly, never silently dropped. 8
-  mirrors a realistic terminal fan-out and keeps 8 transparent frames + the
-  animated scene inside the SPR-11 FPS budget. Now that a default click opens a
-  window (see the inversion below), this cap is the hot-path backstop: a rapid
-  run of default activations can never exceed 8. Kept at 8 deliberately — do
-  not change the value or the at-cap action shape without recording a reason
-  here and in `windowsStore.ts`.
+- **Logical admission has no fixed count cap.** A new `open()` returns its
+  requested identity and leaves other hosts open. Reopening an existing id
+  focuses that host. `MAX_WINDOWS = 8` remains a deprecated fixture value;
+  `replaceOldestAtLimit` remains accepted by retained callers but cannot evict
+  another host. Practical rendering limits have not been measured. This
+  admission prerequisite does not implement the shared horizontal pane layout,
+  navigation, reorder, reveal or layout toggle.
 - **Z base.** `WINDOW_Z_BASE = 40` — a window always sits over the scene (z≈0)
   but under the in-page modal/toast stack (LemonModal z=100).
 
@@ -128,7 +126,7 @@ memory for the life of the tab:
 - **Named future-persistence path** (if later desired): wrap `useWindows` with
   zustand's `persist` middleware keyed on the restorable subset of each
   descriptor — `{ kind, payload, rect, mode }` — and rehydrate by *replaying*
-  `open()` so `MAX_WINDOWS` and the monotonic z-restack invariants still hold
+  `open()` so stable identity and the monotonic z-restack invariants still hold
   (do **not** rehydrate `z` / `order` / `zCounter` verbatim). This is a deferred
   task, not a silent assumption.
 
@@ -174,7 +172,8 @@ construction.
   **unfocused** windows drop the blur (the cheapest big win) and dim to 95%.
 - A **full** ("expanded") window goes opaque (`bg-glass-solid`), so the shell
   can pause the scene blur entirely behind it (nothing of the scene shows).
-- `MAX_WINDOWS = 8` bounds the worst case.
+- Logical admission has no fixed count cap; rendering cost beyond eight
+  windows and its practical limits are unmeasured.
 
 **FPS:** a precise FPS number could not be honestly measured in the headless
 jsdom test environment (no compositor / rAF frame timing). The degradation

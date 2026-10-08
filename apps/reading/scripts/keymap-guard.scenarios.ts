@@ -86,7 +86,36 @@ function openPanels() {
 function focusedPanelB() {
   return until(() => !!document.querySelector('[role="region"][aria-label="Guard panel B"]:not(.opacity-95)') && !!document.querySelector('[role="region"][aria-label="Guard panel A"].opacity-95'), "panel.focus: visible focus did not move from A to B");
 }
-interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | Promise<void>; }
+
+let reorderBefore = "";
+const paneOrderKey = () => useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|");
+function reorderPrepare() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement === "legacy") s.setPaneArrangement("horizontal");
+  reorderBefore = paneOrderKey();
+}
+/** The reorder admission (pane-flow S04) needs the event target to be the
+ *  actual pane host whose order changes; the runner's bodyFocus() would leave
+ *  it on <body>. The host depends on the direction (below). */
+function reorderFocus(direction: -1 | 1 = -1) {
+  // The guard fixture has no windows: the order is [core, companion], so a
+  // LEFT reorder must start on the companion and a RIGHT reorder on the core
+  // (the edge is a no-op by contract).
+  const prefer = direction === -1 ? "companion" : "core";
+  const host = document.querySelector<HTMLElement>(`[data-pane-host="${prefer}"]`) ?? document.querySelector<HTMLElement>('[data-pane-host]');
+  host?.focus({ preventScroll: true });
+}
+function reorderEffect(action: string) {
+  return until(() => paneOrderKey() !== reorderBefore, `${action}: logical pane order unchanged`);
+}
+interface Scenario {
+  prepare?: () => void | Promise<void>;
+  /** Runs AFTER the runner's bodyFocus() in the default context: scenarios
+   *  whose action is admitted only from a real host (pane-flow S04) focus it
+   *  here, since prepare() cannot keep focus past bodyFocus(). */
+  focus?: () => void;
+  effect: () => void | Promise<void>;
+}
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
@@ -108,6 +137,11 @@ export const SCENARIOS = {
   "keysheet.toggle": { effect: () => see('[data-keymap-owner="keysheet.toggle"]') },
   "projecttree.toggle": { effect: () => see('[role="region"][aria-label="Project"]') },
   "aisidecar.toggle": { effect: () => see('[role="region"][aria-label="AI"]') },
+  // SPR-01 M1 (pane-flow landing): the reorder rows are implemented only with
+  // antiek.flag.pane.flow ON (the guard presses unimplemented rows and checks
+  // they do nothing); with it on, a reorder changes the logical pane order.
+  "pane.reorderLeft": { prepare: reorderPrepare, focus: () => reorderFocus(-1), effect: () => reorderEffect("pane.reorderLeft") },
+  "pane.reorderRight": { prepare: reorderPrepare, focus: () => reorderFocus(1), effect: () => reorderEffect("pane.reorderRight") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {
@@ -155,6 +189,7 @@ function viewState() {
   const ws = useWorkspace.getState();
   return JSON.stringify({ path: location.pathname, panels: Object.keys(ws.panels), preset: ws.layoutPreset,
     fullscreen: ws.fullscreenPane, pane: ws.focusedPane, focusedPanel: ws.focusedPanelId,
+    paneArrangement: ws.paneArrangement, paneOrder: ws.paneOrder, paneZoom: ws.paneZoom,
     treePanel: useTabTrees.getState().treePanelOpen,
     active: useTabTrees.getState().trees.reading?.active_tab_id,
     dialogs: [...document.querySelectorAll('[aria-modal="true"]')].map((el) => el.getAttribute("aria-labelledby")),
@@ -169,6 +204,7 @@ export async function prepare(id: string, context = "default") {
   const scenario: Scenario | undefined = SCENARIOS[row.action];
   check(scenario, `POPULATION/COVERAGE ${row.id}/${row.action}: no executable scenario`);
   await scenario.prepare?.(); await settle(); bodyFocus();
+  if (context === "default") scenario.focus?.();
   if (context === "text") {
     const input = document.createElement("input"); input.id = "guard-text"; input.value = "fixture text";
     document.body.append(input); input.focus();

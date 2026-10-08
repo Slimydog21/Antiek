@@ -267,6 +267,7 @@ describe("the pane-focus keys (C3)", () => {
     ws().open("Notes", {}, { mode: "docked-left", id: "p:a", title: "A" });
     ws().open("Notes", {}, { mode: "docked-right", id: "p:b", title: "B" });
     ws().focus("p:a");
+    mountLayout();
     key(document.body, "ctrl+b");
     key(document.body, "l");
     expect(ws().focusedPanelId).toBe("p:b");

@@ -9,12 +9,16 @@
  * evaluation here — when an operator-created PostHog flag exists, the
  * owning sprint wires it through this same function so callers never change.
  */
-export type FeatureFlagName = "switcher.places";
+export type FeatureFlagName = "switcher.places" | "pane.flow";
 
 const DEV_DEFAULTS: Record<FeatureFlagName, boolean> = {
   // SPR-02 (specs/antiek-keyboard-panes-agents-20261007): places sections
   // in the Switcher + the rail strip. Flipped to prod-ON in SPR-05.
   "switcher.places": true,
+  // SPR-01 M1 (pane-flow packet landing): horizontal/tiled pane arrangement,
+  // the S05 ctrl+alt+l migration and the pane.reorder rows. OFF everywhere —
+  // including dev — until SPR-05 flips it after the keyboard journeys pass.
+  "pane.flow": false,
 };
 
 export function featureFlagKey(name: FeatureFlagName): string {

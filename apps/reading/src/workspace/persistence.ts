@@ -23,9 +23,12 @@
  * Schema-version mismatch at hydration → log + ignore the snapshot.
  */
 
+import { isFeatureOn } from "../lib/featureFlags";
 import type { WorkspaceSnapshot } from "./panel.types";
 import type { LayoutPreset } from "./panel.types";
 import { accountStorageKey, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
+import type { PaneArrangement } from "./panel.types";
+import { replaceNavigationStateWithoutPublication } from "./navigationLifetime";
 
 const LS_PREFIX = "antiek.workspace.";
 
@@ -227,7 +230,11 @@ export function clearWsFromUrl(): void {
     window.location.pathname +
     (search ? "?" + search : "") +
     window.location.hash;
-  window.history.replaceState({}, "", next);
+  // Landing: the packet routes this native replacement through
+  // navigationLifetime so the navigation epoch advances without a router
+  // publication (navigationLifetime.test: "removes ws through exactly the
+  // original native replacement"). The import had landed; this call had not.
+  replaceNavigationStateWithoutPublication({}, next);
 }
 
 /** Build a shareable URL for the current workspace state. */
@@ -501,4 +508,73 @@ export function clearTabProject(): void {
   } catch {
     // ignore
   }
+}
+
+const DESKTOP_PANE_KEY = LS_PREFIX + "desktop-pane-arrangement.v1";
+
+type PreferenceRead<T> = { kind: "absent" } | { kind: "invalid" } | { kind: "valid"; value: T };
+
+export function parsePaneArrangement(raw: string | null): PreferenceRead<PaneArrangement> {
+  if (raw === null) return { kind: "absent" };
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || !("schemaVersion" in value)
+        || value.schemaVersion !== 1 || !("arrangement" in value)) return { kind: "invalid" };
+    switch (value.arrangement) {
+      case "legacy": case "horizontal": case "tiled": return { kind: "valid", value: value.arrangement };
+      default: return { kind: "invalid" };
+    }
+  } catch { return { kind: "invalid" }; }
+}
+
+export function parseLegacyPanePreset(raw: string | null): PreferenceRead<LayoutPreset> {
+  if (raw === null) return { kind: "absent" };
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null || !("schemaVersion" in value)
+        || value.schemaVersion !== 1 || !("preset" in value)) return { kind: "invalid" };
+    switch (value.preset) {
+      case "docked": case "omarchy-inset": return { kind: "valid", value: value.preset };
+      default: return { kind: "invalid" };
+    }
+  } catch { return { kind: "invalid" }; }
+}
+
+/** A valid old choice stays legacy until the operator chooses the new flow.
+ * Fresh/invalid preferences start horizontal with the existing inset mounts.
+ * Neither old preset is relabelled as horizontal or tiled. No saved layout
+ * snapshot, scope, schema, or preference key is rewritten during the read. */
+export function migratePanePreferences(arrangementRaw: string | null, presetRaw: string | null): {
+  paneArrangement: PaneArrangement; layoutPreset: LayoutPreset;
+} {
+  const arrangement = parsePaneArrangement(arrangementRaw);
+  const preset = parseLegacyPanePreset(presetRaw);
+  if (arrangement.kind === "valid") {
+    return { paneArrangement: arrangement.value,
+      layoutPreset: preset.kind === "valid" ? preset.value
+        : arrangement.value === "legacy" ? "docked" : "omarchy-inset" };
+  }
+  return preset.kind === "valid"
+    ? { paneArrangement: "legacy", layoutPreset: preset.value }
+    : { paneArrangement: "horizontal", layoutPreset: "omarchy-inset" };
+}
+
+export function readPanePreferences(): { paneArrangement: PaneArrangement; layoutPreset: LayoutPreset } {
+  if (typeof window === "undefined") return { paneArrangement: "legacy", layoutPreset: "docked" };
+  // Landing gate (antiek.flag.pane.flow, default OFF): with the flag off the
+  // arrangement is always legacy and the preset is main's persisted read —
+  // nothing a flag-off user sees changes, and no preference is rewritten.
+  if (!isFeatureOn("pane.flow")) return { paneArrangement: "legacy", layoutPreset: readLayoutPreset() };
+  try {
+    return migratePanePreferences(window.localStorage.getItem(DESKTOP_PANE_KEY),
+      window.localStorage.getItem(LAYOUT_PRESET_KEY));
+  } catch {
+    return { paneArrangement: "legacy", layoutPreset: readLayoutPreset() };
+  }
+}
+
+export function writePaneArrangement(arrangement: PaneArrangement): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(DESKTOP_PANE_KEY, JSON.stringify({ schemaVersion: 1, arrangement })); }
+  catch { /* The current client choice survives unavailable storage. */ }
 }
