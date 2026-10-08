@@ -14,6 +14,7 @@ import { NewTabPicker } from "./workspace/NewTabPicker";
 import { ProjectPicker } from "./workspace/ProjectPicker";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { PaneFlowLayout } from "./workspace/PaneFlowLayout";
+import { PaneModeBar } from "./workspace/PaneModeBar";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { useViewportTier } from "./workspace/useViewportTier";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
@@ -221,6 +222,11 @@ export function AppShell({ children }: Props) {
       {/* MS-01 — the quiet "prefix armed" chip, shown while the keymap's
           prefix waits for its next key. */}
       <PrefixChip />
+
+      {/* SPR-01 M4 (R9) — the mode bar: a pill per active non-default mode
+          (RESIZE today), nothing in the default mode. Sits above the prefix
+          chip, which keeps its own pill. */}
+      <PaneModeBar />
 
       {/* D2 — the two summoned pickers, mounted ONCE here like the key
           sheet: the new-tab picker (prefix+c, and the document strip's +

@@ -158,6 +158,31 @@ const arrangementScenarios: Record<string, Scenario> = Object.fromEntries(
     [move, moveScenario(key)],
   ]),
 );
+
+// ── SPR-01 M4/M5: resize mode + chords, maximize, close ──────────────────
+// Same flag standing as the reorder scenarios. Resize needs a tiled split,
+// so the prepare builds a deterministic two-pane one and the effect reads
+// the store (the DOM's ratio is the same tree).
+function tiledTwoPane() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement !== "tiled") s.setPaneArrangement("tiled");
+}
+function focusCompanionHost() {
+  (document.querySelector<HTMLElement>('[data-pane-host="companion"]')
+    ?? document.querySelector<HTMLElement>("[data-pane-host]"))?.focus({ preventScroll: true });
+}
+function tileRatio(): number | null {
+  const tiles = useWorkspace.getState().paneTiles;
+  return tiles?.kind === "split" ? tiles.ratio : null;
+}
+function resizeChordScenario(name: string): Scenario {
+  let before: number | null = null;
+  return {
+    prepare: () => { tiledTwoPane(); before = tileRatio(); },
+    focus: focusCompanionHost,
+    effect: () => until(() => tileRatio() !== before, `${name}: the split ratio did not move`),
+  };
+}
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
@@ -189,6 +214,28 @@ export const SCENARIOS = {
   "pane.nextArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "2", "pane.nextArrangement: did not land on slot 2") },
   "pane.prevArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "3", "pane.prevArrangement: did not wrap to slot 3") },
   "pane.lastArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "3", "pane.lastArrangement: did not return to slot 3") },
+  // SPR-01 M4/M5: RESIZE mode, the direct chords, maximize, close.
+  "pane.resizeMode": {
+    prepare: () => tiledTwoPane(),
+    focus: focusCompanionHost,
+    effect: () => see("[data-pane-mode-bar]"),
+  },
+  "pane.resizeNarrower": resizeChordScenario("pane.resizeNarrower"),
+  "pane.resizeWider": resizeChordScenario("pane.resizeWider"),
+  "pane.resizeShorter": resizeChordScenario("pane.resizeShorter"),
+  "pane.resizeTaller": resizeChordScenario("pane.resizeTaller"),
+  "pane.maximize": {
+    focus: focusCompanionHost,
+    effect: () => until(() => useWorkspace.getState().paneMaximize !== null, "pane.maximize: no pane maximized"),
+  },
+  "pane.close": {
+    prepare: () => {
+      useWorkspace.getState().open("ProjectTree", {}, { id: "guard-close-float", mode: "floating", title: "Guard close float" });
+      useWorkspace.getState().focus("guard-close-float");
+    },
+    focus: () => document.querySelector<HTMLElement>('[data-pane-host="core"]')?.focus({ preventScroll: true }),
+    effect: () => until(() => !Object.hasOwn(useWorkspace.getState().panels, "guard-close-float"), "pane.close: the floating panel stayed open"),
+  },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {

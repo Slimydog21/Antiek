@@ -171,4 +171,8 @@ export type PanePresentation = {
   paneTiles: PaneTile | null;
   paneFocus: PaneTarget | null;
   paneZoom: PaneTarget | null;
+  /** SPR-01 M5 (R12 level 2): the maximized pane — Omarchy's "full width".
+   *  Mutually exclusive with paneZoom; both clear on split, close and
+   *  arrangement change. */
+  paneMaximize: PaneTarget | null;
 };
