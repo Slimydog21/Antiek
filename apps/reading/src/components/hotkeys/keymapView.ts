@@ -40,6 +40,7 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "switcher.open": "find",
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
+  "agent.openPane": "panels",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -90,6 +91,8 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "project.select":
     "Opens the account projects from the registry and files your tabs under the one you pick; each project's tabs are its own. The sidebar's project row opens the same picker.",
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
+  "agent.openPane":
+    "Opens the agent for the selected project beside your work, with the composer focused; in writing the outline keeps the right pane and the key does nothing.",
 };
 
 /** Actions whose key is held for a surface that has not shipped: the sheet

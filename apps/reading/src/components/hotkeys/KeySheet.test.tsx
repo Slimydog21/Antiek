@@ -117,6 +117,9 @@ describe("the filter (herdr keybind-help semantics)", () => {
       "tab.visitChild",
       "tab.treeToggle",
       "inbox.toggle",
+      // SPR-07: ctrl+alt+a opens the agent pane ("panels", after the inbox
+      // in ACTIONS order).
+      "agent.openPane",
     ]);
     fireEvent.change(input, { target: { value: "zzz-nothing" } });
     expect(sheet().textContent).toContain("No shortcut matches");
