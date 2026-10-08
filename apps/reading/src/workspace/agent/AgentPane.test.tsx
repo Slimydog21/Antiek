@@ -302,6 +302,27 @@ describe("interview mode (invariant 26)", () => {
     off();
     expect(seeds).toEqual([{ title: "Finches", prompt: "P" }]);
   });
+
+  it("an intake that throws on the seed does not break the confirm: the pane still announces, says the intake could not take it, and the seed is held (second repair, finding 3)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { transport } = scripted([
+      "Here is a seed.\n\n@@actions\n[{\"kind\":\"project_seed\",\"title\":\"Finches\",\"prompt\":\"P\"}]\n@@end",
+    ]);
+    const offBroken = subscribeProjectSeed(() => { throw new Error("intake exploded"); });
+    host(transport, { interview: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(() => {
+      fireEvent.click(within(document.querySelector("[data-seed-card]") as HTMLElement).getByRole("button", { name: /create this project/i }));
+    }).not.toThrow();
+    act(() => { vi.advanceTimersByTime(60); });
+    expect(document.querySelector('[role="status"]')!.textContent).toBe("The project intake could not take the seed; it is held for the next one");
+    expect(error).toHaveBeenCalledTimes(1);
+    offBroken();
+    const seeds: ProjectSeed[] = [];
+    subscribeProjectSeed((s) => { seeds.push(s); })();
+    expect(seeds).toEqual([{ title: "Finches", prompt: "P" }]);
+    error.mockRestore();
+  });
 });
 
 describe("option cards honour allowCustom (M8 pattern 20, repair C9)", () => {

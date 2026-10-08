@@ -15,13 +15,20 @@ useEffect(() => subscribeProjectSeed(applySeed), [applySeed]);
 ```
 
 Contract: every subscribed consumer receives each confirmed seed exactly once,
-as its own value copy (`{title, prompt, sources?}`); a seed confirmed while no
-intake is mounted is held (latest only) and handed to the FIRST subscriber,
-once. `dispatchProjectSeed` returns `{delivered}`; the pane announces
-"Project seed handed to the intake" when `delivered > 0`, else "No project
-intake is open yet; the seed is held for it". The pane never calls
-`submitProject` (the intake owns the paid POST). The earlier window
-`CustomEvent` transport is gone: one seam, one consumer path.
+as its own value copy (`{title, prompt, sources?}`). Seeds confirmed while no
+intake is mounted are held in confirmation order (every one the pane said was
+held) and handed to the FIRST subscriber, each once; a delivered seed is never
+also held. A consumer that throws is a failed delivery: reported with
+`console.error`, never propagated, and the other consumers still receive the
+seed; a seed NO consumer took (none mounted, or every mounted one threw) stays
+held, and a held seed a subscriber throws on stays held for the next one
+(second repair, finding 3). `dispatchProjectSeed` returns `{delivered,
+failed}`; the pane announces "Project seed handed to the intake" when
+`delivered > 0`, "The project intake could not take the seed; it is held for
+the next one" when only failures, else "No project intake is open yet; the
+seed is held for it". The pane never calls `submitProject` (the intake owns
+the paid POST). The earlier window `CustomEvent` transport is gone: one seam,
+one consumer path.
 
 ## 2. The pane's tab on the frozen vocabulary (M1 / handoff F1)
 

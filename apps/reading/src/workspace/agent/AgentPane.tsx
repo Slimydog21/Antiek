@@ -381,8 +381,12 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
       {actions.length > 0 ? (
         <div className="px-3 pb-2 shrink-0">
           <AgentReplyActions tab={tab} actions={actions} interview={interview} onSeedConfirm={(seed) => {
-            const { delivered } = dispatchProjectSeed(seed);
-            announce(delivered > 0 ? "Project seed handed to the intake" : "No project intake is open yet; the seed is held for it");
+            const { delivered, failed } = dispatchProjectSeed(seed);
+            announce(
+              delivered > 0 ? "Project seed handed to the intake"
+                : failed > 0 ? "The project intake could not take the seed; it is held for the next one"
+                : "No project intake is open yet; the seed is held for it",
+            );
           }} />
         </div>
       ) : null}

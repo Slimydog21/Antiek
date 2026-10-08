@@ -5,7 +5,9 @@
  * `@@options` JSON block, and a confirm-only `project_seed` action that
  * hands {title, prompt, sources} to SPR-03's intake through ONE seam,
  * `subscribeProjectSeed` (repair C2; SEAMS.md §1) — never submitProject
- * (the intake owns the paid POST; handoff F6).
+ * (the intake owns the paid POST; handoff F6). A seed nobody takes is held
+ * in order, and a consumer that throws can neither block the others nor
+ * lose the seed (second repair, finding 3).
  *
  * INTERVIEW_SYSTEM_PROMPT duplicates SPR-03's INTERVIEW_PROMPT text until
  * #3749 lands a shared export (F6): one de-dup edit then.
@@ -72,47 +74,63 @@ export function seedFromActions(actions: readonly AiAction[]): ProjectSeed | nul
 export type ProjectSeedConsumer = (seed: ProjectSeed) => void;
 
 const consumers = new Set<ProjectSeedConsumer>();
-/** A seed confirmed while no intake was mounted: held (latest only) for the
- *  first consumer to subscribe, delivered to it exactly once. */
-let pending: ProjectSeed | null = null;
+/** Seeds no consumer has taken yet (none mounted, or every mounted one
+ *  threw), in confirmation order: the pane told the user each one was held,
+ *  so none is dropped. The first consumer to subscribe receives them all,
+ *  each exactly once. */
+let held: ProjectSeed[] = [];
 
 const copyOf = (s: ProjectSeed): ProjectSeed => ({ title: s.title, prompt: s.prompt, ...(s.sources ? { sources: [...s.sources] } : {}) });
+
+/** One delivery. A consumer that throws is a failed delivery: reported, never
+ *  propagated (the pane's confirm must still announce; the other consumers
+ *  must still receive the seed). */
+function deliver(consumer: ProjectSeedConsumer, seed: ProjectSeed): boolean {
+  try {
+    consumer(copyOf(seed));
+    return true;
+  } catch (err) {
+    console.error("[antiek/agent] a project-seed consumer threw; the seed is kept for the next intake:", err);
+    return false;
+  }
+}
 
 /**
  * The intake's ONE consumer path (SPR-03's useProjectIntake calls this in
  * an effect: `useEffect(() => subscribeProjectSeed(applySeed), [applySeed])`).
  * Every consumer receives each dispatched seed exactly once, as its own
- * value copy; a seed confirmed before any consumer existed is handed to
- * the first subscriber, once. Returns the unsubscribe.
+ * value copy; seeds confirmed before any consumer existed are handed to the
+ * first subscriber, in order, once each — a seed the subscriber throws on
+ * stays held. Returns the unsubscribe.
  */
 export function subscribeProjectSeed(consumer: ProjectSeedConsumer): () => void {
   consumers.add(consumer);
-  if (pending !== null) {
-    const held = pending;
-    pending = null;
-    consumer(copyOf(held));
+  if (held.length > 0) {
+    const queue = held;
+    held = [];
+    const kept = queue.filter((seed) => !deliver(consumer, seed));
+    held = [...kept, ...held];
   }
   return () => { consumers.delete(consumer); };
 }
 
-/** The ONLY hand-off. `delivered` is how many consumers received it; 0
- *  means no intake is mounted (the seed is held for the first one). */
-export function dispatchProjectSeed(seed: ProjectSeed): { delivered: number } {
+/** The ONLY hand-off. `delivered` is how many consumers received it and
+ *  `failed` how many threw; when nobody received it (no intake mounted, or
+ *  the mounted ones threw) the seed is held for the next intake. */
+export function dispatchProjectSeed(seed: ProjectSeed): { delivered: number; failed: number } {
   const snapshot = copyOf(seed);
-  if (consumers.size === 0) {
-    pending = snapshot;
-    return { delivered: 0 };
-  }
   let delivered = 0;
+  let failed = 0;
   for (const c of [...consumers]) {
-    c(copyOf(snapshot));
-    delivered += 1;
+    if (deliver(c, snapshot)) delivered += 1;
+    else failed += 1;
   }
-  return { delivered };
+  if (delivered === 0) held.push(snapshot);
+  return { delivered, failed };
 }
 
 /** Test seam: forget every consumer and any held seed. */
 export function resetProjectSeedSeam(): void {
   consumers.clear();
-  pending = null;
+  held = [];
 }
