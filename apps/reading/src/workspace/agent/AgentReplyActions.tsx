@@ -28,16 +28,18 @@ export interface AgentReplyActionsProps {
   tab: AgentPaneTab;
   actions: readonly AiAction[];
   interview: boolean;
+  /** The mounted parent's originating owner and pane lease, still confirmed. */
+  isCurrent: () => boolean;
   onSeedConfirm?: (seed: ProjectSeed) => void;
 }
 
-export function AgentReplyActions({ tab, actions, interview, onSeedConfirm }: AgentReplyActionsProps) {
+export function AgentReplyActions({ tab, actions, interview, isCurrent, onSeedConfirm }: AgentReplyActionsProps) {
   const shown = actions.filter((a) => a.kind === "open_document" || a.kind === "open_writer" || (a.kind === "project_seed" && interview));
   if (shown.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5 mt-1" data-reply-actions>
       {shown.map((action, i) => {
-        if (action.kind === "open_document") return <OpenDocumentButton key={i} tab={tab} action={action} />;
+        if (action.kind === "open_document") return <OpenDocumentButton key={i} tab={tab} action={action} isCurrent={isCurrent} />;
         if (action.kind === "open_writer") return <OpenWriterButton key={i} action={action} />;
         if (action.kind === "project_seed") return <SeedCard key={i} action={action} onConfirm={onSeedConfirm} />;
         return null;
@@ -46,10 +48,15 @@ export function AgentReplyActions({ tab, actions, interview, onSeedConfirm }: Ag
   );
 }
 
-function OpenDocumentButton({ tab, action }: { tab: AgentPaneTab; action: Extract<AiAction, { kind: "open_document" }> }) {
+function OpenDocumentButton({ tab, action, isCurrent }: { tab: AgentPaneTab; action: Extract<AiAction, { kind: "open_document" }>; isCurrent: () => boolean }) {
   const [refusal, setRefusal] = useState<string | null>(null);
   const anchor = action.anchor;
+  const admitted = () => {
+    try { return typeof isCurrent === "function" && isCurrent() === true; }
+    catch { return false; }
+  };
   const run = () => {
+    if (!admitted()) return;
     if (anchor.space !== "book") {
       setRefusal(REFUSAL_COPY.deliverable_anchor);
       return;
@@ -59,6 +66,7 @@ function OpenDocumentButton({ tab, action }: { tab: AgentPaneTab; action: Extrac
       anchor,
       agent: { id: tab.id, viewId: tab.id, kind: AGENT_REPLY_AGENT_KIND },
     });
+    if (!admitted()) return;
     setRefusal(result.ok ? null : REFUSAL_COPY[result.reason]);
   };
   const label = anchor.quoteHint ? `Open the passage: "${anchor.quoteHint.quote.slice(0, 60)}"` : "Open the passage";

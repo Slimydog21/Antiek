@@ -22,7 +22,7 @@ const tab: AgentPaneTab = { id: "agent:pane:p:proj-1", title: "agent", scope: "p
 describe("AgentReplyActions", () => {
   it("renders open_document as a button; nothing runs on render; Enter/click calls the frozen opener once with the pane's AgentRef", () => {
     openDocumentFromAgent.mockReturnValue({ ok: true });
-    const { getByRole } = render(<AgentReplyActions tab={tab} interview={false} actions={[{ kind: "open_document", anchor }]} />);
+    const { getByRole } = render(<AgentReplyActions tab={tab} isCurrent={() => true} interview={false} actions={[{ kind: "open_document", anchor }]} />);
     expect(openDocumentFromAgent).not.toHaveBeenCalled();
     const button = getByRole("button", { name: /open the passage/i });
     fireEvent.click(button);
@@ -34,13 +34,13 @@ describe("AgentReplyActions", () => {
 
   it("a refusal renders beside the button instead of being swallowed", () => {
     openDocumentFromAgent.mockReturnValue({ ok: false, reason: "document_mismatch" });
-    const { getByRole, container } = render(<AgentReplyActions tab={tab} interview={false} actions={[{ kind: "open_document", anchor }]} />);
+    const { getByRole, container } = render(<AgentReplyActions tab={tab} isCurrent={() => true} interview={false} actions={[{ kind: "open_document", anchor }]} />);
     fireEvent.click(getByRole("button", { name: /open the passage/i }));
     expect(container.querySelector("[data-reply-action-refusal]")!.textContent).toContain("That passage is in another document");
   });
 
   it("open_writer renders a disabled button whose accessible description names openers.ts:42 and never navigates", () => {
-    const { getByRole } = render(<AgentReplyActions tab={tab} interview={false} actions={[{ kind: "open_writer", deliverable_id: "d-1", block_id: "b-2" }]} />);
+    const { getByRole } = render(<AgentReplyActions tab={tab} isCurrent={() => true} interview={false} actions={[{ kind: "open_writer", deliverable_id: "d-1", block_id: "b-2" }]} />);
     const button = getByRole("button", { name: /open in the writer/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     const description = document.getElementById(button.getAttribute("aria-describedby")!)!;
@@ -53,10 +53,10 @@ describe("AgentReplyActions", () => {
   it("project_seed renders only in interview mode and confirms through the callback", () => {
     const onSeedConfirm = vi.fn();
     const seed = { kind: "project_seed" as const, title: "Finches", prompt: "Did beak depth track the drought?", sources: ["doc-1"] };
-    const outside = render(<AgentReplyActions tab={tab} interview={false} actions={[seed]} onSeedConfirm={onSeedConfirm} />);
+    const outside = render(<AgentReplyActions tab={tab} isCurrent={() => true} interview={false} actions={[seed]} onSeedConfirm={onSeedConfirm} />);
     expect(outside.container.querySelector("[data-seed-card]")).toBeNull();
     cleanup();
-    const inside = render(<AgentReplyActions tab={tab} interview actions={[seed]} onSeedConfirm={onSeedConfirm} />);
+    const inside = render(<AgentReplyActions tab={tab} isCurrent={() => true} interview actions={[seed]} onSeedConfirm={onSeedConfirm} />);
     const card = inside.container.querySelector("[data-seed-card]")!;
     expect(card.textContent).toContain("Finches");
     expect(onSeedConfirm).not.toHaveBeenCalled();

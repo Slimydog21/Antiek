@@ -424,7 +424,7 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
       ) : null}
       {actions.length > 0 ? (
         <div className="px-3 pb-2 shrink-0">
-          <AgentReplyActions tab={tab} actions={actions} interview={interview} onSeedConfirm={(seed) => {
+          <AgentReplyActions tab={tab} actions={actions} interview={interview} isCurrent={() => current() && isConfirmedAgentOwner(owner)} onSeedConfirm={(seed) => {
             if (!current() || !isConfirmedAgentOwner(owner)) return;
             const { delivered, failed } = dispatchProjectSeed(seed);
             announce(
