@@ -55,6 +55,7 @@ def create_project(
     topic_description: str | None = None,
     interview_guide: Any | None = None,
     project_id: str | None = None,
+    owner_user_id: str = "__operator__",
 ) -> SpeakProject:
     """Create a Speak project: the base ``interview_projects`` row plus
     the ``speak_projects`` sidecar carrying publish intent + subject."""
@@ -69,6 +70,7 @@ def create_project(
         topic_description=topic_description,
         interview_guide=interview_guide,
         project_id=project_id,
+        owner_user_id=owner_user_id,
     )
     con.execute(
         "INSERT INTO speak_projects "

@@ -324,11 +324,15 @@ def submit_answer(
     ) as con:
         ensure_speak_schema(con)
         prow = con.execute(
-            "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
+            "SELECT i.project_id, p.owner_user_id FROM interviews i "
+            "JOIN interview_projects p ON p.project_id = i.project_id "
+            "WHERE i.interview_id = ?", [interview_id]
         ).fetchone()
         if prow is None:
             raise ValueError(f"interview {interview_id!r} not found")
-        project_id = prow[0]
+        project_id, owner_user_id = prow
+        if not isinstance(owner_user_id, str) or not owner_user_id.strip():
+            raise ValueError("stored_project_owner_required")
         if not _consent_recorded(con, interview_id):
             raise ConsentRequired(
                 f"interview {interview_id} has no consent recorded; record "
@@ -339,6 +343,8 @@ def submit_answer(
     ingest = ingest_voice_note(
         transcript,
         investigation_id=project_id,
+        operator_id=owner_user_id,
+        owner_user_id=owner_user_id,
         title=f"Interview {interview_id} — answer to {question_id}",
         recorded_at=recorded_at,
         duration_seconds=duration_seconds,
