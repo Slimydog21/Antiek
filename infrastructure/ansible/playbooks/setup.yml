@@ -81,25 +81,44 @@
     # the retry absorbed it (root-caused 2026-09-21 via --dump headers).
     # ≥1.75 drops the canned ACL for provider=Cloudflare. Checksum-pinned so
     # the supply chain is identical on every reprovision.
+    #
+    # The build follows the host CPU: an amd64 binary on a Graviton (arm64)
+    # host fails with "exec format error", and only at 03:00 when the backup
+    # first runs. Both checksums come from rclone's PGP-signed SHA256SUMS for
+    # v1.75.1 (good signature, key FBF737ECE9F8AB18604BD2AC93935E02FF3B54FA,
+    # checked 2026-10-07); the amd64 one is the value pinned here before.
+    - name: select the pinned rclone build for this CPU
+      ansible.builtin.set_fact:
+        rclone_build: "{{ rclone_builds[ansible_architecture] }}"
+      vars:
+        rclone_builds:
+          x86_64:
+            name: rclone-v1.75.1-linux-amd64
+            sha256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+          aarch64:
+            name: rclone-v1.75.1-linux-arm64
+            sha256: 03f2504174034b6d004152ed7369251c9a9ec1f7e0836eda420f5c7a5ec0dff9
+      tags: [base, backup]
+
     - name: fetch pinned rclone zip (checksum-verified)
       ansible.builtin.get_url:
-        url: https://downloads.rclone.org/v1.75.1/rclone-v1.75.1-linux-amd64.zip
-        dest: /tmp/rclone-v1.75.1-linux-amd64.zip
-        checksum: sha256:982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+        url: "https://downloads.rclone.org/v1.75.1/{{ rclone_build.name }}.zip"
+        dest: "/tmp/{{ rclone_build.name }}.zip"
+        checksum: "sha256:{{ rclone_build.sha256 }}"
         mode: "0644"
       tags: [base, backup]
 
     - name: unpack pinned rclone
       ansible.builtin.unarchive:
-        src: /tmp/rclone-v1.75.1-linux-amd64.zip
+        src: "/tmp/{{ rclone_build.name }}.zip"
         dest: /tmp
         remote_src: true
-        creates: /tmp/rclone-v1.75.1-linux-amd64/rclone
+        creates: "/tmp/{{ rclone_build.name }}/rclone"
       tags: [base, backup]
 
     - name: install pinned rclone binary
       ansible.builtin.copy:
-        src: /tmp/rclone-v1.75.1-linux-amd64/rclone
+        src: "/tmp/{{ rclone_build.name }}/rclone"
         dest: /usr/bin/rclone
         owner: root
         group: root
@@ -146,6 +165,38 @@
           APT::Periodic::Unattended-Upgrade "1";
         mode: "0644"
       tags: [base, security]
+
+    # sshd keys only. Restore rehearsal 2026-10-07 (D11): a fresh Hetzner
+    # image ships `PasswordAuthentication yes` and Antiek-v1 had logged ~55k
+    # failed password logins. Ubuntu's sshd_config includes sshd_config.d/*.conf
+    # first and sshd keeps the FIRST value it reads, so a 00- name wins over
+    # the image's 50-cloud-init.conf. Root keeps key login (ansible_user=root).
+    # The AWS hosts get the same lines from cloud-init (terraform-aws prod.tf,
+    # lane_host.tf); this task is the Hetzner/any-image equivalent.
+    - name: sshd keys-only drop-in
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/00-antiek-hardening.conf
+        content: |
+          # Managed by infrastructure/ansible/playbooks/setup.yml (rehearsal D11).
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin prohibit-password
+        owner: root
+        group: root
+        mode: "0644"
+      register: sshd_hardening
+      tags: [base, security, sshd]
+
+    - name: sshd validate the full configuration before any reload
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+      when: sshd_hardening is changed
+      tags: [base, security, sshd]
+
+    - name: sshd reload if running (open sessions survive a reload)
+      ansible.builtin.command: systemctl try-reload-or-restart ssh.service
+      when: sshd_hardening is changed
+      tags: [base, security, sshd]
 
     # ──────────────────────────────────────────────────────────────────────
     # 3. UFW firewall
