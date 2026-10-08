@@ -153,7 +153,7 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
             return None
 
     monkeypatch.setattr(lib, "list_book_assets", fake_list)
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda *, refuse_reader_probe_busy=False: ":memory:")
     monkeypatch.setattr(
         "runtime.db_lock.connect_read",
         lambda db: _Con(),
@@ -209,7 +209,7 @@ def test_register_library_rolls_back_failed_snapshot(
         raise RuntimeError("catalog changed")
 
     monkeypatch.setattr(lib, "list_book_assets", fail_list)
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda *, refuse_reader_probe_busy=False: ":memory:")
     monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
 
     app = FastAPI()
@@ -242,7 +242,7 @@ def test_register_library_closes_when_begin_fails(
             nonlocal closed
             closed = True
 
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda *, refuse_reader_probe_busy=False: ":memory:")
     monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
 
     app = FastAPI()
@@ -277,7 +277,7 @@ def test_register_library_rolls_back_commit_failure(
             closed = True
 
     monkeypatch.setattr(lib, "list_book_assets", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda *, refuse_reader_probe_busy=False: ":memory:")
     monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
 
     app = FastAPI()
