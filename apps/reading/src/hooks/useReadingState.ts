@@ -16,12 +16,14 @@
  *     clamp-on-shrink is preserved: every adoption and every read clamps
  *     against the live page count.
  */
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
 
 import { ApiError } from "../lib/api";
 import { getReadingState, putReadingState } from "../api/readingState";
 import { notifyReadingPositionOwner, readingPositionOwner, setReadingPositionOwner, usePosition, usePositionOwner } from "../modes/Reading/usePosition";
+
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, workspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 export const READING_STATE_DEBOUNCE_MS = 400;
 
@@ -56,6 +58,32 @@ const inflightLoads = new Map<string, Promise<void>>();
 const activeWrites = new Set<string>();
 let generation = 0;
 let owner: string | null = null;
+interface OwnerLifetime {
+  readonly session: WorkspaceOwnerSession;
+  readonly controller: AbortController;
+}
+let ownerLifetime: OwnerLifetime = { session: workspaceOwnerSession(), controller: new AbortController() };
+interface ReadingWork {
+  readonly lifetime: OwnerLifetime;
+  readonly generation: number;
+  readonly documentId: string;
+}
+function captureWork(documentId: string): ReadingWork {
+  return { lifetime: ownerLifetime, generation, documentId };
+}
+function retained(work: ReadingWork): boolean {
+  return work.generation === generation && work.lifetime === ownerLifetime
+    && !work.lifetime.controller.signal.aborted && work.lifetime.session.subject !== null
+    && work.lifetime.session.subject === owner
+    && useReadingStateBus.getState().byDocument[work.documentId] !== undefined;
+}
+function admitted(work: ReadingWork): boolean {
+  return retained(work) && isWorkspaceOwnerSession(work.lifetime.session);
+}
+async function confirm(work: ReadingWork): Promise<boolean> {
+  return retained(work) && await awaitWorkspaceOwnerSession(work.lifetime.session, work.lifetime.controller.signal)
+    && retained(work);
+}
 
 function current(requestGeneration: number): boolean {
   return requestGeneration === generation;
@@ -97,12 +125,15 @@ export const useReadingStateBus = create<ReadingStateBus>()((set, get) => ({
     const existing = inflightLoads.get(documentId);
     if (existing) return existing;
     const requestGeneration = generation;
+    const request = captureWork(documentId);
     const startSettledVersion = get().byDocument[documentId]?.settledVersion ?? 0;
-    let retryAfterThisLoad = false;
+    let retryAfterThisLoad = true;
     const work = (async () => {
     try {
+      do { if (!await confirm(request)) return; } while (!admitted(request));
       const row = await getReadingState(documentId);
-      if (!current(requestGeneration)) return;
+      do { if (!await confirm(request)) return; } while (!admitted(request));
+      retryAfterThisLoad = false;
       set((s) => {
         const cur = s.byDocument[documentId];
         if (!cur) return s;
@@ -123,7 +154,7 @@ export const useReadingStateBus = create<ReadingStateBus>()((set, get) => ({
         };
       });
     } catch {
-      if (!current(requestGeneration)) return;
+      do { if (!await confirm(request)) return; } while (!admitted(request));
       retryAfterThisLoad = true;
       // The bus is unreachable — honest degradation: the entry keeps its
       // local (sessionStorage-seeded) value; reading never blocks.
@@ -143,7 +174,7 @@ export const useReadingStateBus = create<ReadingStateBus>()((set, get) => ({
         inflightLoads.delete(documentId);
         // A failed GET is not proof that writes can succeed. Retry only after
         // a successful read restores evidence that the bus is reachable.
-        if (!retryAfterThisLoad) flushIfReady(documentId);
+        if (!retryAfterThisLoad && admitted(request)) flushIfReady(documentId);
       }
     }
     })();
@@ -173,6 +204,8 @@ export const useReadingStateBus = create<ReadingStateBus>()((set, get) => ({
   },
 
   reset: () => {
+    ownerLifetime.controller.abort();
+    ownerLifetime = { session: workspaceOwnerSession(), controller: new AbortController() };
     generation += 1;
     for (const t of debounceTimers.values()) clearTimeout(t);
     debounceTimers.clear();
@@ -186,18 +219,24 @@ export const useReadingStateBus = create<ReadingStateBus>()((set, get) => ({
  *  a later local turn remains pending and retries with the new revision. */
 async function flushPut(documentId: string): Promise<void> {
   const requestGeneration = generation;
-  const entry = useReadingStateBus.getState().byDocument[documentId];
-  if (!entry || activeWrites.has(documentId)) return;
+  const request = captureWork(documentId);
+  if (!retained(request) || activeWrites.has(documentId)) return;
   activeWrites.add(documentId);
-  let retryFromThisFailure = false;
+  let retryFromThisFailure = true;
+  let entry: ReadingStateEntry | undefined;
   try {
+    do { if (!await confirm(request)) return; } while (!admitted(request));
+    entry = useReadingStateBus.getState().byDocument[documentId];
+    if (!entry || !entry.reachable || entry.turnVersion <= entry.settledVersion) return;
     const resp = await putReadingState(documentId, {
       page_index: entry.pageIndex,
       anchor_ref: entry.anchorRef,
       prefs: {},
       revision: entry.revision,
     });
-    if (!current(requestGeneration)) return;
+    do { if (!await confirm(request)) return; } while (!admitted(request));
+    retryFromThisFailure = false;
+    const sentVersion = entry.turnVersion;
     useReadingStateBus.setState((s) => {
       const cur = s.byDocument[documentId];
       if (!cur) return s;
@@ -208,14 +247,16 @@ async function flushPut(documentId: string): Promise<void> {
             ...cur,
             revision: resp.revision,
             anchorRef: resp.anchor_ref,
-            settledVersion: entry.turnVersion,
+            settledVersion: sentVersion,
             reachable: true,
           },
         },
       };
     });
   } catch (e) {
-    if (!current(requestGeneration)) return;
+    do { if (!await confirm(request)) return; } while (!admitted(request));
+    if (!entry) return;
+    const sentVersion = entry.turnVersion;
     if (e instanceof ApiError && e.status === 409) {
       // A later local turn survives the refetch. Otherwise the competing
       // device's row wins.
@@ -225,17 +266,19 @@ async function flushPut(documentId: string): Promise<void> {
         return {
           byDocument: {
             ...s.byDocument,
-            [documentId]: { ...cur, settledVersion: entry.turnVersion },
+            [documentId]: { ...cur, settledVersion: sentVersion },
           },
         };
       });
       const joinedOlderLoad = inflightLoads.has(documentId);
       await useReadingStateBus.getState().load(documentId);
-      if (joinedOlderLoad && current(requestGeneration)) {
+      do { if (!await confirm(request)) return; } while (!admitted(request));
+      if (joinedOlderLoad) {
         await useReadingStateBus.getState().load(documentId);
       }
+      do { if (!await confirm(request)) return; } while (!admitted(request));
       const refetched = useReadingStateBus.getState().byDocument[documentId];
-      if (!refetched || !refetched.reachable) retryFromThisFailure = true;
+      retryFromThisFailure = !refetched || !refetched.reachable;
       return;
     }
     retryFromThisFailure = true;
@@ -252,7 +295,7 @@ async function flushPut(documentId: string): Promise<void> {
       };
     });
   } finally {
-    if (current(requestGeneration) && !retryFromThisFailure) {
+    if (current(requestGeneration) && admitted(request) && !retryFromThisFailure) {
       activeWrites.delete(documentId);
       flushIfReady(documentId);
     } else if (current(requestGeneration)) {
@@ -262,7 +305,7 @@ async function flushPut(documentId: string): Promise<void> {
 }
 
 export function setReadingStateOwner(nextOwner: string | null): void {
-  if (owner === nextOwner) return;
+  if (owner === nextOwner && ownerLifetime.session === workspaceOwnerSession()) return;
   owner = nextOwner;
   setReadingPositionOwner(nextOwner, false);
   useReadingStateBus.getState().reset();
@@ -285,6 +328,15 @@ export function useReadingState(
   } = usePosition(documentId, pageCount);
   const positionOwner = usePositionOwner();
   const ownerGeneration = generation;
+  const resource = useMemo(() => ({ documentId, generation: ownerGeneration, lifetime: ownerLifetime, active: false }), [documentId, ownerGeneration]);
+  const resourceRef = useRef(resource);
+  useLayoutEffect(() => {
+    resourceRef.current = resource;
+    resource.active = true;
+    return () => { resource.active = false; };
+  }, [resource]);
+  const liveResource = () => resource.active && resourceRef.current === resource
+    && resource.generation === generation && resource.lifetime === ownerLifetime;
 
   const entry = useReadingStateBus((s) =>
     documentId ? s.byDocument[documentId] : undefined,
@@ -297,18 +349,18 @@ export function useReadingState(
   // row on mount, and refetch on window focus (the cross-device contract:
   // converge on load/focus, never push).
   useEffect(() => {
-    if (!documentId || ownerGeneration !== generation) return;
+    if (!documentId || !liveResource()) return;
     ensure(documentId, fallbackPage);
     void load(documentId);
     const onFocus = () => {
-      if (ownerGeneration === generation) void load(documentId);
+      if (liveResource()) void load(documentId);
     };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return () => { window.removeEventListener("focus", onFocus); };
     // fallbackPage is only the seed for a first registration; re-seeding on
     // every turn would fight the store. ensure() no-ops once registered.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, ownerGeneration, positionOwner, ensure, load]);
+  }, [resource, positionOwner, ensure, load]);
 
   // Store-to-fallback synchronization: when the store's position
   // diverges from this mount's local layer, adopt it — the fallback layer
@@ -320,15 +372,22 @@ export function useReadingState(
     }
   }, [storePage, fallbackPage, setFallbackPage]);
 
+  const pageCountRef = useRef(pageCount);
+  useLayoutEffect(() => { pageCountRef.current = pageCount; }, [pageCount]);
+
   const setPageIndex = useCallback(
     (i: number) => {
-      if (positionOwner !== readingPositionOwner() || ownerGeneration !== generation) return;
+      const admission = workspaceOwnerAdmission();
+      if (!resource.active || resourceRef.current !== resource || resource.generation !== generation
+        || resource.lifetime !== ownerLifetime || positionOwner !== readingPositionOwner()
+        || admission.session !== resource.lifetime.session || (admission.state !== "ready" && admission.state !== "suspended")) return;
+      const count = pageCountRef.current;
       const clamped =
-        pageCount > 0 ? Math.max(0, Math.min(i, pageCount - 1)) : Math.max(0, i);
+        count > 0 ? Math.max(0, Math.min(i, count - 1)) : Math.max(0, i);
       setFallbackPage(clamped);
       if (documentId) turn(documentId, clamped);
     },
-    [documentId, ownerGeneration, pageCount, positionOwner, setFallbackPage, turn],
+    [documentId, resource, resourceRef, pageCountRef, positionOwner, setFallbackPage, turn],
   );
 
   // The clamp rule on READ, too: a stored position past a shortened book
