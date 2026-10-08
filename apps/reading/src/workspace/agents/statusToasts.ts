@@ -4,8 +4,11 @@
  * (5 s) on a background completion, never for the active tab, never
  * toast.err (a status is not a shell failure). One visible status toast at
  * a time; a module queue of at most STATUS_TOAST_QUEUE_MAX (8) behind it,
- * one entry per run, the oldest dropped at 9. The cap touches only this
- * queue: LemonToast's `_items` and the Undo toasts are untouched.
+ * one entry per run, the oldest dropped at 9. A run already queued is
+ * refreshed by moving it to the tail: the refreshed spec is the newest
+ * information, so it is never the "oldest" the next overflow drops. The
+ * cap touches only this queue: LemonToast's `_items` and the Undo toasts
+ * are untouched.
  * Promotion rides LemonToast's `onDismiss`, so the ✕, the action, the ttl
  * timer and the key all advance the queue the same way.
  */
@@ -92,12 +95,11 @@ export function enqueue(spec: StatusToast): void {
     show(spec);
     return;
   }
-  const i = queued.findIndex((q) => q.runId === spec.runId);
-  if (i >= 0) queued[i] = spec;
-  else {
-    queued.push(spec);
-    while (queued.length > STATUS_TOAST_QUEUE_MAX) queued.shift();
-  }
+  // One entry per run: a refresh leaves its old slot and joins the tail,
+  // so the overflow below drops the run with the oldest information.
+  queued = queued.filter((q) => q.runId !== spec.runId);
+  queued.push(spec);
+  while (queued.length > STATUS_TOAST_QUEUE_MAX) queued.shift();
   if (!visible) promote();
 }
 

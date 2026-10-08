@@ -101,12 +101,21 @@ describe("the queue", () => {
     expect(peek().queued.map((q) => q.runId)).toEqual(IDS.slice(2));
   });
 
-  it("the same run twice → replaced in place, never two entries", () => {
+  it("the same run twice → one entry, the refreshed spec at the tail (it is the newest information), never two entries", () => {
     enqueue(spec("X1"));
     enqueue(spec("X2", "finished"));
     enqueue(spec("X3"));
     enqueue(spec("X2", "needs-you"));
-    expect(peek().queued.map((q) => [q.runId, q.kind])).toEqual([["X2", "needs-you"], ["X3", "needs-you"]]);
+    expect(peek().queued.map((q) => [q.runId, q.kind])).toEqual([["X3", "needs-you"], ["X2", "needs-you"]]);
+  });
+
+  it("a refreshed queued run is not the 'oldest': after V + Q1..Q8, refreshing Q1 then adding Q9 drops Q2, and Q1 carries the refreshed kind", () => {
+    for (const id of ["V", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"]) enqueue(spec(id));
+    enqueue(spec("Q1", "finished"));
+    enqueue(spec("Q9"));
+    expect(peek().queued).toHaveLength(STATUS_TOAST_QUEUE_MAX);
+    expect(peek().queued.map((q) => q.runId)).toEqual(["Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q1", "Q9"]);
+    expect(peek().queued.find((q) => q.runId === "Q1")?.kind).toBe("finished");
   });
 
   it("needs-you → toast.warn ttl 8000 with an Open action; finished → toast.info ttl 5000; toast.err never (no shell failure)", () => {
