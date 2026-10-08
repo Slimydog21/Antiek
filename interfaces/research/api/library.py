@@ -39,7 +39,7 @@ def register_library_routes(app: FastAPI) -> None:
     ) -> LibraryPage:
         from runtime.db_lock import connect_read
 
-        db = _resolve_db_path()
+        db = _resolve_db_path(refuse_reader_probe_busy=True)
         con = connect_read(db)
         transaction_started = False
         try:
