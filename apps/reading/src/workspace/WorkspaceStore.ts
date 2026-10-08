@@ -53,10 +53,21 @@ import type {
   PaneTarget,
   WorkspaceSnapshot,
 } from "./panel.types";
-import { project, readPanePreferences, writeLayoutPreset, writePaneArrangement, writeScope } from "./persistence";
+import { project, readPaneArrangements, readPanePreferences, readTabProject, writeLayoutPreset, writePaneArrangement, writePaneArrangements, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
 import { CORE_PANE, COMPANION_PANE, adjacentPane, reconcilePaneOrder, reconcilePaneTiles,
   samePane, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+import {
+  applyPreset,
+  emptyProjectSlots,
+  moveTargetBetweenPresets,
+  nextExistingSlot,
+  snapshotPreset,
+  visibleTargets,
+  type ArrangementSlot,
+  type PaneArrangementMap,
+} from "./paneArrangements";
+import { TAB_PROJECT_ID } from "./tabTreeStore";
 import { registerWindowPresentationObserver, useWindows } from "./windowsStore";
 
 export type OpenOptions = {
@@ -101,12 +112,55 @@ type PaneActions = {
   togglePaneArrangement: () => boolean;
   togglePaneZoom: (target: PaneTarget) => boolean;
   restorePaneZoom: () => boolean;
+  /** SPR-01 M6 (R11): jump to numbered arrangement slot N — Omarchy
+   *  SUPER+N. An empty slot saves the current view as N (recorded
+   *  deviation: the sprint page is silent on empty slots). */
+  jumpPaneArrangement: (slot: ArrangementSlot) => boolean;
+  /** SUPER+SHIFT+N: move the focused pane into slot N and follow. */
+  moveFocusedPaneToArrangement: (slot: ArrangementSlot) => boolean;
+  /** SUPER+TAB / SUPER+SHIFT+TAB: the next/previous EXISTING arrangement. */
+  cyclePaneArrangement: (direction: 1 | -1) => boolean;
+  /** SUPER+CTRL+TAB: the last-used arrangement. */
+  jumpToLastPaneArrangement: () => boolean;
 };
 
 type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions & PanePresentation & PaneActions
-  & { panelCycleOrder: string[] };
+  & { panelCycleOrder: string[]; paneSlots: PaneArrangementMap };
 
 const initialPanePreferences = readPanePreferences();
+// SPR-01 M6: arrangements exist only in flow mode (the flag gates the
+// arrangement itself; legacy never has slots). Hydrated per account project.
+const initialPaneSlots: PaneArrangementMap = isFeatureOn("pane.flow") ? readPaneArrangements() : {};
+// The mirror subscription is installed only in the same world (read once,
+// like keymap.ts's PANE_FLOW_ON).
+const ARRANGEMENTS_MIRROR_ON = isFeatureOn("pane.flow");
+
+/** The project the slots belong to (project.select's id; the default
+ *  project when none is chosen — the tab trees' own rule). */
+function currentProjectId(): string {
+  return readTabProject() ?? TAB_PROJECT_ID;
+}
+
+function projectSlotsOf(state: Pick<Store, "paneSlots">, projectId: string) {
+  return state.paneSlots[projectId] ?? emptyProjectSlots();
+}
+
+/**
+ * The panes the current arrangement's view shows: admitted hosts filtered
+ * by slot membership (paneArrangements.visibleTargets). With no presets at
+ * all this is every admitted pane — the pre-M6 view, unchanged.
+ */
+function visiblePaneTargets(state: Pick<Store, "layoutPreset" | "dockRightIds" | "panels" | "paneSlots">): PaneTarget[] {
+  return visibleTargets(admittedPaneTargets(state), projectSlotsOf(state, currentProjectId()));
+}
+
+/** The honesty event for a dropped preset target (S01/S09: never
+ *  substituted, always said in words — the persistence.ts warn idiom). */
+function warnDroppedPaneTargets(slot: ArrangementSlot, dropped: readonly string[]): void {
+  if (dropped.length === 0 || typeof console === "undefined") return;
+  // eslint-disable-next-line no-console
+  console.warn(`[antiek/pane-arrangements] arrangement ${slot}: dropped ${dropped.length} pane target(s) whose hosts are gone: ${dropped.join(", ")}`);
+}
 
 function rightPaneAdmitted(state: Pick<Store, "layoutPreset" | "dockRightIds" | "panels">): boolean {
   return state.layoutPreset === "omarchy-inset" || state.dockRightIds.some((id) =>
@@ -124,7 +178,7 @@ export function admittedPaneTargets(state: Pick<Store, "layoutPreset" | "dockRig
 }
 
 function reconcilePresentation(state: Store): Pick<PanePresentation, "paneOrder" | "paneTiles" | "paneFocus" | "paneZoom"> {
-  const order = reconcilePaneOrder(state.paneOrder, admittedPaneTargets(state));
+  const order = reconcilePaneOrder(state.paneOrder, visiblePaneTargets(state));
   const present = (target: PaneTarget | null): PaneTarget | null =>
     target && order.some((member) => samePane(member, target)) ? target : null;
   return { paneOrder: order, paneTiles: reconcilePaneTiles(state.paneTiles, order),
@@ -132,6 +186,19 @@ function reconcilePresentation(state: Store): Pick<PanePresentation, "paneOrder"
 }
 
 const initialPaneOrder = admittedPaneTargets({ layoutPreset: initialPanePreferences.layoutPreset, dockRightIds: [], panels: {} });
+
+// SPR-01 M6 hydration: with the flag on and a saved arrangement for the
+// current project, the load view IS the current slot's preset, applied over
+// the admitted hosts (windows are session-only — a saved window target is
+// genuinely hostless after a reload, so the drop-on-load honesty event is
+// the correct outcome, never a substitution).
+const initialSlotsProject = projectSlotsOf({ paneSlots: initialPaneSlots }, currentProjectId());
+const initialApplied = initialPanePreferences.paneArrangement !== "legacy"
+  && initialSlotsProject.presets[initialSlotsProject.current]
+  ? applyPreset(initialSlotsProject.presets[initialSlotsProject.current]!,
+      initialPaneOrder, initialSlotsProject, initialSlotsProject.current)
+  : null;
+if (initialApplied) warnDroppedPaneTargets(initialSlotsProject.current, initialApplied.dropped);
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -203,16 +270,19 @@ export const useWorkspace = create<Store>()((set, get) => ({
   layoutPreset: initialPanePreferences.layoutPreset,
   fullscreenPane: null,
   focusedPane: null,
-  paneArrangement: initialPanePreferences.paneArrangement,
-  paneOrder: initialPaneOrder,
-  paneTiles: reconcilePaneTiles(null, initialPaneOrder),
+  paneArrangement: initialApplied
+    ? initialSlotsProject.presets[initialSlotsProject.current]!.arrangement
+    : initialPanePreferences.paneArrangement,
+  paneOrder: initialApplied ? initialApplied.order : initialPaneOrder,
+  paneTiles: initialApplied ? initialApplied.tiles : reconcilePaneTiles(null, initialPaneOrder),
   paneFocus: null,
   paneZoom: null,
+  paneSlots: initialPaneSlots,
 
   setPaneFocus: (target) => {
     const s = get();
     if (samePane(s.paneFocus, target)) return false;
-    if (target && !admittedPaneTargets(s).some((member) => samePane(member, target))) return false;
+    if (target && !visiblePaneTargets(s).some((member) => samePane(member, target))) return false;
     set({ paneFocus: target });
     return true;
   },
@@ -220,7 +290,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
   reorderPane: (target, direction) => {
     const s = get();
     if (s.paneArrangement === "legacy" || s.paneZoom) return false;
-    const order = reconcilePaneOrder(s.paneOrder, admittedPaneTargets(s));
+    const order = reconcilePaneOrder(s.paneOrder, visiblePaneTargets(s));
     const neighbor = adjacentPane(order, target, direction);
     if (!neighbor) return false;
     set({ paneOrder: swapAdjacentPane(order, target, direction),
@@ -240,7 +310,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
 
   togglePaneZoom: (target) => {
     const s = get();
-    if (s.paneArrangement === "legacy" || !admittedPaneTargets(s).some((member) => samePane(member, target))) return false;
+    if (s.paneArrangement === "legacy" || !visiblePaneTargets(s).some((member) => samePane(member, target))) return false;
     set({ paneZoom: samePane(s.paneZoom, target) ? null : target });
     return true;
   },
@@ -249,6 +319,96 @@ export const useWorkspace = create<Store>()((set, get) => ({
     if (!get().paneZoom) return false;
     set({ paneZoom: null });
     return true;
+  },
+
+  // ── SPR-01 M6 (R11): the numbered arrangements ─────────────────────────
+  // Slots live in `paneSlots[projectId]`; the current slot's preset is a
+  // LIVE MIRROR of the view (the debounced subscription below), so a jump
+  // never needs to stash first. Every op persists the blob (debounced).
+
+  jumpPaneArrangement: (slot) => {
+    const s = get();
+    if (s.paneArrangement === "legacy") return false;
+    const projectId = currentProjectId();
+    const project = projectSlotsOf(s, projectId);
+    if (slot === project.current) return false;
+    const presets = { ...project.presets };
+    const target = project.presets[slot];
+    if (target) {
+      const nextProject = { ...project, current: slot, presets };
+      const applied = applyPreset(target, admittedPaneTargets(s), nextProject, slot);
+      warnDroppedPaneTargets(slot, applied.dropped);
+      set({
+        paneArrangement: target.arrangement,
+        paneOrder: applied.order,
+        paneTiles: applied.tiles,
+        // R12: an arrangement change clears zoom (and the legacy fullscreen).
+        paneZoom: null,
+        fullscreenPane: null,
+        paneFocus: s.paneFocus && applied.order.some((m) => samePane(m, s.paneFocus)) ? s.paneFocus : null,
+        paneSlots: { ...s.paneSlots, [projectId]: { ...nextProject, last: project.current } },
+      });
+    } else {
+      // Empty slot (the page is silent; recorded deviation, revised by the
+      // adversarial review): the current view's content RELOCATES to slot N
+      // and the old slot is vacated — "save current as N" with single
+      // membership, so a pane's identity belongs to exactly one slot's
+      // preset after any operation (a copy would list it on both).
+      const live = snapshotPreset(s);
+      if (!live) return false;
+      delete presets[project.current];
+      presets[slot] = live;
+      set({ paneSlots: { ...s.paneSlots, [projectId]: { ...project, current: slot, last: project.current, presets } } });
+    }
+    scheduleArrangementsPersist();
+    return true;
+  },
+
+  moveFocusedPaneToArrangement: (slot) => {
+    const s = get();
+    if (s.paneArrangement === "legacy") return false;
+    const focused = s.paneFocus;
+    if (!focused) return false;
+    const projectId = currentProjectId();
+    const project = projectSlotsOf(s, projectId);
+    if (slot === project.current) return false;
+    const live = snapshotPreset(s);
+    if (!live) return false;
+    const moved = moveTargetBetweenPresets(live, project.presets[slot] ?? null, focused);
+    if (!moved) return false;
+    // A slot the move empties is vacated, not left as a shell: a preset owns
+    // its panes, and with none left it owns nothing (hyprland's "existing"
+    // workspaces have windows). The cycle skips it either way.
+    const presets = { ...project.presets, [slot]: moved.destination };
+    if (moved.source.order.length === 0) delete presets[project.current];
+    else presets[project.current] = moved.source;
+    // The source view loses the pane now; the jump applies the destination.
+    set({
+      paneOrder: moved.source.order,
+      paneTiles: moved.source.tiles,
+      paneZoom: null,
+      paneFocus: null,
+      paneSlots: { ...s.paneSlots, [projectId]: { ...project, presets } },
+    });
+    const jumped = get().jumpPaneArrangement(slot);
+    // Follow means the moved pane takes the focus on its new arrangement.
+    if (jumped) get().setPaneFocus(focused);
+    return jumped;
+  },
+
+  cyclePaneArrangement: (direction) => {
+    const s = get();
+    if (s.paneArrangement === "legacy") return false;
+    const next = nextExistingSlot(projectSlotsOf(s, currentProjectId()), direction);
+    return next ? get().jumpPaneArrangement(next) : false;
+  },
+
+  jumpToLastPaneArrangement: () => {
+    const s = get();
+    if (s.paneArrangement === "legacy") return false;
+    const project = projectSlotsOf(s, currentProjectId());
+    if (!project.last || !project.presets[project.last]) return false;
+    return get().jumpPaneArrangement(project.last);
   },
 
   open: (kind, props = {}, opts = {}) => {
@@ -463,6 +623,18 @@ export const useWorkspace = create<Store>()((set, get) => ({
     }
     suppressPersistAfterReset = true;
     const order = admittedPaneTargets({ ...get(), dockRightIds: [] });
+    // SPR-01 M6: a reset is not an arrangements wipe — the operator's saved
+    // slots are chrome preference (the layout preset's standing), so they
+    // re-read from disk; the view IS the current slot's preset applied over
+    // the admitted hosts (the same rule as the module's load path), so the
+    // mirror has nothing to stomp.
+    const slots = isFeatureOn("pane.flow") ? readPaneArrangements() : {};
+    const arrangementPreference = readPanePreferences().paneArrangement;
+    const slotsProject = projectSlotsOf({ paneSlots: slots }, currentProjectId());
+    const currentPreset = arrangementPreference !== "legacy" ? (slotsProject.presets[slotsProject.current] ?? null) : null;
+    const visible = visibleTargets(order, slotsProject);
+    const applied = currentPreset ? applyPreset(currentPreset, order, slotsProject, slotsProject.current) : null;
+    if (applied) warnDroppedPaneTargets(slotsProject.current, applied.dropped);
     // EMPTY_SNAPSHOT carries no paneArrangement; a reset must not leak the
     // previous arrangement into the next scenario/test (critique N2 on #3754)
     // — but reset() also runs on every sign-in / owner switch and on the
@@ -470,8 +642,11 @@ export const useWorkspace = create<Store>()((set, get) => ({
     // preference (legacy with the flag off), never hardcode legacy (merged-
     // head check on #3754: tiled → sign in → legacy was a production defect).
     set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null,
-      paneArrangement: readPanePreferences().paneArrangement,
-      paneOrder: order, paneTiles: reconcilePaneTiles(null, order), paneFocus: null, paneZoom: null });
+      paneArrangement: currentPreset ? currentPreset.arrangement : arrangementPreference,
+      paneOrder: applied ? applied.order : visible,
+      paneTiles: applied ? applied.tiles : reconcilePaneTiles(null, visible),
+      paneFocus: null, paneZoom: null,
+      paneSlots: slots });
   },
 }));
 
@@ -511,6 +686,10 @@ export function disablePersistence(): void {
   if (pendingWrite) {
     clearTimeout(pendingWrite);
     pendingWrite = null;
+  }
+  if (arrangementsPendingWrite) {
+    clearTimeout(arrangementsPendingWrite);
+    arrangementsPendingWrite = null;
   }
 }
 export function enablePersistence(): void {
@@ -586,4 +765,54 @@ useWorkspace.subscribe((state, previous) => {
   if (rightPaneAdmitted(state) !== rightPaneAdmitted(previous)) {
     useWorkspace.setState(reconcilePresentation(state));
   }
+});
+
+// ── SPR-01 M6: the current slot mirrors the live view ────────────────────
+//
+// The current arrangement slot's preset tracks the live presentation
+// continuously (arrangement, order, tiles — zoom is never saved, R12), so a
+// reload mid-arrangement loses nothing and a jump is a pointer move plus an
+// apply, never a stash-and-pray. Only with the flag on and a flow
+// arrangement; legacy never has slots. The write is suppressed when the
+// presentation did not move, so applying a preset does not echo.
+let arrangementsPendingWrite: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounced write of the whole arrangements blob (the layout snapshot's
+ *  250 ms rule). Silent when persistence is disabled (tests, popouts). */
+function scheduleArrangementsPersist(): void {
+  if (!persistenceEnabled) return;
+  if (arrangementsPendingWrite) clearTimeout(arrangementsPendingWrite);
+  const owner = workspaceOwnerSession();
+  arrangementsPendingWrite = setTimeout(() => {
+    arrangementsPendingWrite = null;
+    if (isWorkspaceOwnerSession(owner)) writePaneArrangements(useWorkspace.getState().paneSlots);
+  }, 250);
+}
+
+useWorkspace.subscribe((state, prev) => {
+  if (!ARRANGEMENTS_MIRROR_ON) return;
+  if (state.paneArrangement === "legacy") return;
+  if (state.paneOrder === prev.paneOrder && state.paneTiles === prev.paneTiles
+      && state.paneArrangement === prev.paneArrangement) {
+    // An arrangement op moves only paneSlots — persist it.
+    if (state.paneSlots !== prev.paneSlots) scheduleArrangementsPersist();
+    return;
+  }
+  const live = snapshotPreset(state);
+  if (!live) return;
+  const projectId = currentProjectId();
+  const project = projectSlotsOf(state, projectId);
+  const existing = project.presets[project.current];
+  // A move vacates its source slot mid-op (the jump's pointer move lands a
+  // beat later): never write an empty view into a slot that has no preset —
+  // that would resurrect the shell the move just vacated.
+  if (!existing && live.order.length === 0) return;
+  if (existing && existing.arrangement === live.arrangement && existing.tiles === live.tiles
+      && existing.order.length === live.order.length
+      && existing.order.every((target, index) => samePane(target, live.order[index]))) return;
+  useWorkspace.setState((current) => {
+    const slots = projectSlotsOf(current, projectId);
+    return { paneSlots: { ...current.paneSlots, [projectId]: { ...slots, presets: { ...slots.presets, [slots.current]: live } } } };
+  });
+  scheduleArrangementsPersist();
 });
