@@ -191,7 +191,7 @@ describe("usePosition", () => {
 describe("useReaderImpressions", () => {
   beforeEach(() => recordAdImpressionsMock.mockClear());
 
-  it("flushes the previous page's slots when the page changes", () => {
+  it("flushes the previous page's slots when the page changes", async () => {
     const houseFill = { kind: "house" as const, house: null };
     const { result } = renderHook(() => useReaderImpressions("doc-1", "sess-1"));
     act(() => {
@@ -206,6 +206,7 @@ describe("useReaderImpressions", () => {
     act(() => {
       result.current.observePage(1, [{ slotId: "slot:doc-1:p1:top", fill: houseFill }]);
     });
+    await act(async () => {});
     expect(recordAdImpressionsMock).toHaveBeenCalledTimes(1);
     const [doc, session, items] = recordAdImpressionsMock.mock.calls[0];
     expect(doc).toBe("doc-1");
