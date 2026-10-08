@@ -88,15 +88,33 @@ function focusedPanelB() {
 }
 
 let reorderBefore = "";
+const paneOrderKey = () => useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|");
 function reorderPrepare() {
   const s = useWorkspace.getState();
   if (s.paneArrangement === "legacy") s.setPaneArrangement("horizontal");
-  reorderBefore = useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|");
+  reorderBefore = paneOrderKey();
+}
+/** The reorder admission (pane-flow S04) needs the event target to be the
+ *  actual pane host whose order changes; the runner's bodyFocus() would leave
+ *  it on <body>. Focus the companion host (second in order, so both
+ *  directions have a neighbour: left swaps with core, right with a window
+ *  when one is admitted — otherwise the edge is a no-op and the effect
+ *  reports it). */
+function reorderFocus() {
+  const host = document.querySelector<HTMLElement>('[data-pane-host="companion"]') ?? document.querySelector<HTMLElement>('[data-pane-host="core"]');
+  host?.focus({ preventScroll: true });
 }
 function reorderEffect(action: string) {
-  return until(() => useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|") !== reorderBefore, `${action}: logical pane order unchanged`);
+  return until(() => paneOrderKey() !== reorderBefore, `${action}: logical pane order unchanged`);
 }
-interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | Promise<void>; }
+interface Scenario {
+  prepare?: () => void | Promise<void>;
+  /** Runs AFTER the runner's bodyFocus() in the default context: scenarios
+   *  whose action is admitted only from a real host (pane-flow S04) focus it
+   *  here, since prepare() cannot keep focus past bodyFocus(). */
+  focus?: () => void;
+  effect: () => void | Promise<void>;
+}
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
@@ -121,8 +139,8 @@ export const SCENARIOS = {
   // SPR-01 M1 (pane-flow landing): the reorder rows are implemented only with
   // antiek.flag.pane.flow ON (the guard presses unimplemented rows and checks
   // they do nothing); with it on, a reorder changes the logical pane order.
-  "pane.reorderLeft": { prepare: reorderPrepare, effect: () => reorderEffect("pane.reorderLeft") },
-  "pane.reorderRight": { prepare: reorderPrepare, effect: () => reorderEffect("pane.reorderRight") },
+  "pane.reorderLeft": { prepare: reorderPrepare, focus: reorderFocus, effect: () => reorderEffect("pane.reorderLeft") },
+  "pane.reorderRight": { prepare: reorderPrepare, focus: reorderFocus, effect: () => reorderEffect("pane.reorderRight") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {
@@ -170,6 +188,7 @@ function viewState() {
   const ws = useWorkspace.getState();
   return JSON.stringify({ path: location.pathname, panels: Object.keys(ws.panels), preset: ws.layoutPreset,
     fullscreen: ws.fullscreenPane, pane: ws.focusedPane, focusedPanel: ws.focusedPanelId,
+    paneArrangement: ws.paneArrangement, paneOrder: ws.paneOrder, paneZoom: ws.paneZoom,
     treePanel: useTabTrees.getState().treePanelOpen,
     active: useTabTrees.getState().trees.reading?.active_tab_id,
     dialogs: [...document.querySelectorAll('[aria-modal="true"]')].map((el) => el.getAttribute("aria-labelledby")),
@@ -184,6 +203,7 @@ export async function prepare(id: string, context = "default") {
   const scenario: Scenario | undefined = SCENARIOS[row.action];
   check(scenario, `POPULATION/COVERAGE ${row.id}/${row.action}: no executable scenario`);
   await scenario.prepare?.(); await settle(); bodyFocus();
+  if (context === "default") scenario.focus?.();
   if (context === "text") {
     const input = document.createElement("input"); input.id = "guard-text"; input.value = "fixture text";
     document.body.append(input); input.focus();

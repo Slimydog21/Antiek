@@ -42,8 +42,10 @@ beforeEach(() => { disablePersistence(); ws().reset(); });
 afterEach(() => { cleanup(); ws().reset(); });
 
 describe("flag ON — arrangement switches keep the route host mounted", () => {
-  it("the flag is on and the store starts in a flow arrangement", () => {
-    expect(["horizontal", "tiled"]).toContain(ws().paneArrangement);
+  it("the flag is on: a flow arrangement is accepted (reset() itself starts legacy — critique N2)", () => {
+    expect(ws().paneArrangement).toBe("legacy");
+    expect(ws().setPaneArrangement("horizontal")).toBe(true);
+    expect(ws().paneArrangement).toBe("horizontal");
   });
 
   it("horizontal → tiled → horizontal keeps the same DOM node and its scrollTop", () => {

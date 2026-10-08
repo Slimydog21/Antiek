@@ -457,7 +457,9 @@ export const useWorkspace = create<Store>()((set, get) => ({
     }
     suppressPersistAfterReset = true;
     const order = admittedPaneTargets({ ...get(), dockRightIds: [] });
-    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null,
+    // EMPTY_SNAPSHOT carries no paneArrangement; a reset must not leak the
+    // previous arrangement into the next scenario/test (critique N2 on #3754).
+    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null, paneArrangement: "legacy",
       paneOrder: order, paneTiles: reconcilePaneTiles(null, order), paneFocus: null, paneZoom: null });
   },
 }));
