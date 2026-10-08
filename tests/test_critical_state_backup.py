@@ -492,6 +492,251 @@ def test_preexisting_encrypted_escrow_is_never_overwritten_or_deleted(
     assert not escrow.exists() and not (tmp_path / "snapshot").exists()
 
 
+@pytest.mark.parametrize("collision", ["file", "symlink"])
+def test_prepare_preserves_output_created_during_real_encryption(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, collision: str,
+) -> None:
+    from tools import critical_backup_crypto
+
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    foreign = private_file(tmp_path / "foreign", b"another-job-encrypted-key")
+    actual_encrypt = critical_backup_crypto.encrypt_file
+    observed: list[os.stat_result] = []
+
+    def collide(source: Path, target: Path, public: Path) -> critical_backup_crypto.EncryptedObject:
+        assert destination.is_dir() and escrow.is_file() and not encrypted.exists()
+        if collision == "file":
+            private_file(encrypted, foreign.read_bytes())
+        else:
+            encrypted.symlink_to(foreign)
+        observed.append(encrypted.lstat())
+        return actual_encrypt(source, target, public)
+
+    monkeypatch.setattr(critical_backup_crypto, "encrypt_file", collide)
+    with pytest.raises(backup.SnapshotError):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert len(observed) == 1
+    assert encrypted.lstat().st_ino == observed[0].st_ino
+    assert encrypted.read_bytes() == b"another-job-encrypted-key"
+    assert encrypted.is_symlink() == (collision == "symlink")
+    assert not destination.exists() and not escrow.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+def test_prepare_keeps_encryption_private_until_no_overwrite_publication(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import critical_backup_crypto
+
+    recipient, _ = keys(tmp_path)
+    escrow = tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_encrypt = critical_backup_crypto.encrypt_file
+    stages: list[Path] = []
+
+    def inspect_stage(source: Path, target: Path, public: Path) -> critical_backup_crypto.EncryptedObject:
+        assert target != encrypted and target.parent.parent == encrypted.parent
+        assert target.parent.stat().st_mode & 0o777 == 0o700
+        result = actual_encrypt(source, target, public)
+        assert target.is_file() and not encrypted.exists()
+        stages.append(target.parent)
+        return result
+
+    monkeypatch.setattr(critical_backup_crypto, "encrypt_file", inspect_stage)
+    destination = tmp_path / "snapshot"
+    backup.prepare(sources, destination, escrow, recipient)
+    assert len(stages) == 1 and not stages[0].exists()
+    assert encrypted.stat().st_nlink == 1
+    manifest = json.loads((destination / "manifest.json").read_bytes())
+    assert manifest["encrypted_byok_key"]["sha256"] == hashlib.sha256(encrypted.read_bytes()).hexdigest()
+    assert not escrow.exists()
+
+
+def test_prepare_manifest_failure_preserves_replaced_encrypted_output(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_write = backup._write
+    observed: list[os.stat_result] = []
+
+    def fail_manifest(path: Path, body: bytes) -> None:
+        if path.name == "manifest-complete.json":
+            assert encrypted.is_file()
+            encrypted.unlink()
+            private_file(encrypted, b"replacement-owned-by-other-job")
+            observed.append(encrypted.lstat())
+            raise OSError("synthetic manifest failure")
+        actual_write(path, body)
+
+    monkeypatch.setattr(backup, "_write", fail_manifest)
+    with pytest.raises(backup.SnapshotError):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert len(observed) == 1 and encrypted.lstat().st_ino == observed[0].st_ino
+    assert encrypted.read_bytes() == b"replacement-owned-by-other-job"
+    assert not destination.exists() and not escrow.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("replacement", [False, True])
+def test_prepare_unknown_link_return_retires_only_its_actual_inode(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+    interrupt: bool, replacement: bool,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_link = os.link
+    observed: list[str] = []
+
+    def fail_after_link(source: Path, target: Path, *, follow_symlinks: bool = True) -> None:
+        actual_link(source, target, follow_symlinks=follow_symlinks)
+        if Path(target) == encrypted:
+            assert encrypted.is_file()
+            if replacement:
+                encrypted.unlink()
+                private_file(encrypted, b"other-job-post-link-output")
+            observed.append("actual-link-before-return")
+            if interrupt:
+                raise KeyboardInterrupt("synthetic link handoff interruption")
+            raise OSError("synthetic link handoff failure")
+
+    monkeypatch.setattr(os, "link", fail_after_link)
+    expected = KeyboardInterrupt if interrupt else backup.SnapshotError
+    with pytest.raises(expected):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert observed == ["actual-link-before-return"]
+    assert not destination.exists() and not escrow.exists()
+    if replacement:
+        assert encrypted.read_bytes() == b"other-job-post-link-output"
+    else:
+        assert not encrypted.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_prepare_cleanup_failure_is_incomplete_and_preserves_primary_interrupt(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, interrupt: bool,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_write, actual_unlink = backup._write, Path.unlink
+    attempts: list[Path] = []
+
+    def fail_manifest(path: Path, body: bytes) -> None:
+        if path.name == "manifest-complete.json":
+            assert encrypted.is_file()
+            if interrupt:
+                raise KeyboardInterrupt("synthetic primary interruption")
+            raise OSError("synthetic primary failure")
+        actual_write(path, body)
+
+    def fail_owned_unlink(path: Path, missing_ok: bool = False) -> None:
+        if path == encrypted:
+            attempts.append(path)
+            raise PermissionError("synthetic owned cleanup refusal")
+        actual_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(backup, "_write", fail_manifest)
+    monkeypatch.setattr(Path, "unlink", fail_owned_unlink)
+    if interrupt:
+        with pytest.raises(KeyboardInterrupt, match="synthetic primary interruption") as caught:
+            backup.prepare(sources, destination, escrow, recipient)
+        assert any("cleanup is incomplete" in note for note in caught.value.__notes__)
+    else:
+        with pytest.raises(backup.SnapshotError, match="cleanup is incomplete"):
+            backup.prepare(sources, destination, escrow, recipient)
+    assert attempts == [encrypted]
+    assert encrypted.is_file()
+    assert not destination.exists() and not escrow.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_prepare_parent_sync_failure_retires_published_owned_key(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, interrupt: bool,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_sync = os.fsync
+    observed: list[str] = []
+
+    def fail_parent_sync(descriptor: int) -> None:
+        actual_sync(descriptor)
+        current, parent = os.fstat(descriptor), encrypted.parent.stat()
+        if encrypted.exists() and (current.st_dev, current.st_ino) == (parent.st_dev, parent.st_ino):
+            observed.append("completed-parent-sync")
+            if interrupt:
+                raise KeyboardInterrupt("synthetic directory sync interruption")
+            raise OSError("synthetic directory sync failure")
+
+    monkeypatch.setattr(os, "fsync", fail_parent_sync)
+    with pytest.raises(KeyboardInterrupt if interrupt else backup.SnapshotError):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert observed == ["completed-parent-sync"]
+    assert not encrypted.exists() and not escrow.exists() and not destination.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+def test_prepare_refuses_replacement_after_completed_manifest_write(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_write = backup._write
+    observed: list[os.stat_result] = []
+
+    def replace_after_write(path: Path, body: bytes) -> None:
+        actual_write(path, body)
+        if path.name == "manifest-complete.json":
+            encrypted.unlink()
+            private_file(encrypted, b"other-job-after-completed-manifest")
+            observed.append(encrypted.lstat())
+
+    monkeypatch.setattr(backup, "_write", replace_after_write)
+    with pytest.raises(backup.SnapshotError):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert len(observed) == 1 and encrypted.lstat().st_ino == observed[0].st_ino
+    assert encrypted.read_bytes() == b"other-job-after-completed-manifest"
+    assert not destination.exists() and not escrow.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_prepare_unknown_actual_close_return_is_not_retried(
+    tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, interrupt: bool,
+) -> None:
+    recipient, _ = keys(tmp_path)
+    destination, escrow = tmp_path / "snapshot", tmp_path / "key"
+    encrypted = Path(str(escrow) + ".enc")
+    actual_close = os.close
+    attempts: list[int] = []
+
+    def fail_after_close(descriptor: int) -> None:
+        current = os.fstat(descriptor)
+        owned = encrypted.lstat() if encrypted.exists() else None
+        actual_close(descriptor)
+        if owned is not None and (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+            attempts.append(descriptor)
+            if interrupt:
+                raise KeyboardInterrupt("synthetic actual close interruption")
+            raise OSError("synthetic actual close failure")
+
+    monkeypatch.setattr(os, "close", fail_after_close)
+    with pytest.raises(KeyboardInterrupt if interrupt else backup.SnapshotError):
+        backup.prepare(sources, destination, escrow, recipient)
+    assert len(attempts) == 1
+    assert not encrypted.exists() and not escrow.exists() and not destination.exists()
+    assert not list(tmp_path.glob(".critical-key-*"))
+
+
 @pytest.mark.parametrize("bound", ["MAX_FILES", "MAX_TOTAL_BYTES"])
 def test_snapshot_limits_refuse_without_partial_coverage_or_key_debris(
     tmp_path: Path, sources: backup.SnapshotSources, monkeypatch: pytest.MonkeyPatch, bound: str,

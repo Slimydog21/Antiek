@@ -545,8 +545,66 @@ def prepare(sources: SnapshotSources, destination: Path, escrow: Path, recipient
     else:
         raise SnapshotError("encrypted BYOK escrow destination already exists")
     manifest = snapshot(sources, destination, escrow)
+    staging: Path | None = None
+    staging_info: os.stat_result | None = None
+    staging_attempted = False
+    owned: os.stat_result | None = None
+    descriptor: int | None = None
+
+    def retire_encrypted_output() -> None:
+        if owned is None:
+            return
+        try:
+            current = encrypted_key.lstat()
+        except FileNotFoundError:
+            return
+        if (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+            encrypted_key.unlink()
+
+    def retire_staging() -> None:
+        if staging is None:
+            if staging_attempted:
+                raise OSError("private key staging acquisition outcome is unknown")
+            return
+        try:
+            current = staging.lstat()
+        except FileNotFoundError:
+            return
+        if staging_info is None or _identity(current)[:5] != _identity(staging_info)[:5]:
+            raise OSError("private key staging directory was replaced")
+        shutil.rmtree(staging)
+
+    def close_encrypted_descriptor() -> None:
+        nonlocal descriptor
+        attempted = descriptor
+        # Retire the attempt before native close; an unknown return is never retried.
+        descriptor = None
+        if attempted is not None:
+            os.close(attempted)
+
     try:
-        encrypted = encrypt_file(escrow, encrypted_key, recipient)
+        staging_attempted = True
+        staging = Path(tempfile.mkdtemp(prefix=".critical-key-", dir=encrypted_key.parent))
+        staging_info = staging.lstat()
+        staged_key = staging / "key.enc"
+        encrypted = encrypt_file(escrow, staged_key, recipient)
+        descriptor = os.open(staged_key, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        owned = os.fstat(descriptor)
+        if not stat.S_ISREG(owned.st_mode) or owned.st_nlink != 1 or owned.st_mode & 0o077:
+            raise SnapshotError("encrypted BYOK escrow staging is unsafe")
+        if _identity(staged_key.lstat()) != _identity(owned):
+            raise SnapshotError("encrypted BYOK escrow staging was replaced")
+        if _identity(staging.lstat())[:5] != _identity(staging_info)[:5]:
+            raise SnapshotError("encrypted BYOK escrow staging directory was replaced")
+        # Retain the actual inode before publication, even when link never returns.
+        os.link(staged_key, encrypted_key, follow_symlinks=False)
+        if _identity(encrypted_key.lstat()) != _identity(owned):
+            raise SnapshotError("encrypted BYOK escrow publication was replaced")
+        directory = os.open(encrypted_key.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
         escrow.unlink()
         manifest["encrypted_byok_key"] = {
             "sha256": encrypted.sha256, "bytes": encrypted.bytes,
@@ -557,18 +615,35 @@ def prepare(sources: SnapshotSources, destination: Path, escrow: Path, recipient
         temporary = destination / "manifest-complete.json"
         _write(temporary, json.dumps(manifest, sort_keys=True).encode())
         temporary.replace(destination / "manifest.json")
+        if _identity(encrypted_key.lstat()) != _identity(owned):
+            raise SnapshotError("encrypted BYOK escrow changed during manifest publication")
+        retire_staging()
+        close_encrypted_descriptor()
     except BaseException as exc:
-        cleanup_failed = False
-        for cleanup in (lambda: shutil.rmtree(destination),
-                        lambda: escrow.unlink(missing_ok=True), lambda: encrypted_key.unlink(missing_ok=True)):
+        secondary: list[str] = []
+        for label, cleanup in (
+            ("encrypted output", retire_encrypted_output),
+            ("snapshot", lambda: shutil.rmtree(destination)),
+            ("raw key", lambda: escrow.unlink(missing_ok=True)),
+            ("private staging", retire_staging),
+            ("encrypted descriptor", close_encrypted_descriptor),
+        ):
             try:
                 cleanup()
-            except OSError:
-                cleanup_failed = True
-        if cleanup_failed:
-            raise SnapshotError("critical preparation failed; owned cleanup is incomplete") from None
+            except BaseException as cleanup_error:
+                secondary.append(f"{label}: {type(cleanup_error).__name__}")
         if not isinstance(exc, Exception):
+            if secondary:
+                exc.add_note("critical preparation failed; owned cleanup is incomplete")
+                for note in secondary:
+                    exc.add_note(note)
             raise
+        if secondary:
+            error = SnapshotError("critical preparation failed; owned cleanup is incomplete")
+            error.add_note(f"primary failure: {type(exc).__name__}")
+            for note in secondary:
+                error.add_note(note)
+            raise error from None
         raise SnapshotError("critical preparation failed; no complete encrypted snapshot") from None
 
 
