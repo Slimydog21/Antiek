@@ -33,6 +33,11 @@ const DocumentTabStrip = lazy(() =>
 // it reaches companionStore (the lazy chunk); the width store it reads is
 // entry-safe (agent/paneWidthStore.ts).
 const PaneResizer = lazy(() => import("./agent/PaneResizer"));
+/** SPR-07 M5: the #pane=agent:<id> deep link's consumer; loaded only when
+ *  the first render's hash names a pane (the string check keeps agent/ out
+ *  of the entry chunk's static graph). */
+const AgentDeepLink = lazy(() => import("./agent/AgentDeepLink"));
+const PANE_HASH_PREFIX = "#pane=agent:";
 
 /** The strip's own loading skeleton, drawn while its chunk loads, so the
  *  strip lands in place with no layout shift. The same markup as the loaded
@@ -119,6 +124,8 @@ export function PanelLayout({ mainSlot }: Props) {
   // router's location context: PanelLayout also renders without a router.
   const location = useContext(UNSAFE_LocationContext)?.location;
   const writing = location ? mothershipForPath(location.pathname, location.search) === "writing" : false;
+  // Captured at first render: PaneHashSync's later hash writes never remount it.
+  const [deepLinked] = useState(() => Boolean(location?.hash.startsWith(PANE_HASH_PREFIX)));
 
   // SPR-07: the inset right pane's preferred width (account-scoped blob) and
   // the live drag preview. Hooks run before the tier-sm early return below.
@@ -417,6 +424,7 @@ export function PanelLayout({ mainSlot }: Props) {
         }
       >
         {inset ? <RightPaneForMode /> : null}
+        {deepLinked ? <Suspense fallback={null}><AgentDeepLink /></Suspense> : null}
         {/* RIGHT DOCK */}
         <aside
           hidden={rightDockHidden || undefined}

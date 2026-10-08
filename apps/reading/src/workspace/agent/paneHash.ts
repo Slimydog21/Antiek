@@ -5,7 +5,8 @@
  * history.push, so Back is never a pane toggle); on close it is replaced
  * with "". Open-state is never persisted: a reload with the pane open
  * comes back closed with the same tab selected; the deep link is the only
- * way the pane opens on load (<AgentDeepLink/>, Phase B).
+ * way the pane opens on load (AgentDeepLink.tsx, mounted by PanelLayout
+ * when the first render's hash names a pane; repair C12).
  */
 import { useEffect } from "react";
 import { useInRouterContext, useNavigate } from "react-router-dom";

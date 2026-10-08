@@ -144,3 +144,38 @@ describe("the chord opens the pane with focus in the composer (J4 by keyboard)",
     }
   });
 });
+
+describe("the #pane=agent:<id> deep link opens the right agent on load (M5, repair C12)", () => {
+  it("#pane=agent:p:<selected project> opens that project's pane with the composer focused", async () => {
+    mountInset(`/read/doc-1#pane=agent:p:${TAB_PROJECT_ID}`);
+    const textarea = await paneWithFocus();
+    const id = agentTabIdFor(`p:${TAB_PROJECT_ID}`);
+    expect(comp().tabs.find((t) => t.id === id)).toMatchObject({ scope: "project", projectId: TAB_PROJECT_ID, agentId: `p:${TAB_PROJECT_ID}` });
+    expect(comp().activeTabId).toBe(id);
+    expect(textarea.closest("[data-agent-pane]")!.getAttribute("data-agent-id")).toBe(`p:${TAB_PROJECT_ID}`);
+    expect(comp().tabs).toHaveLength(1);
+  });
+
+  it("#pane=agent:p:proj-9 (another project) opens that project's tab, active, behind the hidden-tab placeholder — the link never switches the selection (frozen writer census)", async () => {
+    const { container } = mountInset("/read/doc-1#pane=agent:p:proj-9");
+    await waitFor(() => expect(container.querySelector("[data-agent-hidden-placeholder]")).toBeTruthy(), { timeout: 5000 });
+    const id = agentTabIdFor("p:proj-9");
+    expect(comp().tabs.find((t) => t.id === id)).toMatchObject({ scope: "project", projectId: "proj-9", agentId: "p:proj-9" });
+    expect(comp().activeTabId).toBe(id);
+    expect(container.querySelector("[data-agent-hidden-placeholder]")!.textContent).toContain("proj-9");
+    expect(composer()).toBeNull();
+  });
+
+  it("#pane=agent:x:3 opens that cross-project pane; an unrelated hash opens nothing", async () => {
+    mountInset("/read/doc-1#pane=agent:x:3");
+    await paneWithFocus();
+    expect(comp().tabs.map((t) => t.id)).toEqual([agentTabIdFor("x:3")]);
+    expect(comp().tabs[0]).toMatchObject({ scope: "cross-project", agentId: "x:3" });
+    cleanup();
+    comp().reset();
+    const { container } = mountInset("/read/doc-1#other");
+    await waitFor(() => expect(container.querySelector("[data-companion-pane]")).toBeTruthy());
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(comp().tabs).toHaveLength(0);
+  });
+});
