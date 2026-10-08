@@ -53,7 +53,7 @@ from typing import NoReturn
 # removing it turns that gate into an AttributeError instead of a check.
 import duckdb  # noqa: F401
 
-from runtime.db_lock import ReadConnection, connect_read
+from runtime.db_lock import ReadConnection, ReadLockTimeout, connect_read
 
 # Import the canonical write-locker from Sprint 1 day-2. Same flock
 # discipline; this is the Quack v2.0 swap point.
@@ -2494,7 +2494,7 @@ def _legacy_documents_fk_parent_index_present(
     return bool(row and row[0])
 
 
-def _schema_is_present(db_path: str) -> bool:
+def _schema_is_present(db_path: str, *, refuse_reader_probe_busy: bool = False) -> bool:
     """Cheap read-only probe: is the Antiek schema already initialized at
     ``db_path``? Returns True if the ``nodes`` sentinel table exists.
 
@@ -2506,13 +2506,19 @@ def _schema_is_present(db_path: str) -> bool:
     the write lock entirely when the schema is already present, which is the
     warm-path case for every per-request ``ensure_initialized`` call.
 
-    Any failure (file absent, read-only open refused, table missing) returns
+    By default any failure (file absent, read-only open refused, table missing) returns
     False so the caller falls through to the write-lock init path — the fast
-    path is a pure optimization that must never change cold-start behavior."""
+    path is a pure optimization that must never change cold-start behavior.
+    Reader callers can opt into propagating a busy read-open timeout instead
+    of escalating that known contention into a schema write."""
     if db_path in _INITIALIZED_PATHS:
         return True
     try:
         con = connect_read(db_path)
+    except ReadLockTimeout:
+        if refuse_reader_probe_busy:
+            raise
+        return False
     except Exception:
         return False
     try:
@@ -2574,7 +2580,9 @@ def _schema_is_present(db_path: str) -> bool:
     return present
 
 
-def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> None:
+def init_database_at_path(
+    db_path: str, *, timeout_s: float | None = None, refuse_reader_probe_busy: bool = False
+) -> None:
     """Make sure the schema is present at ``db_path``. Idempotent.
 
     Fast path: if ``_schema_is_present`` confirms the schema is already
@@ -2589,8 +2597,10 @@ def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> No
     Cold path: the read-only probe failed or the schema is absent, so acquire
     the write lock (creating the file if needed) and run ``init_database`` —
     the ``CREATE IF NOT EXISTS`` workhorse. Behavior-identical to before on the
-    cold-start path; used by tests + the CLI + first deploy/startup."""
-    if _schema_is_present(db_path):
+    cold-start path; used by tests + the CLI + first deploy/startup.
+    ``refuse_reader_probe_busy`` only propagates a busy probe timeout; missing
+    schema and ordinary writer callers retain the existing initialization."""
+    if _schema_is_present(db_path, refuse_reader_probe_busy=refuse_reader_probe_busy):
         return
     parent = os.path.dirname(db_path)
     if parent:

@@ -183,11 +183,11 @@ def _require_account_book(con: Any, document_id: str, request: Request) -> None:
 _ARXIV_ABS_PREFIX = "https://arxiv.org/abs/"
 
 
-def _resolve_db_path() -> str:
+def _resolve_db_path(*, refuse_reader_probe_busy: bool = False) -> str:
     from substrate.graph import default_db_path, ensure_initialized
 
     path = default_db_path()
-    ensure_initialized(path)
+    ensure_initialized(path, refuse_reader_probe_busy=refuse_reader_probe_busy)
     return path
 
 
@@ -2181,7 +2181,7 @@ def register_book_routes(app: FastAPI) -> None:
     def get_book(document_id: str, request: Request) -> BookDetail:
         from runtime.db_lock import connect_read
 
-        db = _resolve_db_path()
+        db = _resolve_db_path(refuse_reader_probe_busy=True)
         con = connect_read(db)
         try:
             asset = get_openable_book_asset(con, document_id)
@@ -2201,7 +2201,7 @@ def register_book_routes(app: FastAPI) -> None:
     def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
 
-        db = _resolve_db_path()
+        db = _resolve_db_path(refuse_reader_probe_busy=True)
         con = connect_read(db)
         try:
             _require_account_book(con, document_id, request)
@@ -2241,7 +2241,7 @@ def register_book_routes(app: FastAPI) -> None:
 
         if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
             raise HTTPException(status_code=403, detail="owner_read_required")
-        db = _resolve_db_path()
+        db = _resolve_db_path(refuse_reader_probe_busy=True)
         con = connect_read(db)
         try:
             _require_account_book(con, document_id, request)
