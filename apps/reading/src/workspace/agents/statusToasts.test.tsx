@@ -181,6 +181,21 @@ describe("transitions from the store", () => {
     expect(peek().visible?.viewOpen).toBe(true);
   });
 
+  it("needs-you is suppressed for the active tab too: setNeedsInput on the active, visible tab shows nothing; the same on a background tab shows 'needs you'", () => {
+    act(() => { useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "X2", title: "Title X2" }); });
+    act(() => { useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "X1", title: "Title X1" }); });
+    publish(["X2", "X1"]);
+    expect(useCompanion.getState().activeTabId).toBe("agent:thread:X1");
+    observe("in_progress", ["X1", "X2"]);
+    now += DEBOUNCE.startupGraceMs;
+    act(() => useAgentStatusStore.getState().setNeedsInput("X1", true));
+    expect(peek().visible, "needs-you toast fired for the tab the user is looking at").toBeNull();
+    expect(peek().queued).toEqual([]);
+    act(() => useAgentStatusStore.getState().setNeedsInput("X2", true));
+    expect(peek().visible?.runId).toBe("X2");
+    expect(peek().visible?.kind).toBe("needs-you");
+  });
+
   it("needs-you fires on working→blocked after the grace, and the visible toast's key focuses and promotes", async () => {
     publish();
     observe("in_progress", ["X1", "X2"]);

@@ -196,13 +196,22 @@ describe("collectRuns over the context tree", () => {
 describe("toastFor: the transition matrix", () => {
   const STATES: readonly (AgentStatus | undefined)[] = [undefined, ...AGENT_STATUSES];
 
-  it("5×5 (+undefined) × {active, inactive} × {grace, no grace}: needs-you only on *→blocked with prev defined and no grace; finished only on working→done inactive and no grace", () => {
+  it("5×5 (+undefined) × {active, inactive} × {grace, no grace}: the active view and the grace suppress BOTH kinds (herdr actions.rs returns None before the Blocked match); needs-you on *→blocked with prev defined; finished on working→done", () => {
     for (const prev of STATES) for (const next of AGENT_STATUSES) for (const isActiveView of [true, false]) for (const inStartupGrace of [true, false]) {
       const t = toastFor(prev, next, { isActiveView, inStartupGrace });
       const label = `${prev}→${next} active=${isActiveView} grace=${inStartupGrace}`;
-      if (next === "blocked" && prev !== "blocked" && prev !== undefined && !inStartupGrace) expect(t, label).toEqual({ kind: "needs-you" });
-      else if (prev === "working" && next === "done" && !isActiveView && !inStartupGrace) expect(t, label).toEqual({ kind: "finished" });
+      if (isActiveView || inStartupGrace || prev === undefined || prev === next) expect(t, label).toBeNull();
+      else if (next === "blocked") expect(t, label).toEqual({ kind: "needs-you" });
+      else if (prev === "working" && next === "done") expect(t, label).toEqual({ kind: "finished" });
       else expect(t, label).toBeNull();
+    }
+  });
+
+  it("the active-tab mutant for needs-you: every *→blocked transition is null for the active view, so 'no toast for the active tab' covers both kinds", () => {
+    for (const prev of STATES) {
+      if (prev === "blocked") continue;
+      expect(toastFor(prev, "blocked", { isActiveView: true, inStartupGrace: false }), `${prev}→blocked active`).toBeNull();
+      if (prev !== undefined) expect(toastFor(prev, "blocked", { isActiveView: false, inStartupGrace: false }), `${prev}→blocked inactive`).toEqual({ kind: "needs-you" });
     }
   });
 

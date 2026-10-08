@@ -248,15 +248,19 @@ export type Transition = { kind: "needs-you" } | { kind: "finished" } | null;
 /**
  * herdr R18: a toast fires only on a transition INTO blocked ("needs you")
  * or a background completion ("finished"), never for the active tab, never
- * during the startup grace, never on a first observation.
+ * during the startup grace, never on a first observation. The active view
+ * suppresses BOTH kinds: herdr's notification_toast_for_state_change
+ * returns None on suppress_active_tab_notifications before it matches
+ * Blocked (herdrdev/herdr src/app/actions.rs), and the tab the operator is
+ * looking at shows its own blocked state.
  */
 export function toastFor(
   prev: AgentStatus | undefined,
   next: AgentStatus,
   ctx: { isActiveView: boolean; inStartupGrace: boolean },
 ): Transition {
-  if (ctx.inStartupGrace || prev === undefined || prev === next) return null;
+  if (ctx.inStartupGrace || ctx.isActiveView || prev === undefined || prev === next) return null;
   if (next === "blocked") return { kind: "needs-you" };
-  if (prev === "working" && next === "done" && !ctx.isActiveView) return { kind: "finished" };
+  if (prev === "working" && next === "done") return { kind: "finished" };
   return null;
 }
