@@ -103,6 +103,13 @@ export function focusAdjacentPane(event: KeyboardEvent, direction: -1 | 1 | "up"
   return true;
 }
 
+/** SPR-01 M3: flip the focused pane's split (R5) — same admission as reorder. */
+export function toggleActivePaneSplit(event: KeyboardEvent, dispatcherConsumed = false): boolean {
+  if (event.repeat) return false;
+  const target = paneEventTarget(event, dispatcherConsumed);
+  return target ? useWorkspace.getState().togglePaneSplit(target) : false;
+}
+
 export function reorderActivePane(event: KeyboardEvent, direction: -1 | 1, dispatcherConsumed = false): boolean {
   const target = paneEventTarget(event, dispatcherConsumed);
   return target ? useWorkspace.getState().reorderPane(target, direction) : false;

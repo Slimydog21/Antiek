@@ -96,6 +96,21 @@ export function spatialPaneNeighbor2D(placements: readonly PanePlacement[], targ
   return candidates[0]?.target ?? null;
 }
 
+/** Omarchy SUPER+J / herdr prefix+v (refs/omarchy-herdr.md R5, SPR-01 M3):
+ *  flip the axis of the split that directly holds `target`, keeping its ratio
+ *  and both children. A root leaf (no parent split) is unchanged. Returns the
+ *  same tree reference when nothing changed so callers can detect a no-op. */
+export function togglePaneSplit(tree: PaneTile | null, target: PaneTarget): PaneTile | null {
+  if (!tree || tree.kind === "leaf") return tree;
+  const holds = (node: PaneTile) => node.kind === "leaf" && samePane(node.target, target);
+  if (holds(tree.first) || holds(tree.second)) return { ...tree, axis: tree.axis === "x" ? "y" : "x" };
+  const first = togglePaneSplit(tree.first, target);
+  if (first !== tree.first) return { ...tree, first: first ?? tree.first };
+  const second = togglePaneSplit(tree.second, target);
+  if (second !== tree.second) return { ...tree, second: second ?? tree.second };
+  return tree;
+}
+
 export function swapAdjacentPane(order: PaneTarget[], target: PaneTarget, direction: -1 | 1): PaneTarget[] {
   const index = order.findIndex((member) => samePane(member, target));
   const neighbor = index < 0 ? null : order[index + direction];

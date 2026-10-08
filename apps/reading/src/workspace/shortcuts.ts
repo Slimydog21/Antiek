@@ -69,7 +69,7 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
-import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneZoom,
+import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneSplit, toggleActivePaneZoom,
   togglePaneArrangementAt } from "./PaneFlowLayout";
 
 // Landing gate (antiek.flag.pane.flow): read ONCE at load, like the keymap
@@ -563,6 +563,7 @@ export function createActionHandlers(navigate: NavigateFunction) {
     ...(PANE_FLOW_ON ? {
       "pane.reorderLeft": (event: KeyboardEvent) => reorderActivePane(event, -1, executingPrefixEvent === event),
       "pane.reorderRight": (event: KeyboardEvent) => reorderActivePane(event, 1, executingPrefixEvent === event),
+      "pane.toggleSplit": (event: KeyboardEvent) => toggleActivePaneSplit(event, executingPrefixEvent === event),
       "pane.focusUp": (event: KeyboardEvent) => paneFocusVertical(event, "up"),
       "pane.focusDown": (event: KeyboardEvent) => paneFocusVertical(event, "down"),
     } : {}),

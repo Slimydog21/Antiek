@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { adjacentPane, COMPANION_PANE, CORE_PANE, paneGeometry, paneKey, reconcilePaneOrder,
-  reconcilePaneTiles, revealPane, spatialPaneNeighbor, spatialPaneNeighbor2D, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+  reconcilePaneTiles, revealPane, spatialPaneNeighbor, spatialPaneNeighbor2D, togglePaneSplit, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
 import { migratePanePreferences, parseLegacyPanePreset, parsePaneArrangement } from "./persistence";
 import type { PaneTarget, PaneTile } from "./panel.types";
 
@@ -73,6 +73,24 @@ describe("pane order and retained tiles", () => {
     expect(spatialPaneNeighbor2D(wide, a, "down")).toEqual(c);       // both overlap the column; c's centre (745) is nearer a's (500) than b's (250)
     expect(spatialPaneNeighbor2D(wide, c, "up")).toEqual(a);
     expect(spatialPaneNeighbor2D(wide, b, "down")).toBeNull();
+  });
+  it("SPR-01 M3 (R5): togglePaneSplit flips only the split holding the pane, keeps its ratio, and is a no-op for a root leaf", () => {
+    const tree: PaneTile = { kind: "split", axis: "x", ratio: 0.37,
+      first: { kind: "leaf", target: CORE_PANE },
+      second: { kind: "split", axis: "y", ratio: 0.61, first: { kind: "leaf", target: a }, second: { kind: "leaf", target: b } } };
+    // a's parent is the inner y-split: it becomes x; ratio 0.61 kept; the outer split is untouched.
+    expect(togglePaneSplit(tree, a)).toEqual({ ...tree,
+      second: { kind: "split", axis: "x", ratio: 0.61, first: { kind: "leaf", target: a }, second: { kind: "leaf", target: b } } });
+    // core's parent is the root split: it becomes y; ratio 0.37 kept; the inner split is untouched.
+    expect(togglePaneSplit(tree, CORE_PANE)).toEqual({ ...tree, axis: "y" });
+    // Not in the tree → the same reference (callers detect a no-op by identity).
+    expect(togglePaneSplit(tree, { kind: "window", id: "absent" })).toBe(tree);
+    // A lone pane has no split to flip.
+    const lone: PaneTile = { kind: "leaf", target: CORE_PANE };
+    expect(togglePaneSplit(lone, CORE_PANE)).toBe(lone);
+    expect(togglePaneSplit(null, CORE_PANE)).toBeNull();
+    // Flipping twice restores the tree.
+    expect(togglePaneSplit(togglePaneSplit(tree, a), a)).toEqual(tree);
   });
   it("selects tiled neighbors by actual spatial row before horizontal distance", () => {
     const placements = [

@@ -86,6 +86,7 @@ export const ACTIONS = {
   "panel.closeFloating": { label: "Close the focused floating panel" },
   "pane.focusLeft": { label: PANE_FLOW_ON ? "Pane: focus the previous pane" : "Pane: focus the left pane" },
   "pane.focusRight": { label: PANE_FLOW_ON ? "Pane: focus the next pane" : "Pane: focus the right pane" },
+  "pane.toggleSplit": { label: "Pane: flip the split holding the focused pane (tiled)" },
   "pane.focusUp": { label: "Pane: focus the pane above (tiled)" },
   "pane.focusDown": { label: "Pane: focus the pane below (tiled)" },
   "pane.reorderLeft": { label: "Pane: move the focused pane left" },
@@ -168,6 +169,7 @@ const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   { id: "prefix-pane-up", action: "pane.focusUp", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M2; flipped in SPR-05)", prefixKey: "arrowup", scope: "outside-text", origin: "D2", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M2 (refs/omarchy-herdr.md R6: directional focus does not wrap)" },
   { id: "prefix-pane-down", action: "pane.focusDown", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M2; flipped in SPR-05)", prefixKey: "arrowdown", scope: "outside-text", origin: "D2", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M2 (refs/omarchy-herdr.md R6: directional focus does not wrap)" },
+  { id: "prefix-pane-split", action: "pane.toggleSplit", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M3; flipped in SPR-05)", prefixKey: "v", scope: "outside-text", origin: "herdr-default", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M3 (refs/omarchy-herdr.md R5: split orientation is sticky; an explicit toggle flips the focused pane's parent split)" },
 ];
 const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
@@ -184,6 +186,9 @@ const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-down", action: "pane.focusDown", status: "implemented", prefixKey: "arrowdown", scope: "outside-text", origin: "D2", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M2 (refs/omarchy-herdr.md R6: directional focus does not wrap)" },
   { id: "prefix-pane-up-k", action: "pane.focusUp", status: "implemented", prefixKey: "k", scope: "outside-text", origin: "herdr-default", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M2 (refs/omarchy-herdr.md R6: directional focus does not wrap)" },
   { id: "prefix-pane-down-j", action: "pane.focusDown", status: "implemented", prefixKey: "j", scope: "outside-text", origin: "herdr-default", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M2 (refs/omarchy-herdr.md R6: directional focus does not wrap)" },
+  // SPR-01 M3 — split toggle: Omarchy SUPER+J → ctrl+alt+j; herdr's prefix+v (its vertical split key) as the prefix form.
+  { id: "chord-pane-split", action: "pane.toggleSplit", status: "implemented", chord: "ctrl+alt+j", scope: "outside-text", origin: "D2", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M3 (refs/omarchy-herdr.md R5: split orientation is sticky; an explicit toggle flips the focused pane's parent split)" },
+  { id: "prefix-pane-split", action: "pane.toggleSplit", status: "implemented", prefixKey: "v", scope: "outside-text", origin: "herdr-default", decision: D + "; specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M3 (refs/omarchy-herdr.md R5: split orientation is sticky; an explicit toggle flips the focused pane's parent split)" },
   { id: "chord-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", chord: "ctrl+alt+shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   { id: "chord-pane-reorder-right", action: "pane.reorderRight", status: "implemented", chord: "ctrl+alt+shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   { id: "prefix-pane-reorder-left", action: "pane.reorderLeft", status: "implemented", prefixKey: "shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },

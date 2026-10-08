@@ -55,7 +55,7 @@ import type {
 import { project, readPanePreferences, writeLayoutPreset, writePaneArrangement, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
 import { CORE_PANE, COMPANION_PANE, adjacentPane, reconcilePaneOrder, reconcilePaneTiles,
-  samePane, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+  samePane, swapAdjacentPane, swapPaneTiles, togglePaneSplit } from "./paneFlowGeometry";
 import { registerWindowPresentationObserver, useWindows } from "./windowsStore";
 
 export type OpenOptions = {
@@ -99,6 +99,8 @@ type PaneActions = {
   setPaneArrangement: (arrangement: PaneArrangement) => boolean;
   togglePaneArrangement: () => boolean;
   togglePaneZoom: (target: PaneTarget) => boolean;
+  /** SPR-01 M3 (R5): flip the split holding `target`; tiled only, not zoomed. */
+  togglePaneSplit: (target: PaneTarget) => boolean;
   restorePaneZoom: () => boolean;
 };
 
@@ -231,6 +233,17 @@ export const useWorkspace = create<Store>()((set, get) => ({
   },
 
   togglePaneArrangement: () => get().setPaneArrangement(get().paneArrangement === "horizontal" ? "tiled" : "horizontal"),
+
+  togglePaneSplit: (target) => {
+    const s = get();
+    if (s.paneArrangement !== "tiled" || s.paneZoom) return false;
+    const order = reconcilePaneOrder(s.paneOrder, admittedPaneTargets(s));
+    const tiles = reconcilePaneTiles(s.paneTiles, order);
+    const next = togglePaneSplit(tiles, target);
+    if (next === tiles) return false;
+    set({ paneOrder: order, paneTiles: next });
+    return true;
+  },
 
   togglePaneZoom: (target) => {
     const s = get();

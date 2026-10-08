@@ -276,6 +276,24 @@ describe("actual dispatcher and connected host admission", () => {
     expect(press(companion, "j", "KeyJ", { ctrlKey: false, altKey: false }).defaultPrevented).toBe(true);
     expect(document.activeElement).not.toBe(companion);
   });
+  it("SPR-01 M3: ctrl+alt+j and prefix+v flip the focused pane's split in tiled mode; horizontal flow and repeats are not consumed", () => {
+    const companion = node('[data-pane-host="companion"]');
+    act(() => { companion.focus(); });
+    expect(press(companion, "j", "KeyJ").defaultPrevented).toBe(false); // horizontal flow: nothing to flip
+    act(() => { useWorkspace.getState().setPaneArrangement("tiled"); });
+    const before = useWorkspace.getState().paneTiles;
+    expect(before?.kind).toBe("split");
+    expect(press(companion, "j", "KeyJ").defaultPrevented).toBe(true);
+    const after = useWorkspace.getState().paneTiles;
+    expect(after).not.toEqual(before);
+    expect(JSON.stringify(after).replace(/"axis":"[xy]"/g, "")).toBe(JSON.stringify(before).replace(/"axis":"[xy]"/g, "")); // only an axis changed
+    expect(document.activeElement).toBe(companion); // focus stays on the host (R5: a layout op, not a focus op)
+    expect(press(companion, "j", "KeyJ", { repeat: true }).defaultPrevented).toBe(false);
+    // herdr form: prefix then v flips it back.
+    press(companion, "b", "KeyB", { altKey: false });
+    expect(press(companion, "v", "KeyV", { ctrlKey: false, altKey: false }).defaultPrevented).toBe(true);
+    expect(useWorkspace.getState().paneTiles).toEqual(before);
+  });
   it("toggles layouts and zoom without remounting real windows or accepting toggle repeats", () => {
     const a = node('[data-workspace-window="control:a"]');
     act(() => { a.focus(); });

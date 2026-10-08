@@ -108,6 +108,15 @@ function reorderFocus(direction: -1 | 1 = -1) {
   const host = document.querySelector<HTMLElement>(`[data-pane-host="${prefer}"]`) ?? document.querySelector<HTMLElement>('[data-pane-host]');
   host?.focus({ preventScroll: true });
 }
+let splitBefore = "";
+function splitPrepare() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement !== "tiled") s.setPaneArrangement("tiled");
+  splitBefore = JSON.stringify(useWorkspace.getState().paneTiles);
+}
+function splitEffect(action: string) {
+  return until(() => JSON.stringify(useWorkspace.getState().paneTiles) !== splitBefore, `${action}: tile tree unchanged`);
+}
 let verticalBefore = "";
 function verticalPrepare() {
   const s = useWorkspace.getState();
@@ -155,6 +164,7 @@ export const SCENARIOS = {
   // SPR-01 M2: vertical spatial focus exists only in the tiled arrangement
   // with the flag on; prepare tiles, the focus hook puts the target on a host
   // (the companion: in the dwindle tree it has the tiles below it).
+  "pane.toggleSplit": { prepare: splitPrepare, focus: () => reorderFocus(-1), effect: () => splitEffect("pane.toggleSplit") },
   "pane.focusUp": { prepare: verticalPrepare, focus: () => reorderFocus(-1), effect: () => verticalEffect("pane.focusUp") },
   "pane.focusDown": { prepare: verticalPrepare, focus: () => reorderFocus(-1), effect: () => verticalEffect("pane.focusDown") },
   "pane.reorderLeft": { prepare: reorderPrepare, focus: () => reorderFocus(-1), effect: () => reorderEffect("pane.reorderLeft") },
