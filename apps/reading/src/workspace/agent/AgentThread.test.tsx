@@ -1,5 +1,5 @@
 /** AgentThread.test.tsx — SPR-07 M3: the status row says "simulated stream" for a whole-reply transport (fix 2); caret; tool rows; Jump to latest. */
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentTurn } from "./agentThreadStore";
@@ -82,5 +82,57 @@ describe("AgentThread", () => {
     expect(jump.tabIndex).toBe(-1);
     fireEvent.click(jump);
     expect(container.querySelector("[data-jump-to-latest]")).toBeNull();
+  });
+});
+
+describe("the elapsed timer pauses while the document is hidden (M3, repair C4)", () => {
+  it("counts visible seconds only: 3 s shown, 60 s hidden, back ⇒ still 3 s (no jump), then 5 s", () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      const { container } = mount([turn({ status: "pending", startedAt: performance.now() })]);
+      const row = () => container.querySelector("[data-turn-status]")!.textContent!;
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(row()).toContain("· 3s");
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      act(() => { vi.advanceTimersByTime(60000); });
+      hidden = false;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      expect(row()).toContain("· 3s");
+      expect(row()).not.toContain("63s");
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(row()).toContain("· 5s");
+    } finally {
+      delete (document as unknown as Record<string, unknown>).hidden;
+      vi.useRealTimers();
+    }
+  });
+
+  it("a re-render while hidden does not advance the number either (the value, not only the tick, is paused)", () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      const t = turn({ status: "pending", startedAt: performance.now() });
+      const view = mount([t]);
+      const row = () => view.container.querySelector("[data-turn-status]")!.textContent!;
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(row()).toContain("· 2s");
+      hidden = true;
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      act(() => { vi.advanceTimersByTime(30000); });
+      // A streaming chunk re-renders the turn while the tab is hidden.
+      view.rerender(
+        <AgentThread turns={[{ ...t, status: "streaming", answer: "par" }]} transportKind="whole" lifecycle={IDLE}
+          interview={false} reducedMotion={false} onRetry={() => {}} />,
+      );
+      expect(row()).toContain("· 2s");
+      expect(row()).not.toContain("32s");
+    } finally {
+      delete (document as unknown as Record<string, unknown>).hidden;
+      vi.useRealTimers();
+    }
   });
 });

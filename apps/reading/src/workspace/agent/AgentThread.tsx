@@ -1,13 +1,13 @@
 /**
  * AgentThread.tsx — the pane's turns (SPR-07 M3). Model prose with a
  * streaming caret; one status row per turn (the Antiek status word, an
- * elapsed timer that pauses while the document is hidden, and the
+ * elapsed timer that counts visible time only — useElapsed — and the
  * TRANSPORT LABEL: when the transport returns the whole reply the row
  * visibly says "simulated stream: the reply arrives whole", fix 2); tool
  * rows collapsed by default (rendered only when a turn has tools); the
  * yielding auto-scroll with "Jump to latest" (threadScroll.ts).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import type { AgentTurn } from "./agentThreadStore";
@@ -26,23 +26,51 @@ export interface AgentThreadProps {
   onRetry: () => void;
 }
 
-/** Seconds since `startedAt`, ticking once a second while the turn runs
- *  and the document is visible. */
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+const docHidden = () => typeof document !== "undefined" && document.hidden;
+
+/**
+ * Seconds the turn has been running WHILE THE DOCUMENT WAS VISIBLE (repair
+ * C4): the value is an accumulator of visible stretches, never a wall-clock
+ * span, so a tab hidden for a minute comes back at the number it left and a
+ * re-render while hidden (a streaming chunk) cannot advance it. Ticks once a
+ * second only while the turn runs and the document is visible. A settled
+ * turn freezes at the visible time it had when `endedAt` was stamped.
+ */
 function useElapsed(startedAt: number, endedAt: number | undefined, running: boolean): number {
-  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
-  const [tick, setTick] = useState(0);
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const [hidden, setHidden] = useState(docHidden);
+  /** ms of visible time before the current visible stretch. */
+  const acc = useRef(0);
+  /** When the current visible stretch began; null while hidden. */
+  const since = useRef<number | null>(null);
+  const seededFor = useRef<number | null>(null);
+  if (seededFor.current !== startedAt) {
+    seededFor.current = startedAt;
+    acc.current = 0;
+    since.current = docHidden() ? null : startedAt;
+  }
   useEffect(() => {
-    if (!running) return;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => { if (timer === null) timer = setInterval(() => setTick((t) => t + 1), 1000); };
-    const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
-    const onVisibility = () => (document.hidden ? stop() : start());
-    if (!document.hidden) start();
+    const onVisibility = () => {
+      if (docHidden()) {
+        if (since.current !== null) { acc.current += now() - since.current; since.current = null; }
+      } else if (since.current === null) {
+        since.current = now();
+      }
+      setHidden(docHidden());
+      bump();
+    };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
-  }, [running]);
-  void tick;
-  return Math.max(0, Math.round(((endedAt ?? now()) - startedAt) / 1000));
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+  useEffect(() => {
+    if (!running || hidden) return;
+    const timer = setInterval(bump, 1000);
+    return () => clearInterval(timer);
+  }, [running, hidden]);
+  const end = endedAt ?? now();
+  const ms = acc.current + (since.current === null ? 0 : Math.max(0, end - since.current));
+  return Math.max(0, Math.round(ms / 1000));
 }
 
 function Turn({ turn, index, transportKind, reducedMotion }: { turn: AgentTurn; index: number; transportKind: "whole" | "sse"; reducedMotion: boolean }) {
