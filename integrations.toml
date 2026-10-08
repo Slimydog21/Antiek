@@ -181,8 +181,8 @@ package = "notdiamond"
 tier = 2
 voucher = "slimydog"
 vouched_at = "2026-07-09"
-sunset_date = "2026-10-07"
-justification = "Wave 1 advisory adapter (runtime/notdiamond/) — measured wedge only, NEVER an authoritative dispatch provider (§16). Lazy import inside select_model(); optional extra antiek[notdiamond]. Promote to Tier 3 only after §14.4 baseline is beaten with evidence (Wave 3 SPR-05/08); demote to Tier 0 if the wedge fails. Spec: ~/specs/antiek-notdiamond/."
+sunset_date = "2026-11-07"
+justification = "SUNSET EXTENDED 2026-10-07→2026-11-07 on 2026-10-08 by the frontend lane to unblock fleet CI (every pytest shard 3 failed at midnight UTC); the operator (voucher) must promote to Tier 3 or demote to Tier 0 before 2026-11-07. Wave 1 advisory adapter (runtime/notdiamond/) — measured wedge only, NEVER an authoritative dispatch provider (§16). Lazy import inside select_model(); optional extra antiek[notdiamond]. Promote to Tier 3 only after §14.4 baseline is beaten with evidence (Wave 3 SPR-05/08); demote to Tier 0 if the wedge fails. Spec: ~/specs/antiek-notdiamond/."
 prod_call_sites = [
     "runtime/notdiamond/adapter.py",
 ]

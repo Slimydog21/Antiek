@@ -16,6 +16,25 @@ import {
   routeKey,
 } from "../workspace/useWorkspaceHydration";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { useWindows } from "../workspace/windowsStore";
+import { useCompanion } from "../workspace/companionStore";
+import { useTabTrees } from "../workspace/tabTreeStore";
+import type { Mothership } from "../workspace/tabTree";
+import { isFeatureOn } from "../lib/featureFlags";
+import {
+  buildPlaceRows,
+  cycleSection,
+  filterPlaceRows,
+  formatFilterQuery,
+  groupBySection,
+  parseFilterQuery,
+  presentSections,
+  rankPlaceRows,
+  SECTION_LABELS,
+  tabInputFromTree,
+  type PlaceRow,
+  type PlaceTarget,
+} from "../shell/switcherPlaces";
 import {
   WORKFLOWS,
   WORKFLOW_ORDER,
@@ -121,13 +140,28 @@ interface PaletteAction {
   workflow?: Workflow;
 }
 
+/** SPR-02 (specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html)
+ *  — a PLACE: a door, scene, open pane/window/companion tab, or tab-tree
+ *  node, built by the pure model in shell/switcherPlaces.ts with its
+ *  resolved command attached. Choosing a place FOCUSES/REVEALS an existing
+ *  host through that host's own command; it never opens a second one. */
+type PalettePlace = PlaceRow & { run: () => void };
+
 export type PaletteEntry =
   | PaletteRoute
   | PaletteInvestigation
   | PaletteDocument
   | PaletteNotebook
   | PaletteParkedQuestion
-  | PaletteAction;
+  | PaletteAction
+  | PalettePlace;
+
+/** Which tab-tree mothership the current route's workflow reads from. */
+const MOTHERSHIP_FOR_WORKFLOW: Partial<Record<Workflow, Mothership>> = {
+  research: "research",
+  read: "reading",
+  write: "writing",
+};
 
 const ROUTE_INDEX: PaletteRoute[] = [
   {
@@ -360,6 +394,7 @@ export function rankEntries(
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // (mirror for the window-level Escape owner; see the effect below)
   const [investigations, setInvestigations] = useState<PaletteInvestigation[]>([]);
   const [documents, setDocuments] = useState<PaletteDocument[]>([]);
   const [notebooks, setNotebooks] = useState<PaletteNotebook[]>([]);
@@ -373,7 +408,24 @@ export default function CommandPalette() {
     | null
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // SPR-02 (critique F1): the element that had focus when the Switcher opened.
+  // Close returns focus there (the KeySheet pattern) — a keyboard-first
+  // surface must hand focus back, never leave it on <body>.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const queryRef = useRef("");
+  queryRef.current = query;
   const navigate = useNavigate();
+  // SPR-02 — places sections. Flag-off renders exactly the pre-SPR-02 palette.
+  const placesOn = isFeatureOn("switcher.places");
+  const windowOrder = useWindows((s) => s.order);
+  const windowMap = useWindows((s) => s.windows);
+  const focusedWindowId = useWindows((s) => s.focusedId);
+  const companionTabs = useCompanion((s) => s.tabs);
+  const activeCompanionTabId = useCompanion((s) => s.activeTabId);
+  const focusedPanelId = useWorkspace((s) => s.focusedPanelId);
+  const mothership =
+    MOTHERSHIP_FOR_WORKFLOW[workflowForPath(typeof window !== "undefined" ? window.location.pathname : "/")];
+  const tabTree = useTabTrees((s) => (mothership ? s.trees[mothership] : null));
   // SPR-03 Task 3 — the driver dropdown on the palette. The palette runs no
   // AI call of its own; the choice is broadcast on the thought-partner seed
   // bus so the AI sidecar (the palette's "Toggle AI sidecar" target) adopts
@@ -521,7 +573,23 @@ export default function CommandPalette() {
     // does. The palette used to toggle on ⌘K itself as well, so ⌘K from the
     // page body flipped it twice and nothing opened (MS-01 F1). Stories
     // rendered without AppShell open it by dispatching the same event.
-    const onToggle = () => setOpen((v) => !v);
+    const onToggle = (ev: Event) => {
+      // SPR-02 M5 — `detail.query` opens (never toggles) with a preset query
+      // (e.g. "in:open" from the switcher.open key, "in:scenes" from the
+      // rail's More). Ignored with places off: the words would be search text.
+      const detail: unknown = ev instanceof CustomEvent ? ev.detail : undefined;
+      const preset =
+        placesOn && detail && typeof detail === "object" && "query" in detail && typeof detail.query === "string"
+          ? detail.query
+          : null;
+      if (preset !== null) {
+        setQuery(preset);
+        setActiveIdx(0);
+        setOpen(true);
+        return;
+      }
+      setOpen((v) => !v);
+    };
     window.addEventListener(
       "antiek:palette:toggle" as keyof WindowEventMap,
       onToggle as EventListener,
@@ -532,7 +600,15 @@ export default function CommandPalette() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) {
         e.preventDefault();
-        setOpen(false);
+        // Omarchy menu rule R14: Esc clears the filter first, then closes.
+        // (queryRef mirrors the input so this effect, keyed on `open`, never
+        // reads a stale query and never calls a setter inside an updater.)
+        if (queryRef.current !== "") {
+          setQuery("");
+          setActiveIdx(0);
+        } else {
+          setOpen(false);
+        }
       }
     };
     const removeKeyboardOwner = registerKeyboardOwner(window, {
@@ -547,16 +623,21 @@ export default function CommandPalette() {
       );
       removeKeyboardOwner();
     };
-  }, [open]);
+  }, [open, placesOn]);
 
   useEffect(() => {
     if (open) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       void loadIndex();
       // Defer focus until after the dialog mounts.
       setTimeout(() => inputRef.current?.focus(), 0);
     } else {
       setQuery("");
       setActiveIdx(0);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      if (opener && opener.isConnected) opener.focus();
     }
   }, [open, loadIndex]);
 
@@ -720,9 +801,11 @@ export default function CommandPalette() {
 
   const entries = useMemo<PaletteEntry[]>(
     () => [
-      ...workflowJumps,
+      // With places on, the four doors and the scene routes are the Doors
+      // and Scenes sections; listing them twice would double every hit.
+      ...(placesOn ? [] : workflowJumps),
       ...workspaceActions,
-      ...ROUTE_INDEX_WITH_FACET,
+      ...(placesOn ? [] : ROUTE_INDEX_WITH_FACET),
       ...investigations,
       ...documents,
       ...((): PaletteRoute[] => {
@@ -742,16 +825,83 @@ export default function CommandPalette() {
       ...notebooks,
       ...parked,
     ],
-    [workflowJumps, workspaceActions, investigations, documents, notebooks, parked],
+    [placesOn, workflowJumps, workspaceActions, investigations, documents, notebooks, parked],
   );
 
-  const ranked = useMemo(
-    () => rankEntries(entries, query).slice(0, 12),
-    [entries, query],
+  // SPR-02 M3 — every place resolves to an EXISTING command (pane-flow
+  // contract S01/S09/S10: focus/reveal by identity, never a second open).
+  const runPlace = useCallback(
+    (target: PlaceTarget) => {
+      switch (target.type) {
+        case "door":
+          navigate(target.route);
+          return;
+        case "route":
+          navigate(target.path);
+          return;
+        case "pane":
+          if (target.pane.kind === "window") useWindows.getState().focus(target.pane.id);
+          else if (target.pane.kind === "panel") useWorkspace.getState().focus(target.pane.id);
+          // "core"/"companion" pane targets need the pane-flow packet's focus
+          // command (SPR-01); the model emits no such rows on main.
+          return;
+        case "agentTab":
+          useCompanion.getState().activateAgentTab(target.id);
+          return;
+        case "tab":
+          useTabTrees.getState().activateTab(target.mothership as Mothership, target.tabId, "user");
+          return;
+        default:
+          // projects / agents / arrangements: their inputs are absent on main
+          // (other lanes own them), so no row can reach here yet.
+          toast.warn("That place is not available yet.");
+      }
+    },
+    [navigate],
   );
+
+  const placeRows = useMemo<PalettePlace[]>(() => {
+    if (!placesOn) return [];
+    const rows = buildPlaceRows({
+      scenes: ROUTE_INDEX_WITH_FACET.map((r) => ({
+        id: r.id,
+        title: r.title,
+        subtitle: r.subtitle,
+        path: r.path,
+        workflow: r.workflow,
+      })),
+      open: {
+        windows: windowOrder
+          .map((id) => windowMap[id])
+          .filter((w): w is NonNullable<typeof w> => Boolean(w))
+          .map((w) => ({ id: w.id, title: w.title, kind: w.kind })),
+        focusedWindowId,
+        companionTabs: companionTabs.map((t) => ({ id: t.id, title: t.title, kind: t.kind })),
+        activeCompanionTabId,
+        panels: Object.values(wsPanels).map((p) => ({ id: p.id, title: p.title })),
+        focusedPanelId,
+      },
+      tabs: mothership && tabTree ? tabInputFromTree(mothership, tabTree) : undefined,
+    });
+    return rows.map((r) => ({ ...r, run: () => runPlace(r.target) }));
+  }, [placesOn, windowOrder, windowMap, focusedWindowId, companionTabs, activeCompanionTabId, wsPanels, focusedPanelId, mothership, tabTree, runPlace]);
+
+  // `in:<section>` / `is:<status>` lead the query (same shape as `state:`);
+  // the rest is search text for BOTH lists.
+  const parsed = useMemo(() => (placesOn ? parseFilterQuery(query) : null), [placesOn, query]);
+  const searchText = parsed ? parsed.text : query;
+  const rankedPlaces = useMemo<PalettePlace[]>(
+    () => (parsed ? rankPlaceRows(filterPlaceRows(placeRows, parsed.filter), searchText) : []),
+    [parsed, placeRows, searchText],
+  );
+  const ranked = useMemo(
+    () => rankEntries(entries, searchText).slice(0, 12),
+    [entries, searchText],
+  );
+  const combined = useMemo<PaletteEntry[]>(() => [...rankedPlaces, ...ranked], [rankedPlaces, ranked]);
 
   const choose = (entry: PaletteEntry) => {
-    if (entry.kind === "action") {
+    if (entry.kind === "action" || entry.kind === "place") {
       entry.run();
     } else {
       navigate(entry.path);
@@ -759,18 +909,87 @@ export default function CommandPalette() {
     setOpen(false);
   };
 
+  const PAGE = 6; // Omarchy menu rule R14: PageUp/PageDown move six rows.
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
+    const empty = query === "";
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (e.key === "ArrowDown" || (empty && plain && e.key === "j")) {
       e.preventDefault();
-      setActiveIdx((idx) => Math.min(idx + 1, ranked.length - 1));
-    } else if (e.key === "ArrowUp") {
+      setActiveIdx((idx) => Math.min(idx + 1, combined.length - 1));
+    } else if (e.key === "ArrowUp" || (empty && plain && e.key === "k")) {
       e.preventDefault();
       setActiveIdx((idx) => Math.max(idx - 1, 0));
-    } else if (e.key === "Enter" && ranked[activeIdx]) {
+    } else if (e.key === "PageDown") {
       e.preventDefault();
-      choose(ranked[activeIdx]);
+      setActiveIdx((idx) => Math.min(idx + PAGE, combined.length - 1));
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      setActiveIdx((idx) => Math.max(idx - PAGE, 0));
+    } else if (e.key === "Enter" && combined[activeIdx]) {
+      e.preventDefault();
+      choose(combined[activeIdx]);
+    } else if (e.key === "Tab" && parsed) {
+      // Tab / Shift+Tab cycle the section filter; focus stays in the box.
+      e.preventDefault();
+      const next = cycleSection(parsed.filter.section, presentSections(placeRows), e.shiftKey ? -1 : 1);
+      setQuery(formatFilterQuery({ ...parsed.filter, section: next }, parsed.text));
+      setActiveIdx(0);
     }
   };
+
+  const renderRow = (e: PaletteEntry, idx: number) => (
+    <li
+      key={e.id}
+      onMouseEnter={() => setActiveIdx(idx)}
+      onClick={() => choose(e)}
+      aria-current={"current" in e && e.current ? "true" : undefined}
+      className={`px-4 py-2.5 cursor-pointer flex items-center justify-between gap-3 ${
+        idx === activeIdx ? "bg-ice-3 dark:bg-charcoal-1" : ""
+      }`}
+    >
+      <div className="min-w-0">
+        <p className="text-sm text-ink dark:text-bright truncate font-serif">
+          {e.title}
+        </p>
+        <p className="text-xs text-shadow-1 dark:text-moonlight truncate">
+          {e.subtitle}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {"current" in e && e.current && (
+          <span className="text-xxs font-mono text-sun-ink" aria-label="current">
+            ● here
+          </span>
+        )}
+        {"status" in e && e.status && (
+          <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight" aria-label={`status ${e.status}`}>
+            {e.status}
+          </span>
+        )}
+        {"state" in e && e.state && (
+          <span
+            aria-label={e.state + (e.unseen ? " · unseen" : "")}
+            title={e.state + (e.unseen ? " · unseen" : "")}
+            className={`w-2 h-2 rounded-full shrink-0 ${researchStateDotClass(
+              e.state,
+              e.unseen === true,
+            )}`}
+          />
+        )}
+        {(() => {
+          const wf = entryWorkflow(e);
+          return wf && wf !== "shared" ? (
+            <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/80 px-1.5 py-0.5 rounded">
+              {WORKFLOWS[wf].label}
+            </span>
+          ) : null;
+        })()}
+        <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+          {e.kind === "place" ? SECTION_LABELS[e.section].replace(/s$/, "") : e.kind.replace("_", " ")}
+        </span>
+      </div>
+    </li>
+  );
 
   if (!open) return null;
 
@@ -796,7 +1015,11 @@ export default function CommandPalette() {
             setActiveIdx(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Type a route, investigation, document, or notebook…"
+          placeholder={
+            placesOn
+              ? "Type a place or command… (in:open · in:tabs · in:agents is:blocked)"
+              : "Type a route, investigation, document, or notebook…"
+          }
           className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
         />
         {/* herdr transfer P0-5 — state-filter chips: the palette as a
@@ -839,58 +1062,74 @@ export default function CommandPalette() {
             </button>
           )}
         </div>
+        {placesOn && parsed && (
+          <div
+            className="flex items-center gap-1.5 px-4 py-1.5 border-b border-rule dark:border-charcoal-1 flex-wrap"
+            role="group"
+            aria-label="Switcher sections"
+            data-testid="switcher-section-chips"
+          >
+            {(["all", ...presentSections(placeRows)] as const).map((s) => {
+              const active = parsed.filter.section === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setQuery(formatFilterQuery({ ...parsed.filter, section: s }, parsed.text));
+                    setActiveIdx(0);
+                    inputRef.current?.focus();
+                  }}
+                  className={`text-xs font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                    active
+                      ? "bg-sun text-ink border-sun"
+                      : "border-rule dark:border-charcoal-1 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+                  }`}
+                >
+                  {s === "all" ? "all" : SECTION_LABELS[s].toLowerCase()}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <ul className="max-h-[400px] overflow-y-auto">
-          {ranked.length === 0 ? (
+          {combined.length === 0 ? (
             <li className="px-4 py-6 text-sm text-shadow-1 dark:text-moonlight italic">
               No matches.
             </li>
           ) : (
-            ranked.map((e, idx) => (
-              <li
-                key={e.id}
-                onMouseEnter={() => setActiveIdx(idx)}
-                onClick={() => choose(e)}
-                className={`px-4 py-2.5 cursor-pointer flex items-center justify-between gap-3 ${
-                  idx === activeIdx ? "bg-ice-3 dark:bg-charcoal-1" : ""
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-ink dark:text-bright truncate font-serif">
-                    {e.title}
-                  </p>
-                  <p className="text-xs text-shadow-1 dark:text-moonlight truncate">
-                    {e.subtitle}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {"state" in e && e.state && (
-                    <span
-                      aria-label={e.state + (e.unseen ? " · unseen" : "")}
-                      title={e.state + (e.unseen ? " · unseen" : "")}
-                      className={`w-2 h-2 rounded-full shrink-0 ${researchStateDotClass(
-                        e.state,
-                        e.unseen === true,
-                      )}`}
-                    />
-                  )}
-                  {(() => {
-                    const wf = entryWorkflow(e);
-                    return wf && wf !== "shared" ? (
-                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/80 px-1.5 py-0.5 rounded">
-                        {WORKFLOWS[wf].label}
-                      </span>
-                    ) : null;
-                  })()}
-                  <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
-                    {e.kind.replace("_", " ")}
-                  </span>
-                </div>
-              </li>
-            ))
+            <>
+              {placesOn &&
+                groupBySection(rankedPlaces).map((g) => (
+                  <li key={`section:${g.section}`} role="presentation" className="contents">
+                    <ul aria-label={SECTION_LABELS[g.section]} data-testid={`switcher-section-${g.section}`}>
+                      <li
+                        role="presentation"
+                        className="px-4 pt-2 pb-1 text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight flex justify-between"
+                      >
+                        <span>{SECTION_LABELS[g.section]}</span>
+                        <span>{g.rows.length}</span>
+                      </li>
+                      {g.rows.map((r) => renderRow(r, rankedPlaces.indexOf(r)))}
+                    </ul>
+                  </li>
+                ))}
+              {placesOn && ranked.length > 0 && (
+                <li
+                  role="presentation"
+                  className="px-4 pt-2 pb-1 text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight flex justify-between"
+                >
+                  <span>Commands &amp; results</span>
+                  <span>{ranked.length}</span>
+                </li>
+              )}
+              {ranked.map((e, idx) => renderRow(e, rankedPlaces.length + idx))}
+            </>
           )}
         </ul>
         <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between gap-2">
-          <span>↑↓ navigate · Enter select · Esc close</span>
+          <span>{placesOn ? "↑↓ j k navigate · PgUp PgDn ×6 · Tab sections · Enter go · Esc clear/close" : "↑↓ navigate · Enter select · Esc close"}</span>
           <span className="flex items-center gap-2">
             <span className="uppercase tracking-wide">Driver</span>
             <ModelUsagePicker
