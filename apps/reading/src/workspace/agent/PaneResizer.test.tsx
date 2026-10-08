@@ -8,6 +8,8 @@ vi.mock("./agentPaneStore", async (orig) => ({
   closeAgentPane: (...a: unknown[]) => closeAgentPane(...a),
 }));
 
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+
 import { useCompanion } from "../companionStore";
 import { PaneResizer } from "./PaneResizer";
 import { PANE_MIN, STEP, usePaneWidthStore } from "./paneWidthStore";
@@ -17,8 +19,8 @@ function Host({ max = 600, onPreview = () => {} }: { max?: number; onPreview?: (
   return <PaneResizer width={preferred ?? 320} max={max} onPreview={onPreview} />;
 }
 
-beforeEach(() => { usePaneWidthStore.getState().reset(); useCompanion.getState().reset(); closeAgentPane.mockReset(); window.localStorage.clear(); });
-afterEach(cleanup);
+beforeEach(async () => { setWorkspaceOwner(null); setWorkspaceOwner("owner-a"); await awaitWorkspaceOwnerSession(workspaceOwnerSession()); usePaneWidthStore.getState().reset(); useCompanion.getState().reset(); closeAgentPane.mockReset(); window.localStorage.clear(); });
+afterEach(() => { try { cleanup(); } finally { setWorkspaceOwner(null); } });
 
 const sep = () => document.querySelector<HTMLElement>('[role="separator"]')!;
 

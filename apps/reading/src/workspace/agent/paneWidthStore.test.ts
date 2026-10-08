@@ -1,11 +1,11 @@
 /** paneWidthStore.test.ts — SPR-07 invariant 27 (patterns 4/5/6): an account-scoped width blob and a 424 px main minimum. */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { accountStorageKey, setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { accountStorageKey, awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { COLLAPSE_THRESHOLD, MAIN_MIN, PANE_MIN, PANE_WIDTH_KEY, STEP, clearPaneWidth, effectiveWidth, paneWidthMax, readPaneWidth, usePaneWidthStore, writePaneWidth } from "./paneWidthStore";
 
-beforeEach(() => { window.localStorage.clear(); usePaneWidthStore.getState().reset(); });
-afterEach(() => { window.localStorage.clear(); });
+beforeEach(async () => { setWorkspaceOwner(null); setWorkspaceOwner("owner-a"); await awaitWorkspaceOwnerSession(workspaceOwnerSession()); window.localStorage.clear(); usePaneWidthStore.getState().reset(); });
+afterEach(() => { try { window.localStorage.clear(); } finally { setWorkspaceOwner(null); } });
 
 describe("effectiveWidth", () => {
   it("null preferred ⇒ the tier default; otherwise clamped between 240 and the main-minimum bound", () => {

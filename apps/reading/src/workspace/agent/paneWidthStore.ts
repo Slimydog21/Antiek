@@ -11,7 +11,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { create } from "zustand";
 
-import { accountStorageKey } from "../../lib/accountWorkspaceOwner";
+import { accountStorageKey, awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 export const PANE_WIDTH_KEY = "antiek.agent.pane-width.v1";
 /** The pane never goes below this (pattern 6's floor). */
@@ -30,9 +30,15 @@ export interface PersistedPaneWidth {
   width: number;
 }
 
-export function readPaneWidth(): number | null {
+let confirmedOwner: WorkspaceOwnerSession | null = null;
+function admitted(owner: WorkspaceOwnerSession): boolean {
+  return owner.subject !== null && confirmedOwner === owner && isWorkspaceOwnerSession(owner);
+}
+
+export function readPaneWidth(owner = workspaceOwnerSession()): number | null {
+  if (!admitted(owner)) return null;
   if (typeof window === "undefined") return null;
-  const key = accountStorageKey(PANE_WIDTH_KEY);
+  const key = accountStorageKey(PANE_WIDTH_KEY, owner);
   if (key === null) return null;
   try {
     const raw = window.localStorage.getItem(key);
@@ -40,15 +46,16 @@ export function readPaneWidth(): number | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || !("schemaVersion" in parsed) || parsed.schemaVersion !== 1) return null;
     const width = (parsed as { width?: unknown }).width;
-    return typeof width === "number" && Number.isFinite(width) ? width : null;
+    return admitted(owner) && typeof width === "number" && Number.isFinite(width) ? width : null;
   } catch {
     return null;
   }
 }
 
-export function writePaneWidth(width: number): void {
+export function writePaneWidth(width: number, owner = workspaceOwnerSession()): void {
+  if (!admitted(owner)) return;
   if (typeof window === "undefined") return;
-  const key = accountStorageKey(PANE_WIDTH_KEY);
+  const key = accountStorageKey(PANE_WIDTH_KEY, owner);
   if (key === null) return;
   try {
     window.localStorage.setItem(key, JSON.stringify({ schemaVersion: 1, width } satisfies PersistedPaneWidth));
@@ -57,9 +64,10 @@ export function writePaneWidth(width: number): void {
   }
 }
 
-export function clearPaneWidth(): void {
+export function clearPaneWidth(owner = workspaceOwnerSession()): void {
+  if (!admitted(owner)) return;
   if (typeof window === "undefined") return;
-  const key = accountStorageKey(PANE_WIDTH_KEY);
+  const key = accountStorageKey(PANE_WIDTH_KEY, owner);
   if (key === null) return;
   try {
     window.localStorage.removeItem(key);
@@ -80,25 +88,58 @@ export function effectiveWidth(i: { preferred: number | null; containerWidth: nu
 }
 
 interface PaneWidthState {
+  owner: WorkspaceOwnerSession;
+  ready: boolean;
   /** null = the tier default. */
   preferred: number | null;
   hydrated: boolean;
   hydrate: () => void;
-  setPreferred: (width: number | null) => void;
+  setPreferred: (width: number | null, owner?: WorkspaceOwnerSession) => void;
   reset: () => void;
 }
 
-export const usePaneWidthStore = create<PaneWidthState>()((set) => ({
+export const usePaneWidthStore = create<PaneWidthState>()((set, get) => ({
+  owner: workspaceOwnerSession(),
+  ready: false,
   preferred: null,
   hydrated: false,
-  hydrate: () => set({ preferred: readPaneWidth(), hydrated: true }),
-  setPreferred: (width) => {
-    if (width === null) clearPaneWidth();
-    else writePaneWidth(width);
+  hydrate: () => {
+    const owner = workspaceOwnerSession();
+    if (!admitted(owner) || get().owner !== owner) return;
+    const preferred = readPaneWidth(owner);
+    if (admitted(owner) && get().owner === owner) set({ preferred, hydrated: true });
+  },
+  setPreferred: (width, owner = workspaceOwnerSession()) => {
+    if (!admitted(owner) || get().owner !== owner) return;
+    if (width === null) clearPaneWidth(owner);
+    else writePaneWidth(width, owner);
+    if (!admitted(owner) || get().owner !== owner) return;
     set({ preferred: width });
   },
-  reset: () => set({ preferred: null, hydrated: false }),
+  reset: () => set({ owner: workspaceOwnerSession(), ready: admitted(workspaceOwnerSession()), preferred: null, hydrated: false }),
 }));
+
+function confirmOwner(owner: WorkspaceOwnerSession): void {
+  confirmedOwner = null;
+  void awaitWorkspaceOwnerSession(owner).then((ok) => {
+    if (!ok || !isWorkspaceOwnerSession(owner)) return;
+    confirmedOwner = owner;
+    if (usePaneWidthStore.getState().owner === owner) usePaneWidthStore.setState({ ready: true });
+  });
+}
+confirmOwner(workspaceOwnerSession());
+subscribeWorkspaceOwnerAdmission(({ session, state }) => {
+  confirmedOwner = null;
+  const store = usePaneWidthStore.getState();
+  // Suspension holds a same-token preference; replacement retires it before
+  // any new account is allowed to hydrate its own storage key.
+  if (state === "retiring" || state === "failed" || session.subject === null || store.owner !== session) {
+    usePaneWidthStore.setState({ owner: session, ready: false, preferred: null, hydrated: false });
+  } else {
+    usePaneWidthStore.setState({ ready: false });
+  }
+  confirmOwner(session);
+});
 
 /** The container's live width (ResizeObserver; window.innerWidth where
  *  none exists, as in jsdom). */
@@ -122,10 +163,11 @@ export function useContainerWidth(ref: RefObject<HTMLElement | null>): number {
 export function usePaneWidth(i: { leftDockWidth: number; containerRef: RefObject<HTMLElement | null>; defaultWidth: number }): { width: number; max: number } {
   const preferred = usePaneWidthStore((s) => s.preferred);
   const hydrated = usePaneWidthStore((s) => s.hydrated);
+  const ready = usePaneWidthStore((s) => s.ready);
   const containerWidth = useContainerWidth(i.containerRef);
   useEffect(() => {
-    if (!hydrated) usePaneWidthStore.getState().hydrate();
-  }, [hydrated]);
+    if (ready && !hydrated) usePaneWidthStore.getState().hydrate();
+  }, [ready, hydrated]);
   return {
     width: effectiveWidth({ preferred, containerWidth, leftDockWidth: i.leftDockWidth, defaultWidth: i.defaultWidth }),
     max: paneWidthMax(containerWidth, i.leftDockWidth),
