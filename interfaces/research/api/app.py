@@ -2009,6 +2009,7 @@ def create_app(
                                     or (re.fullmatch(r"/projects/[^/]+/tabs/[^/]+(?:/(?:retired|allocate))?", path) is not None and method in {"GET", "PUT", "POST"})
                                     or (path == "/documents" and method == "GET")
                                     or (path == "/books" and method == "GET")
+                                    or (path == "/library" and method == "GET")
                                     or (path != "/books/curate" and re.fullmatch(r"/books/[^/]+(?:/(?:full-text|owner-full-text))?", path) is not None and method == "GET")
                                     or (re.fullmatch(r"/books/[^/]+/ask", path) is not None and method == "POST")
                                     or (re.fullmatch(r"/books/[^/]+/reading-state", path) is not None and method in {"GET", "PUT"})
