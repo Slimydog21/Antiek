@@ -8,6 +8,7 @@ import { WindowsLayer } from "../components/windows/WindowsLayer";
 import { WorkspaceWindow } from "../components/windows/WorkspaceWindow";
 import { useWindows } from "../workspace/windowsStore";
 import { installShortcuts } from "../workspace/shortcuts";
+import { setFeatureFlag } from "../lib/featureFlags";
 import { currentPlatform } from "../components/hotkeys/keymap";
 import { emitProductActivate } from "../components/hotkeys/bindings";
 
@@ -33,6 +34,9 @@ const originalUrl = "/write/deliverable-id?m=writing#section";
 beforeEach(() => {
   useWindows.getState().reset();
   localStorage.clear();
+  // These journeys exercise the packet's launcher build (the More → type →
+  // Enter path with the improved default selection), which rides pane.flow.
+  setFeatureFlag("pane.flow", true);
   vi.stubGlobal("innerWidth", 1440);
   vi.stubGlobal("innerHeight", 900);
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));

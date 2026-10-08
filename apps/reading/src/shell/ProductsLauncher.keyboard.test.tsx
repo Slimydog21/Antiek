@@ -3,9 +3,15 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { ProductsLauncher } from "./ProductsLauncher";
+import { setFeatureFlag } from "../lib/featureFlags";
 import { MAX_WINDOWS, useWindows } from "../workspace/windowsStore";
 
-beforeEach(() => useWindows.getState().reset());
+// The packet's restyle rides the pane.flow flag (ProductsLauncher.tsx is
+// the gate); these tests exercise the flag-ON build.
+beforeEach(() => {
+  setFeatureFlag("pane.flow", true);
+  useWindows.getState().reset();
+});
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function Host() {
