@@ -46,7 +46,7 @@ import { readNotebookDraft, writeNotebookDraft } from "../../lib/notebookDraftSt
  */
 
 import type { PanelKind, PanelMode } from "../../workspace/panel.types";
-import { isDocumentAnchor, type DocumentAnchor } from "../../workspace/contracts/anchor";
+import { paneActionProblem, type PaneReplyAction } from "../../workspace/agent/replyActionProtocol";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { postTypedEvent } from "../../lib/api";
 import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
@@ -111,21 +111,7 @@ export type AiAction =
   // ── SPR-07 (agent pane, M6): confirm-only kinds. dispatchAiAction has NO
   // side effect for them; the pane renders them as buttons the user
   // confirms (AgentReplyActions.tsx). Never auto-opened.
-  | {
-      kind: "open_document";
-      anchor: DocumentAnchor;
-    }
-  | {
-      kind: "open_writer";
-      deliverable_id: string;
-      block_id?: string;
-    }
-  | {
-      kind: "project_seed";
-      title: string;
-      prompt: string;
-      sources?: string[];
-    };
+  | PaneReplyAction;
 
 // ─── Parser ──────────────────────────────────────────────────────────
 
@@ -153,28 +139,6 @@ const VALID_ACTION_KINDS = new Set<AiAction["kind"]>([
   "open_writer",
   "project_seed",
 ]);
-
-/** SPR-07: the three pane kinds get real shape checks (the legacy kinds
- *  keep their "defer to the executor" discipline). Null = valid. */
-function paneActionProblem(item: Record<string, unknown>): string | null {
-  switch (item.kind) {
-    case "open_document":
-      return isDocumentAnchor(item.anchor) ? null : "open_document: anchor is not a DocumentAnchor";
-    case "open_writer":
-      if (typeof item.deliverable_id !== "string" || !item.deliverable_id) return "open_writer: deliverable_id required";
-      if (item.block_id !== undefined && typeof item.block_id !== "string") return "open_writer: block_id must be a string";
-      return null;
-    case "project_seed":
-      if (typeof item.title !== "string" || !item.title) return "project_seed: title required";
-      if (typeof item.prompt !== "string" || !item.prompt) return "project_seed: prompt required";
-      if (item.sources !== undefined && !(Array.isArray(item.sources) && item.sources.every((x) => typeof x === "string"))) {
-        return "project_seed: sources must be an array of strings";
-      }
-      return null;
-    default:
-      return null;
-  }
-}
 
 /**
  * Parse an assistant reply. Returns the stripped prose + structured

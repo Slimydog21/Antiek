@@ -218,7 +218,7 @@ export function AgentComposer(p: AgentComposerProps) {
               className="inline-flex items-center gap-1 rounded-full border border-hairline bg-ice-1 dark:bg-charcoal-1 px-2 text-xxs font-mono text-ink dark:text-bright"
             >
               {chip.kind === "agent" ? "@" : "#"}{chip.label}
-              <button type="button" aria-label={`Remove ${chip.label}`} className="text-shadow-1 hover:text-bright" onClick={() => removeChip(chip)}>
+              <button type="button" aria-label={`Remove ${chip.label}`} className="text-shadow-1 hover:text-ink dark:hover:text-bright" onClick={() => removeChip(chip)}>
                 ×
               </button>
             </span>

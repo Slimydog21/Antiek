@@ -158,7 +158,6 @@ export function AgentThread({ turns, transportKind, lifecycle, interview, reduce
   const notice = statusRowFor(lifecycle.phase, { interview });
   return (
     <div className="relative flex-1 min-h-0">
-      <style>{"@keyframes antiek-agent-caret { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }"}</style>
       <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-3" data-agent-thread-scroll {...handlers}>
         {turns.map((turn, i) => (
           <Turn key={turn.id} turn={turn} index={i} transportKind={transportKind} reducedMotion={reducedMotion} />
