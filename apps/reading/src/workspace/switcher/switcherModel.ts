@@ -10,6 +10,19 @@
  *           selected) its children as drill targets, then the cross-project
  *           agents after a divider; selected = selection.agentId
  *
+ * RECORDED DEVIATION from the sprint page's rigor #3 wording ("every tab in
+ * gear N has its parent selected in gear N-1"; repair round
+ * 2026-10-07T22:40Z, F1): it holds literally up to selection depth 1. A
+ * gear-3 drill tab, once entered, makes the deepest node depth 2+; gear 3
+ * then lists THAT node's children and agents, whose parent is not a gear-2
+ * tab (gear 2 stays pinned at depth 1, so the chip's path keeps the whole
+ * chain). Three gears over an unbounded parent_investigation_id hierarchy
+ * (the one real hierarchy in production) cannot hold the literal wording
+ * beyond depth 1 without hiding the deeper nodes; the property kept, and
+ * proven in switcherModel.test.ts, is: a gear-N tab's parent is selected in
+ * gear N-1 whenever gear N-1 lists it, and is on the selected path always.
+ * Reversed by: a fourth gear per depth, or SPR-06 bounding the hierarchy.
+ *
  * Status before stale: a loading/error/unfed tree reports itself, and only
  * a ready tree can call a selection stale. Strips still derive from the
  * retained roots while loading, so an empty strip then says "loading" and

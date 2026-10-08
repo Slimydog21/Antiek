@@ -1,10 +1,14 @@
 /**
  * switcherModel.test.ts — SPR-04 M1: the gears are a pure function of the
  * SPR-06 tree and selection. Property-tested over 200 seeded trees from the
- * real pre-backend adapter (every tab in gear N has its parent selected in
- * gear N-1), plus the named degenerate cases (rigor #3) and the honesty
- * cases (rigor #1: never "Sub-project" pre-backend; an empty pre-backend
- * gear 2 never asserts absence).
+ * real pre-backend adapter: every gear-2 tab's parent is the selected root,
+ * every gear-3 node tab's parent is the deepest node on the selected path
+ * (the literal "selected in gear N-1" holds up to depth 1 and is a recorded
+ * deviation beyond it, switcherModel.ts header; the chain block below
+ * states and proves the property that actually holds), plus the named
+ * degenerate cases (rigor #3) and the honesty cases (rigor #1: never
+ * "Sub-project" pre-backend; an empty pre-backend gear 2 never asserts
+ * absence).
  */
 import { describe, expect, it } from "vitest";
 
@@ -241,5 +245,53 @@ describe("deriveSwitcher — the named fixtures", () => {
     expect(labels).toEqual(["Default project Default project", "Investigation Question inv-root", "Investigation Question inv-child"]);
     expect(m.strips[0].heading).toBe("Projects");
     expect(m.strips[2].heading).toBe("Agents");
+  });
+});
+
+describe("rigor #3 — the gear chain, as it actually holds (repair round 2026-10-07T22:40Z)", () => {
+  // The sprint page's literal wording, "every tab in gear N has its parent
+  // selected in gear N-1", holds up to selection depth 1 and is a recorded
+  // deviation beyond it (switcherModel.ts header): three gears over an
+  // unbounded parent_investigation_id hierarchy cannot hold it at depth 2+
+  // without hiding the deeper nodes. The property proven here is the one
+  // the design keeps: a gear-N tab's parent is selected in gear N-1
+  // whenever gear N-1 lists it, and is on the chip's selected path always.
+  it.each(SEEDS)("seed %i", (seed) => {
+    const tree = deepFreeze(genTree(seed));
+    for (const sel of selectionsFor(tree).valid) {
+      const m = deriveSwitcher(tree, sel);
+      const [g1, g2, g3] = m.strips;
+      const depth = m.path.filter((t) => t.role !== "agent").length - 1;
+      const pathIds = new Set(m.path.filter((t) => t.role !== "agent").map((t) => t.id));
+      const selectedIn = (s: GearStrip) => new Set(s.tabs.filter((t) => t.selected).map((t) => t.id));
+      for (const t of g2.tabs) expect(selectedIn(g1).has(t.parentId!)).toBe(true);
+      for (const t of g3.tabs) {
+        if (t.agent?.scope === "cross-project") continue;
+        expect(t.parentId).not.toBeNull();
+        expect(pathIds.has(t.parentId!)).toBe(true);
+        const listedInGear2 = g2.tabs.some((x) => x.id === t.parentId);
+        if (depth <= 1) {
+          // Literal rigor #3 at depth 0/1: the parent is the selected gear-2
+          // tab (a sub-project) or the selected gear-1 root (depth 0).
+          expect(depth === 0 ? selectedIn(g1).has(t.parentId!) : selectedIn(g2).has(t.parentId!)).toBe(true);
+        } else {
+          // The recorded deviation: the parent is the deepest path node,
+          // a descendant of the selected gear-2 tab, not listed in gear 2.
+          expect(listedInGear2).toBe(false);
+          expect(t.parentId).toBe(m.path.filter((x) => x.role !== "agent").at(-1)!.id);
+        }
+      }
+    }
+  });
+
+  it("the deviation is exercised, not vacuous: the seeds reach depth 2+ selections", () => {
+    let deep = 0;
+    for (const seed of SEEDS) {
+      const tree = genTree(seed);
+      for (const sel of selectionsFor(tree).valid) {
+        if (deriveSwitcher(tree, sel).path.filter((t) => t.role !== "agent").length > 2) deep += 1;
+      }
+    }
+    expect(deep).toBeGreaterThan(100);
   });
 });
