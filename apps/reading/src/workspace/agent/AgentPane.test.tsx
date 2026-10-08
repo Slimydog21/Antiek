@@ -340,6 +340,27 @@ describe("the 8 s no-reply fallback at the pane (M8, repair C3)", () => {
     expect(transport.send).toHaveBeenCalledTimes(2);
     expect(document.querySelector("[data-lifecycle-notice]")!.textContent).not.toContain("couldn't get started");
   });
+
+  it("a reply at 7 900 ms is never overwritten by the 8 s timer: 30 s on, the answer stands, no failure copy, no Retry (second repair, finding 2)", async () => {
+    const transport: AgentTransport = {
+      kind: "whole",
+      send: vi.fn((req: AgentTransportRequest) => new Promise((resolve, reject) => {
+        const t = setTimeout(() => resolve({ text: "Which era shall we study first, the 1830s or the 1970s?", shape: "SYNTHESIS" as const }), 7900);
+        req.signal.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("aborted", "AbortError")); });
+      })),
+    };
+    host(transport, { interview: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(7950); });
+    expect(document.querySelector("[data-agent-turn]")!.textContent).toContain("Which era");
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+    const turnEl = document.querySelector("[data-agent-turn]")!;
+    expect(turnEl.textContent).toContain("Which era");
+    expect(document.body.textContent).not.toContain("couldn't");
+    expect(document.querySelector("[data-lifecycle-notice]")?.textContent ?? "").not.toMatch(/retry/i);
+    const thread = Object.values(useAgentThreads.getState().threads)[0];
+    expect(thread.map((t) => [t.status, t.answer !== null])).toEqual([["done", true]]);
+    expect(transport.send).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("the draft survives close/reopen (M1)", () => {

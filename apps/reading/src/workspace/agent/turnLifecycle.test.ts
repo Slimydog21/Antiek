@@ -46,6 +46,19 @@ describe("createTurnRunner", () => {
     expect(replies.at(-1)?.text).toBe("a reply");
   });
 
+  it("a reply at 7 900 ms suppresses the fallback for good: 30 s later the phases are exactly [sent, done] (second repair, finding 2)", async () => {
+    const transport = transportResolvingAt(NO_REPLY_MS - 100);
+    const states: LifecycleState[] = [];
+    const runner = createTurnRunner({ transport, request, onState: (s) => states.push(s) });
+    runner.send();
+    await vi.advanceTimersByTimeAsync(NO_REPLY_MS - 100);
+    expect(states.at(-1)!.phase).toBe("done");
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(states.map((s) => s.phase)).toEqual(["sent", "done"]);
+    expect(runner.state().reason).toBeNull();
+    expect(statusRowFor(runner.state().phase, { interview: true })).toBeNull();
+  });
+
   it("Retry during the fallback aborts the first request and sends once; the aborted first reply is dropped", async () => {
     const transport = transportResolvingAt(9000);
     const states: LifecycleState[] = [];
