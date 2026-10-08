@@ -22,17 +22,15 @@
 #
 #   UFW (setup.yml §3) allows 22 only; 80/443 are closed.
 #
-# ORIGIN CERT STORY — UNRESOLVED. This file still has no `tls`
-# directive, so Caddy defaults to automatic ACME for api.antiek.ai.
-# That cannot succeed here: a box the internet cannot reach cannot
-# complete validation — neither the port-80 ACME challenge nor
-# TLS-ALPN-01 can be answered while 80/443 stay closed behind the
-# proxied record. And because the tunnel connects with noTLSVerify, an
-# expired origin cert would keep serving silently. Resolution is
-# SPR-09 task 9 (~/specs/antiek-v1-connect/SPR-09-infra-scale.md); the
-# decision will be recorded in docs/decisions/caddy-cert-strategy-2026-09-20.md
-# after the operator captures `caddy list-certificates` on the box.
-# Until then nothing about the certificate mechanism changes here.
+# ORIGIN CERT: decided in docs/decisions/caddy-cert-strategy-2026-10.md:
+# `tls internal` (Caddy's local CA). ACME cannot validate a box the
+# internet cannot reach: neither HTTP-01 nor TLS-ALPN-01 can be answered
+# while 80/443 stay closed behind the proxied record, and a fresh host
+# therefore had no certificate at all (handshake "internal error", every
+# request a 502; restore rehearsal 2026-10-07, defect D3). The only TLS
+# client is cloudflared over loopback with noTLSVerify, which checks no
+# certificate, so a locally issued one loses nothing and renews with no
+# network. Where it is selected: see the site block below.
 #
 # Why Caddy not nginx?
 #   1. Path routing API-vs-SPA on loopback: one `route` block sends the
@@ -58,6 +56,18 @@
 
 {{ api_domain }} {
     bind 127.0.0.1
+    # Origin certificate. caddy_origin_tls=internal pins the local CA here.
+    # Otherwise the host decides: infrastructure/terraform-aws writes
+    # /etc/caddy/origin-tls.d/internal.caddy (`tls internal`) at first boot,
+    # so the deploy workflow's generated inventory, which carries no host
+    # variables, cannot drop it. A host without that directory (the Hetzner
+    # box) adapts to exactly its previous config: a glob with no match
+    # imports nothing.
+{% if caddy_origin_tls | default('') == 'internal' %}
+    tls internal
+{% else %}
+    import /etc/caddy/origin-tls.d/*.caddy
+{% endif %}
     # ── Path-based routing via `route` ────────────────────────────────
     # `route` preserves the order of inner directives; without it,
     # Caddy reorders by global default (file_server runs LAST,
