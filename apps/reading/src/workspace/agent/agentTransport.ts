@@ -38,6 +38,25 @@ export interface AgentTransport {
   send(req: AgentTransportRequest): Promise<AgentTransportReply>;
 }
 
+function isReplyObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function decodeAgentReply(value: unknown): AgentTransportReply {
+  if (!isReplyObject(value)) throw new Error("Agent response is not an object");
+  const text = value.text ?? value.body ?? "";
+  if (typeof text !== "string") throw new Error("Agent response text is not a string");
+  const status = value.library_retrieval_status;
+  if (status !== undefined && status !== null && typeof status !== "string") {
+    throw new Error("Agent response retrieval status is invalid");
+  }
+  return {
+    text,
+    shape: normalizeThoughtPartnerShape(value.shape),
+    ...(status !== undefined ? { libraryRetrievalStatus: status } : {}),
+  };
+}
+
 export const thoughtPartnerTransport: AgentTransport = {
   kind: "whole",
   async send(req) {
@@ -55,12 +74,7 @@ export const thoughtPartnerTransport: AgentTransport = {
     if (!resp.ok) {
       throw new ApiError(`POST /thought-partner failed: HTTP ${resp.status}`, resp.status, await resp.text());
     }
-    const data = (await resp.json()) as { text?: string; body?: string; shape?: unknown; library_retrieval_status?: string | null };
-    return {
-      text: data.text ?? data.body ?? "",
-      shape: normalizeThoughtPartnerShape(data.shape),
-      ...(data.library_retrieval_status !== undefined ? { libraryRetrievalStatus: data.library_retrieval_status } : {}),
-    };
+    return decodeAgentReply(await resp.json());
   },
 };
 
