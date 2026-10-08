@@ -86,7 +86,19 @@ describe("open and close", () => {
     // The prefix does not arm from inside the modal.
     await chord("ctrl+b", list());
     expect(prefixState.isArmed()).toBe(false);
-    await chord("ctrl+alt+g", list(), { key: "g" });
+    // The real Mac keydown: option composes "©" (keymapTestKit), the chord
+    // still matches the physical key, and a listbox is not a text field.
+    await chord("ctrl+alt+g", list());
+    await waitFor(() => expect(dialog()).toBeNull());
+  });
+
+  it("inside the picker's search box the composed glyph is the field's: ctrl+alt+g as '©' does not close it, the plain letter does (the text rule holds in a modal)", async () => {
+    render(<AgentGoto />);
+    await open();
+    act(() => search().focus());
+    await chord("ctrl+alt+g", search());
+    expect(dialog()).not.toBeNull();
+    await chord("ctrl+alt+g", search(), { key: "g" });
     await waitFor(() => expect(dialog()).toBeNull());
   });
 

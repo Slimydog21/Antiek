@@ -589,7 +589,13 @@ export function installShortcuts(
     if (row) {
       if (row.status === "unimplemented") return null;
       if (!scopeAllows(row, ctx)) return null;
-      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e)) return null;
+      // The composed-glyph rule is a TEXT rule (keymap.ts chordTypesText): a
+      // Mac option glyph or an AltGr character belongs to the field it would
+      // type into. A modal whose focus is not a text field (the goto
+      // picker's listbox) cannot type it, so its owner's chord twin fires
+      // there (ffx-kpa-spr-10 critic BLOCKER: the mac guard leg sent "©").
+      const inText = ctx.kind === "text" || (ctx.kind === "modal" && ctx.text);
+      if (inText && parseCombo(row.chord!).alt && chordTypesText(e)) return null;
       if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return null;
       return { row };
     }

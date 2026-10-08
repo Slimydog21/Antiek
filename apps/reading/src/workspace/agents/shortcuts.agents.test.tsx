@@ -123,13 +123,14 @@ describe("agents.goto (prefix+shift+g / ctrl+alt+g)", () => {
     expect(prefixState.isArmed()).toBe(false);
     key("shift+g", inner);
     expect(seen).toHaveBeenCalledTimes(2);
-    // Outside a text field Chromium reports the plain letter for a
-    // ctrl+option chord (keymap-guard.py models the glyph only in text).
-    const e = key("ctrl+alt+g", inner, { key: "g" });
+    // The real Mac keydown composes "©" for option+g (keymapTestKit's
+    // model, and what the guard's browser leg dispatches). A modal that is
+    // not a text field cannot type it, so the chord twin must still fire.
+    const e = key("ctrl+alt+g", inner);
     expect(e.defaultPrevented).toBe(true);
     expect(seen).toHaveBeenCalledTimes(3);
     // Another action's chord stays the dialog's.
-    const other = key("ctrl+alt+c", inner, { key: "c" });
+    const other = key("ctrl+alt+c", inner);
     expect(other.defaultPrevented).toBe(false);
     window.removeEventListener(SHORTCUT_EVENTS.AGENT_GOTO_TOGGLE, seen);
   });
