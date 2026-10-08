@@ -34,7 +34,10 @@ def default_db_path() -> str:
 
 
 def ensure_initialized(
-    db_path: str | None = None, *, timeout_s: float | None = None
+    db_path: str | None = None,
+    *,
+    timeout_s: float | None = None,
+    refuse_reader_probe_busy: bool = False,
 ) -> str:
     """Make sure the schema is present at ``db_path``. Returns the
     resolved path. Idempotent — CREATE IF NOT EXISTS is the workhorse.
@@ -46,10 +49,14 @@ def ensure_initialized(
     ``timeout_s`` bounds the write-lock wait on the cold path (schema
     absent, or the read-only probe refused because another process holds
     the file). ``None`` keeps ``connect_write``'s default.
+    Reader callers can opt into refusing busy read probes without entering
+    that schema writer wait. Missing schema still initializes normally.
     """
     resolved = db_path or default_db_path()
     from .schema import init_database_at_path
-    init_database_at_path(resolved, timeout_s=timeout_s)
+    init_database_at_path(
+        resolved, timeout_s=timeout_s, refuse_reader_probe_busy=refuse_reader_probe_busy
+    )
     return resolved
 
 

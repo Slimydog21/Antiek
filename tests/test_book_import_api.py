@@ -48,7 +48,7 @@ def _client(tmp_path: Path, monkeypatch) -> tuple[TestClient, str]:
         init_database(writer)
     finally:
         writer.close()
-    monkeypatch.setattr(books_api, "_resolve_db_path", lambda: db)
+    monkeypatch.setattr(books_api, "_resolve_db_path", lambda *, refuse_reader_probe_busy=False: db)
     monkeypatch.setenv("ANTIEK_EVENTS_DIR", str(tmp_path / "events"))
     app = FastAPI()
     books_api.register_book_routes(app)
