@@ -159,6 +159,43 @@ describe("the companion subscription marks seen on activation with focus and a v
   });
 });
 
+describe("the 3 s startup grace (recorded interpretation: from the store's start, toasts only)", () => {
+  it("a completion committed at +2999 from start emits a transition with no toast; the same at +3000 toasts 'finished'", () => {
+    publishFixture();
+    const events: { prev?: string; next: string; transition: unknown }[] = [];
+    const un = subscribeTransitions((t) => events.push({ prev: t.prev, next: t.next, transition: t.transition }));
+    observe("in_progress");
+    now = 100_000 + 2999 - DEBOUNCE.confirmations * DEBOUNCE.intervalMs;
+    observe("completed"); // commits at startedAt + 2999
+    expect(useAgentStatusStore.getState().raw.get("X")?.status).toBe("completed");
+    const inGrace = events.filter((e) => e.prev === "working" && e.next === "done");
+    expect(inGrace).toHaveLength(1);
+    expect(inGrace[0].transition).toBeNull();
+    expect(peek().visible).toBeNull();
+
+    act(() => useAgentStatusStore.getState().reset()); // startedAt = now
+    publishFixture();
+    events.length = 0;
+    const started = now;
+    observe("in_progress");
+    now = started + 3000 - DEBOUNCE.confirmations * DEBOUNCE.intervalMs;
+    observe("completed"); // commits at startedAt + 3000
+    const after = events.filter((e) => e.prev === "working" && e.next === "done");
+    expect(after).toHaveLength(1);
+    expect(after[0].transition).toEqual({ kind: "finished" });
+    expect(peek().visible?.kind).toBe("finished");
+    un();
+  });
+
+  it("the grace does not delay the debounce: working→completed commits at +300 inside it, so the badge is right before the toast is allowed", () => {
+    publishFixture();
+    observe("in_progress");
+    observe("completed");
+    expect(inStartupGrace(100_000, now)).toBe(true);
+    expect(useAgentStatusStore.getState().raw.get("X")?.status).toBe("completed");
+  });
+});
+
 describe("owner epoch", () => {
   it("after setWorkspaceOwner(other): raw empty, queue empty, inStartupGrace true, no toast for 3 s under the new epoch", () => {
     publishFixture({ tabOnX: true });

@@ -80,6 +80,8 @@ export function debounceStep(state: DebounceState | undefined, obs: DebounceObse
   };
 }
 
+/** True for the first 3 s after `startedAt` (the store's start, not a run's).
+ *  The grace gates toasts only; the debounce and the commits run inside it. */
 export function inStartupGrace(startedAt: number, now: number): boolean {
   return now - startedAt < DEBOUNCE.startupGraceMs;
 }

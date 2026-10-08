@@ -152,6 +152,13 @@ export const useAgentStatusStore = create<AgentStatusState>()((set, get) => {
     const lastSeen = entry.investigationId !== undefined ? lastSeenAt(entry.investigationId) : null;
     const prev = before ? attentionOf(before, lastSeen).state : undefined;
     const next = attentionOf(after, lastSeen).state;
+    // The 3 s startup grace (herdr R19) is measured from the store's start
+    // (and from each owner-epoch reset), not per run, and it suppresses
+    // TOASTS only: debouncing and raw commits run inside it, so a badge is
+    // right from the first poll and only the notification waits. herdr's
+    // grace is per-pane detection (agent_detection.rs:5-13); this is the
+    // recorded interpretation for a list source with no per-run start
+    // (ffx-kpa-spr-10 critic MINOR, INBOX 2026-10-07T23:06Z).
     const startedAt = get().startedAt ?? at;
     const transition = toastFor(prev, next, { isActiveView: isActiveView(entry), inStartupGrace: inStartupGrace(startedAt, at) });
     const ev: TransitionEvent = { runId: id, entry, prev, next, transition };
