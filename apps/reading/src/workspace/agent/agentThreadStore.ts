@@ -80,9 +80,12 @@ export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
     return id;
   },
 
+  /** A late reply healing the 8 s fallback streams into a FAILED turn: the
+   *  turn runs again, so failTurn's endedAt and error are cleared here (the
+   *  elapsed timer reads endedAt; completeTurn re-stamps it). */
   streamTurn: (key, id, partial) =>
     set((s) => ({
-      threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "streaming", answer: partial } : t)) },
+      threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "streaming", answer: partial, error: null, endedAt: undefined } : t)) },
     })),
 
   completeTurn: (key, id, input) =>

@@ -54,4 +54,17 @@ describe("agentThread", () => {
     expect(store().threads[key][0]).toMatchObject({ status: "streaming", answer: "par" });
     expect(historyFor(store().threads[key])).toEqual([]);
   });
+
+  it("a late reply healing the 8 s fallback: streamTurn on a failed turn clears endedAt and error, so the turn runs again (second repair, finding 5)", () => {
+    const id = store().startTurn(key, "q");
+    store().failTurn(key, id, null);
+    expect(store().threads[key][0]).toMatchObject({ status: "failed", answer: null, error: null });
+    expect(store().threads[key][0].endedAt).toEqual(expect.any(Number));
+    store().streamTurn(key, id, "par");
+    expect(store().threads[key][0]).toMatchObject({ status: "streaming", answer: "par", error: null });
+    expect(store().threads[key][0].endedAt).toBeUndefined();
+    store().completeTurn(key, id, { answer: "whole", shape: "SYNTHESIS", actions: [] });
+    expect(store().threads[key][0].endedAt).toEqual(expect.any(Number));
+    expect(historyFor(store().threads[key])).toEqual([{ question: "q", answer: "whole" }]);
+  });
 });
