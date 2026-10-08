@@ -1,0 +1,37 @@
+# Antiek production Ansible inventory for the AWS host — TEMPLATE.
+#
+# Copy to `inventory.aws.ini` IN THIS DIRECTORY (gitignored like
+# inventory.ini) and fill in the Elastic IP from
+#   terraform -chdir=../terraform-aws output -raw prod_public_ip
+# or paste the whole host line from `output -raw inventory_aws_ini_line`.
+#
+# Keep it next to group_vars/: Ansible loads group_vars relative to the
+# inventory, and an inventory anywhere else fails with "antiek_group is
+# undefined" (restore rehearsal 2026-10-07, defect D10).
+#
+# Same shape as inventory.ini.example, and the same deploy contract:
+#   - ansible_user=root. Ubuntu AMIs disable root login; the AWS host's
+#     cloud-init re-enables it key-only with exactly the operator and
+#     GitHub-deploy keys (infrastructure/terraform-aws/prod.tf), because
+#     setup.yml, deploy_atomic.yml and the deploy workflow all connect as
+#     root. The hardening path off root SSH is in
+#     infrastructure/terraform-aws/README.md.
+#   - one host in [antiek_prod]; the playbooks target that group.
+#
+# caddy_origin_tls=internal renders `tls internal` into the Caddyfile
+# (docs/decisions/caddy-cert-strategy-2026-10.md). The host ALSO declares it
+# in /etc/caddy/origin-tls.d/internal.caddy, which every render imports, so
+# a deploy through the CI workflow's generated inventory (no host vars)
+# arrives at the same config. Setting it here keeps manual runs explicit.
+#
+# Usage, from infrastructure/ansible/:
+#   ansible-playbook -i inventory.aws.ini playbooks/setup.yml \
+#     -e @r2-creds.yml --skip-tags cloudflared
+#   (full sequence and the order of steps: infrastructure/runbooks/aws-cutover.md)
+
+[antiek_prod]
+antiek-prod-eun1 ansible_host=<ELASTIC_IP_FROM_TERRAFORM_OUTPUT> ansible_user=root ansible_ssh_private_key_file=~/.ssh/antiek_ed25519
+
+[antiek_prod:vars]
+ansible_python_interpreter=/usr/bin/python3
+caddy_origin_tls=internal
