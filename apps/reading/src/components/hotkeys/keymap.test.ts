@@ -377,7 +377,7 @@ describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shift+j (ju
     expect(chordRow?.origin).toBe("lane-A-proposed");
   });
 
-  it("negative controls: the literal herdr keys o and g are duplicates here, and so is #3751's shift+o; a and ctrl+alt+a stay island.open's reserve", () => {
+  it("negative controls: the literal herdr keys o and g are duplicates here, and so is PR 3751's shift+o; a and ctrl+alt+a stay island.open's reserve", () => {
     const probe = (over: Partial<KeymapRow>): KeymapRow => ({ id: "probe", action: "agents.gotoToast", scope: "outside-text", origin: "lane-A-proposed", decision: "probe", ...over } as KeymapRow);
     expect(validateKeymap([...KEYMAP, probe({ prefixKey: "o" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-tab-child") }));
     // The sprint's first binding (shift+o / ctrl+alt+shift+o) is #3751's switcher.open; with those rows present it is a duplicate.
@@ -392,7 +392,7 @@ describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shift+j (ju
     expect(RESERVED_FOR_LATER.chords).toContain("ctrl+alt+a");
   });
 
-  it("no collision with the open lanes' rows: #3751's switcher.open (prefix+shift+o / ctrl+alt+shift+o) and SPR-07's agent.openPane (a / ctrl+alt+a) added to KEYMAP leave validateKeymap at [] on both platforms", () => {
+  it("no collision with the open lanes' rows: PR 3751's switcher.open (prefix+shift+o / ctrl+alt+shift+o) and SPR-07's agent.openPane (a / ctrl+alt+a) added to KEYMAP leave validateKeymap at [] on both platforms", () => {
     const D = "probe";
     const lanes: KeymapRow[] = [
       { id: "prefix-switcher-open", action: "switcher.open" as ActionId, status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-A-proposed", decision: D },

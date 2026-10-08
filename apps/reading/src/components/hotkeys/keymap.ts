@@ -228,7 +228,7 @@ export const KEYMAP: readonly KeymapRow[] = [
   // the plain letter; the picker is g shifted (the shift+p / shift+c
   // precedent). Both pending ratification; the sprint page's literal prefix+o
   // cannot be met while tab.visitChild owns it (INBOX 2026-10-07T23:06Z).
-  { id: "prefix-agents-toast", action: "agents.gotoToast", status: "implemented", prefixKey: "shift+j", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+o is tab.visitChild, shift+o is #3751 switcher.open; j = jump), pending ratification" },
+  { id: "prefix-agents-toast", action: "agents.gotoToast", status: "implemented", prefixKey: "shift+j", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+o is tab.visitChild, shift+o is PR 3751 switcher.open; j = jump), pending ratification" },
   { id: "chord-agents-toast", action: "agents.gotoToast", status: "implemented", chord: "ctrl+alt+shift+j", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z, pending ratification" },
   { id: "prefix-agents-goto", action: "agents.goto", status: "implemented", prefixKey: "shift+g", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+g stays palette.toggle), pending ratification" },
   { id: "chord-agents-goto", action: "agents.goto", status: "implemented", chord: "ctrl+alt+g", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z; the chord is what closes the picker from inside it (shortcuts.ts scopeAllows), pending ratification" },
