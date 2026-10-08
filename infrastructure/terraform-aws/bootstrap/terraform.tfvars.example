@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+
+alert_email = "operator@example.com"
+
+# account_monthly_budget_usd     = 500
+# state_bucket_name              = null   # derives antiek-tfstate-<account>-eu-north-1
+# activate_cost_allocation_tags  = false  # flip to true ~24 h after the main root's first apply

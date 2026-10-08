@@ -1,0 +1,467 @@
+/**
+ * AgentPane.tsx — the agent second pane's Surface (SPR-07).
+ *
+ * STATE MACHINE (decision 5; refs pattern 7)
+ *   closed ──openAgentPane──▶ opening ──mount──▶ open
+ *   open ──Esc on root / × / drag past 244 px──▶ closing [linger 240 ms, root inert,
+ *          data-closing: opacity .16 s + translate; reduced motion snaps]
+ *   closing ──CLOSE_LINGER_MS──▶ closed  (companionStore.closeAgentTabWithUndo, 10 s Undo,
+ *          then focus returns: the next visible companion tab's root, else [data-pane="left"])
+ *
+ * ESCAPE LADDER (refs pattern 10; composerKeys.nextEscapeRung)
+ *   rung        where              what one Esc does
+ *   picker      composer           closes the @/# listbox
+ *   recording   composer           stops the (stub) recording
+ *   chip        composer           removes the context chip, announces "Context removed"
+ *   blur        composer           moves focus to the pane root ([data-agent-pane], tabIndex -1)
+ *   close       root               closeAgentPane (the linger above)
+ *   Every handled Esc is preventDefault + stopPropagation, so PanelLayout's
+ *   fullscreen Escape owner never double-fires.
+ *
+ * HOSTS: companionRegistry.AgentPaneSurface (a companion tab carrying
+ * `agentId`; opened by openAgentPane.ts from prefix+a / ctrl+alt+a and the
+ * #pane=agent:<id> deep link), the story, and the vitest hosts. Scope is
+ * enforced in this browser only (rigor #1): the server sees one
+ * /thought-partner route with no project identity; the badge says so.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { awaitWorkspaceOwnerSession, workspaceOwnerAdmission, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+
+import { parseAssistantReply, type AiAction } from "../../components/ai/aiActions";
+import { getReadingFocus, READING_FOCUS_EVENT, type ReadingFocus } from "../../lib/readingFocus";
+import { useContextTree } from "../contracts/treeStore";
+import { useSelection } from "../contracts/selection";
+import { anchorKey } from "../contracts/anchor";
+import { useTabTrees } from "../tabTreeStore";
+import { useTabTitles, titleKey } from "../tabTitles";
+import { tabVisible, useCompanion } from "../companionStore";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
+import { isTextEditing } from "../shortcuts";
+import { AgentComposer } from "./AgentComposer";
+import { AgentEmptyState } from "./AgentEmptyState";
+import { AgentReplyActions } from "./AgentReplyActions";
+import { AgentThread } from "./AgentThread";
+import { useAgentDraft } from "./agentDraft";
+import { agentDraftKey } from "./agentPaneId";
+import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore, captureAgentPaneLease, isCurrentAgentPaneLease, useAgentOwnerAdmission, type AgentPaneLease } from "./agentPaneStore";
+import { historyFor, useAgentThreads, type AgentTurn } from "./agentThreadStore";
+import { agentSystemContext, failureReasonOf, projectTreeSummary, thoughtPartnerTransport, type AgentTransport, type AgentTransportReply } from "./agentTransport";
+import { PANE, type AgentPaneTab } from "./agentTypes";
+import { chipText, verifyQuoteAgainstFocus } from "./anchorContext";
+import { serializeDraft, sourceCandidates, type ComposerChip } from "./composerChips";
+import type { EscapeRung } from "./composerKeys";
+import { INTERVIEW_FIRST_TURN, dispatchProjectSeed, parseOptionCard, type OptionCard } from "./interviewMode";
+import { PaneHashSync, useInRouterContext } from "./paneHash";
+import { simulateStream } from "./simulatedStream";
+import { IDLE, createTurnRunner, isConfirmedAgentOwner, type LifecycleState, type TurnRunner } from "./turnLifecycle";
+
+export { CLOSE_LINGER_MS };
+
+/** The sr-only status region announces after a short beat (refs pattern 2). */
+const ANNOUNCE_DELAY_MS = 50;
+
+export interface AgentPaneProps {
+  tab: AgentPaneTab;
+  /** The transport seam (fix 2); the thought-partner whole-reply transport by default. */
+  transport?: AgentTransport;
+  interview?: boolean;
+  /** False while another companion tab is active (paste-anywhere is not installed). */
+  active?: boolean;
+  /** Observation seam for tests: every rung walked, "close" included. */
+  onEscapeRung?: (rung: EscapeRung) => void;
+}
+
+const EMPTY_TURNS: readonly AgentTurn[] = Object.freeze([]);
+
+function useReadingFocusLive(): ReadingFocus | null {
+  const [focus, setFocus] = useState<ReadingFocus | null>(() => getReadingFocus());
+  useEffect(() => {
+    const onFocus = () => setFocus(getReadingFocus());
+    window.addEventListener(READING_FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(READING_FOCUS_EVENT, onFocus);
+  }, []);
+  return focus;
+}
+
+/** The open left reader tabs (the honest pre-tree source list). */
+function useLeftReaderTabs(): { id: string; title: string }[] {
+  const tree = useTabTrees((s) => s.trees.reading);
+  const entries = useTabTitles((s) => s.entries);
+  return useMemo(() => {
+    if (!tree) return [];
+    return Object.values(tree.nodes)
+      .filter((n) => n.kind === "reader" && !n.pruned_at)
+      .map((n) => {
+        const entry = entries[titleKey(n.kind, n.ref)];
+        return { id: n.ref, title: entry && entry.state === "known" && entry.title ? entry.title : n.ref };
+      });
+  }, [tree, entries]);
+}
+
+export function AgentPane(props: AgentPaneProps) {
+  const admission = useAgentOwnerAdmission();
+  // Subscribe to the actual companion descriptor; normal focus/anchor clones
+  // keep the lease, while removal/re-admission changes its incarnation.
+  useCompanion((s) => s.tabs.find((tab) => tab.id === props.tab.id));
+  const lease = captureAgentPaneLease(props.tab.id);
+  if (admission.session.subject === null || admission.state === "retiring" || admission.state === "failed" || !lease) return null;
+  return <AdmittedAgentPane key={`${admission.session.epoch}:${lease.incarnation}`} {...props} owner={admission.session} lease={lease} />;
+}
+
+function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview = false, active = true, onEscapeRung, owner, lease }: AgentPaneProps & { owner: WorkspaceOwnerSession; lease: AgentPaneLease }) {
+  const rootRef = useRef<HTMLElement>(null);
+  const key = tab.id;
+  const turns = useAgentThreads((s) => s.owner === owner ? s.threads[key] : undefined) ?? EMPTY_TURNS;
+  const closing = useAgentPaneStore((s) => Boolean(s.closing[tab.id]));
+  const recording = useAgentPaneStore((s) => Boolean(s.recording[tab.id]));
+  const openNonce = useAgentPaneStore((s) => s.openNonce[tab.id] ?? 0);
+  const chipDismissed = useAgentPaneStore((s) => s.chipDismissed[tab.id]);
+  const reducedMotion = usePrefersReducedMotion();
+  const focus = useReadingFocusLive();
+  const tree = useContextTree();
+  const selection = useSelection((s) => s.selection);
+  const leftTabs = useLeftReaderTabs();
+  const companionTabs = useCompanion((s) => s.tabs);
+  const projectFilter = useCompanion((s) => s.projectFilter);
+  const inRouter = useInRouterContext();
+
+  const draftKey = agentDraftKey({ ...(tab.projectId ? { projectId: tab.projectId } : {}), agentId: tab.agentId, pane: PANE });
+  const [draft, setDraft] = useAgentDraft(draftKey);
+  const [chips, setChips] = useState<ComposerChip[]>([]);
+  const [lifecycle, setLifecycle] = useState<LifecycleState>(IDLE);
+  const [status, setStatus] = useState("");
+  const runnerRef = useRef<TurnRunner | null>(null);
+  const streamCancel = useRef<() => void>(() => {});
+  const mounted = useRef(true);
+  const pendingSend = useRef<AbortController | null>(null);
+  const pendingStream = useRef<AbortController | null>(null);
+  const current = useCallback(() => {
+    const a = workspaceOwnerAdmission();
+    return mounted.current && a.session === owner && a.state !== "failed" && a.state !== "retiring" && isCurrentAgentPaneLease(lease);
+  }, [owner, lease]);
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const announce = useCallback((text: string) => {
+    if (announceTimer.current !== null) clearTimeout(announceTimer.current);
+    setStatus("");
+    announceTimer.current = setTimeout(() => { announceTimer.current = null; if (current() && isConfirmedAgentOwner(owner)) setStatus(text); }, ANNOUNCE_DELAY_MS);
+  }, [current, owner]);
+
+  // The anchor's quote, re-derived against the servable page (pattern 3 interim).
+  const anchor = tab.anchor;
+  const anchorId = anchor ? anchorKey(anchor) : null;
+  const verification = useMemo(() => (anchor ? verifyQuoteAgainstFocus(anchor, focus) : null), [anchor, focus]);
+  const chipVisible = Boolean(anchor && anchor.quoteHint && chipDismissed !== anchorId);
+  const prevAnchorId = useRef(anchorId);
+  useEffect(() => {
+    if (anchorId !== prevAnchorId.current) {
+      prevAnchorId.current = anchorId;
+      if (anchorId && anchor?.quoteHint) announce(`Context: ${chipText(anchor.quoteHint)}`);
+    }
+  }, [anchorId, anchor, announce]);
+
+  // The @agent picker offers exactly the agents the strip shows (finding 2):
+  // a tab the project filter hides is not a candidate, so hiding it in the
+  // strip and hiding it here are one rule (tabVisible).
+  const candidates = useMemo(() => ({
+    agents: companionTabs
+      .filter((t) => t.id !== tab.id && tabVisible(t, projectFilter))
+      .map((t) => ({ id: t.id, label: t.title })),
+    sources: sourceCandidates(tree, selection, leftTabs),
+  }), [companionTabs, projectFilter, tab.id, tree, selection, leftTabs]);
+
+  const systemContext = useCallback(() => agentSystemContext({
+    projectSummary: tab.scope === "project" && tab.projectId ? projectTreeSummary(tree, tab.projectId) : null,
+    scope: tab.scope,
+    ...(tab.projectId ? { projectId: tab.projectId } : {}),
+    focus,
+    verifiedQuote: chipVisible && verification && verification.quote ? verification.quote : null,
+    interview,
+  }), [tab.scope, tab.projectId, tree, focus, chipVisible, verification, interview]);
+
+  const finishTurn = useCallback((turnId: string, reply: AgentTransportReply) => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
+    const { prose, actions } = parseAssistantReply(reply.text);
+    const parsed = interview ? parseOptionCard(prose || reply.text) : { prose: prose || reply.text, card: null };
+    streamCancel.current(); pendingStream.current?.abort();
+    const stream = new AbortController();
+    pendingStream.current = stream;
+    let chunk = 0;
+    streamCancel.current = simulateStream(parsed.prose, (sofar, done) => {
+      const position = ++chunk;
+      const adopt = (ok: boolean) => {
+        if (!ok || stream.signal.aborted || pendingStream.current !== stream || position !== chunk || !current() || !isConfirmedAgentOwner(owner)) return;
+        const store = useAgentThreads.getState();
+        if (done) {
+          store.completeTurn(key, turnId, {
+            answer: sofar, shape: reply.shape, actions,
+            ...(reply.libraryRetrievalStatus !== undefined ? { libraryRetrievalStatus: reply.libraryRetrievalStatus } : {}),
+            ...(parsed.card ? { optionCard: parsed.card } : {}),
+          }, owner);
+          setLifecycle(IDLE);
+        } else store.streamTurn(key, turnId, sofar, owner);
+      };
+      if (isConfirmedAgentOwner(owner)) adopt(true);
+      else void awaitWorkspaceOwnerSession(owner, stream.signal).then(adopt);
+    }, { reducedMotion });
+  }, [interview, key, reducedMotion, current, owner]);
+
+  const send = useCallback((text: string, opts: { hidden?: boolean } = {}) => {
+    const prompt = opts.hidden ? text : serializeDraft(chips, text.trim());
+    if (!prompt || !current()) return;
+    pendingSend.current?.abort();
+    const attempt = new AbortController();
+    pendingSend.current = attempt;
+    const context = systemContext();
+    const dispatch = (ok: boolean) => {
+      if (!ok || attempt.signal.aborted || pendingSend.current !== attempt || !current() || !isConfirmedAgentOwner(owner)) return;
+      const store = useAgentThreads.getState();
+      const history = historyFor(store.owner === owner ? store.threads[key] : undefined);
+      const turnId = store.startTurn(key, prompt, opts, owner);
+      if (turnId === null) return;
+      runnerRef.current?.dispose(); streamCancel.current(); pendingStream.current?.abort();
+      const runner = createTurnRunner({
+        owner, current,
+        transport,
+        request: () => ({ prompt, history, system_context: context }),
+        onState: (state, reply) => {
+          if (runnerRef.current !== runner || !current() || !isConfirmedAgentOwner(owner)) return;
+          setLifecycle(state);
+          if (state.phase === "done" && reply) finishTurn(turnId, reply);
+          if (state.phase === "failed") useAgentThreads.getState().failTurn(key, turnId, state.error === null ? null : failureReasonOf(new Error(state.error)), owner);
+          if (state.phase === "sent") {
+            const turn = useAgentThreads.getState().threads[key]?.find((x) => x.id === turnId);
+            if (turn?.status === "failed") useAgentThreads.getState().reopenTurn(key, turnId, owner);
+          }
+        },
+      });
+      runnerRef.current = runner;
+      runner.send();
+      if (!opts.hidden) { setDraft(""); setChips([]); }
+    };
+    if (isConfirmedAgentOwner(owner)) dispatch(true);
+    else void awaitWorkspaceOwnerSession(owner, attempt.signal).then(dispatch);
+  }, [chips, key, transport, systemContext, finishTurn, setDraft, current, owner]);
+
+  // The interview's hidden first turn, once per tab.
+  const interviewStarted = useRef(false);
+  useEffect(() => {
+    if (!interview || interviewStarted.current || turns.length > 0) return;
+    interviewStarted.current = true;
+    send(INTERVIEW_FIRST_TURN, { hidden: true });
+  }, [interview, turns.length, send]);
+
+  // An inert surface holds no focus: the moment the linger starts, focus
+  // leaves the root (the left pane, never <body>); closeAgentPane's own
+  // focus return runs after the tab is gone.
+  useEffect(() => {
+    if (!closing) return;
+    const root = rootRef.current;
+    if (root && root.contains(document.activeElement)) {
+      document.querySelector<HTMLElement>('[data-pane="left"]')?.focus();
+      if (root.contains(document.activeElement)) (document.activeElement as HTMLElement | null)?.blur();
+    }
+  }, [closing]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+    mounted.current = false;
+    pendingSend.current?.abort(); pendingStream.current?.abort();
+    runnerRef.current?.dispose();
+    streamCancel.current();
+    if (announceTimer.current !== null) clearTimeout(announceTimer.current);
+    };
+  }, []);
+
+  const close = useCallback(() => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
+    onEscapeRung?.("close");
+    closeAgentPane(tab.id, tab.title);
+  }, [onEscapeRung, tab.id, tab.title, current, owner]);
+
+  const onRung = useCallback((rung: EscapeRung) => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
+    if (rung === "recording") useAgentPaneStore.getState().setRecording(tab.id, false);
+    if (rung === "chip" && anchorId) {
+      useAgentPaneStore.getState().dismissChip(tab.id, anchorId);
+      announce("Context removed");
+    }
+    onEscapeRung?.(rung);
+  }, [tab.id, anchorId, announce, onEscapeRung, current, owner]);
+
+  const onRootKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Escape" || closing) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (target && target !== e.currentTarget && isTextEditing(target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+
+  const visibleTurns = turns;
+  const lastDone = [...turns].reverse().find((t) => t.status === "done");
+  const actions: readonly AiAction[] = lastDone?.actions ?? [];
+  const cards = useMemo(() => {
+    if (!interview) return [] as { turnId: string; card: OptionCard; resolved: boolean }[];
+    const out: { turnId: string; card: OptionCard; resolved: boolean }[] = [];
+    turns.forEach((t, i) => {
+      if (t.status === "done" && t.optionCard) out.push({ turnId: t.id, card: t.optionCard, resolved: i < turns.length - 1 });
+    });
+    return out;
+  }, [interview, turns]);
+
+  const scopeBadge = tab.scope === "project" ? `project ${tab.projectId ?? ""}` : "cross-project";
+
+  return (
+    <section
+      ref={rootRef}
+      data-agent-pane
+      data-agent-id={tab.agentId}
+      {...(closing ? { inert: "", "data-closing": "" } : {})}
+      tabIndex={-1}
+      aria-label="Agent"
+      onKeyDown={onRootKeyDown}
+      // The blur rung lands keyboard focus here: an inset ring keeps it
+      // visible (WCAG 2.4.7; finding 9) inside the companion's scroll clip.
+      className={`flex flex-col h-full min-h-0 min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sun ${reducedMotion ? "" : "transition-[opacity,transform] duration-150"} ${closing ? "opacity-0 translate-x-2" : ""}`}
+    >
+      {inRouter ? <PaneHashSync agentId={tab.agentId} active={active && !closing} /> : null}
+      <p role="status" aria-live="polite" className="sr-only">{status}</p>
+      <header className="flex items-center gap-2 shrink-0 border-b border-hairline px-3 py-1.5">
+        <span className="text-xs font-medium text-ink dark:text-bright truncate">{tab.title}</span>
+        <span
+          className="text-xxs font-mono rounded-full border border-hairline px-1.5 text-shadow-1 dark:text-moonlight"
+          title="Scope enforced in this browser only"
+          data-scope-badge
+        >
+          {scopeBadge}
+        </span>
+        <button
+          type="button"
+          className="ml-auto text-shadow-1 hover:text-bright px-1"
+          aria-label="Close the agent pane (the agent itself is untouched)"
+          onClick={close}
+        >
+          ×
+        </button>
+      </header>
+      {chipVisible && anchor?.quoteHint ? (
+        <div className="flex items-center gap-1 px-3 py-1 shrink-0" data-context-chip>
+          <span className="text-xxs font-mono truncate text-ink-soft dark:text-moonlight" title={verification && verification.quote !== null ? "Verified against the open page" : `Not sent: ${verification ? verification.reason : "unverified"}`}>
+            {chipText(anchor.quoteHint)}
+          </span>
+          <button
+            type="button"
+            aria-label="Remove the context"
+            className="text-shadow-1 hover:text-bright px-1"
+            onClick={() => {
+              if (!current() || !isConfirmedAgentOwner(owner)) return;
+              if (anchorId) useAgentPaneStore.getState().dismissChip(tab.id, anchorId);
+              announce("Context removed");
+              rootRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+      {visibleTurns.length === 0 && !interview ? (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <AgentEmptyState onPrompt={(text) => send(text)} />
+        </div>
+      ) : (
+        <AgentThread
+          turns={visibleTurns}
+          transportKind={transport.kind}
+          lifecycle={lifecycle}
+          interview={interview}
+          reducedMotion={reducedMotion}
+          onRetry={() => runnerRef.current?.retry()}
+        />
+      )}
+      {cards.length > 0 ? (
+        <div className="px-3 pb-2 flex flex-col gap-1.5 shrink-0" data-option-cards>
+          {cards.map(({ turnId, card, resolved }) => (
+            <div key={turnId} className="rounded border border-hairline p-2 flex flex-col gap-1" data-option-card {...(resolved ? { "data-resolved": "" } : {})}>
+              <p className="text-xs text-ink dark:text-bright">{card.question}</p>
+              <div className="flex flex-wrap gap-1">
+                {card.options.map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    disabled={resolved}
+                    onClick={() => send(o)}
+                    className="text-xs rounded-full border border-hairline px-2 py-0.5 text-ink dark:text-bright hover:bg-ice-2 dark:hover:bg-charcoal-1 disabled:opacity-60"
+                  >
+                    {o}
+                  </button>
+                ))}
+                {/* pattern 20 (repair C9): allowCustom decides whether a typed
+                    answer is on offer. True: a "Something else…" pill lands the
+                    user in the composer. False: the card says to pick one. */}
+                {!resolved && card.allowCustom ? (
+                  <button
+                    type="button"
+                    data-option-custom
+                    onClick={() => {
+                      rootRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+                      announce("Type your own answer");
+                    }}
+                    className="text-xs rounded-full border border-dashed border-hairline px-2 py-0.5 text-ink-soft dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
+                  >
+                    Something else…
+                  </button>
+                ) : null}
+              </div>
+              {!resolved && !card.allowCustom ? (
+                <p className="text-xxs text-shadow-1 dark:text-moonlight" data-option-pick-one>Pick one of the options</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {actions.length > 0 ? (
+        <div className="px-3 pb-2 shrink-0">
+          <AgentReplyActions tab={tab} actions={actions} interview={interview} isCurrent={() => current() && isConfirmedAgentOwner(owner)} onSeedConfirm={(seed) => {
+            if (!current() || !isConfirmedAgentOwner(owner)) return;
+            const { delivered, failed } = dispatchProjectSeed(seed);
+            announce(
+              delivered > 0 ? "Project seed handed to the intake"
+                : failed > 0 ? "The project intake could not take the seed; it is held for the next one"
+                : "No project intake is open yet; the seed is held for it",
+            );
+          }} />
+        </div>
+      ) : null}
+      <AgentComposer
+        tabId={tab.id}
+        draft={draft}
+        onDraftChange={(value) => {
+          if (!current()) return;
+          pendingSend.current?.abort();
+          setDraft(value);
+        }}
+        chips={chips}
+        onChipsChange={(value) => { if (current() && isConfirmedAgentOwner(owner)) setChips(value); }}
+        candidates={candidates}
+        threadEmpty={turns.length === 0}
+        onSend={(text) => send(text)}
+        onCannedPrompt={(n) => send(["What should I read next in this project?", "What is missing from this project's evidence?", "Where is this project's argument weakest?"][n - 1])}
+        onEscapeRung={onRung}
+        hasContextChip={chipVisible}
+        recording={recording}
+        onStopRecording={() => { if (current() && isConfirmedAgentOwner(owner)) useAgentPaneStore.getState().setRecording(tab.id, false); }}
+        active={active && !closing}
+        openNonce={openNonce}
+        rootRef={rootRef}
+        announce={announce}
+        disabled={closing}
+        reducedMotion={reducedMotion}
+      />
+    </section>
+  );
+}
+
+export default AgentPane;

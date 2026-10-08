@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CorpusSearchResponse } from "../../api/corpusSearch";
@@ -28,10 +28,10 @@ describe("Corpus search operational recovery (synthetic failures only)", () => {
     await screen.findByRole("alert");
     expect(screen.queryByText(/Nothing in your corpus matched/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry search" }));
-    expect(searchMock.mock.calls).toEqual([
+    await waitFor(() => expect(searchMock.mock.calls).toEqual([
       ["free will\n\n(in the context of: agency)"],
       ["free will\n\n(in the context of: agency)"],
-    ]);
+    ]));
     await screen.findByRole("alert");
   });
 
@@ -40,8 +40,9 @@ describe("Corpus search operational recovery (synthetic failures only)", () => {
     searchMock.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
     render(<CorpusSearch onOpen={vi.fn()} />);
     typeQuery("old"); submit();
+    await waitFor(() => expect(searchMock).toHaveBeenCalledWith("old"));
     typeQuery("current"); submit();
-    expect(searchMock.mock.calls).toEqual([["old"], ["current"]]);
+    await waitFor(() => expect(searchMock.mock.calls).toEqual([["old"], ["current"]]));
     await act(async () => { old.reject(new Error("obsolete failure")); });
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Searching…" }).getAttribute("disabled")).not.toBeNull();
@@ -53,6 +54,7 @@ describe("Corpus search operational recovery (synthetic failures only)", () => {
     const request = pendingSearch(); searchMock.mockReturnValue(request.promise);
     render(<CorpusSearch onOpen={vi.fn()} />);
     typeQuery("pending"); submit();
+    await waitFor(() => expect(searchMock).toHaveBeenCalledWith("pending"));
     fireEvent.click(screen.getByRole("button", { name: "clear search" }));
     await act(async () => { request.reject(new Error("cleared failure")); });
     expect(screen.queryByRole("alert")).toBeNull();
