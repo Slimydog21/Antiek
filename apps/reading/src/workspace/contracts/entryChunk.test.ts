@@ -42,11 +42,21 @@ describe("entry-safe contract modules", () => {
 
 describe("entry-chunk files never statically import a lazy contract module", () => {
   const ENTRY = ["../shortcuts.ts", "../companionVisibility.ts", "../tabTreeHandle.ts"];
-  const LAZY = /contracts\/(index|selection|treeStore|openers|adapters)/;
+  // SPR-07: workspace/agent/* is lazy too (reached through CompanionPane
+  // or by import() from shortcuts.ts); a static `./agent/` import is a leak.
+  const LAZY = /contracts\/(index|selection|treeStore|openers|adapters)|agent\//;
   for (const f of ENTRY) {
     it(f, () => {
       const hits = imports(read(f)).filter((i) => LAZY.test(i.spec));
       expect(hits.map((i) => i.line)).toEqual([]);
     });
   }
+});
+
+describe("the lazy-specifier regex (SPR-07 negative control)", () => {
+  it("catches a static ./agent/ import", () => {
+    const LAZY = /contracts\/(index|selection|treeStore|openers|adapters)|agent\//;
+    const hits = imports('import { openAgentPaneFromKey } from "./agent/openAgentPane";\nimport { x } from "./tabTreeHandle";').filter((i) => LAZY.test(i.spec));
+    expect(hits.map((i) => i.spec)).toEqual(["./agent/openAgentPane"]);
+  });
 });

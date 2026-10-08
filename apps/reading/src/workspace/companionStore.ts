@@ -23,6 +23,7 @@ import { toast } from "../components/lemon/LemonToast";
 import type { DocumentAnchor } from "./contracts/anchor";
 import type { AgentScope } from "./contracts/tree";
 import { useWorkspace } from "./WorkspaceStore";
+import { agentTabIdFor } from "./agent/agentPaneId";
 
 export type AgentTabKind = "research-thread" | "dialogue";
 
@@ -42,6 +43,21 @@ export interface AgentTabDescriptor {
   scope?: AgentScope;
   /** SPR-06 M5 (additive): the passage the agent was opened from. Absent for existing callers. */
   anchor?: DocumentAnchor;
+  /** SPR-07 (additive): the project a project-scoped tab belongs to.
+   *  Present iff scope === "project" and the opener knew it; absent for
+   *  every existing caller (so the project filter never hides them). */
+  projectId?: string;
+  /** SPR-07 (additive): the agent pane's own id (agentPaneId.ts). PRESENT
+   *  ⇒ this tab IS the agent second pane: its id is `agent:pane:<agentId>`
+   *  and the registry resolves its surface to AgentPane (surfaceFor). On
+   *  the frozen SPR-06 vocabulary its `kind` stays "dialogue" — the run
+   *  kind F1(a) maps kind "agent" to — because AgentTabKind is consumed by
+   *  the frozen contracts (tree.ts AGENT_RUN_KIND_OF_TAB, adapters/
+   *  preBackend.ts, tree.test.ts T5) and cannot be widened on this branch.
+   *  F1 promotes the discriminator to kind "agent" in one edit. */
+  agentId?: string;
+  /** SPR-07 (additive): the pane runs the project-creation interview (M8). */
+  interview?: true;
 }
 
 export interface OpenAgentTabInput {
@@ -51,6 +67,16 @@ export interface OpenAgentTabInput {
   documentId?: string;
   scope?: AgentScope;
   anchor?: DocumentAnchor;
+  projectId?: string;
+  agentId?: string;
+  interview?: boolean;
+}
+
+/** SPR-07, kind-agnostic (graft c): a tab is hidden only when it is
+ *  project-scoped, names a project, a filter is set, and the two differ.
+ *  Today's tabs carry no projectId, so nothing changes for them. */
+export function tabVisible(tab: Pick<AgentTabDescriptor, "scope" | "projectId">, filter: string | null): boolean {
+  return !(tab.scope === "project" && tab.projectId !== undefined && filter !== null && tab.projectId !== filter);
 }
 
 import { COMPANION_PANEL_ID } from "./companionVisibility";
@@ -95,6 +121,9 @@ export function sourceDocumentOf(
 }
 
 function agentTabId(input: OpenAgentTabInput): string {
+  // SPR-07: an agent pane has its own id space (one tab per agentId), so a
+  // project's pane never collapses onto the single one-shot dialogue tab.
+  if (input.agentId !== undefined) return agentTabIdFor(input.agentId);
   if (input.kind === "research-thread") {
     return `agent:thread:${input.investigationId ?? ""}`;
   }
@@ -124,6 +153,13 @@ export interface CompanionState {
   retired: RetiredAgentTab[];
   activeTabId: string | null;
   seq: number;
+  /** SPR-07: the selected project (null = show all). Set by the agent
+   *  pane's useSyncProjectFilter; the store never reads the selection
+   *  itself (openers.ts imports this store, so a back-import would be a
+   *  cycle). Sets the field ONLY: activeTabId is untouched (graft e); the
+   *  pane renders a placeholder for a hidden active tab. */
+  projectFilter: string | null;
+  setProjectFilter: (projectId: string | null) => void;
   /** Open (or focus) an agent's tab. Returns the stable id. In the docked
    *  preset, spawning an agent surfaces the companion panel — the pane must
    *  exist for the tab to be seen. */
@@ -154,6 +190,8 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
   retired: [],
   activeTabId: null,
   seq: 0,
+  projectFilter: null,
+  setProjectFilter: (projectId) => set({ projectFilter: projectId }),
 
   openAgentTab: (input) => {
     const id = agentTabId(input);
@@ -168,7 +206,11 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
       ? { anchor: input.anchor, ...(input.anchor.space === "book" ? { documentId: input.anchor.documentId } : {}) }
       : {};
     if (existing) {
-      const patch = { ...(input.scope ? { scope: input.scope } : {}), ...anchorPatch };
+      const patch = {
+        ...(input.scope ? { scope: input.scope } : {}),
+        ...anchorPatch,
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+      };
       set((s) => ({
         activeTabId: id,
         ...(Object.keys(patch).length ? { tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : {}),
@@ -189,6 +231,9 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         seq,
         ...(input.scope ? { scope: input.scope } : {}),
         ...anchorPatch,
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+        ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+        ...(input.interview ? { interview: true as const } : {}),
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id, seq }));
     }
@@ -273,5 +318,5 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
     return true;
   },
 
-  reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0 }),
+  reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0, projectFilter: null }),
 }));
