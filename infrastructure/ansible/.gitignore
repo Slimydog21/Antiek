@@ -1,5 +1,7 @@
 # Real inventory with VM IP — generated from inventory.ini.example.
 inventory.ini
+# Same for the AWS host (inventory.aws.ini.example).
+inventory.aws.ini
 
 # R2 credentials passed via --extra-vars. Generated separately from
 # Cloudflare dashboard after Terraform creates the bucket.
