@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What does the mixed evidence support?</title>
+<style>
+:root{
+  --antiek-surface:#ffffff;
+  --antiek-ink:#1f1f2e;
+  --antiek-muted:#5a5a6e;
+  --antiek-rule:#e4e4ec;
+  --antiek-accent:#5b6cff;
+  --antiek-accent-soft:#eef0ff;
+  --antiek-warn:#8a5a00;
+  --antiek-warn-bg:#fff7e6;
+  --antiek-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.antiek-doc{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--antiek-ink);background:var(--antiek-surface);max-width:760px;margin:0 auto;padding:2rem 1.25rem;line-height:1.6;}
+.antiek-doc h1{font-size:1.6rem;margin:0 0 1rem;}
+.antiek-block{margin:0 0 1.25rem;}
+.antiek-prose{margin:0 0 1rem;}
+.antiek-highlight{border-left:3px solid var(--antiek-accent);background:var(--antiek-accent-soft);padding:.75rem 1rem;border-radius:.25rem;}
+.antiek-highlight-passage{font-style:italic;}
+.antiek-highlight-framing{margin-top:.5rem;color:var(--antiek-muted);font-size:.9rem;}
+.antiek-voice{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-voice-meta{color:var(--antiek-muted);font-size:.85rem;font-family:var(--antiek-mono);}
+.antiek-voice-transcript{margin-top:.5rem;}
+.antiek-qa{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
+.antiek-qa-q{font-weight:600;}
+.antiek-qa-a{margin-top:.4rem;}
+.antiek-qa-attr{margin-top:.4rem;color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
+.antiek-cite{font-family:var(--antiek-mono);font-size:.9rem;}
+.antiek-crossdoc{font-family:var(--antiek-mono);font-size:.9rem;color:var(--antiek-muted);}
+.antiek-region{border:1px dashed var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-region-ref{font-family:var(--antiek-mono);font-size:.85rem;color:var(--antiek-muted);}
+.antiek-claim{border:1px solid var(--antiek-rule);border-left:3px solid var(--antiek-ink);border-radius:.375rem;padding:.75rem 1rem;}
+.antiek-claim-statement{font-weight:500;}
+.antiek-note{background:#fafaff;border-radius:.375rem;padding:.6rem .9rem;font-size:.95rem;}
+.antiek-question{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
+.antiek-question-q{font-weight:600;}
+.antiek-chat{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
+.antiek-chat-turn{margin:0 0 .5rem;}
+.antiek-chat-turn:last-child{margin-bottom:0;}
+.antiek-chat-role{font-weight:600;font-size:.85rem;color:var(--antiek-muted);}
+.antiek-mdsection{border-top:1px solid var(--antiek-rule);padding-top:.75rem;}
+.antiek-mdsection-head{font-weight:600;color:var(--antiek-muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;}
+.antiek-image{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.6rem;background:#fafaff;text-align:center;}
+.antiek-image-alt{color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
+.antiek-latex{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.6rem .8rem;overflow-x:auto;font-size:.95rem;}
+.antiek-tombstone{border:1px solid var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;}
+.antiek-tombstone-label{font-weight:600;}
+.antiek-unsupported{border:1px dashed var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;font-family:var(--antiek-mono);}
+.antiek-edges{border-top:1px solid var(--antiek-rule);margin-top:1.5rem;padding-top:1rem;}
+.antiek-edges h2{font-size:1.1rem;margin:0 0 .5rem;}
+.antiek-edges ul{margin:0;padding-left:1.1rem;}
+.antiek-edges li{margin:0 0 .25rem;}
+.antiek-footer{border-top:1px solid var(--antiek-rule);margin-top:2rem;padding-top:.75rem;color:var(--antiek-muted);font-size:.8rem;font-family:var(--antiek-mono);}
+.antiek-footer a{color:var(--antiek-muted);}
+.antiek-heading{margin:1.75rem 0 .6rem;line-height:1.3;font-weight:650;}
+.antiek-doc h2.antiek-heading{font-size:1.3rem;}
+.antiek-doc h3.antiek-heading{font-size:1.1rem;}
+.antiek-doc h4.antiek-heading,.antiek-doc h5.antiek-heading,.antiek-doc h6.antiek-heading{font-size:1rem;color:var(--antiek-muted);}
+.antiek-list{margin:0 0 1rem;padding-left:1.5rem;}
+.antiek-list li{margin:0 0 .35rem;}
+.antiek-list .antiek-list{margin:.35rem 0 0;}
+.antiek-quote{margin:0 0 1.25rem;padding:.1rem 0 .1rem 1rem;border-left:3px solid var(--antiek-rule);color:var(--antiek-muted);}
+.antiek-code{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
+.antiek-rule{border:0;border-top:1px solid var(--antiek-rule);margin:1.75rem 0;}
+.antiek-table-wrap{overflow-x:auto;margin:0 0 1.25rem;}
+.antiek-table{border-collapse:collapse;width:100%;font-size:.95rem;}
+.antiek-table caption{caption-side:top;text-align:left;color:var(--antiek-muted);font-size:.85rem;padding:0 0 .4rem;}
+.antiek-table th,.antiek-table td{border:1px solid var(--antiek-rule);padding:.4rem .6rem;text-align:left;vertical-align:top;}
+.antiek-table th{background:#fafaff;font-weight:600;}
+</style>
+</head>
+<body>
+<main class="antiek-doc">
+<h1 class="antiek-doc-title">What does the mixed evidence support?</h1>
+<div class="lemon lemon-card" style="border:2px solid #0F1419;border-left:8px solid #D29922;border-radius:6px;box-shadow:4px 4px 0 0 #0F1419;background:#FFFFFF;color:#0F1419;padding:12px;display:inline-block;min-width:148px;"><div style="font-size:.8rem;font-weight:700;color:#4F5F70;text-transform:uppercase;letter-spacing:.04em;">Recommendation</div><div style="font-size:1.6rem;font-weight:800;line-height:1.1;margin-top:4px;">conditional</div></div>
+<div class="antiek-block antiek-claim"><div class="antiek-claim-statement">An authored conclusion from mixed evidence.</div></div>
+<div class="antiek-block antiek-claim"><div class="antiek-claim-statement">The public-source claim.</div></div>
+<div class="antiek-block antiek-cite"><a href="http://127.0.0.1:18883/read/doc-public">Public evidence · http://127.0.0.1:18883/read/doc-public</a></div>
+<div class="antiek-block antiek-note">PUBLIC_SOURCE_PASSAGE</div>
+<div class="antiek-block antiek-claim"><div class="antiek-claim-statement">The private-source claim.</div></div>
+<div class="antiek-block antiek-cite"><a href="http://127.0.0.1:18883/read/doc-private">Private evidence · http://127.0.0.1:18883/read/doc-private</a></div>
+<p class="antiek-prose">(cite-only — full text withheld under the source's rights)</p>
+<section class="antiek-edges"><h2>Asserted edges</h2><div class="lemon lemon-card" style="border:2px solid #0F1419;border-radius:6px;box-shadow:4px 4px 0 0 #0F1419;background:#FFFFFF;padding:12px;color:#0F1419;"><div style="font-weight:800;margin-bottom:8px;">Knowledge graph</div><svg role="img" viewBox="0 0 326 170" width="100%" height="170"><defs><marker id="lemon-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0F1419" /></marker></defs><line x1="79" y1="62" x2="79" y2="96" stroke="#0F1419" stroke-width="2" marker-end="url(#lemon-arrow)" /><line x1="79" y1="62" x2="243" y2="96" stroke="#0F1419" stroke-width="2" marker-end="url(#lemon-arrow)" /><g><rect x="20" y="20" width="126" height="46" fill="#0F1419" /><rect x="16" y="16" width="126" height="46" rx="6" fill="#F9BD2B" stroke="#0F1419" stroke-width="2" /><text x="79" y="44" text-anchor="middle" fill="#0F1419" font-size="12" font-weight="800">This document</text></g><g><rect x="20" y="100" width="126" height="46" fill="#0F1419" /><rect x="16" y="96" width="126" height="46" rx="6" fill="#2EA043" stroke="#0F1419" stroke-width="2" /><text x="79" y="124" text-anchor="middle" fill="#0F1419" font-size="12" font-weight="800">Public evidence</text></g><g><rect x="184" y="100" width="126" height="46" fill="#0F1419" /><rect x="180" y="96" width="126" height="46" rx="6" fill="#D29922" stroke="#0F1419" stroke-width="2" /><text x="243" y="124" text-anchor="middle" fill="#0F1419" font-size="12" font-weight="800">Private evidence</text></g></svg></div><ul><li><strong>cites</strong> &rarr; <code>doc-public</code></li><li><strong>cites</strong> &rarr; <code>doc-private</code></li></ul></section>
+<template data-antiek="doc-model" data-schema-version="1">{"content":[{"attrs":{"kind":"stat_chip","label":"Recommendation","tone":"warning","value":"conditional"},"type":"antiek_widget"},{"attrs":{"statement":"An authored conclusion from mixed evidence."},"type":"antiek_claim_card"},{"attrs":{"statement":"The public-source claim."},"type":"antiek_claim_card"},{"attrs":{"label":"Public evidence · http://127.0.0.1:18883/read/doc-public","target_url":"http://127.0.0.1:18883/read/doc-public"},"type":"antiek_cite_link"},{"attrs":{"body":"PUBLIC_SOURCE_PASSAGE"},"type":"antiek_note"},{"attrs":{"statement":"The private-source claim."},"type":"antiek_claim_card"},{"attrs":{"label":"Private evidence · http://127.0.0.1:18883/read/doc-private","target_url":"http://127.0.0.1:18883/read/doc-private"},"type":"antiek_cite_link"},{"content":[{"text":"(cite-only — full text withheld under the source's rights)","type":"text"}],"type":"paragraph"}],"edges":[{"kind":"cites","to_document_id":"doc-public","to_title":"Public evidence","tone":"success"},{"kind":"cites","to_document_id":"doc-private","to_title":"Private evidence","tone":"warning"}],"metadata":{"attribution_manifest":{"document_ip_holders":{"doc-private":null,"doc-public":null}},"model_versions":{},"parameters":{},"provenance":{"complete":true,"fully_sourced":2,"total":2},"recommendation":"conditional","synthesis_id":"syn-export-database"},"title":"What does the mixed evidence support?"}</template>
+<footer class="antiek-footer">Projected from a .antiek document. HTML is derived; do not import this HTML back into Antiek.<br>document: syn-export-database &middot; class: synthesis &middot; schema: 1</footer>
+</main>
+</body>
+</html>
