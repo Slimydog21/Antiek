@@ -420,9 +420,24 @@ describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shift+j (ju
       row("chord-layout-preset", "layout.togglePreset", { chord: "ctrl+alt+l" }),
     ];
     // PR 3756's agent.openPane rows are on main, so they live in KEYMAP and
-    // are NOT appended; only PR 3754's pane-flow rows are still lane-local.
+    // are NOT appended. PR 3754's pane-flow rows are sequencing-dependent:
+    // this branch can merge before or after #3754 (the wave's union proof
+    // caught the simulation double-appending rows KEYMAP already carried),
+    // so gate the simulated append on their actual absence — the same
+    // premise-pin pattern as the 3751/3756 pins above.
     const ids = [...handlerIds, "pane.reorderLeft", "pane.reorderRight"];
     const duplicates = (rows: readonly KeymapRow[]) => validateKeymap(rows, ids).filter((f) => f.kind === "duplicate");
+    if (KEYMAP.some((r) => r.id === "prefix-pane-reorder-left")) {
+      // #3754 HAS landed: KEYMAP carries the real rows. Pin against them
+      // instead of simulating — the real table validates with no duplicates.
+      // (The flag-on block's chord-layout-preset is gated out of KEYMAP in the
+      // test env — antiek.flag.pane.flow is off — so the pin is the reorder
+      // prefix keys, visible in both flag states.)
+      expect(duplicates(KEYMAP)).toEqual([]);
+      expect(new Set(KEYMAP.filter((r) => r.id === "prefix-pane-reorder-left").map((r) => r.prefixKey))).toEqual(new Set(["shift+arrowleft"]));
+      expect(new Set(KEYMAP.filter((r) => r.id === "prefix-pane-reorder-right").map((r) => r.prefixKey))).toEqual(new Set(["shift+arrowright"]));
+      return;
+    }
     expect(duplicates([...KEYMAP.filter((r) => !paneFlowReplaced.has(r.id)), ...paneFlow])).toEqual([]);
     // Control: the check is not vacuous. Without PR 3754's replacement,
     // ctrl+alt+l is main's pane.focusRight chord and the layout chord collides.
