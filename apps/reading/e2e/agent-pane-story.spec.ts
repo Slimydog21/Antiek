@@ -16,7 +16,7 @@ for (const { story, theme, answered } of cases) {
 
     const pane = page.getByRole("region", { name: "Agent", exact: true });
     await expect(pane).toBeVisible();
-    await expect(pane.getByRole("textbox", { name: "Ask the agent" })).toBeVisible();
+    await expect(pane.getByRole("combobox", { name: "Ask the agent" })).toBeVisible();
     await expect(pane.locator("[data-scope-badge]")).toHaveText("project finches");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(page.locator('[data-pane="right"]')).toHaveCSS("width", "320px");
