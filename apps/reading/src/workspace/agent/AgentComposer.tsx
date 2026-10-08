@@ -7,7 +7,8 @@
  * owner (which skips defaultPrevented and text targets) never double-fires.
  *
  * Key contract: composerKeys.resolveComposerKey (Enter sends, Shift+Enter
- * newline, IME-safe). Escape ladder: picker → recording → chip → blur
+ * newline). Every key is IME-safe: a composing keydown is the IME's, the
+ * Escape ladder included. Escape ladder: picker → recording → chip → blur
  * (focus to the pane root) — "close" is the ROOT's own key (AgentPane).
  * Digits 1/2/3 pick a canned prompt only with an empty thread and an
  * untouched empty draft (fix 6). @agent / #source chips with a combobox +
@@ -148,6 +149,10 @@ export function AgentComposer(p: AgentComposerProps) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // An IME owns every key while it assembles a character (finding 8):
+    // Escape cancels the composition, never walks a rung; the global
+    // dispatcher skips composing keys the same way (shortcuts.ts).
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Escape") {
       const rung = nextEscapeRung({ pickerOpen, recording: p.recording, hasChip: p.hasContextChip, composerFocused: true });
       consume(e);

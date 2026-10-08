@@ -193,3 +193,18 @@ describe("the picker (invariant 17, refs §2.1)", () => {
     expect(m.props.onChipsChange).toHaveBeenLastCalledWith([]);
   });
 });
+
+describe("IME composition owns every key, Escape included (finding 8)", () => {
+  it("an Escape with isComposing=true walks no rung, is not consumed, and leaves focus in the textarea", () => {
+    const m = mount({ draft: "か", recording: true });
+    m.textarea().focus();
+    const notPrevented = fireEvent.keyDown(m.textarea(), { key: "Escape", isComposing: true });
+    expect(notPrevented).toBe(true);
+    expect(m.props.onEscapeRung).not.toHaveBeenCalled();
+    expect(m.props.onStopRecording).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(m.textarea());
+    // The same Escape outside a composition walks the recording rung.
+    expect(fireEvent.keyDown(m.textarea(), { key: "Escape" })).toBe(false);
+    expect(m.props.onEscapeRung).toHaveBeenCalledWith("recording");
+  });
+});
