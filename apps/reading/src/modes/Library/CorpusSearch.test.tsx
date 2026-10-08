@@ -48,7 +48,7 @@ describe("CorpusSearch (M1)", () => {
     expect(corpusSearchMock).toHaveBeenCalledWith("quantum");
     // The resolved-page result shows the page; clicking jumps there.
     fireEvent.click(screen.getByText("Quantum Book").closest("button")!);
-    expect(onOpen).toHaveBeenCalledWith("doc-1", 4);
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith("doc-1", 4));
   });
 
   it("a dropped file biases the search (file = query SIGNAL, never ingested)", async () => {
@@ -109,6 +109,6 @@ describe("CorpusSearch (M1)", () => {
     expect(screen.getByText("open the book")).toBeTruthy();
     fireEvent.click(screen.getByText("Quantum Book").closest("button")!);
     // No page argument (null) — we never invent a page.
-    expect(onOpen).toHaveBeenCalledWith("doc-1", null);
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith("doc-1", null));
   });
 });

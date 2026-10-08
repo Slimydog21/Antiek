@@ -1,0 +1,29 @@
+# Same rules as ../terraform/.gitignore, for both AWS roots (this directory
+# and bootstrap/).
+#
+# State may hold resource attributes the operator would not publish; the main
+# root keeps its state in the S3 bucket bootstrap/ creates, and bootstrap/
+# keeps a local state file that stays on the operator's Mac.
+*.tfstate
+*.tfstate.*
+
+# Real values for the variables. Shapes live in the *.example files.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# The partial backend configuration names the account-specific state bucket.
+backend.hcl
+
+.terraform/
+
+# Saved plans (`terraform plan -out tfplan`, README.md) hold the full
+# configuration and planned values: account id, addresses, alert email,
+# instance and volume ids. This repository is public.
+tfplan
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+
+# .terraform.lock.hcl is committed, as in ../terraform/.

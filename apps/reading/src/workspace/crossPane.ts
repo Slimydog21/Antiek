@@ -17,6 +17,7 @@ import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWo
 import { adoptTabForRoute, branchOriginOf, childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
 import { adoptRoute } from "./routeSync";
 import { setTabTitle } from "./tabTitles";
+import type { BranchAnchor } from "./tabTree";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export interface OpenDocumentOrigin {
@@ -30,11 +31,12 @@ export interface OpenDocumentOrigin {
   agentKind?: string;
 }
 
-// STAGED DEPENDENCY (A1c low 13 / R8): OpenDocumentRequest has no `anchor`
-// field, so agent-opened nodes never carry the named passage. THREAD-CONTRACT
-// §2.2 rev 7 S1 requires `anchor` on `agent`-origin nodes (l.419). Requires
-// lane-B wire addition. Do not mark complete until `anchor` is on the request
-// and a test proves an agent-open lands at the passage.
+// STAGED DEPENDENCY (A1c low 13 / R8), narrowed by SPR-06 M4: `anchor` is on
+// the request and on the spawned node's branch_origin (THREAD-CONTRACT §2.2
+// rev 7 S1) — DONE. Still open: landing at the passage on a dedup reuse —
+// the reopen path below activates the existing tab and stays anchor-blind
+// (documented, not promised). Do not mark complete until a test proves an
+// agent-open lands at the passage.
 // Tracker: docs/forensic-v1-design-20260929/REMAINING-WORK-LEDGER.md P1-4.
 
 export interface OpenDocumentRequest {
@@ -43,6 +45,9 @@ export interface OpenDocumentRequest {
   /** The document's title when the caller knows it (the tab shows it at
    *  once); absent, the strip resolves it from the corpus. */
   documentTitle?: string | null;
+  /** §2.2 rev 7 S1 (SPR-06 M4, additive): the named passage for an
+   *  agent-opened node. Absent stays absent. */
+  anchor?: BranchAnchor;
 }
 
 /** The D6 handler: a left child tab under the spawning (active) tab — or a
@@ -140,7 +145,11 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     const agentOpened = threadId && agentKind ? { thread_id: threadId, agent_kind: agentKind } : null;
     const spawned = s.spawnTab(mothership, parentId, {
       tab_id: freshTabId(tree, base),
-      origin: { document_id: req.documentId, kind: agentOpened ? "agent" : "reference" },
+      origin: {
+        document_id: req.documentId,
+        kind: agentOpened ? "agent" : "reference",
+        ...(req.anchor ? { anchor: req.anchor } : {}),
+      },
       ...(agentOpened ? { opened_by: agentOpened } : {}),
       kind: "reader",
       ref: req.documentId,
@@ -168,7 +177,8 @@ export function openDocumentInLeftPane(
   documentId: string,
   origin: OpenDocumentOrigin,
   documentTitle?: string | null,
+  anchor?: BranchAnchor,
 ): void {
   if (!documentId.trim()) return;
-  handler({ documentId, origin, ...(documentTitle ? { documentTitle } : {}) });
+  handler({ documentId, origin, ...(documentTitle ? { documentTitle } : {}), ...(anchor ? { anchor } : {}) });
 }
