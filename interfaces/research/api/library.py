@@ -11,11 +11,11 @@ import contextlib
 import sys
 from typing import Literal
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 
-from substrate.books.model import list_book_assets
+from substrate.books.model import BookAsset, list_book_assets
 
-from .books import BookSummary, _resolve_db_path
+from .books import BookSummary, _account_can_read_book, _resolve_db_path
 from .library_catalog import LibraryPage, build_library_page
 
 # Load the metadata-only catalog in bounded deterministic batches. The route
@@ -30,7 +30,8 @@ def register_library_routes(app: FastAPI) -> None:
     """Mount the library catalog route."""
 
     @app.get("/library", response_model=LibraryPage, tags=["library"])
-    async def list_library(
+    def list_library(
+        request: Request,
         filter: Literal["servable", "gated", "all"] = "all",
         search: str = "",
         page: int = Query(default=1, ge=1),
@@ -47,7 +48,7 @@ def register_library_routes(app: FastAPI) -> None:
             # remaining pages and corrupt the catalog total.
             con.execute("BEGIN TRANSACTION")
             transaction_started = True
-            assets = []
+            assets: list[BookAsset] = []
             offset = 0
             while True:
                 batch = list_book_assets(
@@ -56,7 +57,10 @@ def register_library_routes(app: FastAPI) -> None:
                     limit=_CATALOG_BATCH_SIZE,
                     offset=offset,
                 )
-                assets.extend(batch)
+                assets.extend(
+                    asset for asset in batch
+                    if _account_can_read_book(con, asset.document_id, request)
+                )
                 if len(batch) < _CATALOG_BATCH_SIZE:
                     break
                 offset += len(batch)

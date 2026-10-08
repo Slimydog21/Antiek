@@ -57,7 +57,7 @@ export function leadingWorkflow(q: string): Workflow | null {
  * are inferred to the workflow they live in.
  */
 export function entryWorkflow<E extends FacetEntry>(e: E): Workflow | undefined {
-  if (e.kind === "route" || e.kind === "action") return e.workflow;
+  if (e.kind === "route" || e.kind === "action" || e.kind === "place") return e.workflow;
   if (e.kind === "investigation") return "research";
   if (e.kind === "document") return "read";
   if (e.kind === "notebook") return "read";

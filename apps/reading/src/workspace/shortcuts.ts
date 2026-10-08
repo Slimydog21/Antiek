@@ -405,6 +405,19 @@ export function toggleProjectPicker(): void {
 }
 
 /**
+ * prefix+a / ctrl+alt+a (SPR-07): open the selected project's agent pane,
+ * or focus its composer when it is already open. The pane ships with the
+ * lazy companion chunk, so the opener is import()ed (entryChunk.test.ts
+ * forbids a static ./agent/ import here). In writing the right pane holds
+ * the outline's block tabs (F7): the key is not ours, an honest no-op.
+ */
+function openAgentPaneKey(): boolean {
+  if (rightPaneHoldsBlocks()) return false;
+  void import("./agent/openAgentPane").then(({ openAgentPaneFromKey }) => openAgentPaneFromKey());
+  return true;
+}
+
+/**
  * One handler per keymap action. keymap.test.ts fails if a table row names
  * an action missing here; the Record type makes tsc fail first.
  */
@@ -430,6 +443,12 @@ export function createActionHandlers(navigate: NavigateFunction) {
     ...doors,
     "palette.toggle": () => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
+    },
+    // SPR-02 M5 — the same Switcher, opened (not toggled) with the Open
+    // section's query preset. The palette ignores the detail when the
+    // places flag is off, so the key degrades to the plain Switcher.
+    "switcher.open": () => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE, { detail: { query: "in:open" } }));
     },
     "keysheet.toggle": () => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
@@ -457,6 +476,7 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "reader.tocToggle": () => toggleReaderToc(),
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "project.select": () => toggleProjectPicker(),
+    "agent.openPane": () => openAgentPaneKey(),
   } satisfies Partial<Record<ActionId, KeyHandler>>;
 }
 

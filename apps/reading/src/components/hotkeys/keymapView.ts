@@ -37,8 +37,10 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "tab.reopen": "panels",
   "tab.treeToggle": "panels",
   "project.select": "find",
+  "switcher.open": "find",
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
+  "agent.openPane": "panels",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -66,6 +68,7 @@ export function layoutPresetHelp(defaultPreset: LayoutPreset): string {
 }
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
+  "switcher.open": "The Switcher already narrowed to what is open (in:open); with places off it is the plain Switcher.",
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
   "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
   "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",
@@ -88,6 +91,8 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "project.select":
     "Opens the account projects from the registry and files your tabs under the one you pick; each project's tabs are its own. The sidebar's project row opens the same picker.",
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
+  "agent.openPane":
+    "Opens the agent for the selected project beside your work, with the composer focused; in writing the outline keeps the right pane and the key does nothing.",
 };
 
 /** Actions whose key is held for a surface that has not shipped: the sheet

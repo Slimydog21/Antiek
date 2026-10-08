@@ -40,6 +40,7 @@ import sys
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from processing.embedding import SentenceTransformerEmbedding as SentenceTransformerEmbedding
 from substrate.graph import retrieval_gate as _retrieval_gate
 from substrate.graph.embedding_meta import assert_embedding_compatible
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
@@ -76,30 +77,6 @@ class EmbeddingModel(Protocol):
     dimension: int
 
     def encode(self, text: str) -> list[float]: ...
-
-
-class SentenceTransformerEmbedding:
-    """Default production EmbeddingModel — wraps sentence-transformers.
-
-    Lazy-imports the dependency so the rest of substrate/graph/ works
-    in environments where the model isn't installed (tests using a
-    stub, dev environments doing schema-only work)."""
-
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError(
-                "sentence-transformers not installed. Run "
-                "`pip install sentence-transformers` or pass a custom "
-                "EmbeddingModel."
-            ) from exc
-        self._model = SentenceTransformer(model_name)
-        self.dimension = int(self._model.get_sentence_embedding_dimension() or 384)
-
-    def encode(self, text: str) -> list[float]:
-        vec = self._model.encode([text])[0]
-        return [float(x) for x in vec]
 
 
 # ---------------------------------------------------------------------------

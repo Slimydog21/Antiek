@@ -19,8 +19,8 @@ import { NoteBlock } from "./blocks/NoteBlock";
 import { QuestionCardBlock } from "./blocks/QuestionCardBlock";
 import { RegionEmbedBlock } from "./blocks/RegionEmbedBlock";
 import { SlashMenu } from "./SlashMenu";
-import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, notebookDraftKey, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
-import { readNotebookDraft as readStored, writeNotebookDraft as writeStored } from "../../lib/notebookDraftStorage";
+import { isWorkspaceOwnerSession, notebookDraftKey, subscribeWorkspaceOwnerAdmission, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { captureNotebookDraft, readNotebookDraft as readStored, writeNotebookDraft as writeStored, type CapturedNotebookDraft } from "../../lib/notebookDraftStorage";
 
 /**
  * Antiek notebook editor — TipTap-based block editor with five custom
@@ -114,6 +114,7 @@ export function NotebookEditor({
   const [rejectedStatus, setRejectedStatus] = useState<number | null>(null);
   const rejectedStatusRef = useRef<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRef = useRef<{ editor: TipTapEditor; notebookId: string; owner: typeof owner; draft: CapturedNotebookDraft } | null>(null);
   // Etag the operator's local edits are based on. Bumped on every
   // successful save. If another tab writes between our reads, the
   // store's etag will be ahead of ours and we'll detect the conflict.
@@ -130,6 +131,11 @@ export function NotebookEditor({
   // is read-only until a retry succeeds (see the hydration effect).
   const [hydrationFailed, setHydrationFailed] = useState<boolean>(false);
   const [hydrationAttempt, setHydrationAttempt] = useState<number>(0);
+  const isCurrentEditor = (instance: TipTapEditor): boolean => {
+    const retained = draftRef.current;
+    return !instance.isDestroyed && retained?.editor === instance
+      && retained.owner === owner && retained.notebookId === notebookId;
+  };
 
   // Seed the initial etag from the existing stored snapshot (if any).
   const initialStored = readStored(notebookId, owner);
@@ -178,8 +184,14 @@ export function NotebookEditor({
       // and the server's atomic-replace would destroy persisted blocks.
       // The server-side empty-doc floor is the backstop; this is the
       // belt (the common fresh-browser case never even reaches it).
-      if (!hydratedRef.current || owner.subject === null || !isWorkspaceOwnerSession(owner)) {
+      if (!hydratedRef.current || owner.subject === null || !isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) {
         return;
+      }
+
+      // Snapshot while the producer is admitted; TipTap may already be disposed at unmount.
+      const retained = draftRef.current;
+      if (retained?.editor === e && retained.owner === owner && retained.notebookId === notebookId) {
+        retained.draft.record(docHasRealContent(e.getJSON()) ? e.getHTML() : null);
       }
 
       // autosave: PUT /notebooks/{id}/content (substrate decomposes
@@ -189,7 +201,7 @@ export function NotebookEditor({
       setSaved("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
-        if (!isWorkspaceOwnerSession(owner)) return;
+        if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
         const doc = e.getJSON();
         try {
           const r = await apiFetch(`${API_BASE}/notebooks/${notebookId}/content`, {
@@ -197,7 +209,7 @@ export function NotebookEditor({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ doc }),
           });
-          if (!isWorkspaceOwnerSession(owner)) return;
+          if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
           if (!r.ok) {
             throw new ApiError(
               `PUT /notebooks/${notebookId}/content failed: HTTP ${r.status}`,
@@ -213,7 +225,7 @@ export function NotebookEditor({
           writeStored(notebookId, e.getHTML(), etagRef.current, owner);
           etagRef.current += 1;
         } catch (err) {
-          if (!isWorkspaceOwnerSession(owner)) return;
+          if (!isWorkspaceOwnerSession(owner) || !isCurrentEditor(e)) return;
           // Offline / network error, server rejection and true etag
           // conflict are semantically different states — the operator
           // sees them differently.
@@ -268,20 +280,33 @@ export function NotebookEditor({
   });
 
   useEffect(() => {
-    return beforeWorkspaceOwnerChange(() => {
+    if (!editor || editor.isDestroyed) return;
+    const draft = captureNotebookDraft(notebookId, owner);
+    if (draft === null) return;
+    const retained = { editor, notebookId, owner, draft };
+    draftRef.current = retained;
+    const finish = (duringAdmission = false) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      if (!editor || editor.isDestroyed || !isWorkspaceOwnerSession(owner)) return;
-      if (!docHasRealContent(editor.getJSON())) return;
-      const next = writeStored(notebookId, editor.getHTML(), etagRef.current, owner);
-      if (next !== null) etagRef.current = next;
-    });
-  }, [editor, notebookId, owner]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const result = draft.finish(etagRef.current);
+      if (result.kind === "written") etagRef.current = result.etag;
+      if (result.kind === "conflict") {
+        toast.err("Notebook conflict: another tab edited this notebook. Reload to see the latest.");
+      }
+      if (result.kind === "failed") {
+        toast.err("Notebook draft could not be kept in this browser. Local storage refused the write.");
+        if (duringAdmission) throw result.error;
+      }
     };
-  }, []);
+    // Admission observers all run even if an earlier retirement callback throws.
+    const unsubscribe = subscribeWorkspaceOwnerAdmission((admission) => {
+      if (admission.session === owner && (admission.state === "retiring" || admission.state === "failed")) finish(true);
+    });
+    return () => {
+      unsubscribe();
+      if (draftRef.current === retained) draftRef.current = null;
+      finish();
+    };
+  }, [editor, notebookId, owner]);
 
   // Expose the editor instance to a parent/toolbar (and tests) while mounted.
   useEffect(() => {

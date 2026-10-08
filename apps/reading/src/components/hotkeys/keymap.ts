@@ -54,7 +54,7 @@
 export const KEYMAP_DECISION =
   "docs/decisions/mothership-keys-herdr-prefix.md (specs/antiek-mothership/DECISIONS.md D2)";
 
-export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed";
+export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed" | "lane-Sweep-SPR-02";
 export type KeymapScope = "anywhere" | "outside-text";
 export type KeymapTask = "find" | "go" | "panels" | "help";
 export type Platform = "mac" | "other";
@@ -90,8 +90,10 @@ export const ACTIONS = {
   "tab.reopen": { label: "Tab: reopen the last closed tab in the focused pane" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
   "project.select": { label: "Project: choose the account project" },
+  "switcher.open": { label: "Switcher: open panes, windows and tabs (in:open)" },
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
+  "agent.openPane": { label: "Agent: open the project's agent pane (or focus its composer)" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -227,6 +229,19 @@ export const KEYMAP: readonly KeymapRow[] = [
   // the implementation, pending ratification into the decision record.
   { id: "prefix-project-select", action: "project.select", status: "implemented", prefixKey: "shift+p", scope: "outside-text", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
   { id: "chord-project-select", action: "project.select", status: "implemented", chord: "ctrl+alt+p", scope: "anywhere", origin: "lane-A-proposed", decision: "lane D2 keyboard implementation 2026-10-03, pending ratification" },
+  // SPR-02 M5 — the Switcher narrowed to the Open section. shift+o because
+  // prefix+o is tab.visitChild (herdr's "go to the toast" is a later unit).
+  { id: "prefix-switcher-open", action: "switcher.open", status: "implemented", prefixKey: "shift+o", scope: "outside-text", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+  { id: "chord-switcher-open", action: "switcher.open", status: "implemented", chord: "ctrl+alt+shift+o", scope: "anywhere", origin: "lane-Sweep-SPR-02", decision: "SPR-02 M5 — specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html (herdr goto picker: the Switcher opened already narrowed to open panes/windows/tabs)" },
+
+  // ── SPR-07 the agent pane: prefix+a / ctrl+alt+a under D2's "a" ("ask about
+  // this"; DESIGN-MODEL §2). ONE action: open-or-focus is idempotent (a
+  // second press refocuses the composer, never a second tab). Handler:
+  // shortcuts.ts openAgentPaneKey → agent/openAgentPane.ts (lazy); guard
+  // scenario asserts the composer takes focus. A saved prefix of ctrl+alt+a
+  // silently falls back to ctrl+b (readPrefix).
+  { id: "prefix-agent-pane", action: "agent.openPane", status: "implemented", prefixKey: "a", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-pane", action: "agent.openPane", status: "implemented", chord: "ctrl+alt+a", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
@@ -237,20 +252,22 @@ export const KEYMAP: readonly KeymapRow[] = [
  * here. (The attention inbox has explicitly unimplemented rows and no handler;
  * the sheet derives that status from this table.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
- * prefix+a always works and the operator's platforms do not grab it.
+ * prefix+a always works and the operator's platforms do not grab it. SPR-07
+ * moved a / ctrl+alt+a into KEYMAP (the agent pane; islands' "ask about
+ * this" reading, handoff F8).
  */
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
     "w", "shift+n", "m", "shift+m",
-    "r", "a",
+    "r",
   ],
   chords: [
     "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
     "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
     "ctrl+alt+w",
     "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m",
-    "ctrl+alt+r", "ctrl+alt+a",
+    "ctrl+alt+r",
   ],
 } as const;
 

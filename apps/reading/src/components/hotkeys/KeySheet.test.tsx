@@ -102,8 +102,10 @@ describe("the filter (herdr keybind-help semantics)", () => {
     // (prefix+shift+i) and close (prefix+shift+x) have no chord, so a
     // ctrl+alt filter leaves them out.
     expect(Array.from(sheet().querySelectorAll("[data-keymap-action]")).map((e) => e.getAttribute("data-keymap-action"))).toEqual([
-      // project.select sits in "Find and switch", the first group.
+      // project.select and switcher.open (SPR-02 M5, ctrl+alt+shift+o) sit in
+      // "Find and switch", the first group.
       "project.select",
+      "switcher.open",
       "projecttree.toggle",
       "pane.focusLeft",
       "pane.focusRight",
@@ -115,6 +117,9 @@ describe("the filter (herdr keybind-help semantics)", () => {
       "tab.visitChild",
       "tab.treeToggle",
       "inbox.toggle",
+      // SPR-07: ctrl+alt+a opens the agent pane ("panels", after the inbox
+      // in ACTIONS order).
+      "agent.openPane",
     ]);
     fireEvent.change(input, { target: { value: "zzz-nothing" } });
     expect(sheet().textContent).toContain("No shortcut matches");

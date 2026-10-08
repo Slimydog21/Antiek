@@ -7,8 +7,10 @@ import { createActionHandlers } from "../src/workspace/shortcuts";
 import { readKeyboardOwnership } from "../src/workspace/keyboardOwnership";
 import { useWorkspace, disablePersistence } from "../src/workspace/WorkspaceStore";
 import { useTabTrees } from "../src/workspace/tabTreeStore";
+import { useCompanion } from "../src/workspace/companionStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
+import { isFeatureOn } from "../src/lib/featureFlags";
 
 export async function until(predicate: () => boolean, message: string, timeout = 3000): Promise<void> {
   const end = performance.now() + timeout;
@@ -53,6 +55,9 @@ async function reset() {
   await settle();
   disablePersistence();
   useWorkspace.getState().reset();
+  // SPR-07: an agent tab a previous scenario opened would make the next
+  // press a refocus, not an open; every scenario starts with no agents.
+  useCompanion.getState().reset();
   useWorkspace.getState().setLayoutPreset("omarchy-inset");
   await route("/read/guard-a");
   await see('[data-pane="left"]');
@@ -89,6 +94,13 @@ interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | 
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
+/** SPR-02 M4a: with antiek.flag.switcher.places ON (the guard's Vite fixture
+ *  is DEV, where the flag defaults on) More opens the Switcher narrowed to
+ *  Scenes; with it OFF, the products launcher. Both are "More did its job". */
+function moreTargetVisible(): boolean {
+  if (isFeatureOn("switcher.places")) return visible('[data-keymap-owner="palette.toggle"]');
+  return launcherVisible();
+}
 function door(path: string): Scenario {
   return { effect: async () => {
     await until(() => location.pathname === path && !!document.querySelector(`[data-product-id="${path === "/" ? "research" : path === "/library" ? "read" : path.slice(1)}"]`), `door failed to show ${path}`);
@@ -119,6 +131,10 @@ export const SCENARIOS = {
   "tab.reopen": { prepare: async () => { await tabs(); useTabTrees.getState().closeActiveTab("reading", "prune"); await settle(); }, effect: () => readerAt("b") },
   "tab.treeToggle": { prepare: () => tabs(), effect: () => see('[data-tab-tree-panel]') },
   "project.select": { effect: () => see('[data-keymap-owner="project.select"]') },
+  // SPR-02 M5: opens the same Switcher (narrowed to Open only when the
+  // places flag is on; the guard runs with default flags, so the plain
+  // Switcher is the visible effect either way).
+  "switcher.open": { effect: () => see('[data-keymap-owner="palette.toggle"]') },
   "reader.tocToggle": {
     prepare: async () => {
       const reader = document.querySelector<HTMLElement>('[data-testid="book-reader-root"]');
@@ -129,12 +145,14 @@ export const SCENARIOS = {
     effect: () => see('[aria-label="Contents"][data-open="true"]'),
   },
   "inbox.toggle": { effect: () => see('[data-keymap-owner="inbox.toggle"]') },
+  // SPR-07 (fix 3): the composer, not merely the pane, must take focus.
+  "agent.openPane": { effect: () => until(() => !!document.activeElement?.closest("[data-agent-pane]") && document.activeElement?.tagName === "TEXTAREA", "agent.openPane: composer did not take focus") },
   "door.research": door("/"),
   "door.read": door("/library"),
   "door.write": door("/write"),
   "door.speak": door("/speak"),
   "door.home": door("/home"),
-  "door.more": { effect: () => until(launcherVisible, "visible effect missing: More launcher") },
+  "door.more": { effect: () => until(moreTargetVisible, "visible effect missing: More target (Switcher with places on, launcher with it off)") },
   "door.researchHome": door("/"),
   "door.readLibrary": door("/library"),
 } satisfies Record<ActionId, Scenario>;
@@ -262,4 +280,4 @@ export async function customEffect() {
 }
 export { setPrefix } from "../src/components/hotkeys/keymap";
 
-export function verifyMoreClick() { return until(launcherVisible, "More click did not open the visible launcher"); }
+export function verifyMoreClick() { return until(moreTargetVisible, "More click did not open its visible target (Switcher with places on, launcher with it off)"); }

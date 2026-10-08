@@ -27,8 +27,9 @@ import {
   useReadingState,
   useReadingStateBus,
 } from "../../hooks/useReadingState";
-import { positionStorageKey, readingPositionOwner } from "./usePosition";
+import { positionStorageKey, readingPositionOwner, setReadingPositionOwner, usePosition } from "./usePosition";
 import { AuthProvider, useAuth } from "../../lib/auth";
+import { isWorkspaceOwnerSession, resumeWorkspaceOwner, setWorkspaceOwner, suspendWorkspaceOwner, subscribeWorkspaceOwnerAdmission, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 const {
   getBookMock,
@@ -254,6 +255,7 @@ beforeEach(() => {
   });
   useWorkspace.getState().reset();
   resetReadingStateBus();
+  setWorkspaceOwner("reader-a");
   setReadingStateOwner("reader-a");
 });
 
@@ -648,6 +650,50 @@ function PositionReader() {
 }
 
 describe("auth owner transitions", () => {
+  it("refuses a pending A position PUT while admission is suspended and the transport belongs to B", async () => {
+    setWorkspaceOwner("reader-a");
+    resumeWorkspaceOwner();
+    const captured = workspaceOwnerSession();
+    let transportOwner = "reader-a";
+    const puts: Array<{ owner: string; page: number; anchor: string | null; revision: number }> = [];
+    const rows = new Map<string, BusRow>([
+      ["reader-a", { page_index: 4, anchor_ref: "anchor-a", prefs: {}, revision: 2, updated_at: "a-before" }],
+      ["reader-b", { page_index: 8, anchor_ref: "anchor-b", prefs: {}, revision: 2, updated_at: "b-before" }],
+    ]);
+    apiFetchMock.mockImplementation(async (input: unknown, init?: { method?: string; body?: string }) => {
+      if (!String(input).endsWith("/reading-state")) throw new Error("Unexpected unit endpoint");
+      const row = rows.get(transportOwner);
+      if (init?.method !== "PUT") return row
+        ? jsonResponse({ document_id: "doc-1", ...row }) : jsonResponse({}, 404);
+      const body = JSON.parse(init.body ?? "{}");
+      puts.push({ owner: transportOwner, page: body.page_index, anchor: body.anchor_ref, revision: body.revision });
+      if (body.revision !== (row?.revision ?? 0)) return jsonResponse({}, 409);
+      const written = { page_index: body.page_index, anchor_ref: body.anchor_ref, prefs: {}, revision: body.revision + 1, updated_at: "unit-write" };
+      rows.set(transportOwner, written);
+      return jsonResponse({ document_id: "doc-1", ...written });
+    });
+    try {
+      const { result } = renderHook(() => useReadingState("doc-1", 10));
+      await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.revision).toBe(2));
+      expect(result.current.pageIndex).toBe(4);
+      expect(useReadingStateBus.getState().byDocument["doc-1"]?.anchorRef).toBe("anchor-a");
+      act(() => result.current.setPageIndex(5));
+      act(() => suspendWorkspaceOwner());
+      transportOwner = "reader-b";
+      expect(workspaceOwnerSession()).toBe(captured);
+      expect(isWorkspaceOwnerSession(captured)).toBe(false);
+      expect(readingPositionOwner()).toBe("reader-a");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 500)); });
+      expect(isWorkspaceOwnerSession(captured)).toBe(false);
+      expect(puts).toEqual([]);
+      expect(rows.get("reader-b")).toEqual({ page_index: 8, anchor_ref: "anchor-b", prefs: {}, revision: 2, updated_at: "b-before" });
+    } finally {
+      resetReadingStateBus();
+      resumeWorkspaceOwner();
+      setWorkspaceOwner(null);
+    }
+  });
+
   it("ignores A's PUT response after sign-out and B sign-in", async () => {
     let signedIn: string | null = "reader-a";
     const heldPut = gate();
@@ -697,7 +743,7 @@ describe("auth owner transitions", () => {
     const { result } = renderHook(() => useReadingState("doc-1", 10));
     await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
     const aTurn = result.current.setPageIndex;
-    act(() => setReadingStateOwner("reader-b"));
+    act(() => { setWorkspaceOwner("reader-b"); setReadingStateOwner("reader-b"); });
     await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
     act(() => aTurn(8));
     expect(result.current.pageIndex).toBe(0);
@@ -902,4 +948,172 @@ describe("auth owner transitions", () => {
     await waitFor(() => expect(screen.getByTestId("owner-page").textContent).toBe("7"));
     expect(useReadingStateBus.getState().byDocument["doc-1"]?.revision).toBe(9);
   });
+});
+
+describe("captured reading-state admission and resource lifetime", () => {
+  function baseline(page = 4): BusRow {
+    return { page_index: page, anchor_ref: "anchor-a", prefs: {}, revision: 2, updated_at: "unit-before" };
+  }
+
+  it("keeps the latest A turn and fallback through suspension and legitimate leave, then writes only after A confirms", async () => {
+    const server = busServer(baseline()); route(server);
+    const { result, unmount } = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
+    const captured = workspaceOwnerSession();
+    act(() => { result.current.setPageIndex(5); suspendWorkspaceOwner(); result.current.setPageIndex(6); });
+    expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBe("6");
+    unmount();
+    await act(async () => { await new Promise((done) => setTimeout(done, 500)); });
+    expect(server.puts).toEqual([]);
+    act(() => resumeWorkspaceOwner(captured));
+    await waitFor(() => expect(server.puts).toEqual([{ page_index: 6, revision: 2 }]));
+    expect(server.row).toMatchObject({ page_index: 6, anchor_ref: "anchor-a", revision: 3 });
+  });
+
+  it("holds a returned GET until the same actual owner confirms", async () => {
+    const held = gate(); const server = busServer(baseline()); server.getGate = held.promise; route(server);
+    renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    const captured = workspaceOwnerSession();
+    act(() => suspendWorkspaceOwner());
+    await act(async () => held.release());
+    expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(false);
+    act(() => resumeWorkspaceOwner(captured));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]).toMatchObject({ pageIndex: 4, revision: 2, anchorRef: "anchor-a", loaded: true }));
+    expect(server.puts).toEqual([]);
+  });
+
+  it("holds a PUT response and serializes a later local turn behind confirmed adoption", async () => {
+    const held = gate(); const server = busServer(baseline()); route(server);
+    const { result } = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
+    server.putGate = held.promise;
+    act(() => result.current.setPageIndex(5));
+    await waitFor(() => expect(server.puts).toEqual([{ page_index: 5, revision: 2 }]));
+    const captured = workspaceOwnerSession();
+    act(() => { suspendWorkspaceOwner(); result.current.setPageIndex(6); });
+    await act(async () => { held.release(); await new Promise((done) => setTimeout(done, 500)); });
+    expect(useReadingStateBus.getState().byDocument["doc-1"]).toMatchObject({ pageIndex: 6, revision: 2, settledVersion: 0 });
+    expect(server.puts).toHaveLength(1);
+    act(() => resumeWorkspaceOwner(captured));
+    await waitFor(() => expect(server.puts).toEqual([{ page_index: 5, revision: 2 }, { page_index: 6, revision: 3 }]));
+    expect(server.row).toMatchObject({ page_index: 6, anchor_ref: "anchor-a", revision: 4 });
+  });
+
+  it("does not refetch a 409 through unknown admission, then preserves a later turn with the confirmed revision", async () => {
+    const server = busServer(baseline()); route(server);
+    const { result } = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
+    const original = apiFetchMock.getMockImplementation();
+    if (!original) throw new Error("Missing stateful route");
+    const conflict = gate(); let putStarted = false;
+    apiFetchMock.mockImplementation(async (input, init) => {
+      if (init?.method === "PUT" && !putStarted) {
+        putStarted = true; await conflict.promise; return jsonResponse({}, 409);
+      }
+      return original(input, init);
+    });
+    act(() => result.current.setPageIndex(5));
+    await waitFor(() => expect(putStarted).toBe(true));
+    const captured = workspaceOwnerSession();
+    act(() => { suspendWorkspaceOwner(); result.current.setPageIndex(6); });
+    server.row = { ...baseline(8), revision: 4 };
+    const before = apiFetchMock.mock.calls.length;
+    await act(async () => { conflict.release(); await new Promise((done) => setTimeout(done, 500)); });
+    expect(apiFetchMock.mock.calls).toHaveLength(before);
+    expect(useReadingStateBus.getState().byDocument["doc-1"]?.pageIndex).toBe(6);
+    act(() => resumeWorkspaceOwner(captured));
+    await waitFor(() => expect(server.puts).toEqual([{ page_index: 6, revision: 4 }]));
+    expect(server.row).toMatchObject({ page_index: 6, revision: 5 });
+  });
+
+  it.each(["replacement", "logout", "A-B-A"])("refuses a held A GET after %s, without adopting its anchor", async (transition) => {
+    const held = gate(); const server = busServer(baseline(8)); server.getGate = held.promise; route(server);
+    const { result } = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    act(() => suspendWorkspaceOwner());
+    act(() => {
+      setWorkspaceOwner(transition === "logout" ? null : "reader-b");
+      if (transition === "A-B-A") setWorkspaceOwner("reader-a");
+      setReadingStateOwner(transition === "logout" ? null : transition === "A-B-A" ? "reader-a" : "reader-b");
+    });
+    server.getGate = undefined;
+    server.row = null;
+    await act(async () => held.release());
+    await waitFor(() => expect(result.current.pageIndex).toBe(0));
+    expect(useReadingStateBus.getState().byDocument["doc-1"]?.anchorRef).toBeNull();
+    expect(server.puts).toEqual([]);
+  });
+
+  it("refuses old same-owner document and unmounted page callbacks without retiring another mount", async () => {
+    const server = busServer(null); route(server);
+    const first = renderHook(({ id }) => useReadingState(id, 10), { initialProps: { id: "doc-1" } });
+    const sibling = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
+    const retired = first.result.current.setPageIndex;
+    first.rerender({ id: "doc-2" });
+    act(() => retired(8));
+    expect(useReadingStateBus.getState().byDocument["doc-1"]?.pageIndex).toBe(0);
+    const disposed = first.result.current.setPageIndex;
+    first.unmount();
+    act(() => disposed(9));
+    expect(useReadingStateBus.getState().byDocument["doc-2"]?.pageIndex).toBe(0);
+    act(() => sibling.result.current.setPageIndex(3));
+    await waitFor(() => expect(server.puts).toEqual([{ page_index: 3, revision: 0 }]));
+  });
+});
+
+
+it("refuses disposed and replaced fallback resources before any sessionStorage write", () => {
+  const view = renderHook(({ id }) => usePosition(id, 10), { initialProps: { id: "doc-1" } });
+  const oldDocument = view.result.current.setPageIndex;
+  view.rerender({ id: "doc-2" });
+  act(() => oldDocument(8));
+  expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBeNull();
+  expect(sessionStorage.getItem(positionStorageKey("doc-2"))).toBeNull();
+  const disposed = view.result.current.setPageIndex;
+  view.unmount();
+  act(() => disposed(9));
+  expect(sessionStorage.getItem(positionStorageKey("doc-2"))).toBeNull();
+});
+
+it("fences a fallback callback through silent position A-B-A before React notification", () => {
+  const { result } = renderHook(() => usePosition("doc-1", 10));
+  const retired = result.current.setPageIndex;
+  act(() => {
+    setReadingPositionOwner("reader-b", false);
+    setReadingPositionOwner("reader-a", false);
+    retired(8);
+  });
+  expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBeNull();
+});
+
+
+it("clamps a retained same-book turn against the current shortened pagination", async () => {
+  const server = busServer(null); route(server);
+  const view = renderHook(({ count }) => useReadingState("doc-1", count), { initialProps: { count: 10 } });
+  await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.loaded).toBe(true));
+  const retained = view.result.current.setPageIndex;
+  view.rerender({ count: 3 });
+  act(() => retained(8));
+  expect(view.result.current.pageIndex).toBe(2);
+  expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBe("2");
+  await waitFor(() => expect(server.puts).toEqual([{ page_index: 2, revision: 0 }]));
+});
+
+
+it("retains local fallback during unknown admission but refuses a callback after failed confirmation", () => {
+  const { result } = renderHook(() => usePosition("doc-1", 10));
+  const retained = result.current.setPageIndex;
+  act(() => { suspendWorkspaceOwner(); retained(5); });
+  expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBe("5");
+  const primary = new Error("controlled confirmation failure");
+  const unsubscribe = subscribeWorkspaceOwnerAdmission((event) => {
+    if (event.state === "ready") throw primary;
+  });
+  try {
+    act(() => expect(() => resumeWorkspaceOwner()).toThrow(primary));
+    act(() => retained(8));
+    expect(sessionStorage.getItem(positionStorageKey("doc-1"))).toBe("5");
+  } finally { unsubscribe(); }
 });

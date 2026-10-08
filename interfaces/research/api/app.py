@@ -2000,7 +2000,7 @@ def create_app(
                                     or path in {"/auth/passkey/register/options", "/auth/passkey/register/verify"}
                                     or re.fullmatch(r"/auth/passkeys/[^/]+", path) is not None
                                     or (path == "/notebooks" and method in {"GET", "POST"})
-                                    or (re.fullmatch(r"/notebooks/[^/]+", path) is not None and method == "GET")
+                                    or (re.fullmatch(r"/notebooks/[^/]+", path) is not None and method in {"GET", "DELETE"})
                                     or (re.fullmatch(r"/notebooks/[^/]+/content", path) is not None and method in {"GET", "PUT"})
                                     or (re.fullmatch(r"/notebooks/[^/]+/blocks(?:/[^/]+)?", path) is not None and method in {"POST", "PATCH", "DELETE"})
                                     or (path == "/projects" and method in {"GET", "POST"})
@@ -2009,6 +2009,7 @@ def create_app(
                                     or (re.fullmatch(r"/projects/[^/]+/tabs/[^/]+(?:/(?:retired|allocate))?", path) is not None and method in {"GET", "PUT", "POST"})
                                     or (path == "/documents" and method == "GET")
                                     or (path == "/books" and method == "GET")
+                                    or (path == "/library" and method == "GET")
                                     or (path != "/books/curate" and re.fullmatch(r"/books/[^/]+(?:/(?:full-text|owner-full-text))?", path) is not None and method == "GET")
                                     or (re.fullmatch(r"/books/[^/]+/ask", path) is not None and method == "POST")
                                     or (re.fullmatch(r"/books/[^/]+/reading-state", path) is not None and method in {"GET", "PUT"})
@@ -4045,7 +4046,12 @@ def create_app(
             sec_rows = con.execute(
                 "SELECT s.section_id, s.deliverable_id, s.parent_section_id, "
                 "s.section_index, s.title, s.prose_text, s.prose_provenance, "
-                "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id) "
+                "((SELECT COUNT(*) FROM outline_blocks ob WHERE ob.section_id = s.section_id) + "
+                "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id "
+                "AND NOT EXISTS (SELECT 1 FROM outline_blocks migrated "
+                "WHERE migrated.section_id = sb.section_id "
+                "AND migrated.source_block_kind = sb.block_kind "
+                "AND migrated.source_block_id = sb.block_id))) "
                 "FROM deliverable_sections s WHERE s.deliverable_id = ? "
                 "ORDER BY s.section_index ASC", [deliverable_id],
             ).fetchall()
@@ -5984,6 +5990,35 @@ def create_app(
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
+
+    @app.delete("/notebooks/{notebook_id}", status_code=204)
+    async def delete_notebook_endpoint(notebook_id: str, request: Request) -> Response:
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import (
+            NotebookDeleteConflict,
+            NotebookReadWithheld,
+            delete_notebook,
+        )
+
+        from .books import _reader_owner_id
+
+        db_path = default_db_path()
+        owner_user_id = _reader_owner_id(request)
+
+        def _sync() -> bool:
+            with connect_write(db_path, purpose="api:delete_notebook") as con:
+                return delete_notebook(con, notebook_id, owner_user_id=owner_user_id)
+
+        try:
+            deleted = await asyncio.to_thread(_sync)
+        except NotebookReadWithheld as exc:
+            raise HTTPException(status_code=403, detail="notebook access withheld") from exc
+        except NotebookDeleteConflict as exc:
+            raise HTTPException(status_code=409, detail="notebook still has incoming references") from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return Response(status_code=204)
 
     @app.post(
         "/notebooks/{notebook_id}/blocks",

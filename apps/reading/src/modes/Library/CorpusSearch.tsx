@@ -3,6 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import { corpusSearch } from "../../api/corpusSearch";
 import type { CorpusSearchHit } from "../../api/corpusSearch";
+import {
+  awaitWorkspaceOwnerSession,
+  isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission,
+  workspaceOwnerAdmission,
+  workspaceOwnerSession,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 
 /**
  * CorpusSearch — the Library search box over the OWNED corpus (Read SPR-08 M1).
@@ -38,78 +46,229 @@ export interface CorpusSearchProps {
   themeContext?: string[];
 }
 
-type SearchRequest = { query: string; signalLabel: string | null };
+type SearchRequest = { readonly query: string; readonly signalLabel: string | null };
+type SearchAttempt = {
+  readonly id: number;
+  readonly owner: WorkspaceOwnerSession;
+  readonly controller: AbortController;
+  readonly unsubscribe: () => void;
+};
 type SearchState =
   | { kind: "idle" }
   | { kind: "reading" }
   | { kind: "loading" }
-  | { kind: "ready"; hits: CorpusSearchHit[]; signalLabel: string | null }
-  | { kind: "failed"; message: string; request: SearchRequest | null };
+  | { kind: "ready"; hits: CorpusSearchHit[]; signalLabel: string | null; attempt: SearchAttempt }
+  | { kind: "failed"; message: string; request: SearchRequest | null; attempt: SearchAttempt };
+
+type SearchBoundary = {
+  readonly active: (attempt: SearchAttempt) => boolean;
+  readonly current: (attempt: SearchAttempt) => boolean;
+  readonly setState: (state: SearchState) => void;
+};
+
+type FileSearchBoundary = SearchBoundary & {
+  readonly begin: (owner: WorkspaceOwnerSession) => SearchAttempt | null;
+  readonly setDraft: (draft: { query: string; owner: WorkspaceOwnerSession }) => void;
+  readonly run: (query: string, signalLabel: string | null, attempt: SearchAttempt) => void;
+};
+
+async function executeSearch(
+  request: SearchRequest,
+  attempt: SearchAttempt,
+  { active, current, setState }: SearchBoundary,
+) {
+  setState({ kind: "loading" });
+  do {
+    if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+  } while (!current(attempt));
+  try {
+    const result = await corpusSearch(request.query);
+    if (!active(attempt)) return;
+    do {
+      if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+    } while (!current(attempt));
+    setState({ kind: "ready", hits: result.hits, signalLabel: request.signalLabel, attempt });
+  } catch (error: unknown) {
+    do {
+      if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+    } while (!current(attempt));
+    setState({ kind: "failed", message: error instanceof Error ? error.message : String(error), request, attempt });
+  }
+}
+
+async function searchFromFile(
+  file: File,
+  { active, begin, current, run, setDraft, setState }: FileSearchBoundary,
+) {
+  const attempt = begin(workspaceOwnerSession());
+  if (!attempt) return;
+  setState({ kind: "reading" });
+  try {
+    const prefix = file.size <= MAX_FILE_QUERY_BYTES ? file : file.slice(0, MAX_FILE_QUERY_BYTES);
+    const text = (await prefix.text()).slice(0, MAX_FILE_QUERY_CHARS);
+    if (!active(attempt)) return;
+    do {
+      if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+    } while (!current(attempt));
+    if (!text.trim()) {
+      setState({ kind: "failed", message: "That file has no readable text to search by.", request: null, attempt });
+      return;
+    }
+    setDraft({ query: "", owner: attempt.owner });
+    run(text, `books like “${file.name}”`, attempt);
+  } catch {
+    do {
+      if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+    } while (!current(attempt));
+    setState({ kind: "failed", message: "Couldn’t read that file.", request: null, attempt });
+  }
+}
+
+function SearchResults({ ready, onOpen }: {
+  readonly ready: Extract<SearchState, { kind: "ready" }> | null;
+  readonly onOpen: (hit: CorpusSearchHit, attempt: SearchAttempt) => Promise<void>;
+}) {
+  const hits = ready?.hits ?? null;
+  return (
+    <>
+      {hits !== null && (
+        <div className="mt-2">
+          {hits.length === 0 ? (
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
+              Nothing in your corpus matched. Try different words.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5" aria-label="Search results">
+              {hits.map((h) => (
+                <li key={h.chunk_id}>
+                  <button
+                    type="button"
+                    onClick={() => { if (ready) void onOpen(h, ready.attempt); }}
+                    className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
+                  >
+                    <span className="block text-sm font-serif text-ink dark:text-bright truncate">
+                      {h.document_title ?? h.document_id}
+                      {h.page_resolved && h.page_index !== null ? (
+                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight">
+                          p.{h.page_index + 1}
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight italic">
+                          open the book
+                        </span>
+                      )}
+                    </span>
+                    <span className="block text-xs text-shadow-1 dark:text-moonlight line-clamp-2">
+                      {h.snippet}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps) {
-  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState(() => ({ query: "", owner: workspaceOwnerSession() }));
+  const query = draft.query;
   const [state, setState] = useState<SearchState>({ kind: "idle" });
+  const [admission, setAdmission] = useState(workspaceOwnerAdmission);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
+  const attemptRef = useRef<SearchAttempt | null>(null);
+  const live = useRef(true);
   const busy = state.kind === "loading" || state.kind === "reading";
-  const hits = state.kind === "ready" ? state.hits : null;
-  const signal = state.kind === "ready" ? state.signalLabel : null;
+  const ready = state.kind === "ready"
+    && admission.state === "ready"
+    && admission.session === state.attempt.owner
+    && isWorkspaceOwnerSession(state.attempt.owner) ? state : null;
+  const signal = ready?.signalLabel ?? null;
 
-  useEffect(() => () => { requestId.current += 1; }, []);
+  const disposeAttempt = useCallback(() => {
+    const previous = attemptRef.current;
+    attemptRef.current = null;
+    requestId.current += 1;
+    previous?.unsubscribe();
+    previous?.controller.abort();
+  }, []);
 
   const retire = useCallback(() => {
-    requestId.current += 1;
+    disposeAttempt();
     setState({ kind: "idle" });
+  }, [disposeAttempt]);
+
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      disposeAttempt();
+    };
+  }, [disposeAttempt]);
+
+  const create = useCallback((owner: WorkspaceOwnerSession): SearchAttempt | null => {
+    const snapshot = workspaceOwnerAdmission();
+    if (!live.current || snapshot.session !== owner
+      || (snapshot.state !== "ready" && snapshot.state !== "suspended")) return null;
+    disposeAttempt();
+    let attempt: SearchAttempt | null = null;
+    // Notifications can still fail in a later observer; this callback never dispatches.
+    const observe = (next: ReturnType<typeof workspaceOwnerAdmission>) => {
+      if (!attempt || attemptRef.current !== attempt) return;
+      setAdmission(next);
+      if (next.state === "retiring" || next.state === "failed" || next.session !== owner) {
+        retire();
+        setDraft({ query: "", owner: next.session });
+      }
+    };
+    const unsubscribe = subscribeWorkspaceOwnerAdmission(observe);
+    const captured = { id: requestId.current, owner, controller: new AbortController(), unsubscribe };
+    attempt = captured;
+    attemptRef.current = captured;
+    observe(workspaceOwnerAdmission());
+    return attemptRef.current === captured ? captured : null;
+  }, [disposeAttempt, retire]);
+
+  const active = useCallback((attempt: SearchAttempt) => {
+    const snapshot = workspaceOwnerAdmission();
+    return live.current && attemptRef.current === attempt
+      && requestId.current === attempt.id && !attempt.controller.signal.aborted
+      && attempt.owner.subject !== null && snapshot.session === attempt.owner
+      && (snapshot.state === "ready" || snapshot.state === "suspended");
   }, []);
 
-  const execute = useCallback(async (request: SearchRequest, id: number) => {
-    setState({ kind: "loading" });
-    try {
-      const result = await corpusSearch(request.query);
-      if (requestId.current !== id) return;
-      setState({ kind: "ready", hits: result.hits, signalLabel: request.signalLabel });
-    } catch (error: unknown) {
-      if (requestId.current !== id) return;
-      setState({ kind: "failed", message: error instanceof Error ? error.message : String(error), request });
-    }
-  }, []);
+  const current = useCallback((attempt: SearchAttempt) => active(attempt)
+    && isWorkspaceOwnerSession(attempt.owner), [active]);
 
-  const run = useCallback(
-    async (rawQuery: string, signalLabel: string | null, id = ++requestId.current) => {
-      const q = rawQuery.trim();
-      if (!q) { setState({ kind: "idle" }); return; }
-      const themed = themeContext && themeContext.length > 0
-        ? `${q}\n\n(in the context of: ${themeContext.slice(0, 4).join(", ")})`
-        : q;
-      await execute({ query: themed, signalLabel }, id);
-    },
-    [execute, themeContext],
-  );
+  const begin = useCallback((owner: WorkspaceOwnerSession) =>
+    owner.subject === null ? null : create(owner), [create]);
+
+  const execute = useCallback((request: SearchRequest, attempt: SearchAttempt) =>
+    executeSearch(request, attempt, { active, current, setState }), [active, current]);
+
+  const run = useCallback((rawQuery: string, signalLabel: string | null, attempt: SearchAttempt) => {
+    const q = rawQuery.trim();
+    if (!q) { retire(); return; }
+    const themed = themeContext && themeContext.length > 0
+      ? `${q}\n\n(in the context of: ${themeContext.slice(0, 4).join(", ")})`
+      : q;
+    void execute({ query: themed, signalLabel }, attempt);
+  }, [execute, retire, themeContext]);
 
   const onSubmit = useCallback((event: React.FormEvent) => {
     event.preventDefault();
-    void run(query, null);
-  }, [query, run]);
+    if (!query.trim()) return;
+    const attempt = begin(draft.owner);
+    if (attempt) run(query, null, attempt);
+  }, [begin, draft.owner, query, run]);
 
-  const biasFromFile = useCallback(async (file: File) => {
-    const id = ++requestId.current;
-    setState({ kind: "reading" });
-    try {
-      const prefix = file.size <= MAX_FILE_QUERY_BYTES ? file : file.slice(0, MAX_FILE_QUERY_BYTES);
-      const text = (await prefix.text()).slice(0, MAX_FILE_QUERY_CHARS);
-      if (requestId.current !== id) return;
-      if (!text.trim()) {
-        setState({ kind: "failed", message: "That file has no readable text to search by.", request: null });
-        return;
-      }
-      setQuery("");
-      await run(text, `books like “${file.name}”`, id);
-    } catch {
-      if (requestId.current !== id) return;
-      setState({ kind: "failed", message: "Couldn’t read that file.", request: null });
-    }
-  }, [run]);
+  const biasFromFile = useCallback((file: File) =>
+    searchFromFile(file, { active, begin, current, run, setDraft, setState }), [active, begin, current, run]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -121,10 +280,30 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
     [biasFromFile],
   );
 
+  const changeQuery = useCallback((value: string) => {
+    retire();
+    const owner = workspaceOwnerSession();
+    const resource = create(owner);
+    setDraft({ query: resource ? value : "", owner });
+  }, [create, retire]);
+
   const clear = useCallback(() => {
     retire();
-    setQuery("");
+    setDraft({ query: "", owner: workspaceOwnerSession() });
   }, [retire]);
+
+  const retry = useCallback((request: SearchRequest, previous: SearchAttempt) => {
+    if (!active(previous)) return;
+    const attempt = begin(previous.owner);
+    if (attempt) void execute(request, attempt);
+  }, [active, begin, execute]);
+
+  const open = useCallback(async (hit: CorpusSearchHit, attempt: SearchAttempt) => {
+    do {
+      if (!await awaitWorkspaceOwnerSession(attempt.owner, attempt.controller.signal) || !active(attempt)) return;
+    } while (!current(attempt));
+    onOpen(hit.document_id, hit.page_resolved ? hit.page_index : null);
+  }, [active, current, onOpen]);
 
   return (
     <section
@@ -145,7 +324,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
         <input
           type="search"
           value={query}
-          onChange={(e) => { retire(); setQuery(e.target.value); }}
+          onChange={(e) => changeQuery(e.target.value)}
           placeholder="Search your books — or drop a file to find books like it"
           aria-label="Search the corpus"
           className="flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm outline-none border border-rule dark:border-charcoal-1"
@@ -187,51 +366,14 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
           <p className="text-sm text-emperor">{state.message}</p>
           {state.request && (
             <LemonButton type="button" size="sm" variant="tertiary"
-              onClick={() => { if (state.request) void execute(state.request, ++requestId.current); }}>
+              onClick={() => { if (state.request) retry(state.request, state.attempt); }}>
               Retry search
             </LemonButton>
           )}
         </div>
       )}
 
-      {hits !== null && (
-        <div className="mt-2">
-          {hits.length === 0 ? (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-              Nothing in your corpus matched. Try different words.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-1.5" aria-label="Search results">
-              {hits.map((h) => (
-                <li key={h.chunk_id}>
-                  <button
-                    type="button"
-                    onClick={() => onOpen(h.document_id, h.page_resolved ? h.page_index : null)}
-                    className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
-                  >
-                    <span className="block text-sm font-serif text-ink dark:text-bright truncate">
-                      {h.document_title ?? h.document_id}
-                      {h.page_resolved && h.page_index !== null ? (
-                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight">
-                          p.{h.page_index + 1}
-                        </span>
-                      ) : (
-                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight italic">
-                          open the book
-                        </span>
-                      )}
-                    </span>
-                    <span className="block text-xs text-shadow-1 dark:text-moonlight line-clamp-2">
-                      {h.snippet}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-        </div>
-      )}
+      <SearchResults ready={ready} onOpen={open} />
       {state.kind !== "idle" && (
         <button type="button" onClick={clear}
           className="mt-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline">
