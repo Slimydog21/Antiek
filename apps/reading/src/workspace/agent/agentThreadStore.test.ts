@@ -1,12 +1,19 @@
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 /** agentThread.test.ts — SPR-07 invariant 8: failed turns never enter the wire history; at most the last 8 done turns. */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { HISTORY_CAP, historyFor, useAgentThreads } from "./agentThreadStore";
 
 const key = "agent:pane:p:proj-1";
 const store = () => useAgentThreads.getState();
 
-beforeEach(() => store().reset());
+beforeEach(async () => {
+  setWorkspaceOwner(null);
+  setWorkspaceOwner("unit-agent-pane");
+  await awaitWorkspaceOwnerSession(workspaceOwnerSession());
+  store().reset();
+});
+afterEach(() => { setWorkspaceOwner(null); });
 
 describe("agentThread", () => {
   it("startTurn → completeTurn records the answer; failTurn keeps the answer null", () => {

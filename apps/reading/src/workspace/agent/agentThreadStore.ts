@@ -7,6 +7,7 @@
  * and `error`, so historyFor() never ships it. In memory for the session.
  */
 import { create } from "zustand";
+import { isWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 import type { AiAction } from "../../components/ai/aiActions";
 import type { ThoughtPartnerShape } from "../../hooks/useThoughtPartnerThread";
@@ -51,13 +52,14 @@ export interface CompleteTurnInput {
 }
 
 interface AgentThreadState {
+  owner: WorkspaceOwnerSession | null;
   threads: Record<string, AgentTurn[]>;
-  startTurn: (key: string, question: string, opts?: { hidden?: boolean }) => string;
-  streamTurn: (key: string, id: string, partial: string) => void;
-  completeTurn: (key: string, id: string, input: CompleteTurnInput) => void;
-  failTurn: (key: string, id: string, error: string | null) => void;
+  startTurn: (key: string, question: string, opts?: { hidden?: boolean }, owner?: WorkspaceOwnerSession) => string | null;
+  streamTurn: (key: string, id: string | null, partial: string, owner?: WorkspaceOwnerSession) => void;
+  completeTurn: (key: string, id: string | null, input: CompleteTurnInput, owner?: WorkspaceOwnerSession) => void;
+  failTurn: (key: string, id: string | null, error: string | null, owner?: WorkspaceOwnerSession) => void;
   /** A retry re-opens the failed turn in place (pending, no answer, no error). */
-  reopenTurn: (key: string, id: string) => void;
+  reopenTurn: (key: string, id: string | null, owner?: WorkspaceOwnerSession) => void;
   clearThread: (key: string) => void;
   reset: () => void;
 }
@@ -65,10 +67,16 @@ interface AgentThreadState {
 let serial = 0;
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+function admitted(owner: WorkspaceOwnerSession, stored: WorkspaceOwnerSession | null): boolean {
+  return owner.subject !== null && owner === stored && isWorkspaceOwnerSession(owner);
+}
+
 export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
+  owner: workspaceOwnerSession(),
   threads: {},
 
-  startTurn: (key, question, opts) => {
+  startTurn: (key, question, opts, owner = workspaceOwnerSession()) => {
+    if (!admitted(owner, get().owner)) return null;
     const turns = get().threads[key] ?? [];
     const id = `turn-${++serial}`;
     const turn: AgentTurn = {
@@ -83,12 +91,15 @@ export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
   /** A late reply healing the 8 s fallback streams into a FAILED turn: the
    *  turn runs again, so failTurn's endedAt and error are cleared here (the
    *  elapsed timer reads endedAt; completeTurn re-stamps it). */
-  streamTurn: (key, id, partial) =>
+  streamTurn: (key, id, partial, owner = workspaceOwnerSession()) => {
+    if (id === null || !admitted(owner, get().owner)) return;
     set((s) => ({
       threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "streaming", answer: partial, error: null, endedAt: undefined } : t)) },
-    })),
+    }));
+  },
 
-  completeTurn: (key, id, input) =>
+  completeTurn: (key, id, input, owner = workspaceOwnerSession()) => {
+    if (id === null || !admitted(owner, get().owner)) return;
     set((s) => ({
       threads: {
         ...s.threads,
@@ -100,21 +111,37 @@ export const useAgentThreads = create<AgentThreadState>()((set, get) => ({
             : t,
         ),
       },
-    })),
+    }));
+  },
 
-  failTurn: (key, id, error) =>
+  failTurn: (key, id, error, owner = workspaceOwnerSession()) => {
+    if (id === null || !admitted(owner, get().owner)) return;
     set((s) => ({
       threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "failed", answer: null, error, endedAt: now() } : t)) },
-    })),
+    }));
+  },
 
-  reopenTurn: (key, id) =>
+  reopenTurn: (key, id, owner = workspaceOwnerSession()) => {
+    if (id === null || !admitted(owner, get().owner)) return;
     set((s) => ({
       threads: { ...s.threads, [key]: (s.threads[key] ?? []).map((t) => (t.id === id ? { ...t, status: "pending", answer: null, error: null, endedAt: undefined } : t)) },
-    })),
+    }));
+  },
 
   clearThread: (key) => set((s) => { const { [key]: _drop, ...rest } = s.threads; return { threads: rest }; }),
-  reset: () => set({ threads: {} }),
+  reset: () => set({ owner: workspaceOwnerSession(), threads: {} }),
 }));
+
+// Retire synchronously before another token can render or collect history.
+// Suspension preserves the same token's body but never admits a mutation.
+subscribeWorkspaceOwnerAdmission(({ session, state }) => {
+  const current = useAgentThreads.getState();
+  if (state === "retiring" || state === "failed" || session.subject === null) {
+    useAgentThreads.setState({ owner: null, threads: {} });
+  } else if (current.owner !== session) {
+    useAgentThreads.setState({ owner: session, threads: {} });
+  }
+});
 
 /** The wire history: the last HISTORY_CAP DONE turns. Failed turns never reach it. */
 export function historyFor(turns: readonly AgentTurn[] | undefined): Array<{ question: string; answer: string }> {

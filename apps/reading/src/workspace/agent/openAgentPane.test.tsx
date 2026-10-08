@@ -1,3 +1,4 @@
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 /**
  * openAgentPane.test.tsx — SPR-07 J4 by keyboard (repair C1). The REAL
  * dispatcher (installShortcuts) and the REAL PanelLayout in the inset preset:
@@ -44,7 +45,10 @@ let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const comp = () => useCompanion.getState();
 
-beforeEach(() => {
+beforeEach(async () => {
+  setWorkspaceOwner(null);
+  setWorkspaceOwner("unit-agent-pane");
+  await awaitWorkspaceOwnerSession(workspaceOwnerSession());
   pinPlatform("mac");
   ws().reset();
   ws().setLayoutPreset("omarchy-inset");
@@ -56,6 +60,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  try {
   uninstall?.();
   uninstall = null;
   cleanup();
@@ -66,6 +71,7 @@ afterEach(() => {
   unpinPlatform();
   document.body.innerHTML = "";
   window.localStorage.removeItem("antiek.workspace.layout-preset");
+  } finally { setWorkspaceOwner(null); }
 });
 
 function mountInset(path = "/read/doc-1") {

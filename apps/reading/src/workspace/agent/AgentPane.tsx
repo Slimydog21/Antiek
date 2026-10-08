@@ -26,6 +26,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { awaitWorkspaceOwnerSession, workspaceOwnerAdmission, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+
 import { parseAssistantReply, type AiAction } from "../../components/ai/aiActions";
 import { getReadingFocus, READING_FOCUS_EVENT, type ReadingFocus } from "../../lib/readingFocus";
 import { useContextTree } from "../contracts/treeStore";
@@ -42,7 +44,7 @@ import { AgentReplyActions } from "./AgentReplyActions";
 import { AgentThread } from "./AgentThread";
 import { useAgentDraft } from "./agentDraft";
 import { agentDraftKey } from "./agentPaneId";
-import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore } from "./agentPaneStore";
+import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore, captureAgentPaneLease, isCurrentAgentPaneLease, useAgentOwnerAdmission, type AgentPaneLease } from "./agentPaneStore";
 import { historyFor, useAgentThreads, type AgentTurn } from "./agentThreadStore";
 import { agentSystemContext, failureReasonOf, projectTreeSummary, thoughtPartnerTransport, type AgentTransport, type AgentTransportReply } from "./agentTransport";
 import { PANE, type AgentPaneTab } from "./agentTypes";
@@ -52,7 +54,7 @@ import type { EscapeRung } from "./composerKeys";
 import { INTERVIEW_FIRST_TURN, dispatchProjectSeed, parseOptionCard, type OptionCard } from "./interviewMode";
 import { PaneHashSync, useInRouterContext } from "./paneHash";
 import { simulateStream } from "./simulatedStream";
-import { IDLE, createTurnRunner, type LifecycleState, type TurnRunner } from "./turnLifecycle";
+import { IDLE, createTurnRunner, isConfirmedAgentOwner, type LifecycleState, type TurnRunner } from "./turnLifecycle";
 
 export { CLOSE_LINGER_MS };
 
@@ -97,10 +99,20 @@ function useLeftReaderTabs(): { id: string; title: string }[] {
   }, [tree, entries]);
 }
 
-export function AgentPane({ tab, transport = thoughtPartnerTransport, interview = false, active = true, onEscapeRung }: AgentPaneProps) {
+export function AgentPane(props: AgentPaneProps) {
+  const admission = useAgentOwnerAdmission();
+  // Subscribe to the actual companion descriptor; normal focus/anchor clones
+  // keep the lease, while removal/re-admission changes its incarnation.
+  useCompanion((s) => s.tabs.find((tab) => tab.id === props.tab.id));
+  const lease = captureAgentPaneLease(props.tab.id);
+  if (admission.session.subject === null || admission.state === "retiring" || admission.state === "failed" || !lease) return null;
+  return <AdmittedAgentPane key={`${admission.session.epoch}:${lease.incarnation}`} {...props} owner={admission.session} lease={lease} />;
+}
+
+function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview = false, active = true, onEscapeRung, owner, lease }: AgentPaneProps & { owner: WorkspaceOwnerSession; lease: AgentPaneLease }) {
   const rootRef = useRef<HTMLElement>(null);
   const key = tab.id;
-  const turns = useAgentThreads((s) => s.threads[key]) ?? EMPTY_TURNS;
+  const turns = useAgentThreads((s) => s.owner === owner ? s.threads[key] : undefined) ?? EMPTY_TURNS;
   const closing = useAgentPaneStore((s) => Boolean(s.closing[tab.id]));
   const recording = useAgentPaneStore((s) => Boolean(s.recording[tab.id]));
   const openNonce = useAgentPaneStore((s) => s.openNonce[tab.id] ?? 0);
@@ -121,13 +133,20 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
   const [status, setStatus] = useState("");
   const runnerRef = useRef<TurnRunner | null>(null);
   const streamCancel = useRef<() => void>(() => {});
+  const mounted = useRef(true);
+  const pendingSend = useRef<AbortController | null>(null);
+  const pendingStream = useRef<AbortController | null>(null);
+  const current = useCallback(() => {
+    const a = workspaceOwnerAdmission();
+    return mounted.current && a.session === owner && a.state !== "failed" && a.state !== "retiring" && isCurrentAgentPaneLease(lease);
+  }, [owner, lease]);
   const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const announce = useCallback((text: string) => {
     if (announceTimer.current !== null) clearTimeout(announceTimer.current);
     setStatus("");
-    announceTimer.current = setTimeout(() => { announceTimer.current = null; setStatus(text); }, ANNOUNCE_DELAY_MS);
-  }, []);
+    announceTimer.current = setTimeout(() => { announceTimer.current = null; if (current() && isConfirmedAgentOwner(owner)) setStatus(text); }, ANNOUNCE_DELAY_MS);
+  }, [current, owner]);
 
   // The anchor's quote, re-derived against the servable page (pattern 3 interim).
   const anchor = tab.anchor;
@@ -162,51 +181,68 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
   }), [tab.scope, tab.projectId, tree, focus, chipVisible, verification, interview]);
 
   const finishTurn = useCallback((turnId: string, reply: AgentTransportReply) => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
     const { prose, actions } = parseAssistantReply(reply.text);
     const parsed = interview ? parseOptionCard(prose || reply.text) : { prose: prose || reply.text, card: null };
-    const text = parsed.prose;
-    const store = useAgentThreads.getState();
-    streamCancel.current();
-    streamCancel.current = simulateStream(text, (sofar, done) => {
-      if (done) {
-        store.completeTurn(key, turnId, {
-          answer: sofar, shape: reply.shape, actions,
-          ...(reply.libraryRetrievalStatus !== undefined ? { libraryRetrievalStatus: reply.libraryRetrievalStatus } : {}),
-          ...(parsed.card ? { optionCard: parsed.card } : {}),
-        });
-        setLifecycle(IDLE);
-      } else {
-        store.streamTurn(key, turnId, sofar);
-      }
+    streamCancel.current(); pendingStream.current?.abort();
+    const stream = new AbortController();
+    pendingStream.current = stream;
+    let chunk = 0;
+    streamCancel.current = simulateStream(parsed.prose, (sofar, done) => {
+      const position = ++chunk;
+      const adopt = (ok: boolean) => {
+        if (!ok || stream.signal.aborted || pendingStream.current !== stream || position !== chunk || !current() || !isConfirmedAgentOwner(owner)) return;
+        const store = useAgentThreads.getState();
+        if (done) {
+          store.completeTurn(key, turnId, {
+            answer: sofar, shape: reply.shape, actions,
+            ...(reply.libraryRetrievalStatus !== undefined ? { libraryRetrievalStatus: reply.libraryRetrievalStatus } : {}),
+            ...(parsed.card ? { optionCard: parsed.card } : {}),
+          }, owner);
+          setLifecycle(IDLE);
+        } else store.streamTurn(key, turnId, sofar, owner);
+      };
+      if (isConfirmedAgentOwner(owner)) adopt(true);
+      else void awaitWorkspaceOwnerSession(owner, stream.signal).then(adopt);
     }, { reducedMotion });
-  }, [interview, key, reducedMotion]);
+  }, [interview, key, reducedMotion, current, owner]);
 
   const send = useCallback((text: string, opts: { hidden?: boolean } = {}) => {
     const prompt = opts.hidden ? text : serializeDraft(chips, text.trim());
-    if (!prompt) return;
-    const store = useAgentThreads.getState();
-    const turnId = store.startTurn(key, prompt, opts);
-    runnerRef.current?.dispose();
-    const runner = createTurnRunner({
-      transport,
-      request: () => ({ prompt, history: historyFor(useAgentThreads.getState().threads[key]), system_context: systemContext() }),
-      onState: (s, reply) => {
-        setLifecycle(s);
-        if (s.phase === "done" && reply) finishTurn(turnId, reply);
-        if (s.phase === "failed") useAgentThreads.getState().failTurn(key, turnId, s.error === null ? null : failureReasonOf(new Error(s.error)));
-        if (s.phase === "sent") {
-          const t = useAgentThreads.getState().threads[key]?.find((x) => x.id === turnId);
-          if (t && t.status === "failed") useAgentThreads.getState().reopenTurn(key, turnId); // a retry re-opens the same turn
-        }
-      },
-    });
-    runnerRef.current = runner;
-    runner.send();
-    if (!opts.hidden) {
-      setDraft("");
-      setChips([]);
-    }
-  }, [chips, key, transport, systemContext, finishTurn, setDraft]);
+    if (!prompt || !current()) return;
+    pendingSend.current?.abort();
+    const attempt = new AbortController();
+    pendingSend.current = attempt;
+    const context = systemContext();
+    const dispatch = (ok: boolean) => {
+      if (!ok || attempt.signal.aborted || pendingSend.current !== attempt || !current() || !isConfirmedAgentOwner(owner)) return;
+      const store = useAgentThreads.getState();
+      const history = historyFor(store.owner === owner ? store.threads[key] : undefined);
+      const turnId = store.startTurn(key, prompt, opts, owner);
+      if (turnId === null) return;
+      runnerRef.current?.dispose(); streamCancel.current(); pendingStream.current?.abort();
+      const runner = createTurnRunner({
+        owner, current,
+        transport,
+        request: () => ({ prompt, history, system_context: context }),
+        onState: (state, reply) => {
+          if (runnerRef.current !== runner || !current() || !isConfirmedAgentOwner(owner)) return;
+          setLifecycle(state);
+          if (state.phase === "done" && reply) finishTurn(turnId, reply);
+          if (state.phase === "failed") useAgentThreads.getState().failTurn(key, turnId, state.error === null ? null : failureReasonOf(new Error(state.error)), owner);
+          if (state.phase === "sent") {
+            const turn = useAgentThreads.getState().threads[key]?.find((x) => x.id === turnId);
+            if (turn?.status === "failed") useAgentThreads.getState().reopenTurn(key, turnId, owner);
+          }
+        },
+      });
+      runnerRef.current = runner;
+      runner.send();
+      if (!opts.hidden) { setDraft(""); setChips([]); }
+    };
+    if (isConfirmedAgentOwner(owner)) dispatch(true);
+    else void awaitWorkspaceOwnerSession(owner, attempt.signal).then(dispatch);
+  }, [chips, key, transport, systemContext, finishTurn, setDraft, current, owner]);
 
   // The interview's hidden first turn, once per tab.
   const interviewStarted = useRef(false);
@@ -228,25 +264,32 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
     }
   }, [closing]);
 
-  useEffect(() => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+    mounted.current = false;
+    pendingSend.current?.abort(); pendingStream.current?.abort();
     runnerRef.current?.dispose();
     streamCancel.current();
     if (announceTimer.current !== null) clearTimeout(announceTimer.current);
+    };
   }, []);
 
   const close = useCallback(() => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
     onEscapeRung?.("close");
     closeAgentPane(tab.id, tab.title);
-  }, [onEscapeRung, tab.id, tab.title]);
+  }, [onEscapeRung, tab.id, tab.title, current, owner]);
 
   const onRung = useCallback((rung: EscapeRung) => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
     if (rung === "recording") useAgentPaneStore.getState().setRecording(tab.id, false);
     if (rung === "chip" && anchorId) {
       useAgentPaneStore.getState().dismissChip(tab.id, anchorId);
       announce("Context removed");
     }
     onEscapeRung?.(rung);
-  }, [tab.id, anchorId, announce, onEscapeRung]);
+  }, [tab.id, anchorId, announce, onEscapeRung, current, owner]);
 
   const onRootKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key !== "Escape" || closing) return;
@@ -314,6 +357,7 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
             aria-label="Remove the context"
             className="text-shadow-1 hover:text-bright px-1"
             onClick={() => {
+              if (!current() || !isConfirmedAgentOwner(owner)) return;
               if (anchorId) useAgentPaneStore.getState().dismissChip(tab.id, anchorId);
               announce("Context removed");
               rootRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
@@ -381,6 +425,7 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
       {actions.length > 0 ? (
         <div className="px-3 pb-2 shrink-0">
           <AgentReplyActions tab={tab} actions={actions} interview={interview} onSeedConfirm={(seed) => {
+            if (!current() || !isConfirmedAgentOwner(owner)) return;
             const { delivered, failed } = dispatchProjectSeed(seed);
             announce(
               delivered > 0 ? "Project seed handed to the intake"
@@ -393,9 +438,13 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
       <AgentComposer
         tabId={tab.id}
         draft={draft}
-        onDraftChange={setDraft}
+        onDraftChange={(value) => {
+          if (!current()) return;
+          pendingSend.current?.abort();
+          setDraft(value);
+        }}
         chips={chips}
-        onChipsChange={setChips}
+        onChipsChange={(value) => { if (current() && isConfirmedAgentOwner(owner)) setChips(value); }}
         candidates={candidates}
         threadEmpty={turns.length === 0}
         onSend={(text) => send(text)}
@@ -403,7 +452,7 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
         onEscapeRung={onRung}
         hasContextChip={chipVisible}
         recording={recording}
-        onStopRecording={() => useAgentPaneStore.getState().setRecording(tab.id, false)}
+        onStopRecording={() => { if (current() && isConfirmedAgentOwner(owner)) useAgentPaneStore.getState().setRecording(tab.id, false); }}
         active={active && !closing}
         openNonce={openNonce}
         rootRef={rootRef}

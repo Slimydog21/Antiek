@@ -12,6 +12,8 @@
  * before sending again, so a paid call is never double-fired, and a reply
  * from an aborted request is dropped.
  */
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+
 import type { AgentTransport, AgentTransportReply, AgentTransportRequest } from "./agentTransport";
 
 /** refs pattern 18 (sprint M8): the no-reply fallback's wall-clock bound. */
@@ -76,18 +78,42 @@ export interface TurnRunner {
   dispose(): void;
 }
 
+// A ready notification can still be refused by a later synchronous observer.
+// Only the producer's independent confirmation admits resumed work.
+let confirmedOwner: WorkspaceOwnerSession | null = null;
+function confirmOwner(owner: WorkspaceOwnerSession): void {
+  confirmedOwner = null;
+  void awaitWorkspaceOwnerSession(owner).then((ok) => {
+    if (ok && isWorkspaceOwnerSession(owner)) confirmedOwner = owner;
+  });
+}
+confirmOwner(workspaceOwnerSession());
+subscribeWorkspaceOwnerAdmission(({ session }) => confirmOwner(session));
+export function isConfirmedAgentOwner(owner: WorkspaceOwnerSession): boolean {
+  return owner.subject !== null && confirmedOwner === owner && isWorkspaceOwnerSession(owner);
+}
+
 export function createTurnRunner(i: {
   transport: AgentTransport;
   request: () => Omit<AgentTransportRequest, "signal">;
   onState: (s: LifecycleState, reply?: AgentTransportReply) => void;
+  owner?: WorkspaceOwnerSession;
+  /** Originating mounted pane/incarnation, independent of the owner gate. */
+  current?: () => boolean;
 }): TurnRunner {
+  const owner = i.owner ?? workspaceOwnerSession();
   let state = IDLE;
-  /** The request whose reply may still land — it outlives the `failed`
-   *  (no_reply) phase, so a late reply can heal; cleared by abort/retry. */
   let live: AbortController | null = null;
   let noReplyTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  const current = () => {
+    if (disposed || owner.subject === null) return false;
+    const a = workspaceOwnerAdmission();
+    if (a.session !== owner || a.state === "failed" || a.state === "retiring") return false;
+    try { return i.current?.() ?? true; } catch { return false; }
+  };
   const set = (e: LifecycleEvent, reply?: AgentTransportReply) => {
+    if (!current() || !isConfirmedAgentOwner(owner)) return;
     state = reduceLifecycle(state, e);
     i.onState(state, reply);
   };
@@ -96,48 +122,63 @@ export function createTurnRunner(i: {
     noReplyTimer = null;
   };
   const abortInFlight = () => {
-    clearNoReply();
-    live?.abort();
-    live = null;
+    clearNoReply(); live?.abort(); live = null;
+  };
+  const off = subscribeWorkspaceOwnerAdmission(() => {
+    if (!current()) { disposed = true; abortInFlight(); off(); }
+  });
+  const admitted = (controller: AbortController, run: () => void) => {
+    const eligible = () => current() && live === controller && !controller.signal.aborted;
+    if (!eligible()) return;
+    if (isConfirmedAgentOwner(owner)) { run(); return; }
+    void awaitWorkspaceOwnerSession(owner, controller.signal).then((ok) => {
+      if (ok && eligible() && isConfirmedAgentOwner(owner)) run();
+    });
   };
   const send = () => {
-    if (disposed) return;
+    if (!current()) return;
     abortInFlight();
     const controller = new AbortController();
     live = controller;
-    set({ type: "send", controller });
-    noReplyTimer = setTimeout(() => {
-      noReplyTimer = null;
-      if (live === controller && state.phase === "sent") set({ type: "fail", error: null, reason: "no_reply" });
-    }, NO_REPLY_MS);
-    i.transport.send({ ...i.request(), signal: controller.signal }).then(
-      (reply) => {
-        if (controller.signal.aborted || live !== controller) return;
-        clearNoReply();
-        live = null;
-        if (!reply.text.trim()) set({ type: "fail", error: null, reason: "empty" });
-        else set({ type: "done" }, reply);
-      },
-      (err: unknown) => {
-        // An aborted request belongs to retry()/abort(): never a failure.
-        if (controller.signal.aborted || live !== controller) return;
-        clearNoReply();
-        live = null;
-        set({ type: "fail", error: err instanceof Error ? err.message : String(err), reason: "transport" });
-      },
-    );
+    admitted(controller, () => {
+      set({ type: "send", controller });
+      if (!current() || controller.signal.aborted || live !== controller) return;
+      noReplyTimer = setTimeout(() => {
+        noReplyTimer = null;
+        admitted(controller, () => {
+          if (state.phase === "sent") set({ type: "fail", error: null, reason: "no_reply" });
+        });
+      }, NO_REPLY_MS);
+      let reply: Promise<AgentTransportReply>;
+      try {
+        const request = i.request();
+        if (!current() || !isConfirmedAgentOwner(owner) || live !== controller) return;
+        reply = i.transport.send({ ...request, signal: controller.signal });
+      } catch (error) { reply = Promise.reject(error); }
+      reply.then(
+        (result) => {
+          if (live !== controller || controller.signal.aborted) return;
+          clearNoReply();
+          admitted(controller, () => {
+            set(result.text.trim() ? { type: "done" } : { type: "fail", error: null, reason: "empty" }, result);
+            if (live === controller) live = null;
+          });
+        },
+        (error: unknown) => {
+          if (live !== controller || controller.signal.aborted) return;
+          clearNoReply();
+          admitted(controller, () => {
+            set({ type: "fail", error: error instanceof Error ? error.message : String(error), reason: "transport" });
+            if (live === controller) live = null;
+          });
+        },
+      );
+    });
   };
   return {
-    send,
-    retry: send,
-    abort: () => {
-      abortInFlight();
-      set({ type: "abort" });
-    },
+    send, retry: send,
+    abort: () => { abortInFlight(); set({ type: "abort" }); },
     state: () => state,
-    dispose: () => {
-      disposed = true;
-      abortInFlight();
-    },
+    dispose: () => { disposed = true; off(); abortInFlight(); },
   };
 }

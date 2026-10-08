@@ -1,3 +1,4 @@
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 /**
  * AgentPane.test.tsx — SPR-07 M1/M4/M7/M8 at the pane level: the Escape
  * ladder ends in a close whose focus returns (invariant 13), the 240 ms
@@ -57,7 +58,10 @@ function host(transport: AgentTransport, over: Partial<React.ComponentProps<type
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  setWorkspaceOwner(null);
+  setWorkspaceOwner("unit-agent-pane");
+  await awaitWorkspaceOwnerSession(workspaceOwnerSession());
   vi.useFakeTimers();
   useCompanion.getState().reset();
   useAgentThreads.getState().reset();
@@ -68,7 +72,7 @@ beforeEach(() => {
   // The pane's own tab exists in the store (Phase A: a research-thread id stands in).
   useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "inv-pane", title: "project agent" });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); document.body.innerHTML = ""; });
+afterEach(() => { try { cleanup(); vi.useRealTimers(); document.body.innerHTML = ""; } finally { setWorkspaceOwner(null); } });
 
 describe("the Escape ladder ends in a close whose focus returns (invariant 13)", () => {
   it("five Escapes from {picker, recording, chip, focused} walk picker → recording → chip → blur → close; focus lands on the left pane", () => {

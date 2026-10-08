@@ -1,3 +1,4 @@
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 /** turnLifecycle.test.ts — SPR-07 M8 (repair C3): the no-reply fallback fires at 8 s by WALL CLOCK with the failure copy and Retry; a late reply on the same request still heals; retry aborts first. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,8 +22,11 @@ function transportResolvingAt(ms: number, reply: Partial<AgentTransportReply> = 
 
 const request = () => ({ prompt: "q", history: [], system_context: "" });
 
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(async () => {
+  setWorkspaceOwner(null);
+  setWorkspaceOwner("unit-agent-pane");
+  await awaitWorkspaceOwnerSession(workspaceOwnerSession()); vi.useFakeTimers(); });
+afterEach(() => { try { vi.useRealTimers(); } finally { setWorkspaceOwner(null); } });
 
 describe("createTurnRunner", () => {
   it("no visible reply within 8 000 ms ⇒ the failure copy with Retry at exactly 8 000 by wall clock; the late reply at 9 000 still heals", async () => {

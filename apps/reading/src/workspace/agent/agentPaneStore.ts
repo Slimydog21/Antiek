@@ -11,8 +11,12 @@
  * tab is visible (repair 2026-10-07T22:40Z, finding 1; AgentPane calling it
  * unsubscribed with the pane, and the hidden-tab placeholder unmounts it).
  */
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { toast, UNDO_TTL_MS } from "../../components/lemon/LemonToast";
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { create } from "zustand";
+
+import { isConfirmedAgentOwner } from "./turnLifecycle";
 
 import { agentTabDomId } from "../agentTabDomId";
 import { tabVisible, useCompanion } from "../companionStore";
@@ -60,17 +64,107 @@ function returnFocusAfterClose(): void {
   (next ?? document.querySelector<HTMLElement>('[data-pane="left"]'))?.focus();
 }
 
-/** "Close" is the agent TAB (10 s undo) after a 240 ms inert linger on the
- *  surface; the inset column never collapses (decision 5). Idempotent while
- *  the linger runs. */
+/** A clone of a live descriptor preserves its incarnation. Removal followed by
+ * any new admission, even a reset reusing seq/id, creates another incarnation. */
+export interface AgentPaneLease {
+  readonly owner: WorkspaceOwnerSession;
+  readonly tabId: string;
+  readonly incarnation: number;
+  readonly seq: number;
+}
+let incarnation = 0;
+const leases = new Map<string, AgentPaneLease>();
+const present = new Set<string>();
+const closeWaits = new Set<AbortController>();
+const closeToasts = new Map<number, ReturnType<typeof setTimeout>>();
+function observeTabs(): void {
+  const owner = workspaceOwnerSession();
+  const tabs = useCompanion.getState().tabs;
+  const ids = new Set(tabs.map((t) => t.id));
+  for (const tab of tabs) {
+    const old = leases.get(tab.id);
+    if (!present.has(tab.id) || !old || old.owner !== owner || old.seq !== tab.seq) {
+      leases.set(tab.id, { owner, tabId: tab.id, seq: tab.seq, incarnation: ++incarnation });
+    }
+  }
+  for (const id of present) {
+    if (!ids.has(id)) useAgentPaneStore.getState().setClosing(id, false);
+  }
+  present.clear();
+  for (const id of ids) present.add(id);
+}
+useCompanion.subscribe(observeTabs);
+observeTabs();
+subscribeWorkspaceOwnerAdmission(({ session, state }) => {
+  if (state === "suspended") return;
+  if (state === "retiring" || state === "failed" || session.subject === null
+      || [...leases.values()].some((lease) => lease.owner !== session)) {
+    for (const wait of closeWaits) wait.abort();
+    closeWaits.clear();
+    for (const [id, timer] of closeToasts) { clearTimeout(timer); toast.dismiss(id); }
+    closeToasts.clear();
+    leases.clear(); present.clear();
+    useAgentPaneStore.getState().reset();
+  }
+});
+
+export function useAgentOwnerAdmission() {
+  return useSyncExternalStore(subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerAdmission);
+}
+export function captureAgentPaneLease(tabId: string): AgentPaneLease | null {
+  const owner = workspaceOwnerSession();
+  if (owner.subject === null) return null;
+  const lease = leases.get(tabId);
+  return lease?.owner === owner && present.has(tabId) ? lease : null;
+}
+export function isCurrentAgentPaneLease(lease: AgentPaneLease): boolean {
+  return leases.get(lease.tabId) === lease && present.has(lease.tabId)
+    && useCompanion.getState().tabs.some((tab) => tab.id === lease.tabId && tab.seq === lease.seq);
+}
+
+/** Same companion retirement/20-entry Undo policy, with an originating owner
+ * and incarnation on this pane's deferred callbacks. No shared callback edits. */
+function closeWithOwnedUndo(lease: AgentPaneLease, title?: string): void {
+  const c = useCompanion.getState();
+  const index = c.tabs.findIndex((t) => t.id === lease.tabId);
+  if (index < 0) return;
+  const tab = c.tabs[index];
+  const wasActive = c.activeTabId === lease.tabId;
+  c.closeAgentTab(tab.id);
+  useCompanion.setState((st) => ({ retired: [...st.retired, { tab, index, wasActive }].slice(-20) }));
+  const toastId = toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () => {
+    const wait = new AbortController();
+    closeWaits.add(wait);
+    const restore = (ok: boolean) => {
+      closeWaits.delete(wait);
+      if (!ok || !isWorkspaceOwnerSession(lease.owner) || leases.get(tab.id) !== lease || present.has(tab.id)) return;
+      useCompanion.getState().restoreAgentTab(tab, index, wasActive);
+    };
+    if (isConfirmedAgentOwner(lease.owner)) restore(true);
+    else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(restore);
+  });
+  closeToasts.set(toastId, setTimeout(() => closeToasts.delete(toastId), UNDO_TTL_MS));
+}
+
+/** 240 ms inert linger, then the existing 10 s Undo and focus return. */
 export function closeAgentPane(tabId: string, title?: string): void {
+  const lease = captureAgentPaneLease(tabId);
+  if (!lease || !isWorkspaceOwnerSession(lease.owner)) return;
   const s = useAgentPaneStore.getState();
   if (s.closing[tabId]) return;
   s.setClosing(tabId, true);
+  const wait = new AbortController();
+  closeWaits.add(wait);
   setTimeout(() => {
-    useAgentPaneStore.getState().setClosing(tabId, false);
-    useCompanion.getState().closeAgentTabWithUndo(tabId, title);
-    returnFocusAfterClose();
+    const complete = (ok: boolean) => {
+      closeWaits.delete(wait);
+      if (!ok || !isWorkspaceOwnerSession(lease.owner) || !isCurrentAgentPaneLease(lease)) return;
+      useAgentPaneStore.getState().setClosing(tabId, false);
+      closeWithOwnedUndo(lease, title);
+      if (isWorkspaceOwnerSession(lease.owner)) returnFocusAfterClose();
+    };
+    if (isConfirmedAgentOwner(lease.owner)) complete(true);
+    else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(complete);
   }, CLOSE_LINGER_MS);
 }
 

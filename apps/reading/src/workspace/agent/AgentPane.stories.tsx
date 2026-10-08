@@ -1,5 +1,6 @@
+import { setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import type { Meta, StoryObj } from "@storybook/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 
 import { useCompanion } from "../companionStore";
@@ -24,6 +25,7 @@ const scripted: AgentTransport = {
 
 function StoryPane({ width, seeded }: { width: number; seeded: boolean }) {
   useState(() => {
+    setWorkspaceOwner("unit-agent-story");
     useCompanion.getState().reset();
     useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "story-pane", title: TAB.title });
     useAgentThreads.getState().reset();
@@ -33,6 +35,8 @@ function StoryPane({ width, seeded }: { width: number; seeded: boolean }) {
     }
     return null;
   });
+  const owner = workspaceOwnerSession();
+  useEffect(() => () => { if (workspaceOwnerSession() === owner) setWorkspaceOwner(null); }, [owner]);
   return (
     <MemoryRouter>
       <div className="p-4" style={{ background: "var(--bg-page)" }}>
