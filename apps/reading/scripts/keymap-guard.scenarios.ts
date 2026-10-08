@@ -9,6 +9,7 @@ import { useWorkspace, disablePersistence } from "../src/workspace/WorkspaceStor
 import { useTabTrees } from "../src/workspace/tabTreeStore";
 import { createInMemoryTabTreeAdapter } from "../src/workspace/tabTree";
 import { prefixState } from "../src/components/hotkeys/prefixState";
+import { isFeatureOn } from "../src/lib/featureFlags";
 
 export async function until(predicate: () => boolean, message: string, timeout = 3000): Promise<void> {
   const end = performance.now() + timeout;
@@ -89,6 +90,13 @@ interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | 
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
+/** SPR-02 M4a: with antiek.flag.switcher.places ON (the guard's Vite fixture
+ *  is DEV, where the flag defaults on) More opens the Switcher narrowed to
+ *  Scenes; with it OFF, the products launcher. Both are "More did its job". */
+function moreTargetVisible(): boolean {
+  if (isFeatureOn("switcher.places")) return visible('[data-keymap-owner="palette.toggle"]');
+  return launcherVisible();
+}
 function door(path: string): Scenario {
   return { effect: async () => {
     await until(() => location.pathname === path && !!document.querySelector(`[data-product-id="${path === "/" ? "research" : path === "/library" ? "read" : path.slice(1)}"]`), `door failed to show ${path}`);
@@ -138,7 +146,7 @@ export const SCENARIOS = {
   "door.write": door("/write"),
   "door.speak": door("/speak"),
   "door.home": door("/home"),
-  "door.more": { effect: () => until(launcherVisible, "visible effect missing: More launcher") },
+  "door.more": { effect: () => until(moreTargetVisible, "visible effect missing: More target (Switcher with places on, launcher with it off)") },
   "door.researchHome": door("/"),
   "door.readLibrary": door("/library"),
 } satisfies Record<ActionId, Scenario>;
@@ -266,4 +274,4 @@ export async function customEffect() {
 }
 export { setPrefix } from "../src/components/hotkeys/keymap";
 
-export function verifyMoreClick() { return until(launcherVisible, "More click did not open the visible launcher"); }
+export function verifyMoreClick() { return until(moreTargetVisible, "More click did not open its visible target (Switcher with places on, launcher with it off)"); }

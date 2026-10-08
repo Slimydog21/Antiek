@@ -86,7 +86,7 @@ With the flag on, the bottom dock (`shell/NavRail.tsx`) folds into its existing
 compact five-key layout at every width (`data-rail-compact`): the four doors + More, captions kept
 (SPR-07's "no caption-less bar control" rule stands), keycap chips and the
 Home/Search keys dropped (`⌘O` and `prefix+g` still reach them), height 48 px
-(`data-rail-strip="true"`). More — by click and by the `door.more` hotkey —
+(`data-rail-compact="true"`). More — by click and by the `door.more` hotkey —
 opens the Switcher narrowed to Scenes (`in:scenes`) instead of the products
 drawer; `ProductsLauncher` stays mounted and untouched. The sprint page's
 "40 px icons-only" wording was NOT followed: icon-only bar controls were the

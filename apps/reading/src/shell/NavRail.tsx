@@ -198,7 +198,7 @@ function RailButton({
     // text-ice-2 is the PAGE pigment — paper by day, dark at night — so on
     // bg-void it read 1.1:1 at night (critique C3 on #3751).
     ? "text-moonlight hover:text-bright hover:bg-white/10"
-    : "text-moonlight/80 hover:text-moonlight hover:bg-white/5";
+    : "text-moonlight hover:text-bright hover:bg-white/5";
   // SPR-07 M2 — EVERY bar button now stacks a VISIBLE text caption under its
   // glyph (the v1 complaint was icon-only utilities + a caption-less igloo).
   // Workflows already had this dominant stack; Search/More now share the same
