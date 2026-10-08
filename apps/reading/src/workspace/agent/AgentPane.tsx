@@ -279,7 +279,9 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
       tabIndex={-1}
       aria-label="Agent"
       onKeyDown={onRootKeyDown}
-      className={`flex flex-col h-full min-h-0 min-w-0 outline-none ${reducedMotion ? "" : "transition-[opacity,transform] duration-150"} ${closing ? "opacity-0 translate-x-2" : ""}`}
+      // The blur rung lands keyboard focus here: an inset ring keeps it
+      // visible (WCAG 2.4.7; finding 9) inside the companion's scroll clip.
+      className={`flex flex-col h-full min-h-0 min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sun ${reducedMotion ? "" : "transition-[opacity,transform] duration-150"} ${closing ? "opacity-0 translate-x-2" : ""}`}
     >
       {inRouter ? <PaneHashSync agentId={tab.agentId} active={active && !closing} /> : null}
       <p role="status" aria-live="polite" className="sr-only">{status}</p>

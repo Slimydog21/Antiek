@@ -91,6 +91,10 @@ describe("the Escape ladder ends in a close whose focus returns (invariant 13)",
     expect(rungs).toEqual(["picker", "recording", "chip", "blur"]);
     const root = document.querySelector<HTMLElement>("[data-agent-pane]")!;
     expect(document.activeElement).toBe(root);
+    // The blur rung must not make focus vanish (WCAG 2.4.7): the root shows
+    // a focus-visible ring (finding 9; jsdom computes no styles, so the
+    // utility's presence is the pin).
+    expect(root.className).toMatch(/focus-visible:(ring|outline)/);
     expect(fireEvent.keyDown(root, { key: "Escape" })).toBe(false);
     expect(rungs).toEqual(["picker", "recording", "chip", "blur", "close"]);
     act(() => { vi.advanceTimersByTime(CLOSE_LINGER_MS); });
@@ -112,7 +116,7 @@ describe("the Escape ladder ends in a close whose focus returns (invariant 13)",
 });
 
 describe("the close linger (invariant 29)", () => {
-  it("inert immediately; still present at 239 ms; the tab closes at 240 ms; a Tab during the linger never lands inside", () => {
+  it("inert immediately (focus already out); still present at 239 ms; the tab closes at 240 ms", () => {
     const { transport } = scripted([]);
     host(transport);
     const root = document.querySelector<HTMLElement>("[data-agent-pane]")!;
@@ -123,7 +127,11 @@ describe("the close linger (invariant 29)", () => {
     act(() => { vi.advanceTimersByTime(CLOSE_LINGER_MS - 1); });
     expect(document.querySelector("[data-agent-pane]")).not.toBeNull();
     expect(useCompanion.getState().tabs.some((t) => t.id === PANE_TAB_ID)).toBe(true);
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab" });
+    // Focus left the root the moment the linger started (the closing effect).
+    // "A Tab during the linger never lands inside" is NOT provable here:
+    // jsdom neither moves focus on Tab nor honours inert, so that claim
+    // belongs to J4a (Phase B Playwright, real Chromium), where it was
+    // falsified with inert removed and holds with it present.
     expect(root.contains(document.activeElement)).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
     expect(useCompanion.getState().tabs.some((t) => t.id === PANE_TAB_ID)).toBe(false);
