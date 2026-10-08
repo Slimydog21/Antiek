@@ -62,6 +62,40 @@ export function spatialPaneNeighbor(placements: readonly PanePlacement[], target
   return candidates[0]?.target ?? null;
 }
 
+export type PaneDirection = "left" | "right" | "up" | "down";
+
+/** Omarchy/herdr directional focus (refs/omarchy-herdr.md R6, SPR-01 M2):
+ *  candidates lie strictly beyond the current pane on the axis of travel;
+ *  rank by (1) being in the same row/column band (orthogonal overlap), then
+ *  (2) distance along the axis, then (3) orthogonal centre offset. No wrap:
+ *  an edge returns null. Left/right keep the packet's ranking (same rules). */
+export function spatialPaneNeighbor2D(placements: readonly PanePlacement[], target: PaneTarget, direction: PaneDirection): PaneTarget | null {
+  if (direction === "left") return spatialPaneNeighbor(placements, target, -1);
+  if (direction === "right") return spatialPaneNeighbor(placements, target, 1);
+  const current = placements.find((member) => samePane(member.target, target));
+  if (!current) return null;
+  const center = current.rect.x + current.rect.width / 2;
+  const middle = current.rect.y + current.rect.height / 2;
+  // R6 "nearest EDGE": a candidate must lie wholly beyond the pane's top or
+  // bottom edge (a full-height column has nothing above or below it, even
+  // though neighbouring tiles' centres are higher or lower than its own).
+  const candidates = placements.filter((member) => !samePane(member.target, target)
+    && (direction === "down"
+      ? member.rect.y >= current.rect.y + current.rect.height
+      : member.rect.y + member.rect.height <= current.rect.y));
+  const rank = (member: PanePlacement) => ({
+    outsideColumn: Math.min(current.rect.x + current.rect.width, member.rect.x + member.rect.width)
+      <= Math.max(current.rect.x, member.rect.x) ? 1 : 0,
+    vertical: Math.abs(member.rect.y + member.rect.height / 2 - middle),
+    horizontal: Math.abs(member.rect.x + member.rect.width / 2 - center),
+  });
+  candidates.sort((a, b) => {
+    const first = rank(a); const second = rank(b);
+    return first.outsideColumn - second.outsideColumn || first.vertical - second.vertical || first.horizontal - second.horizontal;
+  });
+  return candidates[0]?.target ?? null;
+}
+
 export function swapAdjacentPane(order: PaneTarget[], target: PaneTarget, direction: -1 | 1): PaneTarget[] {
   const index = order.findIndex((member) => samePane(member, target));
   const neighbor = index < 0 ? null : order[index + direction];

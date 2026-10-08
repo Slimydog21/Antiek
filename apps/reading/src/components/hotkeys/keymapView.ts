@@ -27,6 +27,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "panel.closeFloating": "panels",
   "pane.focusLeft": "panels",
   "pane.focusRight": "panels",
+  "pane.focusUp": "panels",
+  "pane.focusDown": "panels",
   "pane.reorderLeft": "panels",
   "pane.reorderRight": "panels",
   "pane.fullscreen": "panels",
@@ -82,6 +84,8 @@ const LEGACY_PANE_NOTES: Partial<Record<ActionId, string>> = {
 const FLOW_PANE_NOTES: Partial<Record<ActionId, string>> = {
   "pane.focusLeft": "Previous pane in horizontal order; spatial left neighbor when tiled. The edge is a no-op. Text fields keep their keys.",
   "pane.focusRight": "Next pane in horizontal order; spatial right neighbor when tiled. Focus reveals the pane without reordering it.",
+  "pane.focusUp": "Tiled only: the pane above (same column first, then nearest). Nothing above, or horizontal flow, is a no-op.",
+  "pane.focusDown": "Tiled only: the pane below (same column first, then nearest). Nothing below, or horizontal flow, is a no-op.",
   "pane.reorderLeft": "Swap the focused pane with its previous logical neighbor. Content, focus and tile splits stay attached to the same hosts.",
   "pane.reorderRight": "Swap with the next logical neighbor. No operation at the edge, during a drag, or while a pane is zoomed.",
   "pane.fullscreen": "Zoom the actual focused host. The same key or an unclaimed Esc restores its arrangement; child overlays and editors keep priority.",

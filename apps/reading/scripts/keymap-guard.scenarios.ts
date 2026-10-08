@@ -108,6 +108,15 @@ function reorderFocus(direction: -1 | 1 = -1) {
   const host = document.querySelector<HTMLElement>(`[data-pane-host="${prefer}"]`) ?? document.querySelector<HTMLElement>('[data-pane-host]');
   host?.focus({ preventScroll: true });
 }
+let verticalBefore = "";
+function verticalPrepare() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement !== "tiled") s.setPaneArrangement("tiled");
+  verticalBefore = JSON.stringify(useWorkspace.getState().paneFocus);
+}
+function verticalEffect(action: string) {
+  return until(() => JSON.stringify(useWorkspace.getState().paneFocus) !== verticalBefore, `${action}: pane focus unchanged`);
+}
 function reorderEffect(action: string) {
   return until(() => paneOrderKey() !== reorderBefore, `${action}: logical pane order unchanged`);
 }
@@ -143,6 +152,11 @@ export const SCENARIOS = {
   // SPR-01 M1 (pane-flow landing): the reorder rows are implemented only with
   // antiek.flag.pane.flow ON (the guard presses unimplemented rows and checks
   // they do nothing); with it on, a reorder changes the logical pane order.
+  // SPR-01 M2: vertical spatial focus exists only in the tiled arrangement
+  // with the flag on; prepare tiles, the focus hook puts the target on a host
+  // (the companion: in the dwindle tree it has the tiles below it).
+  "pane.focusUp": { prepare: verticalPrepare, focus: () => reorderFocus(-1), effect: () => verticalEffect("pane.focusUp") },
+  "pane.focusDown": { prepare: verticalPrepare, focus: () => reorderFocus(-1), effect: () => verticalEffect("pane.focusDown") },
   "pane.reorderLeft": { prepare: reorderPrepare, focus: () => reorderFocus(-1), effect: () => reorderEffect("pane.reorderLeft") },
   "pane.reorderRight": { prepare: reorderPrepare, focus: () => reorderFocus(1), effect: () => reorderEffect("pane.reorderRight") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },

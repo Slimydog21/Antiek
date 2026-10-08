@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { adjacentPane, COMPANION_PANE, CORE_PANE, paneGeometry, paneKey, reconcilePaneOrder,
-  reconcilePaneTiles, revealPane, spatialPaneNeighbor, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+  reconcilePaneTiles, revealPane, spatialPaneNeighbor, spatialPaneNeighbor2D, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
 import { migratePanePreferences, parseLegacyPanePreset, parsePaneArrangement } from "./persistence";
 import type { PaneTarget, PaneTile } from "./panel.types";
 
@@ -41,6 +41,38 @@ describe("pane order and retained tiles", () => {
     expect(swapPaneTiles(tree, a, b)).toEqual({ ...tree,
       first: { kind: "leaf", target: b }, second: { kind: "leaf", target: a } });
     expect(reconcilePaneTiles(tree, [b])).toEqual({ kind: "leaf", target: b });
+  });
+  it("SPR-01 M2 (R6): up/down pick the tile in the same column first, then the nearest, and never wrap", () => {
+    // A five-tile dwindle layout (gap 10):   ┌──────┬──────┬──────┐
+    //   core | a / (b | c) over d  roughly:  │ core │  a   │  b   │
+    //                                         │      ├──────┼──────┤
+    //                                         │      │  d   │  c   │
+    const c = { kind: "window", id: "c" } as const; const d = { kind: "window", id: "d" } as const;
+    const placements = [
+      { target: CORE_PANE, rect: { x: 10, y: 10, width: 300, height: 610 } },
+      { target: a, rect: { x: 320, y: 10, width: 330, height: 300 } },
+      { target: b, rect: { x: 660, y: 10, width: 330, height: 300 } },
+      { target: d, rect: { x: 320, y: 320, width: 330, height: 300 } },
+      { target: c, rect: { x: 660, y: 320, width: 330, height: 300 } },
+    ];
+    const table: Array<[typeof CORE_PANE | typeof a | typeof b | typeof c | typeof d, "up" | "down", unknown]> = [
+      [a, "down", d], [b, "down", c], [d, "up", a], [c, "up", b],   // same column
+      [a, "up", null], [b, "up", null], [d, "down", null], [c, "down", null], // edges: no wrap
+      [CORE_PANE, "up", null], [CORE_PANE, "down", null],           // full-height column: nothing above/below
+    ];
+    for (const [from, dir, want] of table) expect(spatialPaneNeighbor2D(placements, from, dir), `${JSON.stringify(from)} ${dir}`).toEqual(want);
+    // Left/right delegate to the packet's ranking unchanged.
+    expect(spatialPaneNeighbor2D(placements, a, "right")).toEqual(b);
+    expect(spatialPaneNeighbor2D(placements, a, "left")).toEqual(CORE_PANE);
+    // Nearest column wins when nothing sits directly below: a wide top tile over two bottom tiles.
+    const wide = [
+      { target: a, rect: { x: 10, y: 10, width: 980, height: 300 } },
+      { target: b, rect: { x: 10, y: 320, width: 480, height: 300 } },
+      { target: c, rect: { x: 500, y: 320, width: 490, height: 300 } },
+    ];
+    expect(spatialPaneNeighbor2D(wide, a, "down")).toEqual(c);       // both overlap the column; c's centre (745) is nearer a's (500) than b's (250)
+    expect(spatialPaneNeighbor2D(wide, c, "up")).toEqual(a);
+    expect(spatialPaneNeighbor2D(wide, b, "down")).toBeNull();
   });
   it("selects tiled neighbors by actual spatial row before horizontal distance", () => {
     const placements = [

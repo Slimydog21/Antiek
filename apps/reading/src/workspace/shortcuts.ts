@@ -472,6 +472,13 @@ function modernPaneAt(event: KeyboardEvent): boolean {
   return Boolean(root && root.getAttribute("data-pane-arrangement") !== "legacy");
 }
 
+/** SPR-01 M2: vertical spatial focus (R6) — flow only; no legacy named pane. */
+function paneFocusVertical(event: KeyboardEvent, direction: "up" | "down"): boolean | void {
+  if (!PANE_FLOW_ON) return false;
+  if (modernPaneAt(event)) return focusAdjacentPane(event, direction, executingPrefixEvent === event);
+  return false;
+}
+
 function paneFocusKey(event: KeyboardEvent, side: "left" | "right"): boolean | void {
   // Landing gate (antiek.flag.pane.flow OFF): main's handler, verbatim — the
   // cockpit's named-pane focus works from any focus (cockpitInset contract).
@@ -556,6 +563,8 @@ export function createActionHandlers(navigate: NavigateFunction) {
     ...(PANE_FLOW_ON ? {
       "pane.reorderLeft": (event: KeyboardEvent) => reorderActivePane(event, -1, executingPrefixEvent === event),
       "pane.reorderRight": (event: KeyboardEvent) => reorderActivePane(event, 1, executingPrefixEvent === event),
+      "pane.focusUp": (event: KeyboardEvent) => paneFocusVertical(event, "up"),
+      "pane.focusDown": (event: KeyboardEvent) => paneFocusVertical(event, "down"),
     } : {}),
     "pane.fullscreen": (event) => paneFullscreenKey(event),
     "layout.togglePreset": (event) => {

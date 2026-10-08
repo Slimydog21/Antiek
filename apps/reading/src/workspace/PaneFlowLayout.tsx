@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { escOverlayOpen } from "./escapeOverlay";
-import { adjacentPane, PANE_GAP, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor } from "./paneFlowGeometry";
+import { adjacentPane, PANE_GAP, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor, spatialPaneNeighbor2D } from "./paneFlowGeometry";
 import type { PaneGeometry } from "./paneFlowGeometry";
 import type { PaneArrangement, PaneTarget } from "./panel.types";
 import { installPaneHostLease } from "./paneHostLease";
@@ -76,15 +76,23 @@ export function legacyPaneEventTarget(event: KeyboardEvent, dispatcherConsumed =
   return admitted && !admitted.controller.flow.arrangement ? admitted.host.target : null;
 }
 
-export function focusAdjacentPane(event: KeyboardEvent, direction: -1 | 1, dispatcherConsumed = false): boolean {
+export function focusAdjacentPane(event: KeyboardEvent, direction: -1 | 1 | "up" | "down", dispatcherConsumed = false): boolean {
   const target = paneEventTarget(event, dispatcherConsumed);
   if (!target || !(event.target instanceof Element)) return false;
   const admitted = admittedController(event.target);
   if (!admitted || admitted.controller.flow.zoom) return false;
   const geometry = admitted.controller.flow.geometry;
-  const next = admitted.controller.flow.arrangement === "tiled" && geometry.kind === "measured"
-    ? spatialPaneNeighbor(geometry.placements, target, direction)
-    : adjacentPane(useWorkspace.getState().paneOrder, target, direction);
+  const tiled = admitted.controller.flow.arrangement === "tiled" && geometry.kind === "measured";
+  // SPR-01 M2 (R6): up/down are spatial and exist only in tiled mode; in the
+  // horizontal flow there is nothing above or below — not consumed.
+  if (direction === "up" || direction === "down") {
+    if (!tiled) return false;
+  }
+  const next = direction === "up" || direction === "down"
+    ? spatialPaneNeighbor2D(geometry.kind === "measured" ? geometry.placements : [], target, direction)
+    : tiled
+      ? spatialPaneNeighbor(geometry.placements, target, direction)
+      : adjacentPane(useWorkspace.getState().paneOrder, target, direction);
   if (!next) return false;
   const host = admitted.controller.hosts.get(paneKey(next));
   if (!host || !visibleHost(host.node)) return false;

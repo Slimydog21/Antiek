@@ -253,6 +253,29 @@ describe("actual dispatcher and connected host admission", () => {
     captured = false;
     expect(press(core, "ArrowRight", "ArrowRight").defaultPrevented).toBe(true);
   });
+  it("SPR-01 M2: ctrl+alt+ArrowDown/Up move spatially in tiled mode, do nothing in horizontal flow, never wrap", () => {
+    const a = node('[data-workspace-window="control:a"]');
+    const companion = node('[data-pane-host="companion"]');
+    act(() => { companion.focus(); });
+    // Horizontal flow: nothing above or below — the key is not consumed.
+    expect(press(companion, "ArrowDown", "ArrowDown").defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(companion);
+    act(() => { useWorkspace.getState().setPaneArrangement("tiled"); });
+    // Dwindle with four hosts: core | (companion / (a | b)) — a and b sit below the companion.
+    expect(press(companion, "ArrowDown", "ArrowDown").defaultPrevented).toBe(true);
+    const below = document.activeElement;
+    expect([a, node('[data-workspace-window="control:b"]')]).toContain(below);
+    expect(useWorkspace.getState().paneFocus).toEqual({ kind: "window", id: (below as HTMLElement).dataset.workspaceWindow });
+    expect(press(below as HTMLElement, "ArrowUp", "ArrowUp").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(companion);
+    // Edge: nothing above the companion — not consumed, focus stays.
+    expect(press(companion, "ArrowUp", "ArrowUp").defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(companion);
+    // herdr aliases through the prefix: k/j.
+    press(companion, "b", "KeyB", { altKey: false });
+    expect(press(companion, "j", "KeyJ", { ctrlKey: false, altKey: false }).defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(companion);
+  });
   it("toggles layouts and zoom without remounting real windows or accepting toggle repeats", () => {
     const a = node('[data-workspace-window="control:a"]');
     act(() => { a.focus(); });
