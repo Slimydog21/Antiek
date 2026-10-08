@@ -40,6 +40,7 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "tab.reopen": "panels",
   "tab.treeToggle": "panels",
   "project.select": "find",
+  "switcher.open": "find",
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
   "door.research": "go",
@@ -88,6 +89,7 @@ const FLOW_PANE_NOTES: Partial<Record<ActionId, string>> = {
 };
 
 export const NOTES: Partial<Record<ActionId, string>> = {
+  "switcher.open": "The Switcher already narrowed to what is open (in:open); with places off it is the plain Switcher.",
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
   ...(isFeatureOn("pane.flow") ? FLOW_PANE_NOTES : LEGACY_PANE_NOTES),
   "tab.next":

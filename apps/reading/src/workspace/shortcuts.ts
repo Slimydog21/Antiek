@@ -535,6 +535,12 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "palette.toggle": () => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
     },
+    // SPR-02 M5 — the same Switcher, opened (not toggled) with the Open
+    // section's query preset. The palette ignores the detail when the
+    // places flag is off, so the key degrades to the plain Switcher.
+    "switcher.open": () => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE, { detail: { query: "in:open" } }));
+    },
     "keysheet.toggle": () => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     },

@@ -17,6 +17,7 @@ import { countSummoningGroups } from "../shared/attention";
 import { isUnseen, researchStateStyle } from "../shared/researchState";
 import { lastSeenAt } from "../workspace/seen";
 import { ProductsLauncher } from "./ProductsLauncher";
+import { isFeatureOn } from "../lib/featureFlags";
 import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
@@ -192,8 +193,12 @@ function RailButton({
   const color = active
     ? "bg-sun text-ink"
     : isWorkflow
-    ? "text-ice-2/80 hover:text-ice-1 hover:bg-white/10"
-    : "text-ice-2/50 hover:text-ice-2/70 hover:bg-white/5";
+    // Captions on the dark island use the island's light text tokens
+    // (tokens.contrast.test: bg-ink carries text-bright / text-moonlight).
+    // text-ice-2 is the PAGE pigment — paper by day, dark at night — so on
+    // bg-void it read 1.1:1 at night (critique C3 on #3751).
+    ? "text-moonlight hover:text-bright hover:bg-white/10"
+    : "text-moonlight hover:text-bright hover:bg-white/5";
   // SPR-07 M2 — EVERY bar button now stacks a VISIBLE text caption under its
   // glyph (the v1 complaint was icon-only utilities + a caption-less igloo).
   // Workflows already had this dominant stack; Search/More now share the same
@@ -291,6 +296,18 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     launcherOpenerRef.current = null;
     if (opener?.isConnected) opener.focus();
   }, []);
+  // SPR-02 M4a (specs/antiek-keyboard-panes-agents-20261007/sprint-02-launcher.html)
+  // — with places on, the bottom dock folds into its compact five-key layout
+  // at every width (captions kept — SPR-07's "no caption-less bar control"
+  // rule stands; the keycap chips and the Home/Search keys go: ⌘O and
+  // prefix+g still reach them), and More opens the Switcher narrowed to
+  // Scenes instead of the products drawer. The TEN-SLOT workspace strip
+  // (M4b) is the consumer of SPR-01's arrangements and lands with them —
+  // this is the compact dock, not that strip. Flag off: the dock is
+  // unchanged.
+  const placesOn = isFeatureOn("switcher.places");
+  const openScenesSwitcher = () =>
+    window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE, { detail: { query: "in:scenes" } }));
   useEffect(() => {
     const onProductActivate = (event: Event) => {
       if (!(event instanceof CustomEvent) || event.defaultPrevented) return;
@@ -301,12 +318,14 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           ("route" in detail && detail.route !== undefined) ||
           ("actionId" in detail && detail.actionId !== undefined) ||
           ("entityId" in detail && detail.entityId !== undefined)) return;
+      if (placesOn) { openScenesSwitcher(); return; }
       const active = document.activeElement;
       openLauncher(active instanceof HTMLElement ? active : null);
     };
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
     return () => window.removeEventListener(PRODUCT_ACTIVATE_EVENT, onProductActivate);
-  }, [openLauncher]);
+  }, [openLauncher, placesOn]);
+
   // The left rail is the phone overlay (absolute, behind a toggle) only at
   // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
   // panes (C2; R3-M4). The bottom dock never collapses, so this only
@@ -317,7 +336,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   // Phone width: the bottom dock reduces to five equal keys (the four doors
   // + More) with no keycap chips, and stays in the page flow. Home is the
   // mascot's double-tap and Search is More's filter at this width.
-  const compact = isBottom && tier === "sm";
+  const compact = isBottom && (tier === "sm" || placesOn);
+  const strip = isBottom && placesOn && tier !== "sm";
   const onHome = pathname === "/home";
 
   // herdr transfer P0-2 — the rail badge: how many research FAMILIES need
@@ -416,7 +436,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       aria-current={onHome ? "page" : undefined}
       className={
         "shrink-0 flex flex-col items-center justify-center gap-0.5 " +
-        (onHome ? "bg-sun text-ink " : "text-ice-2/80 hover:bg-white/10 ") +
+        (onHome ? "bg-sun text-ink " : "text-moonlight hover:text-bright hover:bg-white/10 ") +
         (isBottom ? "w-16 h-full" : "h-16 w-full")
       }
     >
@@ -493,10 +513,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     <RailButton
       icon={<I d={UTIL_ICONS.more} size={15} />}
       label="More"
-      title="More - all products, Operator, Trust, Settings"
+      title={placesOn ? "More - every scene, in the Switcher" : "More - all products, Operator, Trust, Settings"}
       active={launcherOpen}
       onClick={(event) => {
-        openLauncher(event.currentTarget);
+        if (placesOn) openScenesSwitcher();
+        else openLauncher(event.currentTarget);
         // SPR-08/SPR-10 — More OPENS the launcher (no nav), so it emits a
         // routeless activation, identical to the `g m` hotkey path.
         emitProductActivate({ productId: "more", source: "click" });
@@ -525,7 +546,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <aside
           data-orientation="bottom"
           data-rail-flow="inline"
-          className="h-16 w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"
+          data-rail-compact={strip ? "true" : undefined}
+          className={(strip ? "h-12" : "h-16") + " w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"}
           aria-label="Primary navigation"
         >
           {!compact && (

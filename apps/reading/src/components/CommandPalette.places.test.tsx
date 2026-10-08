@@ -19,7 +19,7 @@
  * assertion for windows.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 beforeAll(() => {
@@ -184,5 +184,75 @@ describe("flag on — places sections", () => {
     fireEvent.change(input, { target: { value: "in:open ask the project" } });
     key(input, { key: "Enter" });
     expect(activate).toHaveBeenCalledWith(id);
+  });
+});
+
+describe("keyboard contract (critique F1–F4, both flag states)", () => {
+  it.each([false, true])("close returns focus to the opener (flag=%s)", async (flag) => {
+    setFeatureFlag("switcher.places", flag);
+    const opener = document.createElement("button");
+    opener.textContent = "opener";
+    document.body.appendChild(opener);
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+    mount();
+    const dialog = openPalette();
+    const input = within(dialog).getByRole("textbox");
+    // The palette focuses its input on a 0 ms timer; the test is vacuous
+    // unless focus has actually LEFT the opener before Escape (a mutant with
+    // no restore passed the first version of this test for exactly that
+    // reason — recorded in the PR).
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    key(input, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  it("Esc clears a non-empty query first, then closes (R14)", () => {
+    setFeatureFlag("switcher.places", true);
+    mount();
+    const dialog = openPalette();
+    const input = within(dialog).getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "in:open" } });
+    key(input, { key: "Escape" });
+    expect(input.value).toBe("");
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
+    key(input, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+
+  it("with text in the box, j is not navigation: Enter still chooses the first (current) Open row", () => {
+    setFeatureFlag("switcher.places", true);
+    useWindows.getState().open("reader", {}, { title: "Paper A", id: "win-a" });
+    useWindows.getState().open("notebook", {}, { title: "Notes B", id: "win-b" });
+    const focus = vi.spyOn(useWindows.getState(), "focus");
+    mount();
+    const dialog = openPalette();
+    const input = within(dialog).getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "in:open" } });
+    key(input, { key: "j" });
+    key(input, { key: "Enter" });
+    expect(focus).toHaveBeenCalledWith("win-b");
+  });
+
+  it("with an empty box, j/k move one row and PageDown/PageUp move six, bounded", () => {
+    setFeatureFlag("switcher.places", true);
+    mount();
+    const dialog = openPalette();
+    const input = within(dialog).getByRole("textbox") as HTMLInputElement;
+    const highlighted = () => dialog.querySelector('li[class*="bg-ice-3"]')?.textContent ?? "";
+    expect(highlighted()).toContain("Research"); // first door
+    key(input, { key: "j" });
+    expect(highlighted()).toContain("Read");
+    key(input, { key: "k" });
+    expect(highlighted()).toContain("Research");
+    key(input, { key: "PageDown" });
+    expect(highlighted()).toContain("Scene"); // index 6 is past the four doors
+    key(input, { key: "PageUp" });
+    expect(highlighted()).toContain("Research");
+    key(input, { key: "k" }); // bounded at 0
+    expect(highlighted()).toContain("Research");
+    expect(input.value).toBe("");
   });
 });
