@@ -302,7 +302,10 @@ export function WorkspaceWindow({
           "h-[26px] shrink-0 flex items-center gap-2 px-2 select-none text-xs " +
           "border-b border-glass bg-glass-solid " +
           (isFull || paneFrame.active ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
-          " focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-sun"
+          // Landing: main's focus ring kept (design/focus.guard.test requires a
+          // focus-visible ring wherever focus:outline-none appears in a Feel dir);
+          // the packet had switched this frame to a 1 px outline.
+          " focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
         }
         onPointerDown={paneFrame.active ? undefined : onDragDown}
         onPointerMove={paneFrame.active ? undefined : onDragMove}
