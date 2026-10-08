@@ -263,7 +263,9 @@ export function SlashMenu({ editor, query, onClose }: Props) {
     }
     const removeKeyboardOwner = registerKeyboardOwner(window, {
       id: "notebook.slash-menu", scope: "overlay",
-      eligible: (e) => ["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx]),
+      // The palette leaves this menu mounted, but owns keys until it closes.
+      eligible: (e) => !document.querySelector('[data-keymap-owner="palette.toggle"]')
+        && (["ArrowDown", "ArrowUp", "Escape"].includes(e.key) || (e.key === "Enter" && !!filtered[hoverIdx])),
     }, onKey);
     return () => removeKeyboardOwner();
   }, [filtered, hoverIdx, editor, onClose]);
