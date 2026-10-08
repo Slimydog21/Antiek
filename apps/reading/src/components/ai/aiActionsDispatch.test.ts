@@ -230,3 +230,37 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(state.focusedPanelId).toBe("ai:multi:b");
   });
 });
+
+// ─── SPR-07 M6 (invariant 23): the pane kinds are confirm-only; dispatch is side-effect-free ───
+
+describe("SPR-07 pane kinds dispatch without touching the workspace", () => {
+  const bookAnchor = {
+    space: "book" as const, documentId: "guard-b", kind: "text" as const,
+    version: { kind: "unversioned" as const, reason: "metadata_only_anchor" as const },
+    range: { kind: "text" as const, nodeId: "n1", start: 0, end: 4, unit: "utf16" as const, basis: "chunk" as const },
+    quoteHint: null,
+  };
+
+  it.each([
+    [{ kind: "open_document" as const, anchor: bookAnchor }],
+    [{ kind: "open_writer" as const, deliverable_id: "d-1" }],
+    [{ kind: "project_seed" as const, title: "T", prompt: "P" }],
+  ])("%j leaves panels, docks and tabs deep-equal and returns the confirm record", (action) => {
+    useWorkspace.getState().open("FakeNotebook", {}, { id: "pre", mode: "floating", title: "pre" });
+    const before = JSON.parse(JSON.stringify(useWorkspace.getState()));
+    const record = dispatchAiAction(action);
+    const after = JSON.parse(JSON.stringify(useWorkspace.getState()));
+    expect(after).toEqual(before);
+    expect(record).toEqual({ action, label: "Confirm in the agent pane", undo: null, at: expect.any(Number) });
+  });
+
+  it("workspaceContextPrompt lists exactly the seven legacy kinds and the reworded undo sentence", async () => {
+    const { workspaceContextPrompt } = await import("./aiActions");
+    const prompt = workspaceContextPrompt();
+    const kinds = [...prompt.matchAll(/^  (\w+)\s+\{/gm)].map((m) => m[1]);
+    expect(kinds).toEqual(["open_panel", "focus_panel", "close_panel", "set_panel_mode", "add_to_notebook", "chase_question", "toast"]);
+    for (const k of ["open_document", "open_writer", "project_seed"]) expect(prompt).not.toContain(k);
+    expect(prompt).toContain("they can undo where an undo exists");
+    expect(prompt).not.toMatch(/they can undo\.\n/);
+  });
+});

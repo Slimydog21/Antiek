@@ -33,6 +33,7 @@
 import { ApiError } from "../../../lib/api";
 import type { BookAnchor } from "../../../lib/api";
 import type { SpinResearchResponse } from "../../../api/books";
+import { anchorFromPin, type BookDocumentAnchor } from "../../../workspace/contracts/anchor";
 
 /** The flow reads only the spawned thread id — a structural minimum, so a
  *  NON-research spawn (the reformat generation thread, SPR-02) rides the
@@ -48,6 +49,11 @@ export interface SpawnFlowResult {
   /** The anchor the flow ended with (null only when the pin failed or the
    *  flow refused before pinning). */
   anchorId: string | null;
+  /** SPR-06 M4 (additive): the pinned/reused passage as a contract anchor.
+   *  Absent iff anchorId is null OR the pin returned a forged row with no
+   *  payload (ReformatFlow.tsx:69 returns `{anchor_id}` cast as a
+   *  BookAnchor; nothing there can anchor). */
+  documentAnchor?: BookDocumentAnchor;
   /** The spawned thread (null when the flow stopped before the spin). */
   investigationId: string | null;
   /** The honest, operator-facing reason for a failure or refusal. */
@@ -69,6 +75,13 @@ export interface SpawnFlowDeps {
   /** The passage text the spin is seeded with (already §9.0-safe — the
    *  caller's own readable text; a gated book's passage never arrives here). */
   passageText: string;
+}
+
+/** A pinned row with a real payload (not ReformatFlow's forged `{anchor_id}`). */
+function contractAnchorOf(anchor: BookAnchor): { documentAnchor: BookDocumentAnchor } | Record<string, never> {
+  const payload = (anchor as Partial<BookAnchor>).anchor;
+  if (!payload || typeof payload.node_id !== "string" || typeof anchor.document_id !== "string") return {};
+  return { documentAnchor: anchorFromPin(anchor) };
 }
 
 /** The dedupe key: chunk + offsets identify one anchored passage. */
@@ -137,6 +150,7 @@ export async function runSpawnFlow(deps: SpawnFlowDeps): Promise<SpawnFlowResult
       ok: false,
       failedAt: "spawn",
       anchorId: anchor.anchor_id,
+      ...contractAnchorOf(anchor),
       investigationId: null,
       message: `The research didn't start — ${detail}. Your highlight is still pinned; you can try again.`,
     };
@@ -152,6 +166,7 @@ export async function runSpawnFlow(deps: SpawnFlowDeps): Promise<SpawnFlowResult
         ok: true,
         failedAt: null,
         anchorId: anchor.anchor_id,
+        ...contractAnchorOf(anchor),
         investigationId: spawned.investigation_id,
         message: null,
       };
@@ -161,6 +176,7 @@ export async function runSpawnFlow(deps: SpawnFlowDeps): Promise<SpawnFlowResult
       ok: false,
       failedAt: "link",
       anchorId: anchor.anchor_id,
+      ...contractAnchorOf(anchor),
       investigationId: spawned.investigation_id,
       message: `The research started but couldn't link to the passage — ${detail}.`,
     };
@@ -170,6 +186,7 @@ export async function runSpawnFlow(deps: SpawnFlowDeps): Promise<SpawnFlowResult
     ok: true,
     failedAt: null,
     anchorId: anchor.anchor_id,
+    ...contractAnchorOf(anchor),
     investigationId: spawned.investigation_id,
     message: null,
   };

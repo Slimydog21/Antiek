@@ -27,6 +27,10 @@ motion breaks a flow, the flow is wrong, not the motion.
   keyframes (U-02), with their own reduced-motion fallbacks.
 - **Reduced-motion catch-all** — `src/design/motion.css`: collapses every
   transition/animation to instant under the OS reduce-motion setting.
+  It also owns the existing agent streaming caret declaration (one-second
+  stepped blink). This is functional status, not a signature beat; the
+  agent's reduced-motion prop disables it and the CSS catch-all ends on
+  the visible frame. Pane instances do not inject their own keyframes.
 
 ## The allowed slots
 
