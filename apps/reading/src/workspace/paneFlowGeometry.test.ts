@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { adjacentPane, COMPANION_PANE, CORE_PANE, paneGeometry, paneKey, reconcilePaneOrder,
-  reconcilePaneTiles, revealPane, spatialPaneNeighbor, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+  reconcilePaneTiles, resizePaneTile, resizePaneTileByPixels, revealPane, spatialPaneNeighbor, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
 import { migratePanePreferences, parseLegacyPanePreset, parsePaneArrangement } from "./persistence";
 import type { PaneTarget, PaneTile } from "./panel.types";
 
@@ -98,5 +98,95 @@ describe("explicit preference migration", () => {
     expect(migratePanePreferences(null, null)).toEqual({ paneArrangement: "horizontal", layoutPreset: "omarchy-inset" });
     expect(migratePanePreferences('{"schemaVersion":1,"arrangement":"tiled"}', '{"schemaVersion":1,"preset":"docked"}'))
       .toEqual({ paneArrangement: "tiled", layoutPreset: "docked" });
+  });
+});
+
+describe("SPR-01 M4: resizePaneTile (R8)", () => {
+  //  x-split 0.5
+  //  ├── leaf core
+  //  └── y-split 0.6
+  //      ├── leaf companion
+  //      └── leaf a
+  const tree: PaneTile = {
+    kind: "split", axis: "x", ratio: 0.5,
+    first: { kind: "leaf", target: CORE_PANE },
+    second: {
+      kind: "split", axis: "y", ratio: 0.6,
+      first: { kind: "leaf", target: COMPANION_PANE },
+      second: { kind: "leaf", target: a },
+    },
+  };
+
+  it("adjusts the nearest ancestor split on the axis, growing the target's side", () => {
+    // a sits second in the y-split: growing a means SHRINKING the first share.
+    const grown = resizePaneTile(tree, a, "y", 0.05);
+    expect(grown).not.toBeNull();
+    expect(grown!.kind).toBe("split");
+    if (grown!.kind === "split" && grown!.second.kind === "split") {
+      expect(grown!.second.ratio).toBeCloseTo(0.55, 10);
+      expect(grown!.ratio).toBe(0.5); // the x ancestor is untouched
+    }
+    // core sits FIRST in the x-split: growing core grows the ratio.
+    const coreGrown = resizePaneTile(tree, CORE_PANE, "x", 0.05);
+    expect(coreGrown!.kind).toBe("split");
+    if (coreGrown!.kind === "split") expect(coreGrown!.ratio).toBeCloseTo(0.55, 10);
+  });
+
+  it("skips a nearer ancestor on the OTHER axis", () => {
+    // companion's nearest ancestor is the y-split; an x nudge walks past it.
+    const resized = resizePaneTile(tree, COMPANION_PANE, "x", 0.05);
+    // companion is inside the x-split's SECOND child: growing it shrinks the ratio.
+    if (resized!.kind === "split") expect(resized!.ratio).toBeCloseTo(0.45, 10);
+    expect(resized!.kind === "split" && resized!.second.kind === "split" && resized!.second.ratio).toBe(0.6);
+  });
+
+  it("clamps at 0.1 and 0.9 (the packet's render clamp, at write time)", () => {
+    let t: PaneTile | null = tree;
+    for (let i = 0; i < 20; i++) t = resizePaneTile(t, a, "y", -0.05);
+    expect(t!.kind === "split" && t!.second.kind === "split" && t!.second.ratio).toBe(0.9);
+    for (let i = 0; i < 30; i++) t = resizePaneTile(t, a, "y", 0.05);
+    expect(t!.kind === "split" && t!.second.kind === "split" && t!.second.ratio).toBe(0.1);
+  });
+
+  it("no axis-matching ancestor (or no target) is a same-reference no-op", () => {
+    const flat: PaneTile = { kind: "split", axis: "x", ratio: 0.5, first: { kind: "leaf", target: CORE_PANE }, second: { kind: "leaf", target: COMPANION_PANE } };
+    expect(resizePaneTile(flat, CORE_PANE, "y", 0.05)).toBe(flat);
+    expect(resizePaneTile(tree, b, "y", 0.05)).toBe(tree);
+    expect(resizePaneTile(null, CORE_PANE, "x", 0.05)).toBeNull();
+  });
+
+  it("resizePaneTileByPixels converts px against the measured parent extent", () => {
+    // placements for the x split [core | companion]: working 1000×700 with
+    // the 10 px gap → 980 wide; the split's extent along x is 980 px.
+    const flat: PaneTile = { kind: "split", axis: "x", ratio: 0.5, first: { kind: "leaf", target: CORE_PANE }, second: { kind: "leaf", target: COMPANION_PANE } };
+    const placements = [
+      { target: CORE_PANE, rect: { x: 10, y: 10, width: 485, height: 680 } },
+      { target: COMPANION_PANE, rect: { x: 505, y: 10, width: 485, height: 680 } },
+    ];
+    const resized = resizePaneTileByPixels(flat, placements, CORE_PANE, "x", 100);
+    expect(resized!.kind === "split" && resized!.ratio).toBeCloseTo(0.5 + 100 / 980, 10);
+    // A missing measurement is a refusal, not a guess.
+    expect(resizePaneTileByPixels(flat, [], CORE_PANE, "x", 100)).toBeNull();
+  });
+});
+
+describe("SPR-01 M5: the maximize level (R12)", () => {
+  const geometryInput = { width: 1000, height: 700, arrangement: "horizontal" as const, order, tiles: null, zoom: null };
+  it("maximize fills the work area edge to edge where zoom keeps the gap inset", () => {
+    const maximized = paneGeometry({ ...geometryInput, maximize: a });
+    expect(maximized.kind).toBe("measured");
+    if (maximized.kind === "measured") {
+      expect(maximized.placements).toEqual([{ target: a, rect: { x: 0, y: 0, width: 1000, height: 700 } }]);
+    }
+    const zoomed = paneGeometry({ ...geometryInput, zoom: a });
+    if (zoomed.kind === "measured") {
+      expect(zoomed.placements[0].rect).toEqual({ x: 10, y: 10, width: 980, height: 680 });
+    }
+  });
+  it("an absent maximize target is a normal layout, and zoom wins if both are set", () => {
+    const absent = paneGeometry({ ...geometryInput, maximize: { kind: "window", id: "gone" } });
+    expect(absent.kind === "measured" && absent.placements.length).toBe(order.length);
+    const both = paneGeometry({ ...geometryInput, zoom: b, maximize: a });
+    expect(both.kind === "measured" && both.placements[0].target).toEqual(b);
   });
 });

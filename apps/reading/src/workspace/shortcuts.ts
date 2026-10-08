@@ -70,8 +70,8 @@ import {
   type KeymapRow,
 } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
-import { focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, toggleActivePaneZoom,
-  togglePaneArrangementAt } from "./PaneFlowLayout";
+import { closePaneAt, focusAdjacentPane, legacyPaneEventTarget, reorderActivePane, resizeFocusedPaneBy, toggleActivePaneMaximize, toggleActivePaneZoom,
+  togglePaneArrangementAt, togglePaneResizeModeAt } from "./PaneFlowLayout";
 
 // Landing gate (antiek.flag.pane.flow): read ONCE at load, like the keymap
 // rows it must agree with — a flag that flipped mid-session would bind rows
@@ -577,6 +577,15 @@ export function createActionHandlers(navigate: NavigateFunction) {
       // arrangements are desktop-level (Omarchy workspace keys) — the row
       // scopes carry the text refusal; no host admission here.
       ...arrangementHandlers(),
+      // SPR-01 M4/M5: RESIZE mode + direct chords (R8/R9), maximize (R12
+      // level 2), close with focus return (R13). All pane-admitted.
+      "pane.resizeMode": (event: KeyboardEvent) => togglePaneResizeModeAt(event, executingPrefixEvent === event),
+      "pane.resizeNarrower": (event: KeyboardEvent) => resizeFocusedPaneBy(event, "x", -100, executingPrefixEvent === event),
+      "pane.resizeWider": (event: KeyboardEvent) => resizeFocusedPaneBy(event, "x", 100, executingPrefixEvent === event),
+      "pane.resizeShorter": (event: KeyboardEvent) => resizeFocusedPaneBy(event, "y", -100, executingPrefixEvent === event),
+      "pane.resizeTaller": (event: KeyboardEvent) => resizeFocusedPaneBy(event, "y", 100, executingPrefixEvent === event),
+      "pane.maximize": (event: KeyboardEvent) => toggleActivePaneMaximize(event, executingPrefixEvent === event),
+      "pane.close": (event: KeyboardEvent) => closePaneAt(event, executingPrefixEvent === event),
     } : {}),
     "pane.fullscreen": (event) => paneFullscreenKey(event),
     "layout.togglePreset": (event) => {

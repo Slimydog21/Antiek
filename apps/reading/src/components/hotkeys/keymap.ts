@@ -114,6 +114,15 @@ export const ACTIONS = {
   "pane.nextArrangement": { label: "Panes: the next existing arrangement" },
   "pane.prevArrangement": { label: "Panes: the previous existing arrangement" },
   "pane.lastArrangement": { label: "Panes: the last-used arrangement" },
+  // SPR-01 M4 (R8/R9) + M5 (R12/R13): the resize mode and direct chords,
+  // the second fullscreen level, and close-with-focus-return.
+  "pane.resizeMode": { label: "Panes: resize mode (h/l width · j/k height · Enter commits · Esc restores)" },
+  "pane.resizeNarrower": { label: "Panes: resize the focused pane 100 px narrower" },
+  "pane.resizeWider": { label: "Panes: resize the focused pane 100 px wider" },
+  "pane.resizeShorter": { label: "Panes: resize the focused pane 100 px shorter" },
+  "pane.resizeTaller": { label: "Panes: resize the focused pane 100 px taller" },
+  "pane.maximize": { label: "Panes: maximize the focused pane (keeps the rail and strip)" },
+  "pane.close": { label: "Panes: close the focused pane (focus returns to the previous pane)" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
   "layout.togglePreset": { label: PANE_FLOW_ON ? "Layout: horizontal ⇄ tiled" : "Layout: cockpit inset ⇄ docked" },
   "tab.next": { label: "Tab: next tab in the focused pane" },
@@ -230,6 +239,38 @@ function arrangementRows(implemented: boolean): KeymapRow[] {
   return rows;
 }
 
+// ── SPR-01 M4/M5: resize (R8/R9), maximize (R12), close (R13) ───────────
+// M4: prefix+r enters the modal RESIZE mode (the herdr binding; r leaves
+// RESERVED_FOR_LATER in the same diff — ctrl+alt+r stays held for its later
+// sprint). The direct chords are ctrl+alt+- / ctrl+alt+= for width, with
+// shift for height (Omarchy SUPER+- / SUPER+=); Omarchy's ALT 25 px and
+// CTRL 300 px granularities are deliberately NOT added — ctrl+alt+shift is
+// the last free modifier in this family and the page says so.
+// M5: pane.maximize is fullscreen level 2 (Omarchy SUPER+ALT+F "full
+// width": the work area edge to edge, rail and strip kept);
+// content-fullscreen (SUPER+CTRL+F) is per-host and OUT of scope (the
+// page's). pane.close is herdr's close-pane, with focus returning per R13.
+const M4_M5_DECISION = "specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M4/M5 (R8/R9, R12/R13); Omarchy ALT/CTRL resize granularities deliberately not added (ctrl+alt+shift is the last free modifier)";
+const M4_M5_BLOCKED = "antiek.flag.pane.flow (SPR-01 M4/M5: the flow pane model owns resize, maximize and pane close)";
+
+function paneModeRows(implemented: boolean): KeymapRow[] {
+  const row = (binding: KeymapBinding): KeymapRow =>
+    implemented
+      ? { ...binding }
+      : { ...binding, status: "unimplemented", blockedBy: M4_M5_BLOCKED };
+  return [
+    row({ id: "prefix-pane-resize-mode", action: "pane.resizeMode", prefixKey: "r", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-resize-narrower", action: "pane.resizeNarrower", chord: "ctrl+alt+-", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-resize-wider", action: "pane.resizeWider", chord: "ctrl+alt+=", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-resize-shorter", action: "pane.resizeShorter", chord: "ctrl+alt+shift+-", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-resize-taller", action: "pane.resizeTaller", chord: "ctrl+alt+shift+=", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "prefix-pane-maximize", action: "pane.maximize", prefixKey: "shift+f", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-maximize", action: "pane.maximize", chord: "ctrl+alt+shift+f", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "prefix-pane-close", action: "pane.close", prefixKey: "x", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+    row({ id: "chord-pane-close", action: "pane.close", chord: "ctrl+alt+x", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M4_M5_DECISION }),
+  ];
+}
+
 const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
@@ -249,6 +290,7 @@ const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   // The arrangement rows occupy their keys in both worlds (below).
   ...arrangementRows(false),
+  ...paneModeRows(false),
 ];
 const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
@@ -270,6 +312,8 @@ const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   { id: "chord-layout-preset", action: "layout.togglePreset", status: "implemented", chord: "ctrl+alt+l", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   // SPR-01 M6: the numbered arrangement rows (implemented).
   ...arrangementRows(true),
+  // SPR-01 M4/M5: resize mode + direct chords, maximize, close.
+  ...paneModeRows(true),
 ];
 
 
@@ -371,12 +415,13 @@ export const KEYMAP: readonly KeymapRow[] = [
  * prefix+a always works and the operator's platforms do not grab it.
  * SPR-01 M6 took 1–9 and ctrl+alt+1–9 for the numbered arrangements (R11);
  * the arrangement rows own them in both flag worlds. Digit 0 was never
- * reserved and is theirs too.
+ * reserved and is theirs too. SPR-01 M4 took prefix+r for the RESIZE mode;
+ * ctrl+alt+r stays held for its later sprint.
  */
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "w", "shift+n", "m", "shift+m",
-    "r", "a",
+    "a",
   ],
   chords: [
     "ctrl+alt+w",

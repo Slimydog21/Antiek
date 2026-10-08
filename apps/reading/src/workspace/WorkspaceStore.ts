@@ -51,12 +51,15 @@ import type {
   PanePresentation,
   PaneSide,
   PaneTarget,
+  PaneTile,
   WorkspaceSnapshot,
 } from "./panel.types";
 import { project, readPaneArrangements, readPanePreferences, readTabProject, writeLayoutPreset, writePaneArrangement, writePaneArrangements, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
 import { CORE_PANE, COMPANION_PANE, adjacentPane, reconcilePaneOrder, reconcilePaneTiles,
+  resizePaneTile, resizePaneTileByPixels,
   samePane, swapAdjacentPane, swapPaneTiles } from "./paneFlowGeometry";
+import type { PanePlacement } from "./paneFlowGeometry";
 import {
   applyPreset,
   emptyProjectSlots,
@@ -112,6 +115,21 @@ type PaneActions = {
   togglePaneArrangement: () => boolean;
   togglePaneZoom: (target: PaneTarget) => boolean;
   restorePaneZoom: () => boolean;
+  /** SPR-01 M5 (R12 level 2): maximize the focused pane — fills the work
+   *  area edge to edge, keeps the rail and strip. Mutually exclusive with
+   *  zoom; both clear on split, close and arrangement change. */
+  togglePaneMaximize: (target: PaneTarget) => boolean;
+  restorePaneMaximize: () => boolean;
+  /** SPR-01 M4 (R8): nudge the nearest axis-matching ancestor split of
+   *  `target` by a ratio delta (the RESIZE mode's 0.05). Tiled only —
+   *  horizontal's columns are measured, not ratios. Refuses while zoomed
+   *  or maximized. Same-tree-reference no-ops return false. */
+  resizePaneTileRatio: (target: PaneTarget, axis: "x" | "y", delta: number) => boolean;
+  /** The direct chords' path: a pixel delta measured against the ancestor
+   *  split's extent (the caller — the flow layout — owns measurement). */
+  resizePaneTileByPixels: (target: PaneTarget, placements: readonly PanePlacement[], axis: "x" | "y", px: number) => boolean;
+  /** Esc from the RESIZE mode: put back the exact pre-mode tile tree. */
+  restorePaneTiles: (tiles: PaneTile | null) => boolean;
   /** SPR-01 M6 (R11): jump to numbered arrangement slot N — Omarchy
    *  SUPER+N. An empty slot saves the current view as N (recorded
    *  deviation: the sprint page is silent on empty slots). */
@@ -125,7 +143,10 @@ type PaneActions = {
 };
 
 type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions & PanePresentation & PaneActions
-  & { panelCycleOrder: string[]; paneSlots: PaneArrangementMap };
+  & { panelCycleOrder: string[]; paneSlots: PaneArrangementMap;
+      /** SPR-01 M5 (R13): the previously focused pane, so a close returns
+       *  focus there when it still exists. Transient view state. */
+      paneFocusPrev: PaneTarget | null };
 
 const initialPanePreferences = readPanePreferences();
 // SPR-01 M6: arrangements exist only in flow mode (the flag gates the
@@ -177,12 +198,13 @@ export function admittedPaneTargets(state: Pick<Store, "layoutPreset" | "dockRig
       .map((id): PaneTarget => ({ kind: "window", id }))];
 }
 
-function reconcilePresentation(state: Store): Pick<PanePresentation, "paneOrder" | "paneTiles" | "paneFocus" | "paneZoom"> {
+function reconcilePresentation(state: Store): Pick<PanePresentation, "paneOrder" | "paneTiles" | "paneFocus" | "paneZoom" | "paneMaximize"> {
   const order = reconcilePaneOrder(state.paneOrder, visiblePaneTargets(state));
   const present = (target: PaneTarget | null): PaneTarget | null =>
     target && order.some((member) => samePane(member, target)) ? target : null;
   return { paneOrder: order, paneTiles: reconcilePaneTiles(state.paneTiles, order),
-    paneFocus: present(state.paneFocus), paneZoom: present(state.paneZoom) };
+    paneFocus: present(state.paneFocus), paneZoom: present(state.paneZoom),
+    paneMaximize: present(state.paneMaximize) };
 }
 
 const initialPaneOrder = admittedPaneTargets({ layoutPreset: initialPanePreferences.layoutPreset, dockRightIds: [], panels: {} });
@@ -277,13 +299,16 @@ export const useWorkspace = create<Store>()((set, get) => ({
   paneTiles: initialApplied ? initialApplied.tiles : reconcilePaneTiles(null, initialPaneOrder),
   paneFocus: null,
   paneZoom: null,
+  paneMaximize: null,
+  paneFocusPrev: null,
   paneSlots: initialPaneSlots,
 
   setPaneFocus: (target) => {
     const s = get();
     if (samePane(s.paneFocus, target)) return false;
     if (target && !visiblePaneTargets(s).some((member) => samePane(member, target))) return false;
-    set({ paneFocus: target });
+    // R13 keeps the previously focused pane so a close can return there.
+    set({ paneFocus: target, paneFocusPrev: target && s.paneFocus ? s.paneFocus : s.paneFocusPrev });
     return true;
   },
 
@@ -302,7 +327,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
     const s = get();
     if (arrangement === s.paneArrangement) return false;
     writePaneArrangement(arrangement);
-    set({ paneArrangement: arrangement, paneZoom: null, fullscreenPane: null });
+    set({ paneArrangement: arrangement, paneZoom: null, paneMaximize: null, fullscreenPane: null });
     return true;
   },
 
@@ -318,6 +343,52 @@ export const useWorkspace = create<Store>()((set, get) => ({
   restorePaneZoom: () => {
     if (!get().paneZoom) return false;
     set({ paneZoom: null });
+    return true;
+  },
+
+  // ── SPR-01 M5 (R12/R13) + M4 (R8/R9) ───────────────────────────────────
+
+  togglePaneMaximize: (target) => {
+    const s = get();
+    if (s.paneArrangement === "legacy" || !visiblePaneTargets(s).some((member) => samePane(member, target))) return false;
+    // The two levels never stack (R12): maximizing clears zoom, zooming
+    // clears maximize.
+    set({ paneMaximize: samePane(s.paneMaximize, target) ? null : target, paneZoom: null });
+    return true;
+  },
+
+  restorePaneMaximize: () => {
+    if (!get().paneMaximize) return false;
+    set({ paneMaximize: null });
+    return true;
+  },
+
+  resizePaneTileRatio: (target, axis, delta) => {
+    const s = get();
+    // Tiled only: horizontal's columns are measured (max(360, 49%)), there
+    // is no ratio to nudge (the page's M4 note). Zoom/maximize show one
+    // pane — no visible split to resize.
+    if (s.paneArrangement !== "tiled" || s.paneZoom || s.paneMaximize) return false;
+    const tiles = resizePaneTile(s.paneTiles, target, axis, delta);
+    if (!tiles || tiles === s.paneTiles) return false;
+    set({ paneTiles: tiles });
+    return true;
+  },
+
+  resizePaneTileByPixels: (target, placements, axis, px) => {
+    const s = get();
+    if (s.paneArrangement !== "tiled" || s.paneZoom || s.paneMaximize) return false;
+    const tiles = resizePaneTileByPixels(s.paneTiles, placements, target, axis, px);
+    if (!tiles || tiles === s.paneTiles) return false;
+    set({ paneTiles: tiles });
+    return true;
+  },
+
+  restorePaneTiles: (tiles) => {
+    const s = get();
+    if (s.paneArrangement === "legacy") return false;
+    if (s.paneTiles === tiles) return false;
+    set({ paneTiles: tiles });
     return true;
   },
 
@@ -344,6 +415,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         paneTiles: applied.tiles,
         // R12: an arrangement change clears zoom (and the legacy fullscreen).
         paneZoom: null,
+        paneMaximize: null,
         fullscreenPane: null,
         paneFocus: s.paneFocus && applied.order.some((m) => samePane(m, s.paneFocus)) ? s.paneFocus : null,
         paneSlots: { ...s.paneSlots, [projectId]: { ...nextProject, last: project.current } },
@@ -387,6 +459,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       paneOrder: moved.source.order,
       paneTiles: moved.source.tiles,
       paneZoom: null,
+      paneMaximize: null,
       paneFocus: null,
       paneSlots: { ...s.paneSlots, [projectId]: { ...project, presets } },
     });
@@ -645,7 +718,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       paneArrangement: currentPreset ? currentPreset.arrangement : arrangementPreference,
       paneOrder: applied ? applied.order : visible,
       paneTiles: applied ? applied.tiles : reconcilePaneTiles(null, visible),
-      paneFocus: null, paneZoom: null,
+      paneFocus: null, paneZoom: null, paneMaximize: null, paneFocusPrev: null,
       paneSlots: slots });
   },
 }));
@@ -653,8 +726,9 @@ export const useWorkspace = create<Store>()((set, get) => ({
 registerWindowPresentationObserver((event) => {
   const current = useWorkspace.getState();
   const presentation = reconcilePresentation(current);
+  // A window opening is a split (R12): both zoom levels clear.
   useWorkspace.setState(event.kind === "open"
-    ? { ...presentation, paneFocus: { kind: "window", id: event.id }, paneZoom: null }
+    ? { ...presentation, paneFocus: { kind: "window", id: event.id }, paneZoom: null, paneMaximize: null }
     : presentation);
 });
 

@@ -2,9 +2,12 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import type { CSSProperties, ReactNode } from "react";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { useCompanion } from "./companionStore";
 import { escOverlayOpen } from "./escapeOverlay";
 import { adjacentPane, PANE_GAP, paneGeometry, paneKey, revealPane, samePane, spatialPaneNeighbor } from "./paneFlowGeometry";
 import type { PaneGeometry } from "./paneFlowGeometry";
+import { usePaneResizeMode } from "./paneResizeMode";
+import { useWindows } from "./windowsStore";
 import type { PaneArrangement, PaneTarget } from "./panel.types";
 import { installPaneHostLease } from "./paneHostLease";
 import type { PaneHostLease } from "./paneHostLease";
@@ -17,6 +20,7 @@ type Flow = {
   arrangement: Exclude<PaneArrangement, "legacy"> | null;
   geometry: PaneGeometry;
   zoom: PaneTarget | null;
+  maximize: PaneTarget | null;
   focused: PaneTarget | null;
   register: (target: PaneTarget, node: HTMLElement) => PaneHostLease<Host>;
 };
@@ -116,6 +120,100 @@ export function togglePaneHostZoom(target: PaneTarget, node: Element): boolean {
   return useWorkspace.getState().togglePaneZoom(target);
 }
 
+/** SPR-01 M5 (R12 level 2): maximize — Omarchy SUPER+ALT+F "full width". */
+export function toggleActivePaneMaximize(event: KeyboardEvent, dispatcherConsumed = false): boolean {
+  if (event.repeat) return false;
+  const target = paneEventTarget(event, dispatcherConsumed);
+  if (!target || !(event.target instanceof Element)) return false;
+  return togglePaneHostMaximize(target, event.target);
+}
+
+/** The maximize toggle keeps the zoom's admission rule: the admitted host
+ *  itself. The state is the store's; there is no scroll memory to keep. */
+export function togglePaneHostMaximize(target: PaneTarget, node: Element): boolean {
+  const admitted = admittedController(node);
+  if (!admitted || !samePane(admitted.host.target, target)) return false;
+  if (samePane(useWorkspace.getState().paneMaximize, target)) return useWorkspace.getState().restorePaneMaximize();
+  return useWorkspace.getState().togglePaneMaximize(target);
+}
+
+/** SPR-01 M4 (R8/R9): prefix+r enters RESIZE; pressed again it commits and
+ *  exits (herdr: the binding toggles the mode, with or without the prefix). */
+export function togglePaneResizeModeAt(event: KeyboardEvent, dispatcherConsumed = false): boolean {
+  if (event.repeat) return false;
+  const mode = usePaneResizeMode.getState();
+  if (mode.active) return mode.exit(true);
+  const target = paneEventTarget(event, dispatcherConsumed);
+  if (!target) return false;
+  return mode.enter(target);
+}
+
+/** SPR-01 M4 (R8) direct chords: ±100 px of the measured parent split. The
+ *  flow layout owns measurement, so the placements come from the admitted
+ *  controller; the tree math is the geometry module's. */
+export function resizeFocusedPaneBy(event: KeyboardEvent, axis: "x" | "y", px: number, dispatcherConsumed = false): boolean {
+  const target = paneEventTarget(event, dispatcherConsumed);
+  if (!target || !(event.target instanceof Element)) return false;
+  const admitted = admittedController(event.target);
+  if (!admitted || admitted.controller.flow.arrangement !== "tiled") return false;
+  const geometry = admitted.controller.flow.geometry;
+  if (geometry.kind !== "measured") return false;
+  return useWorkspace.getState().resizePaneTileByPixels(target, geometry.placements, axis, px);
+}
+
+/**
+ * SPR-01 M5 (R13): close the focused pane through its host's OWN close —
+ * a window closes (focus return is the shipped rule: the connected opener,
+ * then the retained topmost; unified here, not duplicated), the companion
+ * closes its active view (the agent tab, with undo), and inside the core
+ * host a focused floating panel closes. The core material itself has no
+ * close. Never opens or evicts anything (S01).
+ */
+export function closePaneAt(event: KeyboardEvent, dispatcherConsumed = false): boolean {
+  if (event.repeat) return false;
+  const target = paneEventTarget(event, dispatcherConsumed);
+  if (!target || !(event.target instanceof Element)) return false;
+  if (target.kind === "window") {
+    const windows = useWindows.getState();
+    if (!Object.hasOwn(windows.windows, target.id)) return false;
+    windows.close(target.id);
+    return true;
+  }
+  if (target.kind === "companion") {
+    const companion = useCompanion.getState();
+    const active = companion.tabs.find((tab) => tab.id === companion.activeTabId);
+    if (!active) return false; // no view open: nothing to close
+    companion.closeAgentTabWithUndo(active.id);
+    return true;
+  }
+  // Core: a focused FLOATING panel inside the core host is the panel close.
+  const s = useWorkspace.getState();
+  const panel = s.focusedPanelId ? s.panels[s.focusedPanelId] : null;
+  if (!panel || panel.mode !== "floating") return false;
+  s.close(panel.id);
+  return focusPaneAfterClose(target);
+}
+
+/** R13: after a close, focus returns to the previously focused pane if it
+ *  still exists (admitted and visible), else the next in tree order. */
+function focusPaneAfterClose(closed: PaneTarget): boolean {
+  const s = useWorkspace.getState();
+  const order = s.paneOrder;
+  const candidate = (s.paneFocusPrev && order.some((m) => samePane(m, s.paneFocusPrev)) ? s.paneFocusPrev : null)
+    ?? adjacentPane(order, closed, -1)
+    ?? adjacentPane(order, closed, 1);
+  if (!candidate) return true; // the close landed; nothing sensible to focus
+  const root = document.querySelector("[data-pane-flow-root]");
+  const host = root?.querySelector<HTMLElement>(`[data-pane-host="${paneKey(candidate)}"]`);
+  if (host && host.isConnected && !host.closest("[hidden], [inert]")) {
+    host.focus({ preventScroll: true });
+    if (document.activeElement === host) s.setPaneFocus(candidate);
+  } else {
+    s.setPaneFocus(candidate);
+  }
+  return true;
+}
+
 export function togglePaneArrangementAt(event: KeyboardEvent, dispatcherConsumed = false): boolean {
   if (event.repeat || (event.defaultPrevented && !dispatcherConsumed) || event.isComposing
       || event.getModifierState("AltGraph") || event.target !== document.activeElement
@@ -213,7 +311,9 @@ export function usePaneFlowFrame(target: PaneTarget) {
   }, []);
   return { ref, active, hidden, style, arrangement: flow?.arrangement ?? null,
     focused: active && samePane(flow?.focused ?? null, target),
-    zoomed: active && samePane(flow?.zoom ?? null, target), hostKey: active ? key : undefined, restoreZoom };
+    zoomed: active && samePane(flow?.zoom ?? null, target),
+    maximized: active && samePane(flow?.maximize ?? null, target),
+    hostKey: active ? key : undefined, restoreZoom };
 }
 
 export function PaneFlowLayout({ children }: { children: ReactNode }) {
@@ -221,6 +321,7 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
   const order = useWorkspace((s) => s.paneOrder);
   const tiles = useWorkspace((s) => s.paneTiles);
   const zoom = useWorkspace((s) => s.paneZoom);
+  const maximize = useWorkspace((s) => s.paneMaximize);
   const focused = useWorkspace((s) => s.paneFocus);
   const tier = useViewportTier();
   const effective = tier === "sm" || arrangement === "legacy" ? null : arrangement;
@@ -249,10 +350,10 @@ export function PaneFlowLayout({ children }: { children: ReactNode }) {
 
   const register = useCallback((target: PaneTarget, node: HTMLElement) =>
     installPaneHostLease(hosts.current, paneKey(target), { target, node }), []);
-  const geometry = useMemo(() => effective ? paneGeometry({ ...bounds, arrangement: effective, order, tiles, zoom })
-    : { kind: "unmeasured" } satisfies PaneGeometry, [bounds, effective, order, tiles, zoom]);
-  const flow: Flow = useMemo(() => ({ desktop: tier !== "sm", arrangement: effective, geometry, zoom, focused, register }),
-    [tier, effective, geometry, zoom, focused, register]);
+  const geometry = useMemo(() => effective ? paneGeometry({ ...bounds, arrangement: effective, order, tiles, zoom, maximize })
+    : { kind: "unmeasured" } satisfies PaneGeometry, [bounds, effective, order, tiles, zoom, maximize]);
+  const flow: Flow = useMemo(() => ({ desktop: tier !== "sm", arrangement: effective, geometry, zoom, maximize, focused, register }),
+    [tier, effective, geometry, zoom, maximize, focused, register]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
