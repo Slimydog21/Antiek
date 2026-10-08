@@ -116,6 +116,62 @@ describe("the Escape ladder ends in a close whose focus returns (invariant 13)",
   });
 });
 
+/** jsdom's sequential-focus model (repair C13): the elements a Tab walks,
+ *  in DOM order — focusable, enabled, tabIndex ≥ 0 — minus every element
+ *  under an `inert` ancestor, which is exactly what the HTML spec removes
+ *  from sequential navigation. jsdom does not move focus on Tab nor honour
+ *  inert itself, so this model is the proof surface; the `withInert=false`
+ *  control shows the attribute is the load-bearing part. */
+function focusOrder(withInert = true): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]")]
+    .filter((el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && !el.closest("[hidden]"))
+    .filter((el) => !withInert || !el.closest("[inert]"));
+}
+function nextTabStop(from: Element | null, withInert = true): HTMLElement | null {
+  const order = focusOrder(withInert);
+  if (!from) return order[0] ?? null;
+  const all = [...document.querySelectorAll<HTMLElement>("*")];
+  const after = order.filter((el) => all.indexOf(el) > all.indexOf(from as HTMLElement));
+  return after[0] ?? null;
+}
+
+describe("Tab during the close linger never lands inside the pane (invariant 29, repair C13)", () => {
+  it("while the root is inert, no pane control is in the sequential order: a Tab from the left pane reaches the next outside control; without inert it would land inside the pane", () => {
+    const { transport } = scripted([]);
+    host(transport, {}, undefined);
+    const after = document.createElement("button");
+    after.id = "after-the-pane";
+    after.textContent = "after";
+    document.body.append(after);
+    const root = document.querySelector<HTMLElement>("[data-agent-pane]")!;
+    const left = document.querySelector<HTMLElement>('[data-pane="left"]')!;
+    // Before the linger the composer IS in the order (the pane is live).
+    expect(focusOrder()).toContain(root.querySelector("textarea"));
+    root.focus();
+    fireEvent.keyDown(root, { key: "Escape" });
+    expect(root.hasAttribute("inert")).toBe(true);
+    left.focus();
+    // A Tab from the left pane: every control inside the pane is out of the order.
+    const inside = [...root.querySelectorAll<HTMLElement>("button, textarea, [tabindex]")];
+    expect(inside.length).toBeGreaterThan(0);
+    for (const el of inside) expect(focusOrder()).not.toContain(el);
+    expect(nextTabStop(left)).toBe(after);
+    fireEvent.keyDown(left, { key: "Tab" });
+    expect(root.contains(document.activeElement)).toBe(false);
+    // Negative control: with inert ignored, the next stop would be INSIDE the
+    // pane (its header × comes first in DOM order, the composer after it).
+    // (The composer itself is also `disabled` while closing, so it is out of
+    // both orders; the header × is the control that inert alone removes.)
+    const without = nextTabStop(left, false)!;
+    expect(root.contains(without)).toBe(true);
+    act(() => { vi.advanceTimersByTime(CLOSE_LINGER_MS); });
+    // The tab is gone from the store (this standalone host keeps the element
+    // mounted; the companion strip unmounts it).
+    expect(useCompanion.getState().tabs.some((t) => t.id === PANE_TAB_ID)).toBe(false);
+    after.remove();
+  });
+});
+
 describe("the close linger (invariant 29)", () => {
   it("inert immediately (focus already out); still present at 239 ms; the tab closes at 240 ms", () => {
     const { transport } = scripted([]);
@@ -129,10 +185,9 @@ describe("the close linger (invariant 29)", () => {
     expect(document.querySelector("[data-agent-pane]")).not.toBeNull();
     expect(useCompanion.getState().tabs.some((t) => t.id === PANE_TAB_ID)).toBe(true);
     // Focus left the root the moment the linger started (the closing effect).
-    // "A Tab during the linger never lands inside" is NOT provable here:
-    // jsdom neither moves focus on Tab nor honours inert, so that claim
-    // belongs to J4a (Phase B Playwright, real Chromium), where it was
-    // falsified with inert removed and holds with it present.
+    // "A Tab during the linger never lands inside" is proven above through
+    // the sequential-focus model (repair C13); real Chromium confirms it
+    // in J4a.
     expect(root.contains(document.activeElement)).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
     expect(useCompanion.getState().tabs.some((t) => t.id === PANE_TAB_ID)).toBe(false);
