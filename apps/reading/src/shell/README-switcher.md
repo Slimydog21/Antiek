@@ -80,8 +80,61 @@ field is on `ProjectInput`, and `projectRows` names the parent in the subtitle.
 | `rankPlaceRows(rows, text)` | within-section ranking; current-first on empty text |
 | `groupBySection(rows)` | render groups |
 
-## Not done in this PR (SPR-02 M4–M5)
+## The compact dock and the key (SPR-02 M4a–M5); the ten-slot strip is M4b
 
-The rail strip (`NavRail` icon variant behind the same flag) and the keymap rows
-for `switcher.open.<section>` are the next PR; both depend on nothing here but
-were split to keep this diff reviewable.
+With the flag on, the bottom dock (`shell/NavRail.tsx`) folds into its existing
+compact five-key layout at every width (`data-rail-compact`): the four doors + More, captions kept
+(SPR-07's "no caption-less bar control" rule stands), keycap chips and the
+Home/Search keys dropped (`⌘O` and `prefix+g` still reach them), height 48 px
+(`data-rail-compact="true"`). More — by click and by the `door.more` hotkey —
+opens the Switcher narrowed to Scenes (`in:scenes`) instead of the products
+drawer; `ProductsLauncher` stays mounted and untouched. The sprint page's
+"40 px icons-only" wording was NOT followed: icon-only bar controls were the
+v1 complaint SPR-07 fixed, and 48 px keeps the caption legible. The TEN-SLOT
+workspace strip the page promises (M3/M4b: slots 1–0 with occupancy, the
+current-slot ring, badge positions) is the consumer of SPR-01's arrangements
+and lands with them — this PR does not claim it (critique C2 on #3751).
+Captions on the dark dock now use `text-moonlight`/`text-bright` (the
+island's light text tokens; `text-ice-2` is the page pigment and read 1.1:1
+at night — critique C3), in BOTH flag states.
+
+One keymap row: `switcher.open` = `prefix+shift+o` / `ctrl+alt+shift+o` opens
+the Switcher at `in:open` (herdr's goto, narrowed to what is open). `shift+o`
+because `prefix+o` is `tab.visitChild`. The toggle event carries
+`detail.query`; the palette honours it only with places on, so the key degrades
+to the plain Switcher when the flag is off. No `in:agents` key: that section is
+absent on main, and a key to an absent section would be a hidden
+non-consumption.
+
+## Input types and the frozen contract (index.html D5)
+
+`ProjectInput` / `AgentInput` are this module's exported, structural inputs.
+When Undertaker v4 freezes `workspace/contracts/{tree,selection}.ts`, these
+become aliases of (or are replaced by) its `ProjectNode` / `AgentNode`, so the
+places rows and the zen home's geared switcher read ONE source. `is:<status>`
+accepts exactly herdr's five words (`AGENT_STATUSES`) and gets a live source
+only from the monitoring lane's store (SPR-10); no status is invented before
+that.
+
+## What changes flag-OFF (narrowing the parity claim; critique C6)
+
+The places sections, the compact dock, More → Switcher and the `in:`/`is:`
+syntax are flag-gated. The keyboard-contract fixes are NOT: focus return to
+the opener on close, Esc clear-then-close, j/k on an empty box and
+PageUp/PageDown apply to the Switcher in both flag states, deliberately —
+they are defects of the palette, not features of the places mode. The
+caption-token fix (C3) is also flag-independent.
+
+## Independent critique of #3748 (MiMo V2.6 Pro, 2026-10-07) — dispositions
+
+Report: `specs/antiek-keyboard-panes-agents-20261007/ground/critic-mimo-spr02-3748-b286539d8.md`.
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| F1 | The sprint page claimed Esc "returns focus to the opener (existing behaviour)"; the palette never did. | Page corrected; focus return IMPLEMENTED here (opener captured on open, focused on close; KeySheet pattern); tested in both flag states. |
+| F2 | j/k when the box is empty not implemented. | Implemented (empty box only; with text they are search text). |
+| F3 | Esc closed immediately instead of clear-then-close (Omarchy menu rule R14). | Implemented: Esc clears a non-empty query, a second Esc closes. |
+| F4 | PageUp/PageDown ×6 absent. | Implemented (six rows, R14). |
+| F5 | Right/Left/Backspace descend/ascend absent. | N/A: the Switcher's list is flat; the nested descend/ascend belongs to the zen home's geared switcher (SPR-04). Recorded, not built. |
+| F6 | `is:all` is a sixth accepted token. | Kept, documented: `is:all` and `in:all` are the clear tokens the chips write; they are never a status. |
+| F7 | Flag-off still subscribes to windows/companion/tab-tree stores. | Accepted as render-frequency-only (DOM parity proven); zustand hooks cannot be conditional. Revisit if a profile shows the palette re-rendering on window moves with the flag off. |
