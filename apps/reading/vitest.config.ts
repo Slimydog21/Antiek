@@ -13,6 +13,19 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    // Node >= 25 installs a built-in `localStorage` global (web storage,
+    // on by default) whose methods are absent without --localstorage-file.
+    // jsdom leaves that global in place, so window.localStorage.clear /
+    // removeItem / setItem throw "is not a function" at 0 ms in every test
+    // that touches storage (reproduced on an untouched file: 11/11 red on
+    // Node 25.6.1, 11/11 green with this flag). CI runs Node 20/22 and never
+    // saw it; local and compute runs on the Mac mini (/usr/local/bin/node
+    // = 25) did. The flag is a no-op on Node 20/22.
+    // Node 20 (CI's vitest job) does not know the flag, so it is only passed
+    // where it exists (added in Node 22.4).
+    execArgv: Number(process.versions.node.split(".")[0]) >= 22
+      ? ["--no-experimental-webstorage"]
+      : [],
     setupFiles: ["./src/testAccountOwner.ts"],
     // e2e/ holds Playwright specs (*.spec.ts, see playwright.config.ts
     // testMatch) AND pure-function unit calibrations named *.test.ts. The
