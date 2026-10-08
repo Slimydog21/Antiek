@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { accountStorageKey, setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { agentDraftKey } from "./agentPaneId";
 import { AGENT_STORAGE_PREFIX, DRAFT_DEBOUNCE_MS, purgeAgentDrafts, readAgentDraft, useAgentDraft, writeAgentDraft } from "./agentDraft";
 
@@ -68,5 +68,46 @@ describe("agentDraft", () => {
     setWorkspaceOwner("owner-b");
     act(() => { vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS); });
     expect(window.sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it("a pending write never resurrects a draft the owner-change purge deleted, even when the hook re-keys instead of unmounting (finding 3)", () => {
+    vi.useFakeTimers();
+    setWorkspaceOwner("owner-a");
+    const kA = keyFor();
+    const { result, rerender } = renderHook(({ k }) => useAgentDraft(k), { initialProps: { k: kA } });
+    act(() => result.current[1]("owner A secret"));
+    setWorkspaceOwner("owner-b"); // the purge runs here
+    rerender({ k: keyFor() }); // owner B's key: the hook stays mounted
+    act(() => { vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS + 50); });
+    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith(AGENT_STORAGE_PREFIX))).toEqual([]);
+  });
+
+  it("under one owner, a pending write is flushed (not dropped) when the key changes, so a quick tab switch loses no words", () => {
+    vi.useFakeTimers();
+    setWorkspaceOwner("owner-a");
+    const kA = keyFor()!;
+    const kB = agentDraftKey({ projectId: "q", agentId: "x", pane: "companion" })!;
+    const { result, rerender } = renderHook(({ k }) => useAgentDraft(k), { initialProps: { k: kA } });
+    act(() => result.current[1]("last words"));
+    rerender({ k: kB }); // within the debounce window
+    expect(readAgentDraft(kA)).toBe("last words");
+    expect(result.current[0]).toBe("");
+    act(() => { vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS + 50); });
+    expect(readAgentDraft(kB)).toBe("");
+  });
+
+  it("a page load (null → the same subject) keeps that subject's draft and drops any other subject's (finding 4)", () => {
+    setWorkspaceOwner(null);
+    const mine = accountStorageKey("antiek.agent.draft.v1.p.x.companion", { subject: "owner-a", epoch: 0 })!;
+    const theirs = accountStorageKey("antiek.agent.draft.v1.p.x.companion", { subject: "owner-z", epoch: 0 })!;
+    // sessionStorage survived the reload; the module graph starts with subject null.
+    window.sessionStorage.setItem(mine, "survive me");
+    window.sessionStorage.setItem(theirs, "not mine");
+    setWorkspaceOwner("owner-a"); // /auth/me answers with the same user
+    expect(readAgentDraft(keyFor())).toBe("survive me");
+    expect(window.sessionStorage.getItem(theirs)).toBeNull();
+    // A real owner change still purges everything.
+    setWorkspaceOwner("owner-b");
+    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith(AGENT_STORAGE_PREFIX))).toBe(false);
   });
 });
