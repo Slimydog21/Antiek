@@ -207,6 +207,40 @@ def test_recovery_state_dict_is_updated_in_place(tmp_path, monkeypatch, worker_e
         _settle(stop, thread)
 
 
+def test_recovery_walks_internal_sentinel_streams(tmp_path, monkeypatch, worker_env, capsys):
+    """Prod 2026-10: /thought-partner and /complete dispatch under the
+    investigation ids ``__sidecar__`` / ``__complete__``. Those streams are
+    discovered like any other, but the ownership guard's accounting identity
+    validation rejected the leading underscore, so every poll failed with
+    ``ValueError('accounting identity is invalid')`` and the replay looped
+    forever. The guard must answer (False — no owned job), not raise, for the
+    two minted sentinels."""
+    db, events = worker_env
+    from substrate.byot_usage.ledger import ByotUsageLedger
+    from substrate.graph import knowledge_event_projector
+
+    monkeypatch.setattr(
+        note_taking,
+        "ByotUsageLedger",
+        lambda: ByotUsageLedger(tmp_path / "usage.sqlite3"),
+    )
+    monkeypatch.setattr(
+        knowledge_event_projector,
+        "discover_investigations",
+        lambda root: ["__sidecar__", "__complete__"],
+    )
+    service, state, stop, thread = _start(monkeypatch, tmp_path, db, events, lambda _id: None)
+    try:
+        deadline = time.monotonic() + 3
+        while state.get("status") != "current" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert state.get("status") == "current", f"worker state: {state}"
+        assert sorted(service.calls) == ["__complete__", "__sidecar__"]
+        assert "remains pending" not in capsys.readouterr().err
+    finally:
+        _settle(stop, thread)
+
+
 @pytest.mark.parametrize("reuse_app", [True, False], ids=["repeated-startup", "multiple-apps"])
 def test_startup_recovery_logs_once_per_database_interval(
     monkeypatch, worker_env, capsys, reuse_app

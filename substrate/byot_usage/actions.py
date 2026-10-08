@@ -33,6 +33,15 @@ _WORKFLOWS = frozenset({
 })
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,255}\Z")
+# First-class internal sentinels the platform mints itself:
+# interfaces/research/api/app.py's /thought-partner endpoint defaults a
+# missing investigation_id to "__sidecar__" and /complete always dispatches
+# with "__complete__". Those ids name event-log streams the note-taker replay
+# must walk (owned_wrestling_for_investigation is the replay's ownership
+# guard), so accounting must accept them. The regex is NOT widened: a leading
+# underscore stays invalid for every other value, so user-supplied data that
+# merely looks sentinel-shaped ("__other__") still fails here.
+_INTERNAL_INVESTIGATION_SENTINELS = frozenset({"__sidecar__", "__complete__"})
 
 
 def checked_int(value: object, *, minimum: int = 0) -> int:
@@ -46,7 +55,11 @@ def checked_sum(values: Iterator[int] | list[int] | tuple[int, ...]) -> int:
 
 
 def _identity(value: object) -> None:
-    if type(value) is not str or _ID.fullmatch(value) is None:
+    if type(value) is not str:
+        raise ValueError("accounting identity is invalid")
+    if value in _INTERNAL_INVESTIGATION_SENTINELS:
+        return
+    if _ID.fullmatch(value) is None:
         raise ValueError("accounting identity is invalid")
 
 
