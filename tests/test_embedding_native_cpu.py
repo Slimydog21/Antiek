@@ -161,7 +161,11 @@ def _pretrained_cold_control(path: str, expected_sha256: str) -> dict[str, Any]:
     assert vectors.shape == (2, 384) and np.isfinite(vectors).all()
     identities = {}
     maximum_error = 0.0
-    for constructor in (GraphEmbedding, ProcessingEmbedding):
+    assert GraphEmbedding is ProcessingEmbedding
+    for port, constructor in (
+        ("substrate.graph.search", GraphEmbedding),
+        ("processing.embedding.embed", ProcessingEmbedding),
+    ):
         provider = constructor()
         assert provider.dimension == 384
         assert _weights(provider._model) == evidence["weights_sha256"]
@@ -170,11 +174,12 @@ def _pretrained_cold_control(path: str, expected_sha256: str) -> dict[str, Any]:
         assert np.isfinite(actual).all()
         np.testing.assert_allclose(actual, vectors, atol=2e-6, rtol=2e-5)
         maximum_error = max(maximum_error, float(np.abs(actual - vectors).max()))
-        identities[constructor.__module__] = embedding_provider_fingerprint(provider)
+        identities[port] = embedding_provider_fingerprint(provider)
     assert identities == {
-        "substrate.graph.search": "embedding-provider-id-v1:substrate.graph.search.SentenceTransformerEmbedding:SentenceTransformerEmbedding-dim-384:384",
+        "substrate.graph.search": "embedding-provider-id-v1:sentence-transformers:all-MiniLM-L6-v2:384",
         "processing.embedding.embed": "embedding-provider-id-v1:sentence-transformers:all-MiniLM-L6-v2:384",
     }
+    corpus = _native_corpus_round_trip(provider, evidence["texts"][0])
     assert torch.backends.mkldnn.enabled is False
     assert libc.prctl(66, 0, 0, 0, 0) == 1
     return {
@@ -184,6 +189,7 @@ def _pretrained_cold_control(path: str, expected_sha256: str) -> dict[str, Any]:
         "weights_sha256": evidence["weights_sha256"],
         "dimension": 384,
         "identities": identities,
+        "corpus_round_trip": corpus,
         "mdwe": 1,
         "mkldnn_enabled": False,
         "max_absolute_error": maximum_error,
@@ -193,13 +199,104 @@ def _pretrained_cold_control(path: str, expected_sha256: str) -> dict[str, Any]:
     }
 
 
+def _native_corpus_round_trip(producer: Any, text: str) -> dict[str, Any]:
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+    from processing.embedding import embedding_provider_fingerprint
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.auth import mint_session_cookie
+    from substrate.graph import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+    from substrate.graph.search import SentenceTransformerEmbedding, search
+
+    path = os.environ["ANTIEK_DUCKDB_PATH"]
+    init_database_at_path(path)
+    with connect_write(path, purpose="native-canonical-search-control") as con:
+        insert_document(
+            con, document_id="native-canonical-control", title="Native evidence control",
+            source_tier=4, document_type="article", content_class="user_owned",
+            owner_user_id="__operator__", raw_text=text,
+        )
+        insert_chunk(
+            con, document_id="native-canonical-control", chunk_index=0,
+            text=text, section_path="Page 2", embedding=producer.encode(text),
+            embedding_provider=producer,
+        )
+    con = connect_read(path)
+    try:
+        before = con.execute("SELECT * FROM embeddings_meta").fetchall()
+        vectors = con.execute("SELECT chunk_id, embedding FROM chunks").fetchall()
+        query = SentenceTransformerEmbedding()
+        result = search(con, text, model=query, policy_tag="private_research")
+        assert [r["document_id"] for r in result["results"]] == ["native-canonical-control"]
+        assert result["results"][0]["similarity"] == pytest.approx(1.0, abs=1e-4)
+        assert embedding_provider_fingerprint(query) == embedding_provider_fingerprint(producer)
+    finally:
+        con.close()
+    app = create_app(
+        register_wrestling=False, register_providers=False,
+        cors_origins=["https://antiek.ai"],
+    )
+    with TestClient(app) as client:
+        client.cookies.set(
+            "ANTIEK_SESSION",
+            mint_session_cookie(user_id="__operator__", email=os.environ["ANTIEK_OPERATOR_EMAIL"]),
+        )
+        assert client.get("/auth/me").status_code == 200
+        response = client.get("/corpus/search", params={"q": text}, headers={"Origin": "https://antiek.ai"})
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["count"] == 1 and body["query"] == text
+        assert body["hits"][0]["document_id"] == "native-canonical-control"
+        assert body["hits"][0]["snippet"] == text
+        assert body["hits"][0]["page_index"] == 1
+        assert body["hits"][0]["page_resolved"] is True
+        assert response.headers["access-control-allow-origin"] == "https://antiek.ai"
+    con = connect_read(path)
+    try:
+        assert con.execute("SELECT * FROM embeddings_meta").fetchall() == before
+        assert con.execute("SELECT chunk_id, embedding FROM chunks").fetchall() == vectors
+    finally:
+        con.close()
+    return {
+        "stored_fingerprint": embedding_provider_fingerprint(producer),
+        "query_fingerprint": embedding_provider_fingerprint(query),
+        "direct_hits": 1, "signed_http_status": response.status_code,
+        "http_hits": body["count"], "vectors_and_metadata_unchanged": True,
+        "live_or_ordinary_account_proof": False,
+    }
+
+
 def _run_control(control: str, timeout: int, cache: Path) -> dict[str, Any]:
     cache.mkdir(mode=0o700)
     environment = os.environ.copy()
+    canonical = environment.get("ANTIEK_CANONICAL_REAL_DUCKDB") or os.path.realpath(
+        os.path.expanduser("~/.antiek/research_graph.duckdb")
+    )
+    pretrained_admitted = environment.get("ANTIEK_TEST_PRETRAINED_EMBEDDINGS")
     for name in list(environment):
-        if name.endswith(("API_KEY", "TOKEN", "AUTH_SECRET", "PASSWORD")):
+        if name.startswith("ANTIEK_") or name.endswith(("API_KEY", "TOKEN", "SECRET", "PASSWORD")):
             environment.pop(name)
+    if pretrained_admitted == "1":
+        environment["ANTIEK_TEST_PRETRAINED_EMBEDDINGS"] = pretrained_admitted
+    private = cache / "antiek"
+    private.mkdir(mode=0o700)
+    for name, relative in {
+        "ANTIEK_HOME": "home", "ANTIEK_DUCKDB_PATH": "graph.duckdb",
+        "ANTIEK_STATE_DIR": "state", "ANTIEK_RESEARCH_EVENTS_DIR": "events",
+        "ANTIEK_ACCOUNT_STORE": "accounts.json", "ANTIEK_PASSKEY_STORE": "passkeys.json",
+        "ANTIEK_USER_MODELS_PATH": "models.json", "ANTIEK_BYOK_ARTIFACT": "credentials.enc",
+        "ANTIEK_BYOK_KEY_FILE": "master.key", "ANTIEK_ARXIV_THROTTLE_PATH": "arxiv.json",
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH": "arxiv.lock", "ANTIEK_BAN_EVENT_LOG_PATH": "bans.jsonl",
+    }.items():
+        environment[name] = str(private / relative)
     environment.update({
+        "ANTIEK_CANONICAL_REAL_DUCKDB": canonical,
+        "ANTIEK_ENFORCE_TEST_STORE_ISOLATION": "1",
+        "ANTIEK_OPERATOR_EMAIL": "native-canonical@example.invalid",
+        "ANTIEK_AUTH_SECRET": "synthetic-native-canonical-control-secret",
+        "ANTIEK_PUBLIC_SIGNUP_ENABLED": "0",
         "HF_HOME": str(cache), "HF_HUB_CACHE": str(cache / "hub"),
         "HF_HUB_OFFLINE": "0" if control == "pretrained" else "1",
         "TRANSFORMERS_OFFLINE": "0" if control == "pretrained" else "1",
