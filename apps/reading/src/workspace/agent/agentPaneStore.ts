@@ -81,17 +81,22 @@ function observeTabs(): void {
   const owner = workspaceOwnerSession();
   const tabs = useCompanion.getState().tabs;
   const ids = new Set(tabs.map((t) => t.id));
+  const removed = [...present].filter((id) => !ids.has(id)).map((id) => ({ id, lease: leases.get(id) }));
   for (const tab of tabs) {
     const old = leases.get(tab.id);
     if (!present.has(tab.id) || !old || old.owner !== owner || old.seq !== tab.seq) {
       leases.set(tab.id, { owner, tabId: tab.id, seq: tab.seq, incarnation: ++incarnation });
     }
   }
-  for (const id of present) {
-    if (!ids.has(id)) useAgentPaneStore.getState().setClosing(id, false);
-  }
   present.clear();
   for (const id of ids) present.add(id);
+  // Commit membership before publishing a closing flag. A subscriber can
+  // synchronously install a replacement, whose membership we must not erase.
+  for (const { id, lease } of removed) {
+    if (workspaceOwnerSession() === owner && leases.get(id) === lease && !present.has(id)) {
+      useAgentPaneStore.getState().setClosing(id, false);
+    }
+  }
 }
 useCompanion.subscribe(observeTabs);
 observeTabs();
@@ -124,26 +129,70 @@ export function isCurrentAgentPaneLease(lease: AgentPaneLease): boolean {
 
 /** Same companion retirement/20-entry Undo policy, with an originating owner
  * and incarnation on this pane's deferred callbacks. No shared callback edits. */
-function closeWithOwnedUndo(lease: AgentPaneLease, title?: string): void {
+function closeWithOwnedUndo(lease: AgentPaneLease, title: string | undefined, wait: AbortController): void {
+  if (!isConfirmedAgentOwner(lease.owner) || !isCurrentAgentPaneLease(lease)) { closeWaits.delete(wait); return; }
   const c = useCompanion.getState();
   const index = c.tabs.findIndex((t) => t.id === lease.tabId);
-  if (index < 0) return;
+  if (index < 0) { closeWaits.delete(wait); return; }
   const tab = c.tabs[index];
   const wasActive = c.activeTabId === lease.tabId;
-  c.closeAgentTab(tab.id);
-  useCompanion.setState((st) => ({ retired: [...st.retired, { tab, index, wasActive }].slice(-20) }));
-  const toastId = toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () => {
-    const wait = new AbortController();
-    closeWaits.add(wait);
-    const restore = (ok: boolean) => {
-      closeWaits.delete(wait);
-      if (!ok || !isWorkspaceOwnerSession(lease.owner) || leases.get(tab.id) !== lease || present.has(tab.id)) return;
-      useCompanion.getState().restoreAgentTab(tab, index, wasActive);
+  const retired = { tab, index, wasActive };
+  let retiredPublished = false;
+  let returnedToastId: number | null = null;
+  const stillClosed = () => {
+    const a = workspaceOwnerAdmission();
+    return a.session === lease.owner && a.state !== "retiring" && a.state !== "failed"
+      && leases.get(tab.id) === lease && !present.has(tab.id)
+      && !useCompanion.getState().tabs.some((t) => t.id === tab.id);
+  };
+  const discard = () => {
+    closeWaits.delete(wait); wait.abort();
+    if (returnedToastId !== null) {
+      clearTimeout(closeToasts.get(returnedToastId)); closeToasts.delete(returnedToastId);
+      toast.dismiss(returnedToastId);
+    }
+    if (retiredPublished) useCompanion.setState((s) => s.retired.includes(retired)
+      ? { retired: s.retired.filter((entry) => entry !== retired) } : s);
+  };
+  const resume = (next: () => void) => {
+    const admitted = (ok: boolean) => {
+      if (!ok || wait.signal.aborted || !stillClosed()) { discard(); return; }
+      if (!isConfirmedAgentOwner(lease.owner)) { resume(next); return; }
+      try { next(); }
+      catch (error) {
+        try { discard(); }
+        catch (cleanupError) { throw new AggregateError([error, cleanupError], "Agent close publication and owned cleanup failed"); }
+        throw error;
+      }
     };
-    if (isConfirmedAgentOwner(lease.owner)) restore(true);
-    else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(restore);
+    if (isConfirmedAgentOwner(lease.owner)) admitted(true);
+    else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(admitted);
+  };
+  try { c.closeAgentTab(tab.id); }
+  catch (error) { closeWaits.delete(wait); wait.abort(); throw error; }
+  resume(() => {
+    retiredPublished = true;
+    useCompanion.setState((st) => ({ retired: [...st.retired, retired].slice(-20) }));
+    resume(() => {
+      returnedToastId = toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () => {
+        const restoreWait = new AbortController();
+        closeWaits.add(restoreWait);
+        const restore = (ok: boolean) => {
+          closeWaits.delete(restoreWait);
+          if (!ok || restoreWait.signal.aborted || !isConfirmedAgentOwner(lease.owner) || !stillClosed()) return;
+          useCompanion.getState().restoreAgentTab(tab, index, wasActive);
+        };
+        if (isConfirmedAgentOwner(lease.owner)) restore(true);
+        else void awaitWorkspaceOwnerSession(lease.owner, restoreWait.signal).then(restore);
+      });
+      // The emitter published synchronously before returning this ID. Retirement
+      // there cannot be covered by the pre-call owner cleanup subscription.
+      if (wait.signal.aborted || !stillClosed()) { discard(); return; }
+      const toastId = returnedToastId;
+      closeToasts.set(toastId, setTimeout(() => closeToasts.delete(toastId), UNDO_TTL_MS));
+      resume(() => { closeWaits.delete(wait); returnFocusAfterClose(); });
+    });
   });
-  closeToasts.set(toastId, setTimeout(() => closeToasts.delete(toastId), UNDO_TTL_MS));
 }
 
 /** 240 ms inert linger, then the existing 10 s Undo and focus return. */
@@ -152,16 +201,29 @@ export function closeAgentPane(tabId: string, title?: string): void {
   if (!lease || !isWorkspaceOwnerSession(lease.owner)) return;
   const s = useAgentPaneStore.getState();
   if (s.closing[tabId]) return;
-  s.setClosing(tabId, true);
   const wait = new AbortController();
   closeWaits.add(wait);
+  const current = () => {
+    const a = workspaceOwnerAdmission();
+    return !wait.signal.aborted && a.session === lease.owner && a.state !== "retiring" && a.state !== "failed" && isCurrentAgentPaneLease(lease);
+  };
+  const retire = () => { closeWaits.delete(wait); wait.abort(); };
+  try { s.setClosing(tabId, true); }
+  catch (error) { retire(); throw error; }
+  if (!current()) { retire(); return; }
   setTimeout(() => {
     const complete = (ok: boolean) => {
-      closeWaits.delete(wait);
-      if (!ok || !isWorkspaceOwnerSession(lease.owner) || !isCurrentAgentPaneLease(lease)) return;
-      useAgentPaneStore.getState().setClosing(tabId, false);
-      closeWithOwnedUndo(lease, title);
-      if (isWorkspaceOwnerSession(lease.owner)) returnFocusAfterClose();
+      if (!ok || !current()) { retire(); return; }
+      if (!isConfirmedAgentOwner(lease.owner)) { void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(complete); return; }
+      try { useAgentPaneStore.getState().setClosing(tabId, false); }
+      catch (error) { retire(); throw error; }
+      const close = (admitted: boolean) => {
+        if (!admitted || !current()) { retire(); return; }
+        if (!isConfirmedAgentOwner(lease.owner)) { void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(close); return; }
+        closeWithOwnedUndo(lease, title, wait);
+      };
+      if (isConfirmedAgentOwner(lease.owner)) close(true);
+      else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(close);
     };
     if (isConfirmedAgentOwner(lease.owner)) complete(true);
     else void awaitWorkspaceOwnerSession(lease.owner, wait.signal).then(complete);
