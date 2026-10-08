@@ -37,11 +37,18 @@ if sys.argv[1:] == ["--help"]:
 record = pathlib.Path.cwd() / "record.txt"
 record.write_text(repr((sys.argv[1:], os.getcwd(), dict(os.environ))))
 prompt = sys.stdin.read()
-if prompt == "timeout": time.sleep(10)
-elif prompt == "oversize": os.write(1, b"x" * 100000)
-elif prompt == "nonzero": sys.exit(7)
-elif prompt == "empty": pass
-elif prompt == "binary": os.write(1, b"\\xff")
+(pathlib.Path.cwd() / "prompt.txt").write_text(prompt)
+if prompt == "timeout" or "session terminal: timeout" in prompt: time.sleep(10)
+elif prompt == "oversize" or "session terminal: oversize" in prompt: os.write(1, b"x" * 100000)
+elif prompt == "nonzero" or "session terminal: nonzero" in prompt: sys.exit(7)
+elif prompt == "empty" or "session terminal: empty" in prompt: pass
+elif prompt == "binary" or "session terminal: binary" in prompt: os.write(1, b"\\xff")
+elif "iteration context sentinel" in prompt:
+    marker = "Write final answer to exactly: "
+    if marker in prompt:
+        print("done: " + prompt.split(marker, 1)[1].splitlines()[0])
+    else:
+        print("answer grounded in iteration context sentinel")
 else: print("supplemental answer")
 """
     )
@@ -186,54 +193,78 @@ def test_backend_has_no_forbidden_authority_imports() -> None:
     assert all("db_lock" not in name for name in imports)
 
 
-
-def test_run_session_reads_file_handoff_output(tmp_path: Path) -> None:
-    backend = _backend(tmp_path)
-
-    captured: dict[str, str] = {}
-
-    def fake_run(request: PrimeAgentRequest):
-        marker = "Write final answer to exactly: "
-        start = request.prompt.index(marker) + len(marker)
-        end = request.prompt.index("\n", start)
-        output_path = Path(request.prompt[start:end].strip())
-        output_path.write_text("session result")
-        captured["workflow"] = request.workflow
-        return backend._outcome(  # type: ignore[attr-defined]
-            request,
-            PrimeAgentTerminalState.SUCCESS,
-            backend._argv(request),  # type: ignore[attr-defined]
-            exit_code=0,
-            duration_ms=5,
-            output_bytes=12,
-        )
-
-    backend.run = fake_run  # type: ignore[method-assign]
-    outcome = backend.run_session(
+def test_session_returns_answer_instead_of_requested_file_completion_marker(tmp_path: Path) -> None:
+    outcome = _backend(tmp_path).run_session(
         PrimeAgentSessionRequest(
-            goal_brief="goal",
-            iteration_prompt="iteration payload",
+            goal_brief="Explain the supplied iteration context",
+            iteration_prompt="iteration context sentinel",
             workflow="rlm-investigation-iteration",
-            request_id="sess-1",
+            request_id="sess-context",
         )
     )
-
-    assert captured["workflow"] == "rlm-investigation-iteration"
     assert outcome.receipt.state is PrimeAgentTerminalState.SUCCESS
     assert outcome.evidence is not None
-    assert outcome.evidence.text == "session result"
+    assert outcome.evidence.text == "answer grounded in iteration context sentinel"
     assert outcome.evidence.source == "prime-agent-session"
+    assert outcome.request.prompt == "iteration context sentinel"
+    assert outcome.request.workflow == "rlm-investigation-iteration"
+    assert outcome.request.request_id == "sess-context"
+    actual_prompt = (tmp_path / "prompt.txt").read_text()
+    assert "Explain the supplied iteration context" in actual_prompt
+    assert "iteration context sentinel" in actual_prompt
+    assert not list(tmp_path.glob("**/prime_agent_session_answer.txt"))
 
 
-def test_run_session_without_file_falls_back_to_stdout_and_names_the_tool_less_argv(
+@pytest.mark.parametrize(
+    ("terminal", "state", "exit_code"),
+    [
+        ("nonzero", PrimeAgentTerminalState.FAILED, 7),
+        ("empty", PrimeAgentTerminalState.MALFORMED, 0),
+        ("binary", PrimeAgentTerminalState.MALFORMED, 0),
+        ("oversize", PrimeAgentTerminalState.FAILED, None),
+        ("timeout", PrimeAgentTerminalState.TIMEOUT, None),
+    ],
+)
+def test_session_preserves_process_failure_and_output_limits(
+    terminal: str, state: PrimeAgentTerminalState, exit_code: int | None, tmp_path: Path,
+) -> None:
+    timeout = 0.05 if terminal == "timeout" else 1.0
+    outcome = _backend(tmp_path, timeout_seconds=timeout, max_output_bytes=64).run_session(
+        PrimeAgentSessionRequest(
+            goal_brief="Session goal",
+            iteration_prompt=f"session terminal: {terminal}",
+            workflow="rlm-investigation-iteration",
+            request_id="sess-terminal",
+        )
+    )
+    assert outcome.receipt.state is state
+    assert outcome.evidence is None
+    assert outcome.receipt.output_bytes <= 64
+    if exit_code is not None:
+        assert outcome.receipt.exit_code == exit_code
+    assert outcome.request.prompt == f"session terminal: {terminal}"
+
+
+def test_session_input_limit_includes_goal_before_spawn(tmp_path: Path) -> None:
+    outcome = _backend(tmp_path).run_session(
+        PrimeAgentSessionRequest(
+            goal_brief="g" * 1_000_000,
+            iteration_prompt="context",
+            workflow="workflow",
+            request_id="sess-large-goal",
+        )
+    )
+    assert outcome.receipt.state is PrimeAgentTerminalState.MALFORMED
+    assert outcome.evidence is None
+    assert outcome.receipt.detail == "prompt exceeds input limit"
+    assert not (tmp_path / "record.txt").exists()
+
+
+
+def test_run_session_returns_stdout_without_waiting_for_a_file(
     tmp_path: Path,
 ) -> None:
-    """SPR-01 Task 2. ``_argv`` passes ``--no-tools``, so Prime can never write the
-    handoff file; ``run_session`` must not wait for it. The real stand-in below
-    writes no file and answers on stdout. The receipt must be SUCCESS with the
-    stdout text as evidence, its detail must name the tool-less argv rather than a
-    "missing" file, and the receipt must be produced as soon as ``run()`` returns —
-    before this change the backend polled for the file for the full timeout."""
+    """The tool-less child returns its answer without any file polling."""
     backend = _backend(tmp_path, timeout_seconds=2.0)
     real_run = backend.run
     run_returned_at: list[float] = []
@@ -266,10 +297,8 @@ def test_run_session_without_file_falls_back_to_stdout_and_names_the_tool_less_a
     assert not list(tmp_path.glob("**/prime_agent_session_answer.txt"))
 
 
-def test_run_session_without_file_or_stdout_is_malformed_not_timeout(tmp_path: Path) -> None:
-    """A SUCCESS run with nothing on stdout and no file has no answer anywhere.
-    That is MALFORMED, reported immediately and naming the tool-less argv — not a
-    TIMEOUT spent waiting for a file that ``--no-tools`` forecloses."""
+def test_run_session_without_stdout_is_malformed_not_timeout(tmp_path: Path) -> None:
+    """An inconsistent success with no stdout answer refuses immediately."""
     backend = _backend(tmp_path, timeout_seconds=2.0)
 
     def fake_run(request: PrimeAgentRequest):

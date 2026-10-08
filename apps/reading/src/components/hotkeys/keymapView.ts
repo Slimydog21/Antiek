@@ -37,6 +37,7 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "tab.reopen": "panels",
   "tab.treeToggle": "panels",
   "project.select": "find",
+  "switcher.open": "find",
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
   "door.research": "go",
@@ -66,6 +67,7 @@ export function layoutPresetHelp(defaultPreset: LayoutPreset): string {
 }
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
+  "switcher.open": "The Switcher already narrowed to what is open (in:open); with places off it is the plain Switcher.",
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
   "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
   "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",

@@ -2887,6 +2887,7 @@ def register_book_routes(app: FastAPI) -> None:
         from processing.embedding.cpu_inference import EmbeddingInferenceUnavailable
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
+        from substrate.graph.embedding_meta import EmbeddingCompatibilityError
         from substrate.graph.search import SentenceTransformerEmbedding, search
 
         if not q.strip():
@@ -2916,6 +2917,8 @@ def register_book_routes(app: FastAPI) -> None:
             res = await run_in_threadpool(search_in_worker)
         except EmbeddingInferenceUnavailable as exc:
             raise HTTPException(status_code=503, detail="embedding_unavailable") from exc
+        except EmbeddingCompatibilityError as exc:
+            raise HTTPException(status_code=503, detail="embedding_incompatible") from exc
 
         hits: list[CorpusSearchHit] = []
         for r in res["results"]:
