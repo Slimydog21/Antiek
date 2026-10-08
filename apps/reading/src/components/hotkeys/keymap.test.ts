@@ -321,3 +321,42 @@ describe("the prefix is configurable, never onto a taken key", () => {
     }
   });
 });
+
+// ─── SPR-07 (agent pane): prefix+a / ctrl+alt+a taken under D2 (invariant 33) ───
+
+describe("the agent pane rows (SPR-07): one action, two aliases, one status, out of RESERVED_FOR_LATER", () => {
+  const prefixRow = KEYMAP.find((r) => r.id === "prefix-agent-pane");
+  const chordRow = KEYMAP.find((r) => r.id === "chord-agent-pane");
+
+  it("binds agent.openPane as prefix+a with the ctrl+alt+a twin", () => {
+    expect(prefixRow?.action).toBe("agent.openPane");
+    expect(prefixRow?.prefixKey).toBe("a");
+    expect(prefixRow?.scope).toBe("outside-text");
+    expect(chordRow?.action).toBe("agent.openPane");
+    expect(chordRow?.chord).toBe("ctrl+alt+a");
+    expect(chordRow?.scope).toBe("anywhere");
+    expect(prefixRow?.origin).toBe("D2");
+    expect(prefixRow?.decision).toContain("mothership-keys-herdr-prefix.md");
+  });
+
+  it("both rows share one status; while unimplemented the blocker names F1 and no handler exists", () => {
+    expect(prefixRow?.status).toBe(chordRow?.status);
+    expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
+    if (prefixRow?.status === "unimplemented") {
+      expect(prefixRow.blockedBy).toContain("F1");
+      expect(handlerIds).not.toContain("agent.openPane");
+    } else {
+      expect(handlerIds).toContain("agent.openPane");
+    }
+  });
+
+  it("a and ctrl+alt+a left RESERVED_FOR_LATER; the remaining reserved keys still refuse a probe", () => {
+    expect(RESERVED_FOR_LATER.prefixKeys).not.toContain("a");
+    expect(RESERVED_FOR_LATER.chords).not.toContain("ctrl+alt+a");
+    const probe = validateKeymap(
+      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "w", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
+      handlerIds,
+    );
+    expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
+  });
+});
