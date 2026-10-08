@@ -22,7 +22,7 @@ export interface ReadingFocus {
   servable: boolean;
 }
 
-const PAGE_TEXT_CAP = 4000;
+export const PAGE_TEXT_CAP = 4000;
 
 let current: ReadingFocus | null = null;
 
@@ -56,6 +56,19 @@ export function clearReadingFocus(): void {
 }
 
 /**
+ * EXACTLY the page bytes the model's mount carries (trimmed, capped at
+ * PAGE_TEXT_CAP, no marker); null when nothing servable is loaded. Anything
+ * that verifies a quote "against the page the model sees" (the agent pane's
+ * anchorContext.ts) must verify against this, never against `pageText`.
+ */
+export function mountedPageText(focus: ReadingFocus | null = current): string | null {
+  if (!focus || !focus.servable) return null;
+  const raw = (focus.pageText || "").trim();
+  if (!raw) return null;
+  return raw.length > PAGE_TEXT_CAP ? raw.slice(0, PAGE_TEXT_CAP) : raw;
+}
+
+/**
  * Format the current reading focus for ThoughtPartnerRequest.system_context.
  * Returns null when nothing is open. Gated books get an honest withheld stub
  * (no invented body).
@@ -85,10 +98,8 @@ export function formatReadingFocusSystemContext(
       `page_index: ${focus.pageIndex} (display page ${pageDisplay})`,
     ].join("\n");
   }
-  const text =
-    raw.length > PAGE_TEXT_CAP
-      ? `${raw.slice(0, PAGE_TEXT_CAP)}\n…[truncated]`
-      : raw;
+  const mounted = mountedPageText(focus)!;
+  const text = raw.length > PAGE_TEXT_CAP ? `${mounted}\n…[truncated]` : mounted;
   return [
     "# CURRENT READING (SERVABLE — rights-clean page mount)",
     `document_id: ${focus.documentId}`,
