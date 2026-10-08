@@ -192,3 +192,29 @@ export function accountStorageKey(key: string, captured = session): string | nul
 export function notebookDraftKey(notebookId: string, captured = session): string | null {
   return accountStorageKey(`antiek.notebook.${encodeURIComponent(notebookId)}`, captured);
 }
+
+const notebookDraftOwnerBrand = Symbol("captured notebook draft owner");
+export interface CapturedNotebookDraftOwner {
+  readonly [notebookDraftOwnerBrand]: true;
+}
+const notebookDraftOwners = new WeakMap<CapturedNotebookDraftOwner, WorkspaceOwnerSession>();
+
+/** Capture only a ready producer. This permits one final local flush, never outbound work. */
+export function captureNotebookDraftOwner(owner: WorkspaceOwnerSession): CapturedNotebookDraftOwner | null {
+  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return null;
+  const captured = Object.freeze({ [notebookDraftOwnerBrand]: true } satisfies CapturedNotebookDraftOwner);
+  notebookDraftOwners.set(captured, owner);
+  return captured;
+}
+
+export function isCapturedNotebookDraftOwnerReady(captured: CapturedNotebookDraftOwner): boolean {
+  const owner = notebookDraftOwners.get(captured);
+  return owner !== undefined && isWorkspaceOwnerSession(owner);
+}
+
+/** Consume before local I/O. Suspension/retirement cannot admit new edits or revive an old epoch. */
+export function finishNotebookDraftOwner(captured: CapturedNotebookDraftOwner): WorkspaceOwnerSession | null {
+  const owner = notebookDraftOwners.get(captured);
+  notebookDraftOwners.delete(captured);
+  return owner !== undefined && owner === session ? owner : null;
+}
