@@ -354,7 +354,26 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
                     {o}
                   </button>
                 ))}
+                {/* pattern 20 (repair C9): allowCustom decides whether a typed
+                    answer is on offer. True: a "Something else…" pill lands the
+                    user in the composer. False: the card says to pick one. */}
+                {!resolved && card.allowCustom ? (
+                  <button
+                    type="button"
+                    data-option-custom
+                    onClick={() => {
+                      rootRef.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+                      announce("Type your own answer");
+                    }}
+                    className="text-xs rounded-full border border-dashed border-hairline px-2 py-0.5 text-ink-soft dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
+                  >
+                    Something else…
+                  </button>
+                ) : null}
               </div>
+              {!resolved && !card.allowCustom ? (
+                <p className="text-xxs text-shadow-1 dark:text-moonlight" data-option-pick-one>Pick one of the options</p>
+              ) : null}
             </div>
           ))}
         </div>

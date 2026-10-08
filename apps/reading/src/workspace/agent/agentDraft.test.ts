@@ -11,6 +11,27 @@ afterEach(() => { vi.useRealTimers(); window.sessionStorage.clear(); });
 
 const keyFor = () => agentDraftKey({ projectId: "p", agentId: "x", pane: "companion" });
 
+describe("the draft key pins {user, project, agent, pane} with DISTINCT fixtures (repair C10)", () => {
+  it("keys that differ only by agentId, or only by pane, are different keys with independent drafts", () => {
+    setWorkspaceOwner("owner-a");
+    const agentA = agentDraftKey({ projectId: "p", agentId: "p:proj-1", pane: "companion" })!;
+    const agentB = agentDraftKey({ projectId: "p", agentId: "x:7", pane: "companion" })!;
+    const paneTiled = agentDraftKey({ projectId: "p", agentId: "p:proj-1", pane: "tiled" })!;
+    expect(new Set([agentA, agentB, paneTiled]).size).toBe(3);
+    writeAgentDraft(agentA, "for agent A in the companion");
+    expect(readAgentDraft(agentA)).toBe("for agent A in the companion");
+    expect(readAgentDraft(agentB)).toBe("");
+    expect(readAgentDraft(paneTiled)).toBe("");
+    writeAgentDraft(paneTiled, "same agent, tiled host");
+    expect(readAgentDraft(agentA)).toBe("for agent A in the companion");
+    expect(readAgentDraft(paneTiled)).toBe("same agent, tiled host");
+    // A cross-project pane has no project component; it never aliases a project one.
+    const cross = agentDraftKey({ agentId: "p:proj-1", pane: "companion" })!;
+    expect(cross).not.toBe(agentA);
+    expect(readAgentDraft(cross)).toBe("");
+  });
+});
+
 describe("agentDraft", () => {
   it("reads back under the same owner, including after a simulated reload", () => {
     setWorkspaceOwner("owner-a");

@@ -249,6 +249,28 @@ describe("interview mode (invariant 26)", () => {
   });
 });
 
+describe("option cards honour allowCustom (M8 pattern 20, repair C9)", () => {
+  it("allowCustom:false offers no custom path and says to pick one; allowCustom:true offers 'Something else…' which focuses the composer", async () => {
+    const { transport } = scripted([
+      "Which era?\n\n@@options\n{\"question\":\"Which era?\",\"options\":[\"1830s\",\"1970s\"],\"allowCustom\":false}\n@@end",
+      "Which island?\n\n@@options\n{\"question\":\"Which island?\",\"options\":[\"Daphne\"],\"allowCustom\":true}\n@@end",
+    ]);
+    host(transport, { interview: true });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    let card = document.querySelector("[data-option-card]") as HTMLElement;
+    expect(within(card).queryByRole("button", { name: /something else/i })).toBeNull();
+    expect(card.textContent).toContain("Pick one of the options");
+    fireEvent.click(within(card).getByRole("button", { name: "1830s" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    card = document.querySelectorAll("[data-option-card]")[1] as HTMLElement;
+    expect(card.textContent).not.toContain("Pick one of the options");
+    const root = document.querySelector<HTMLElement>("[data-agent-pane]")!;
+    root.focus();
+    fireEvent.click(within(card).getByRole("button", { name: /something else/i }));
+    expect(document.activeElement).toBe(document.querySelector("[data-agent-pane] textarea"));
+  });
+});
+
 describe("the 8 s no-reply fallback at the pane (M8, repair C3)", () => {
   it("an interview whose transport never answers shows 'Your agent couldn't get started' with Retry at 8 s; Retry sends again", async () => {
     const transport: AgentTransport = { kind: "whole", send: vi.fn(() => new Promise<never>(() => {})) };
