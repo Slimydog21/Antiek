@@ -229,6 +229,7 @@ describe("real authenticated reader retires private body and derived state", () 
   it("keeps the authorized A body and page context across a same-A verification", async () => {
     mount();
     await screen.findByText(privateText, {}, { timeout: 10000 });
+    await waitFor(() => expect(formatReadingFocusSystemContext()).toContain(privateText));
     expect(formatReadingFocusSystemContext()).toContain(privateText);
     expect(bodyReadCount()).toBe(1);
     await refresh("account-a");
