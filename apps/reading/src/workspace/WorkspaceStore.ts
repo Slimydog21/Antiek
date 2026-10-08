@@ -196,7 +196,7 @@ const initialSlotsProject = projectSlotsOf({ paneSlots: initialPaneSlots }, curr
 const initialApplied = initialPanePreferences.paneArrangement !== "legacy"
   && initialSlotsProject.presets[initialSlotsProject.current]
   ? applyPreset(initialSlotsProject.presets[initialSlotsProject.current]!,
-      visibleTargets(initialPaneOrder, initialSlotsProject))
+      initialPaneOrder, initialSlotsProject, initialSlotsProject.current)
   : null;
 if (initialApplied) warnDroppedPaneTargets(initialSlotsProject.current, initialApplied.dropped);
 
@@ -336,7 +336,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
     const target = project.presets[slot];
     if (target) {
       const nextProject = { ...project, current: slot, presets };
-      const applied = applyPreset(target, visibleTargets(admittedPaneTargets(s), nextProject, slot));
+      const applied = applyPreset(target, admittedPaneTargets(s), nextProject, slot);
       warnDroppedPaneTargets(slot, applied.dropped);
       set({
         paneArrangement: target.arrangement,
@@ -349,11 +349,14 @@ export const useWorkspace = create<Store>()((set, get) => ({
         paneSlots: { ...s.paneSlots, [projectId]: { ...nextProject, last: project.current } },
       });
     } else {
-      // The page is silent on an empty slot; the recorded deviation is
-      // save-current-as-N (Omarchy has no empty-workspace gesture either —
-      // a fresh workspace simply exists once you land on it).
+      // Empty slot (the page is silent; recorded deviation, revised by the
+      // adversarial review): the current view's content RELOCATES to slot N
+      // and the old slot is vacated — "save current as N" with single
+      // membership, so a pane's identity belongs to exactly one slot's
+      // preset after any operation (a copy would list it on both).
       const live = snapshotPreset(s);
       if (!live) return false;
+      delete presets[project.current];
       presets[slot] = live;
       set({ paneSlots: { ...s.paneSlots, [projectId]: { ...project, current: slot, last: project.current, presets } } });
     }
@@ -373,13 +376,19 @@ export const useWorkspace = create<Store>()((set, get) => ({
     if (!live) return false;
     const moved = moveTargetBetweenPresets(live, project.presets[slot] ?? null, focused);
     if (!moved) return false;
+    // A slot the move empties is vacated, not left as a shell: a preset owns
+    // its panes, and with none left it owns nothing (hyprland's "existing"
+    // workspaces have windows). The cycle skips it either way.
+    const presets = { ...project.presets, [slot]: moved.destination };
+    if (moved.source.order.length === 0) delete presets[project.current];
+    else presets[project.current] = moved.source;
     // The source view loses the pane now; the jump applies the destination.
     set({
       paneOrder: moved.source.order,
       paneTiles: moved.source.tiles,
       paneZoom: null,
       paneFocus: null,
-      paneSlots: { ...s.paneSlots, [projectId]: { ...project, presets: { ...project.presets, [project.current]: moved.source, [slot]: moved.destination } } },
+      paneSlots: { ...s.paneSlots, [projectId]: { ...project, presets } },
     });
     const jumped = get().jumpPaneArrangement(slot);
     // Follow means the moved pane takes the focus on its new arrangement.
@@ -624,7 +633,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
     const slotsProject = projectSlotsOf({ paneSlots: slots }, currentProjectId());
     const currentPreset = arrangementPreference !== "legacy" ? (slotsProject.presets[slotsProject.current] ?? null) : null;
     const visible = visibleTargets(order, slotsProject);
-    const applied = currentPreset ? applyPreset(currentPreset, visible) : null;
+    const applied = currentPreset ? applyPreset(currentPreset, order, slotsProject, slotsProject.current) : null;
     if (applied) warnDroppedPaneTargets(slotsProject.current, applied.dropped);
     // EMPTY_SNAPSHOT carries no paneArrangement; a reset must not leak the
     // previous arrangement into the next scenario/test (critique N2 on #3754)
@@ -794,6 +803,10 @@ useWorkspace.subscribe((state, prev) => {
   const projectId = currentProjectId();
   const project = projectSlotsOf(state, projectId);
   const existing = project.presets[project.current];
+  // A move vacates its source slot mid-op (the jump's pointer move lands a
+  // beat later): never write an empty view into a slot that has no preset —
+  // that would resurrect the shell the move just vacated.
+  if (!existing && live.order.length === 0) return;
   if (existing && existing.arrangement === live.arrangement && existing.tiles === live.tiles
       && existing.order.length === live.order.length
       && existing.order.every((target, index) => samePane(target, live.order[index]))) return;

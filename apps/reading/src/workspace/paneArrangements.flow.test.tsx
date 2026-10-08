@@ -25,6 +25,8 @@ import { setFeatureFlag } from "../lib/featureFlags";
 import { accountStorageKey, setWorkspaceOwner } from "../lib/accountWorkspaceOwner";
 import { prefixState } from "../components/hotkeys/prefixState";
 import { KEYMAP, validateKeymap } from "../components/hotkeys/keymap";
+import { visibleTargets } from "./paneArrangements";
+import { COMPANION_PANE, CORE_PANE, paneKey } from "./paneFlowGeometry";
 import type { PaneTarget } from "./panel.types";
 import { readPaneArrangements, writeTabProject } from "./persistence";
 import { createActionHandlers, installShortcuts } from "./shortcuts";
@@ -80,16 +82,18 @@ describe("M6 acceptance: jump, cycle, last-used, move", () => {
     ws().reorderPane(WIN_A, -1);
     ws().reorderPane(WIN_A, -1);
     ws().setPaneArrangement("tiled");
-    const savedOrder = ws().paneOrder;
-    const savedTiles = ws().paneTiles;
-    expect(savedOrder[0]).toEqual(WIN_A);
-
-    // Land on slot 3 (empty: the current view is saved as 3), rearrange
-    // there, zoom in — then jump back.
-    expect(ws().jumpPaneArrangement("3")).toBe(true);
+    // A real second slot: window B moves to 3 (Omarchy move-and-follow —
+    // empty-slot jumps relocate, so a second slot is made by a move).
+    ws().setPaneFocus(WIN_B);
+    expect(ws().moveFocusedPaneToArrangement("3")).toBe(true);
     expect(slots()?.current).toBe("3");
+    const savedOrder = ws().paneSlots["default"]!.presets["1"]!.order;
+    const savedTiles = ws().paneSlots["default"]!.presets["1"]!.tiles;
+    expect(savedOrder[0]).toEqual(WIN_A);
+    expect(savedOrder).not.toContainEqual(WIN_B);
+
+    // Work on slot 3, zoom in — then jump back and forth.
     ws().setPaneArrangement("horizontal");
-    ws().reorderPane(WIN_A, 1);
     ws().togglePaneZoom(WIN_B);
     expect(ws().paneZoom).toEqual(WIN_B);
 
@@ -98,33 +102,70 @@ describe("M6 acceptance: jump, cycle, last-used, move", () => {
     expect(ws().paneTiles).toEqual(savedTiles);
     expect(ws().paneArrangement).toBe("tiled");
     expect(ws().paneZoom).toBeNull(); // R12: an arrangement change clears zoom
+
+    expect(ws().jumpPaneArrangement("3")).toBe(true);
+    expect(ws().paneOrder).toEqual([WIN_B]);
+    expect(ws().paneArrangement).toBe("horizontal");
   });
 
   it("next/previous skip empty slots; last-used returns after two hops", () => {
     openTwoWindows();
-    ws().jumpPaneArrangement("4");
-    ws().jumpPaneArrangement("9");
-    // Existing slots: 1, 4, 9. From 9, next wraps to 1; prev goes to 4.
+    // Real slots made by moves (empty-slot jumps relocate): 1, 4 and 9 exist.
+    ws().setPaneFocus(WIN_A);
+    ws().moveFocusedPaneToArrangement("4");
+    ws().moveFocusedPaneToArrangement("9");
+    // From 9, next wraps to 1; prev goes to 4… wait, slot 4 is vacated when
+    // the move empties it: 4 held only A, and A moved on to 9 — so the
+    // existing slots are 1 and 9, and the cycle is just the two of them.
     expect(ws().cyclePaneArrangement(1)).toBe(true);
     expect(slots()?.current).toBe("1");
     expect(ws().cyclePaneArrangement(-1)).toBe(true);
     expect(slots()?.current).toBe("9");
-    // Last-used after two hops: 9 → 1 → 9 leaves last = 1; last-used → 1 …
-    // …and its own hop moves last to 9, so a second last-used returns to 9.
+    // Last-used after two hops: each hop moves `last`, so two last-used
+    // presses return to the slot the first one left.
     expect(ws().jumpToLastPaneArrangement()).toBe(true);
     expect(slots()?.current).toBe("1");
     expect(ws().jumpToLastPaneArrangement()).toBe(true);
     expect(slots()?.current).toBe("9");
   });
 
+  it("a move that empties a slot vacates it, and the cycle skips it", () => {
+    openTwoWindows();
+    ws().setPaneFocus(WIN_A);
+    ws().moveFocusedPaneToArrangement("4"); // slot 4: [A]
+    ws().moveFocusedPaneToArrangement("9"); // A moves on; slot 4 is empty
+    expect(slots()?.presets["4"]).toBeUndefined();
+    expect(Object.keys(slots()!.presets).sort()).toEqual(["1", "9"]);
+    ws().jumpPaneArrangement("1");
+    expect(ws().cyclePaneArrangement(-1)).toBe(true);
+    expect(slots()?.current).toBe("9"); // prev wraps past the vacated 4
+  });
+
+  it("a pane belongs to exactly one slot's preset after any operation (review hole 1: no dual membership)", () => {
+    openTwoWindows();
+    ws().jumpPaneArrangement("3"); // empty slot: the current view relocates to 3
+    const all = Object.values(slots()!.presets).flatMap((p) => p!.order.map(paneKey));
+    const duplicated = all.filter((k, i) => all.indexOf(k) !== i);
+    expect(duplicated).toEqual([]);
+    // The vacated slot 1 shows nothing of the relocated view.
+    expect(
+      visibleTargets([CORE_PANE, COMPANION_PANE, WIN_A, WIN_B], slots()!, "1").map(paneKey),
+    ).toEqual([]);
+    // And the relocated content is slot 3's, intact.
+    expect(visibleTargets([CORE_PANE, COMPANION_PANE, WIN_A, WIN_B], slots()!, "3").map(paneKey))
+      .toEqual(["core", "companion", "window:w-a", "window:w-b"]);
+  });
+
   it("a preset target whose host is gone is dropped with an honesty event, never substituted", () => {
     openTwoWindows();
-    ws().jumpPaneArrangement("2"); // slot 1's preset holds [core, companion, a, b]
+    // A real second slot via a move: slot 1 parks [core, companion, b].
+    ws().setPaneFocus(WIN_A);
+    ws().moveFocusedPaneToArrangement("2");
     useWindows.getState().close("w-b"); // the host goes away while slot 1 is parked
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(ws().jumpPaneArrangement("1")).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("window:w-b"));
-    expect(ws().paneOrder.map((t) => t.kind === "window" ? t.id : t.kind)).toEqual(["core", "companion", "w-a"]);
+    expect(ws().paneOrder.map((t) => t.kind === "window" ? t.id : t.kind)).toEqual(["core", "companion"]);
   });
 
   it("move-and-follow carries the focused pane into the slot and lands on it", () => {
@@ -207,7 +248,9 @@ describe("the digit keys through the real dispatcher", () => {
 
   it("prefix+tab / prefix+shift+tab cycle existing arrangements; prefix+ctrl+tab is last-used", () => {
     openTwoWindows();
-    ws().jumpPaneArrangement("5");
+    // A real second slot via a move (empty-slot jumps relocate), then back.
+    ws().setPaneFocus(WIN_B);
+    ws().moveFocusedPaneToArrangement("5");
     ws().jumpPaneArrangement("1");
     press(document.body, "ctrl+b");
     press(document.body, "tab"); // next existing from 1 → 5

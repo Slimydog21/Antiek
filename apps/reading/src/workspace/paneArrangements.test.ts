@@ -20,7 +20,7 @@ import {
   type ArrangementPreset,
   type ProjectSlots,
 } from "./paneArrangements";
-import { CORE_PANE, COMPANION_PANE } from "./paneFlowGeometry";
+import { CORE_PANE, COMPANION_PANE, paneKey, samePane } from "./paneFlowGeometry";
 import type { PaneTarget } from "./panel.types";
 import {
   clearPaneArrangements,
@@ -78,7 +78,7 @@ describe("the pure arrangement model", () => {
       order: [WIN_A, WIN_B, CORE_PANE],
       tiles: { kind: "split", axis: "x", ratio: 0.5, first: { kind: "leaf", target: WIN_A }, second: { kind: "leaf", target: WIN_B } },
     };
-    const applied = applyPreset(preset, [CORE_PANE, WIN_A]);
+    const applied = applyPreset(preset, [CORE_PANE, WIN_A], projectWith({ "1": preset }), "1");
     expect(applied.dropped).toEqual(["window:win:b"]);
     expect(applied.order).toEqual([WIN_A, CORE_PANE]);
     // The gone host's tile is pruned, never replaced with another pane; the
@@ -176,5 +176,30 @@ describe("flag OFF: the feature is absent", () => {
     expect(handlers["pane.arrangement1"]).toBeUndefined();
     expect(handlers["pane.moveToArrangement1"]).toBeUndefined();
     expect(handlers["pane.nextArrangement"]).toBeUndefined();
+  });
+});
+
+describe("ownership rules (Grok adversarial review of #3772)", () => {
+  it("hole 2: applyPreset never resurrects a parked pane, even handed the full admitted list", () => {
+    // WIN_B is parked on slot 2; applying slot 1's preset must not bring it back.
+    const project = projectWith({
+      "1": { arrangement: "horizontal", order: [CORE_PANE], tiles: null },
+      "2": { arrangement: "horizontal", order: [WIN_B], tiles: null },
+    });
+    const applied = applyPreset(project.presets["1"]!, [CORE_PANE, COMPANION_PANE, WIN_A, WIN_B], project, "1");
+    expect(applied.order.map(paneKey)).not.toContain("window:win:b");
+    // Unassigned admitted panes still join (the intent's other half).
+    expect(applied.order.map(paneKey)).toContain("core");
+    expect(applied.order.map(paneKey)).toContain("window:win:a");
+  });
+
+  it("hole 3: moving onto a slot that already lists the pane never stores it twice", () => {
+    const source: ArrangementPreset = { arrangement: "horizontal", order: [CORE_PANE, WIN_A], tiles: null };
+    // The destination already lists the pane (the dual-membership state
+    // hole 1 produced): the move must leave it there exactly once.
+    const destination: ArrangementPreset = { arrangement: "horizontal", order: [WIN_A], tiles: null };
+    const moved = moveTargetBetweenPresets(source, destination, WIN_A)!;
+    expect(moved.source.order.map(paneKey)).toEqual(["core"]);
+    expect(moved.destination.order.filter((t) => samePane(t, WIN_A))).toHaveLength(1);
   });
 });

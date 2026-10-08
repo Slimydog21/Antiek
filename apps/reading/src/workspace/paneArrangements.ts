@@ -19,12 +19,16 @@
  * an honesty event (console.warn, the persistence.ts idiom), never
  * substituted (S01/S09).
  *
- * Recorded deviation (the page is silent on an empty slot): jumping to a
- * slot with no preset SAVES THE CURRENT VIEW AS that slot — the operator's
- * standing instruction where the page does not say. Slots are live mirrors:
- * the current slot's preset tracks the live view continuously (the mirror
- * subscription in WorkspaceStore), so a reload mid-arrangement loses
- * nothing, and a jump is just a pointer move plus an apply.
+ * Recorded deviation (the page is silent on an empty slot), revised after
+ * the adversarial review of the first draft: jumping to a slot with no
+ * preset RELOCATES the current view — its content takes slot N and the old
+ * slot is vacated. "Save current as N" with single membership: a pane's
+ * identity belongs to exactly one slot's preset after any operation (a copy
+ * would list it on both, and visibleTargets would show it on both). Slots
+ * are live mirrors: the current slot's preset tracks the live view
+ * continuously (the mirror subscription in WorkspaceStore), so a reload
+ * mid-arrangement loses nothing, and a jump is a pointer move plus an
+ * apply.
  *
  * This module is pure: no store, no storage, no DOM. WorkspaceStore owns
  * the state; persistence.ts owns the blob.
@@ -100,28 +104,41 @@ export function visibleTargets(
 
 /**
  * Apply a preset over the admitted hosts: order and tiles reconcile against
- * what actually exists. A preset target whose host is GONE is dropped and
- * named in `dropped` (the caller logs the honesty event); it is never
- * substituted. A member admitted but missing from the preset (drift) joins
- * at the end rather than disappearing.
+ * what the slot's view may actually show. The visibility filter is folded
+ * in HERE (not left to the caller): `project` + `slot` decide which admitted
+ * panes are this slot's to show, so a preset can never resurrect a pane
+ * parked on another slot (review hole 2 — reconcilePaneOrder appends any
+ * admitted pane it is handed, so the filter must not be optional). A preset
+ * target whose host is GONE is dropped and named in `dropped` (the caller
+ * logs the honesty event); it is never substituted. A member admitted but
+ * missing from the preset (drift) joins at the end rather than
+ * disappearing.
  */
 export function applyPreset(
   preset: ArrangementPreset,
   admitted: readonly PaneTarget[],
+  project: ProjectSlots,
+  slot: ArrangementSlot,
 ): { order: PaneTarget[]; tiles: PaneTile | null; dropped: string[] } {
-  const admittedKeys = new Set(admitted.map(paneKey));
-  const dropped = preset.order.filter((target) => !admittedKeys.has(paneKey(target))).map(paneKey);
-  const order = reconcilePaneOrder(preset.order, admitted);
+  const visible = visibleTargets(admitted, project, slot);
+  const visibleKeys = new Set(visible.map(paneKey));
+  const dropped = preset.order.filter((target) => !visibleKeys.has(paneKey(target))).map(paneKey);
+  const order = reconcilePaneOrder(preset.order, visible);
   return { order, tiles: reconcilePaneTiles(preset.tiles, order), dropped };
 }
 
-/** The next EXISTING slot after `current`, wrapping; empty slots skip. Null
- *  when no other slot exists. */
+/** The next EXISTING slot after `current`, wrapping; empty slots — no
+ *  preset, or a preset with no panes left in it — skip (hyprland's `e+1`
+ *  cycles workspaces that have windows). Null when no other slot exists. */
 export function nextExistingSlot(
   project: ProjectSlots,
   direction: 1 | -1,
 ): ArrangementSlot | null {
-  const existing = new Set(Object.keys(project.presets));
+  const existing = new Set(
+    Object.entries(project.presets)
+      .filter(([, preset]) => (preset?.order.length ?? 0) > 0)
+      .map(([slot]) => slot),
+  );
   const at = ARRANGEMENT_SLOTS.indexOf(project.current);
   for (let step = 1; step < ARRANGEMENT_SLOTS.length; step++) {
     const candidate = ARRANGEMENT_SLOTS[(at + direction * step + ARRANGEMENT_SLOTS.length * step) % ARRANGEMENT_SLOTS.length];
@@ -143,7 +160,10 @@ export function moveTargetBetweenPresets(
 ): { source: ArrangementPreset; destination: ArrangementPreset } | null {
   if (!source.order.some((member) => samePane(member, target))) return null;
   const sourceOrder = source.order.filter((member) => !samePane(member, target));
-  const destOrder = [...(destination?.order ?? []), target];
+  // Single membership (review hole 3): a destination that already lists the
+  // pane keeps its one entry — never a second.
+  const destHas = destination?.order.some((member) => samePane(member, target)) ?? false;
+  const destOrder = destHas ? destination!.order : [...(destination?.order ?? []), target];
   return {
     source: { ...source, order: sourceOrder, tiles: reconcilePaneTiles(source.tiles, sourceOrder) },
     destination: {
