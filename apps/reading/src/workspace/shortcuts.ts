@@ -47,6 +47,7 @@ import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./
 import { mothershipForPath } from "./mothershipForPath";
 import type { Mothership } from "./tabTree";
 import { tabTreeHandle } from "./tabTreeHandle";
+import { openAgentPaneForKeyboard } from "./agentKeyboardOpener";
 import { readCustomHotkeys } from "./persistence";
 import { READER_TOC_TOGGLE_EVENT } from "./readerEvents";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
@@ -413,7 +414,7 @@ export function toggleProjectPicker(): void {
  */
 function openAgentPaneKey(): boolean {
   if (rightPaneHoldsBlocks()) return false;
-  void import("./agent/openAgentPane").then(({ openAgentPaneFromKey }) => openAgentPaneFromKey());
+  void openAgentPaneForKeyboard(() => !rightPaneHoldsBlocks());
   return true;
 }
 
