@@ -1,8 +1,8 @@
-/** turnLifecycle.test.ts — SPR-07 invariant 10 (fix 1): no wall-clock failure while a fetch is pending; retry aborts first. */
+/** turnLifecycle.test.ts — SPR-07 M8 (repair C3): the no-reply fallback fires at 8 s by WALL CLOCK with the failure copy and Retry; a late reply on the same request still heals; retry aborts first. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentTransport, AgentTransportReply, AgentTransportRequest } from "./agentTransport";
-import { FAILURE_COPY, FAILURE_COPY_INTERVIEW, SLOW_COPY, SLOW_NOTICE_MS, WAITING_COPY, createTurnRunner, statusRowFor, type LifecycleState } from "./turnLifecycle";
+import { FAILURE_COPY, FAILURE_COPY_INTERVIEW, NO_REPLY_MS, WAITING_COPY, createTurnRunner, statusRowFor, type LifecycleState } from "./turnLifecycle";
 
 function transportResolvingAt(ms: number, reply: Partial<AgentTransportReply> = {}): AgentTransport & { sends: AgentTransportRequest[] } {
   const sends: AgentTransportRequest[] = [];
@@ -25,22 +25,45 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("createTurnRunner", () => {
-  it("a transport resolving at 9 000 ms shows the slow notice at 8 000 and never the failure copy", async () => {
+  it("no visible reply within 8 000 ms ⇒ the failure copy with Retry at exactly 8 000 by wall clock; the late reply at 9 000 still heals", async () => {
+    const transport = transportResolvingAt(9000);
+    const states: LifecycleState[] = [];
+    const replies: AgentTransportReply[] = [];
+    const runner = createTurnRunner({ transport, request, onState: (s, reply) => { states.push(s); if (reply) replies.push(reply); } });
+    runner.send();
+    expect(states.at(-1)!.phase).toBe("sent");
+    expect(statusRowFor(states.at(-1)!.phase, { interview: false })).toBe(WAITING_COPY);
+    await vi.advanceTimersByTimeAsync(NO_REPLY_MS - 1);
+    expect(states.at(-1)!.phase).toBe("sent");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(states.at(-1)).toMatchObject({ phase: "failed", error: null, reason: "no_reply" });
+    expect(statusRowFor("failed", { interview: true })).toBe(FAILURE_COPY_INTERVIEW);
+    expect(statusRowFor("failed", { interview: false })).toBe(FAILURE_COPY);
+    expect(NO_REPLY_MS).toBe(8000);
+    // The request was NOT thrown away: its reply heals the fallback.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(states.at(-1)!.phase).toBe("done");
+    expect(replies.at(-1)?.text).toBe("a reply");
+  });
+
+  it("Retry during the fallback aborts the first request and sends once; the aborted first reply is dropped", async () => {
     const transport = transportResolvingAt(9000);
     const states: LifecycleState[] = [];
     const runner = createTurnRunner({ transport, request, onState: (s) => states.push(s) });
     runner.send();
+    await vi.advanceTimersByTimeAsync(NO_REPLY_MS);
+    expect(states.at(-1)!.phase).toBe("failed");
+    runner.retry();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(transport.sends).toHaveLength(2);
+    expect(transport.sends[0].signal.aborted).toBe(true);
     expect(states.at(-1)!.phase).toBe("sent");
-    expect(statusRowFor(states.at(-1)!.phase, { interview: false })).toBe(WAITING_COPY);
-    await vi.advanceTimersByTimeAsync(SLOW_NOTICE_MS - 1);
+    await vi.advanceTimersByTimeAsync(1000); // the first would have resolved here; it is aborted
     expect(states.at(-1)!.phase).toBe("sent");
-    await vi.advanceTimersByTimeAsync(1);
-    expect(states.at(-1)!.phase).toBe("slow");
-    expect(statusRowFor("slow", { interview: false })).toBe(SLOW_COPY);
+    await vi.advanceTimersByTimeAsync(NO_REPLY_MS - 1000);
+    expect(states.at(-1)).toMatchObject({ phase: "failed", reason: "no_reply" });
     await vi.advanceTimersByTimeAsync(1000);
     expect(states.at(-1)!.phase).toBe("done");
-    expect(states.map((s) => s.phase)).not.toContain("failed");
-    expect(SLOW_NOTICE_MS).toBe(8000);
   });
 
   it("retry aborts the in-flight signal and sends exactly one more request", async () => {
@@ -66,7 +89,7 @@ describe("createTurnRunner", () => {
     const runner = createTurnRunner({ transport: rejecting, request, onState: (s) => states.push(s) });
     runner.send();
     await vi.advanceTimersByTimeAsync(0);
-    expect(states.at(-1)).toMatchObject({ phase: "failed", error: "HTTP 500" });
+    expect(states.at(-1)).toMatchObject({ phase: "failed", error: "HTTP 500", reason: "transport" });
     expect(statusRowFor("failed", { interview: false })).toBe(FAILURE_COPY);
     expect(statusRowFor("failed", { interview: true })).toBe(FAILURE_COPY_INTERVIEW);
 
@@ -74,10 +97,10 @@ describe("createTurnRunner", () => {
     const states2: LifecycleState[] = [];
     createTurnRunner({ transport: empty, request, onState: (s) => states2.push(s) }).send();
     await vi.advanceTimersByTimeAsync(10);
-    expect(states2.at(-1)!.phase).toBe("failed");
+    expect(states2.at(-1)).toMatchObject({ phase: "failed", error: null, reason: "empty" });
   });
 
-  it("abort is not a failure and dispose cancels the slow timer", async () => {
+  it("abort is not a failure and dispose cancels the no-reply timer", async () => {
     const transport = transportResolvingAt(9000);
     const states: LifecycleState[] = [];
     const runner = createTurnRunner({ transport, request, onState: (s) => states.push(s) });
@@ -87,7 +110,7 @@ describe("createTurnRunner", () => {
     expect(states.at(-1)!.phase).toBe("idle");
     runner.send();
     runner.dispose();
-    await vi.advanceTimersByTimeAsync(SLOW_NOTICE_MS + 1);
-    expect(states.map((s) => s.phase)).not.toContain("slow");
+    await vi.advanceTimersByTimeAsync(NO_REPLY_MS + 1);
+    expect(states.map((s) => s.phase)).not.toContain("failed");
   });
 });

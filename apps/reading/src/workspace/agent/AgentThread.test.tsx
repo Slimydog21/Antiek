@@ -22,7 +22,7 @@ function mount(turns: AgentTurn[], over: { lifecycle?: LifecycleState; transport
 
 describe("AgentThread", () => {
   it("a streaming turn shows the present-tense word, the caret, and the visible simulated-stream label", () => {
-    const { container } = mount([turn({ status: "streaming", answer: "par", statusWord: "weighing" })], { lifecycle: { phase: "streaming", controller: null, error: null } });
+    const { container } = mount([turn({ status: "streaming", answer: "par", statusWord: "weighing" })], { lifecycle: { phase: "streaming", controller: null, error: null, reason: null } });
     const row = container.querySelector("[data-turn-status]")!;
     expect(row.textContent).toContain("weighing");
     expect(row.textContent).toContain("simulated stream: the reply arrives whole");
@@ -61,10 +61,10 @@ describe("AgentThread", () => {
 
   it("the waiting notices and the failure copy come from the lifecycle; Retry calls back", () => {
     const onRetry = vi.fn();
-    const sent = mount([turn({})], { lifecycle: { phase: "sent", controller: new AbortController(), error: null } });
+    const sent = mount([turn({})], { lifecycle: { phase: "sent", controller: new AbortController(), error: null, reason: null } });
     expect(sent.container.textContent).toContain("waiting for the whole reply (no streaming yet)");
     cleanup();
-    const failed = mount([turn({ status: "failed" })], { lifecycle: { phase: "failed", controller: null, error: "HTTP 500" }, interview: true, onRetry });
+    const failed = mount([turn({ status: "failed" })], { lifecycle: { phase: "failed", controller: null, error: "HTTP 500", reason: "transport" }, interview: true, onRetry });
     expect(failed.container.textContent).toContain("Your agent couldn't get started");
     fireEvent.click(failed.getByRole("button", { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);

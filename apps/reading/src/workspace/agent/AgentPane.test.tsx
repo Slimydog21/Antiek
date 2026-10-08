@@ -249,6 +249,22 @@ describe("interview mode (invariant 26)", () => {
   });
 });
 
+describe("the 8 s no-reply fallback at the pane (M8, repair C3)", () => {
+  it("an interview whose transport never answers shows 'Your agent couldn't get started' with Retry at 8 s; Retry sends again", async () => {
+    const transport: AgentTransport = { kind: "whole", send: vi.fn(() => new Promise<never>(() => {})) };
+    host(transport, { interview: true });
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(7999); });
+    expect(document.body.textContent).not.toContain("Your agent couldn't get started");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    const notice = document.querySelector("[data-lifecycle-notice]")!;
+    expect(notice.textContent).toContain("Your agent couldn't get started");
+    fireEvent.click(within(notice as HTMLElement).getByRole("button", { name: /retry/i }));
+    expect(transport.send).toHaveBeenCalledTimes(2);
+    expect(document.querySelector("[data-lifecycle-notice]")!.textContent).not.toContain("couldn't get started");
+  });
+});
+
 describe("the draft survives close/reopen (M1)", () => {
   it("typed words come back after the tab is closed and the pane remounts", () => {
     const { transport } = scripted([]);

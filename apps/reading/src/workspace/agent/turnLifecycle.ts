@@ -1,52 +1,58 @@
 /**
- * turnLifecycle.ts — one turn's lifecycle (SPR-07 M3/M8, fix 1).
+ * turnLifecycle.ts — one turn's lifecycle (SPR-07 M3/M8; repair C3).
  *
- * The route runs retrieval and then a whole dispatch (app.py:7218-7256), so
- * a slow reply is the normal case, not a failure. The failure copy is
- * entered ONLY on transport rejection, abort-by-dispose, or an empty text;
- * NEVER by wall clock while the fetch is pending. At SLOW_NOTICE_MS the
- * status row says it is still waiting. retry() aborts the in-flight
- * request before sending again, so a paid call is never double-fired.
+ * The sprint's M8 rule, by WALL CLOCK: "if no visible reply within 8 s show
+ * 'Your agent couldn't get started' with retry". NO_REPLY_MS after send(),
+ * with no reply token yet, the phase is `failed` with reason "no_reply" and
+ * the failure copy + Retry show (the copy is interview-aware, statusRowFor).
+ * The in-flight request is NOT aborted by the fallback: the route runs
+ * retrieval and then a whole dispatch (app.py:7218-7256), so a reply that
+ * lands later on the SAME request heals the fallback into `done` — a paid
+ * call is never thrown away by a timer. retry() aborts the in-flight request
+ * before sending again, so a paid call is never double-fired, and a reply
+ * from an aborted request is dropped.
  */
 import type { AgentTransport, AgentTransportReply, AgentTransportRequest } from "./agentTransport";
 
-export const SLOW_NOTICE_MS = 8000;
+/** refs pattern 18 (sprint M8): the no-reply fallback's wall-clock bound. */
+export const NO_REPLY_MS = 8000;
 
 export const WAITING_COPY = "waiting for the whole reply (no streaming yet)";
-export const SLOW_COPY = "still waiting for the whole reply (no streaming yet)";
 export const FAILURE_COPY = "Your agent couldn't answer";
 export const FAILURE_COPY_INTERVIEW = "Your agent couldn't get started";
 
-export type LifecyclePhase = "idle" | "sent" | "slow" | "streaming" | "done" | "failed";
+export type LifecyclePhase = "idle" | "sent" | "streaming" | "done" | "failed";
+
+/** Why a turn failed: the 8 s wall clock, a transport rejection, or an empty text. */
+export type FailureReason = "no_reply" | "transport" | "empty";
 
 export interface LifecycleState {
   phase: LifecyclePhase;
   controller: AbortController | null;
   error: string | null;
+  /** Set only while `phase === "failed"`. */
+  reason: FailureReason | null;
 }
 
 export type LifecycleEvent =
   | { type: "send"; controller: AbortController }
-  | { type: "slow" }
   | { type: "stream" }
   | { type: "done" }
-  | { type: "fail"; error: string | null }
+  | { type: "fail"; error: string | null; reason: FailureReason }
   | { type: "abort" };
 
-export const IDLE: LifecycleState = { phase: "idle", controller: null, error: null };
+export const IDLE: LifecycleState = { phase: "idle", controller: null, error: null, reason: null };
 
 export function reduceLifecycle(s: LifecycleState, e: LifecycleEvent): LifecycleState {
   switch (e.type) {
     case "send":
-      return { phase: "sent", controller: e.controller, error: null };
-    case "slow":
-      return s.phase === "sent" ? { ...s, phase: "slow" } : s;
+      return { phase: "sent", controller: e.controller, error: null, reason: null };
     case "stream":
-      return s.phase === "sent" || s.phase === "slow" ? { ...s, phase: "streaming" } : s;
+      return s.phase === "sent" ? { ...s, phase: "streaming" } : s;
     case "done":
-      return { phase: "done", controller: null, error: null };
+      return { phase: "done", controller: null, error: null, reason: null };
     case "fail":
-      return { phase: "failed", controller: null, error: e.error };
+      return { phase: "failed", controller: null, error: e.error, reason: e.reason };
     case "abort":
       return IDLE;
   }
@@ -56,7 +62,6 @@ export function reduceLifecycle(s: LifecycleState, e: LifecycleEvent): Lifecycle
  *  own word instead. */
 export function statusRowFor(phase: LifecyclePhase, i: { interview: boolean }): string | null {
   if (phase === "sent") return WAITING_COPY;
-  if (phase === "slow") return SLOW_COPY;
   if (phase === "failed") return i.interview ? FAILURE_COPY_INTERVIEW : FAILURE_COPY;
   return null;
 }
@@ -77,41 +82,48 @@ export function createTurnRunner(i: {
   onState: (s: LifecycleState, reply?: AgentTransportReply) => void;
 }): TurnRunner {
   let state = IDLE;
-  let slowTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The request whose reply may still land — it outlives the `failed`
+   *  (no_reply) phase, so a late reply can heal; cleared by abort/retry. */
+  let live: AbortController | null = null;
+  let noReplyTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
   const set = (e: LifecycleEvent, reply?: AgentTransportReply) => {
     state = reduceLifecycle(state, e);
     i.onState(state, reply);
   };
-  const clearSlow = () => {
-    if (slowTimer !== null) clearTimeout(slowTimer);
-    slowTimer = null;
+  const clearNoReply = () => {
+    if (noReplyTimer !== null) clearTimeout(noReplyTimer);
+    noReplyTimer = null;
   };
   const abortInFlight = () => {
-    clearSlow();
-    state.controller?.abort();
+    clearNoReply();
+    live?.abort();
+    live = null;
   };
   const send = () => {
     if (disposed) return;
     abortInFlight();
     const controller = new AbortController();
+    live = controller;
     set({ type: "send", controller });
-    slowTimer = setTimeout(() => {
-      slowTimer = null;
-      if (state.controller === controller) set({ type: "slow" });
-    }, SLOW_NOTICE_MS);
+    noReplyTimer = setTimeout(() => {
+      noReplyTimer = null;
+      if (live === controller && state.phase === "sent") set({ type: "fail", error: null, reason: "no_reply" });
+    }, NO_REPLY_MS);
     i.transport.send({ ...i.request(), signal: controller.signal }).then(
       (reply) => {
-        if (controller.signal.aborted || state.controller !== controller) return;
-        clearSlow();
-        if (!reply.text.trim()) set({ type: "fail", error: null });
+        if (controller.signal.aborted || live !== controller) return;
+        clearNoReply();
+        live = null;
+        if (!reply.text.trim()) set({ type: "fail", error: null, reason: "empty" });
         else set({ type: "done" }, reply);
       },
       (err: unknown) => {
         // An aborted request belongs to retry()/abort(): never a failure.
-        if (controller.signal.aborted || state.controller !== controller) return;
-        clearSlow();
-        set({ type: "fail", error: err instanceof Error ? err.message : String(err) });
+        if (controller.signal.aborted || live !== controller) return;
+        clearNoReply();
+        live = null;
+        set({ type: "fail", error: err instanceof Error ? err.message : String(err), reason: "transport" });
       },
     );
   };
