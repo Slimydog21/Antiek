@@ -114,21 +114,28 @@ the live phase, §2.4).
 `tools/deploy/require_green.sh` fails closed when GitHub answers
 `commits/<sha>/check-runs` with HTTP 5xx; on 2026-10-07 it did so for every
 recent main commit while githubstatus.com reported "All Systems Operational"
-[M rehearsal `03-deploy-build-attempt1-gate500.log`]. A DR deploy must not wait
-on that. Override only when **all** of these hold, and paste their output into
-the deploy record:
+[M rehearsal `03-deploy-build-attempt1-gate500.log`]. Keep the deploy on **HOLD**
+until the existing `require_green.sh` owner restores the gate read and the
+normal gate succeeds for the exact target SHA on main. A 4xx needs the
+existing credential owner to resolve access before that same gate can pass.
+
+These metadata views may diagnose the fault. Paste their output into the
+deploy record; they do not authorize deployment:
 
 ```bash
 SHA=<40-hex target>
-gh api "repos/Slimydog21/Antiek/commits/$SHA/check-runs" -i 2>&1 | head -1    # the fault: HTTP 5xx, not a red or pending check
-gh api "repos/Slimydog21/Antiek/compare/$SHA...main" --jq '.status'          # identical or behind: the SHA is on main
+gh api "repos/Slimydog21/Antiek/commits/$SHA/check-runs" -i 2>&1 | head -1
+gh api "repos/Slimydog21/Antiek/compare/$SHA...main" --jq '.status'
 gh api "repos/Slimydog21/Antiek/actions/runs?head_sha=$SHA&per_page=50" \
-  --jq '.workflow_runs[] | [.name, .status, .conclusion] | @tsv'             # CI and deploy-backend completed/success
+  --jq '.workflow_runs[] | [.id, .name, .head_sha, .status, .conclusion] | @tsv'
 ```
 
-Then rerun with `-e antiek_force_deploy=true`. A red, pending or skipped check
-is never overridden this way; a 4xx is a credential problem, not an outage.
-Teaching `require_green.sh` this fallback is a follow-up for its owner (below).
+A completed/success workflow can contain a skipped deploy job. Inspect the
+actual job result and live build SHA separately; neither replaces the exact
+required main checks. A red, pending, skipped or unavailable required check
+keeps the deploy on HOLD. After the normal gate passes, a successful,
+non-skipped deploy job and matching live build SHA are separate requirements
+for reporting deployment success.
 
 ## Phase 0. Preconditions (days before)
 
@@ -213,10 +220,11 @@ reaches AWS at T-55 (Invariant 4 keeps every real secret off the host until
 the freeze, and STAGING_HOLD must not be the only thing between a second
 connector and the tunnel).
 
-If `require_green.sh` fails closed on a GitHub API 500 (D6), confirm
-independently (`gh api repos/Slimydog21/Antiek/compare/$SHA...main`, the
-Actions runs for `$SHA`) and rerun with `-e antiek_force_deploy=true`,
-recording why.
+If `require_green.sh` fails closed on a GitHub API fault (D6), keep the
+deploy on HOLD. The existing gate owner must restore the gate read; rerun
+only after the normal gate succeeds for the exact target SHA on main.
+Compare and Actions metadata may diagnose the fault, but do not replace
+that gate or authorize a bypass.
 
 **B5. Restore rehearsal from R2 (measures the DR path on arm64).** On
 throwaway state B4 and B5 may run in either order; to rehearse F3-F5 exactly,
@@ -491,6 +499,6 @@ the file delivered from SSM Parameter Store/KMS instead of copied); D7 (build
 the SPA in CI as an artifact keyed by SHA and have the playbook fetch it,
 `deploy_backend.yml` is another lane's); a first-release mode for
 `deploy_atomic.yml` so `setup.yml` can drop its code clone (D4/D8/D9, "Why
-`setup.yml` keeps its code clone"); the GitHub check-runs fallback inside
-`require_green.sh` (D6); deploys moved off public SSH (terraform-aws README,
+`setup.yml` keeps its code clone"); GitHub gate-read fault recovery in
+`require_green.sh` while retaining the normal main gate (D6); deploys moved off public SSH (terraform-aws README,
 "Hardening path"). D1, D2 and D11 are fixed on this branch.
