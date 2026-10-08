@@ -4,7 +4,7 @@
  * the pre-backend adapter; nothing under agents/ publishes the tree.
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const here = typeof __dirname === "string" ? __dirname : resolve(process.cwd(), "src/workspace/agents");
