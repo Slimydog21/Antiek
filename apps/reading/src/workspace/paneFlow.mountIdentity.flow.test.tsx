@@ -42,9 +42,19 @@ beforeEach(() => { disablePersistence(); ws().reset(); });
 afterEach(() => { cleanup(); ws().reset(); });
 
 describe("flag ON — arrangement switches keep the route host mounted", () => {
-  it("the flag is on: a flow arrangement is accepted (reset() itself starts legacy — critique N2)", () => {
+  it("a chosen arrangement survives reset(), which runs at every sign-in (merged-head check on #3754)", () => {
+    // The packet's migration: a persisted layout preset with no arrangement
+    // choice stays legacy (the store's startup write persisted a preset), so
+    // a fresh store reads legacy even with the flag on …
     expect(ws().paneArrangement).toBe("legacy");
-    expect(ws().setPaneArrangement("horizontal")).toBe(true);
+    // … and once the operator chooses tiled (persisted by setPaneArrangement),
+    // a reset() — sign-in, owner switch, "Reset layout" — restores TILED from
+    // the persisted preference, never a hardcoded legacy.
+    act(() => { ws().setPaneArrangement("tiled"); });
+    expect(ws().paneArrangement).toBe("tiled");
+    act(() => { ws().reset(); });
+    expect(ws().paneArrangement).toBe("tiled");
+    act(() => { ws().setPaneArrangement("horizontal"); ws().reset(); });
     expect(ws().paneArrangement).toBe("horizontal");
   });
 

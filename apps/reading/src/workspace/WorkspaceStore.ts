@@ -458,8 +458,13 @@ export const useWorkspace = create<Store>()((set, get) => ({
     suppressPersistAfterReset = true;
     const order = admittedPaneTargets({ ...get(), dockRightIds: [] });
     // EMPTY_SNAPSHOT carries no paneArrangement; a reset must not leak the
-    // previous arrangement into the next scenario/test (critique N2 on #3754).
-    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null, paneArrangement: "legacy",
+    // previous arrangement into the next scenario/test (critique N2 on #3754)
+    // — but reset() also runs on every sign-in / owner switch and on the
+    // palette's "Reset layout" commands, so it must restore the PERSISTED
+    // preference (legacy with the flag off), never hardcode legacy (merged-
+    // head check on #3754: tiled → sign in → legacy was a production defect).
+    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null,
+      paneArrangement: readPanePreferences().paneArrangement,
       paneOrder: order, paneTiles: reconcilePaneTiles(null, order), paneFocus: null, paneZoom: null });
   },
 }));

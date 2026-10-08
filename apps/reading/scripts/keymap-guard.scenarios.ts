@@ -100,8 +100,12 @@ function reorderPrepare() {
  *  directions have a neighbour: left swaps with core, right with a window
  *  when one is admitted — otherwise the edge is a no-op and the effect
  *  reports it). */
-function reorderFocus() {
-  const host = document.querySelector<HTMLElement>('[data-pane-host="companion"]') ?? document.querySelector<HTMLElement>('[data-pane-host="core"]');
+function reorderFocus(direction: -1 | 1 = -1) {
+  // The guard fixture has no windows: the order is [core, companion], so a
+  // LEFT reorder must start on the companion and a RIGHT reorder on the core
+  // (the edge is a no-op by contract).
+  const prefer = direction === -1 ? "companion" : "core";
+  const host = document.querySelector<HTMLElement>(`[data-pane-host="${prefer}"]`) ?? document.querySelector<HTMLElement>('[data-pane-host]');
   host?.focus({ preventScroll: true });
 }
 function reorderEffect(action: string) {
@@ -139,8 +143,8 @@ export const SCENARIOS = {
   // SPR-01 M1 (pane-flow landing): the reorder rows are implemented only with
   // antiek.flag.pane.flow ON (the guard presses unimplemented rows and checks
   // they do nothing); with it on, a reorder changes the logical pane order.
-  "pane.reorderLeft": { prepare: reorderPrepare, focus: reorderFocus, effect: () => reorderEffect("pane.reorderLeft") },
-  "pane.reorderRight": { prepare: reorderPrepare, focus: reorderFocus, effect: () => reorderEffect("pane.reorderRight") },
+  "pane.reorderLeft": { prepare: reorderPrepare, focus: () => reorderFocus(-1), effect: () => reorderEffect("pane.reorderLeft") },
+  "pane.reorderRight": { prepare: reorderPrepare, focus: () => reorderFocus(1), effect: () => reorderEffect("pane.reorderRight") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {
