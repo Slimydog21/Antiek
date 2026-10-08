@@ -42,22 +42,20 @@ beforeEach(() => { disablePersistence(); ws().reset(); });
 afterEach(() => { cleanup(); ws().reset(); });
 
 describe("flag ON — arrangement switches keep the route host mounted", () => {
-  it("a chosen arrangement survives reset(), which runs at every sign-in (merged-head check on #3754)", () => {
-    // The packet's migration: a persisted layout preset with no arrangement
-    // choice stays legacy (the store's startup write persisted a preset), so
-    // a fresh store reads legacy even with the flag on …
-    expect(ws().paneArrangement).toBe("legacy");
-    // … and once the operator chooses tiled (persisted by setPaneArrangement),
-    // a reset() — sign-in, owner switch, "Reset layout" — restores TILED from
-    // the persisted preference, never a hardcoded legacy.
+  it("a fresh user's horizontal default and any chosen arrangement survive reset(), which runs at every sign-in (merged-head check on PR 3754)", () => {
+    // Fresh preferences migrate to horizontal, and the store PERSISTS that
+    // arrangement at startup; without it the first reset() (the sign-in owner
+    // change) would read "preset saved, no arrangement chosen" and fall to
+    // legacy. The arrangement key is therefore present before any choice.
+    expect(window.localStorage.getItem("antiek.workspace.desktop-pane-arrangement.v1")).not.toBeNull();
+    expect(ws().paneArrangement).toBe("horizontal");
+    act(() => { ws().reset(); });
+    expect(ws().paneArrangement).toBe("horizontal");
+    // A chosen arrangement survives too — sign-in, owner switch, "Reset layout".
     act(() => { ws().setPaneArrangement("tiled"); });
-    expect(ws().paneArrangement).toBe("tiled");
     act(() => { ws().reset(); });
     expect(ws().paneArrangement).toBe("tiled");
-    act(() => { ws().setPaneArrangement("horizontal"); ws().reset(); });
-    expect(ws().paneArrangement).toBe("horizontal");
   });
-
   it("horizontal → tiled → horizontal keeps the same DOM node and its scrollTop", () => {
     const { host } = mountScrollableHost();
     act(() => { ws().setPaneArrangement("horizontal"); });

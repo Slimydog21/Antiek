@@ -96,10 +96,7 @@ function reorderPrepare() {
 }
 /** The reorder admission (pane-flow S04) needs the event target to be the
  *  actual pane host whose order changes; the runner's bodyFocus() would leave
- *  it on <body>. Focus the companion host (second in order, so both
- *  directions have a neighbour: left swaps with core, right with a window
- *  when one is admitted — otherwise the edge is a no-op and the effect
- *  reports it). */
+ *  it on <body>. The host depends on the direction (below). */
 function reorderFocus(direction: -1 | 1 = -1) {
   // The guard fixture has no windows: the order is [core, companion], so a
   // LEFT reorder must start on the companion and a RIGHT reorder on the core

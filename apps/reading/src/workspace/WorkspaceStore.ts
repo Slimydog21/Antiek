@@ -31,6 +31,7 @@
  */
 
 import { create } from "zustand";
+import { isFeatureOn } from "../lib/featureFlags";
 import { beforeWorkspaceOwnerChange, isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 
 import {
@@ -186,8 +187,13 @@ function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
 
 // Landing: main persists the resolved preset on startup (a fresh workspace's
 // default included); the packet derives it from the migrated pane preferences.
-// One source — the migrated value is what gets persisted.
+// One source — the migrated value is what gets persisted. With the flag on the
+// ARRANGEMENT is persisted too: the migration reads "preset saved, no
+// arrangement chosen" as legacy, so persisting the preset alone would turn a
+// fresh user's horizontal default into legacy at the first reset() — the
+// sign-in owner change (merged-head check on #3754, second round).
 writeLayoutPreset(initialPanePreferences.layoutPreset);
+if (isFeatureOn("pane.flow")) writePaneArrangement(initialPanePreferences.paneArrangement);
 
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
