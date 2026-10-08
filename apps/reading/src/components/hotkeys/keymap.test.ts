@@ -322,7 +322,6 @@ describe("the prefix is configurable, never onto a taken key", () => {
   });
 });
 
-<<<<<<< HEAD
 // ─── SPR-07 (agent pane): prefix+a / ctrl+alt+a taken under D2 (invariant 33) ───
 
 describe("the agent pane rows (SPR-07): one action, two aliases, one status, out of RESERVED_FOR_LATER", () => {
