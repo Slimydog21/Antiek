@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_BASE } from "../../lib/api";
@@ -111,7 +111,9 @@ describe("Corpus search HTTP failures through the real client (synthetic UNIT re
     render(<CorpusSearch onOpen={onOpen} />);
 
     submit("old query");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     submit("current query");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await act(async () => { old.resolve(failure(503)); });
 
     expect(screen.queryByRole("alert")).toBeNull();
