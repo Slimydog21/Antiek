@@ -22,6 +22,12 @@
    (the motion scale) + tokens.css (--motion-* vars).
    ============================================================ */
 
+/* Functional streaming status, not a payoff beat. Reduced motion leaves it visible. */
+@keyframes antiek-agent-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* The OS asks for less motion, and the in-app Motion setting is not "Full". */
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="full"]) *,

@@ -17,7 +17,7 @@ import {
 import { thoughtPartnerOnce } from "../components/ai/thoughtPartnerOnce";
 import type { ThoughtPartnerOnceReply } from "../components/ai/thoughtPartnerOnce";
 import { sourceDocumentOf, type AgentTabDescriptor } from "./companionStore";
-import { openDocumentInLeftPane } from "./crossPane";
+import { openDocumentFromAgent } from "./contracts/openers";
 import { ModeLink } from "./ModeLink";
 
 export interface AgentSurfaceProps {
@@ -86,11 +86,15 @@ export function ResearchThreadSurface({ tab, summary }: AgentSurfaceProps) {
             type="button"
             className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
             onClick={() =>
-              openDocumentInLeftPane(documentId, {
-                from: "companion",
-                investigationId: tab.investigationId,
-                agentTabId: tab.id,
-                agentKind: "research",
+              openDocumentFromAgent({
+                documentId,
+                agent: {
+                  id: tab.investigationId ?? tab.id,
+                  viewId: tab.id,
+                  kind: tab.kind,
+                  ...(tab.investigationId ? { investigationId: tab.investigationId } : {}),
+                },
+                ...(tab.anchor?.space === "book" ? { anchor: tab.anchor } : {}),
               })
             }
           >
