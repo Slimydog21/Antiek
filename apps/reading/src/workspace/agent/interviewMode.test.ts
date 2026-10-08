@@ -1,12 +1,14 @@
 /** interviewMode.test.ts — SPR-07 M8 (patterns 18/20): the option card parser and the seed hand-off. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+
 import { INTERVIEW_FIRST_TURN, INTERVIEW_SYSTEM_PROMPT, dispatchProjectSeed, parseOptionCard, resetProjectSeedSeam, seedFromActions, subscribeProjectSeed, type ProjectSeed } from "./interviewMode";
 
 // The seam is module state: every test starts with no consumer and no held
 // seed, so a dispatch left unconsumed by one test cannot leak into the next.
-beforeEach(() => { resetProjectSeedSeam(); });
-afterEach(() => { vi.restoreAllMocks(); });
+beforeEach(async () => { setWorkspaceOwner(null); setWorkspaceOwner("unit-seed-positive"); await awaitWorkspaceOwnerSession(workspaceOwnerSession()); resetProjectSeedSeam(); });
+afterEach(() => { try { vi.restoreAllMocks(); resetProjectSeedSeam(); } finally { setWorkspaceOwner(null); } });
 
 describe("interviewMode", () => {
   it("the hidden first turn and the prompt exist", () => {

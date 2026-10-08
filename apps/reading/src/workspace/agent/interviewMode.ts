@@ -13,6 +13,7 @@
  * #3749 lands a shared export (F6): one de-dup edit then.
  */
 import type { AiAction } from "../../components/ai/aiActions";
+import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerSession, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 export const INTERVIEW_FIRST_TURN = "Begin the interview.";
 
@@ -73,18 +74,51 @@ export function seedFromActions(actions: readonly AiAction[]): ProjectSeed | nul
 
 export type ProjectSeedConsumer = (seed: ProjectSeed) => void;
 
-const consumers = new Set<ProjectSeedConsumer>();
-/** Seeds no consumer has taken yet (none mounted, or every mounted one
- *  threw), in confirmation order: the pane told the user each one was held,
- *  so none is dropped. The first consumer to subscribe receives them all,
- *  each exactly once. */
-let held: ProjectSeed[] = [];
+interface Registration {
+  owner: WorkspaceOwnerSession;
+  generation: number;
+  consumer: ProjectSeedConsumer;
+}
+interface OwnedSeed {
+  owner: WorkspaceOwnerSession;
+  generation: number;
+  order: number;
+  seed: ProjectSeed;
+  attempted: Set<Registration>;
+}
+interface Broadcast {
+  value: OwnedSeed;
+  remaining: Registration[];
+  delivered: number;
+  failed: number;
+}
+
+const consumers = new Map<ProjectSeedConsumer, Registration>();
+let held: OwnedSeed[] = [];
+const broadcasts = new Set<Broadcast>();
+const pending = new Set<Registration>();
+let generation = 0;
+let order = 0;
+let draining = false;
+let seamOwner = workspaceOwnerSession();
+let confirmedOwner: WorkspaceOwnerSession | null = null;
 
 const copyOf = (s: ProjectSeed): ProjectSeed => ({ title: s.title, prompt: s.prompt, ...(s.sources ? { sources: [...s.sources] } : {}) });
 
-/** One delivery. A consumer that throws is a failed delivery: reported, never
- *  propagated (the pane's confirm must still announce; the other consumers
- *  must still receive the seed). */
+function sameLifetime(owner: WorkspaceOwnerSession, capturedGeneration: number): boolean {
+  const admission = workspaceOwnerAdmission();
+  return owner.subject !== null && owner === admission.session && capturedGeneration === generation
+    && admission.state !== "retiring" && admission.state !== "failed";
+}
+function admitted(owner: WorkspaceOwnerSession, capturedGeneration: number): boolean {
+  return sameLifetime(owner, capturedGeneration) && confirmedOwner === owner && isWorkspaceOwnerSession(owner);
+}
+function current(registration: Registration): boolean {
+  return consumers.get(registration.consumer) === registration && admitted(registration.owner, registration.generation);
+}
+
+/** Faults are counted without stopping another current consumer. Each callback
+ * receives an independent copy, including the mutable sources array. */
 function deliver(consumer: ProjectSeedConsumer, seed: ProjectSeed): boolean {
   try {
     consumer(copyOf(seed));
@@ -95,42 +129,112 @@ function deliver(consumer: ProjectSeedConsumer, seed: ProjectSeed): boolean {
   }
 }
 
-/**
- * The intake's ONE consumer path (SPR-03's useProjectIntake calls this in
- * an effect: `useEffect(() => subscribeProjectSeed(applySeed), [applySeed])`).
- * Every consumer receives each dispatched seed exactly once, as its own
- * value copy; seeds confirmed before any consumer existed are handed to the
- * first subscriber, in order, once each — a seed the subscriber throws on
- * stays held. Returns the unsubscribe.
- */
+function deliverBroadcast(broadcast: Broadcast): void {
+  const value = broadcast.value;
+  while (broadcast.remaining.length > 0 && admitted(value.owner, value.generation)) {
+    const registration = broadcast.remaining.shift()!;
+    if (!current(registration)) continue;
+    value.attempted.add(registration);
+    if (deliver(registration.consumer, value.seed)) broadcast.delivered++;
+    else broadcast.failed++;
+    // A synchronous consumer can replace the owner or reset this seam. The
+    // old record must never publish into the replacement queue.
+    if (!sameLifetime(value.owner, value.generation)) return;
+  }
+  if (broadcast.remaining.length === 0 && admitted(value.owner, value.generation)) {
+    broadcasts.delete(broadcast);
+    if (broadcast.delivered === 0) {
+      held.push(value);
+      held.sort((a, b) => a.order - b.order);
+    }
+  }
+}
+
+function drainHeld(registration: Registration): void {
+  for (const value of [...held]) {
+    if (!current(registration)) {
+      if (sameLifetime(registration.owner, registration.generation)
+          && consumers.get(registration.consumer) === registration) pending.add(registration);
+      return;
+    }
+    if (!held.includes(value) || value.attempted.has(registration)) continue;
+    value.attempted.add(registration);
+    const taken = deliver(registration.consumer, value.seed);
+    if (!sameLifetime(value.owner, value.generation)) return;
+    // Removing a completed delivery is local retirement, even if its callback
+    // suspended this token. Unattempted/failed entries remain in their order.
+    if (taken) held = held.filter((entry) => entry !== value);
+  }
+}
+
+function flushPending(): void {
+  if (draining) return;
+  draining = true;
+  try {
+    for (const broadcast of [...broadcasts]) deliverBroadcast(broadcast);
+    while (pending.size > 0 && admitted(seamOwner, generation)) {
+      const registration = pending.values().next().value;
+      if (!registration) break;
+      pending.delete(registration);
+      if (current(registration)) drainHeld(registration);
+    }
+  } finally { draining = false; }
+}
+
+function confirmOwner(owner: WorkspaceOwnerSession): void {
+  confirmedOwner = null;
+  void awaitWorkspaceOwnerSession(owner).then((ok) => {
+    if (!ok || !isWorkspaceOwnerSession(owner)) return;
+    confirmedOwner = owner;
+    flushPending();
+  });
+}
+confirmOwner(seamOwner);
+subscribeWorkspaceOwnerAdmission(({ session, state }) => {
+  confirmedOwner = null;
+  if (session !== seamOwner || session.subject === null || state === "retiring" || state === "failed") {
+    resetProjectSeedSeam();
+    seamOwner = session;
+  }
+  confirmOwner(session);
+});
+
+/** The intake's consumer contract. Held seeds reach the first current intake
+ * once each, in confirmation order. A suspended same-token registration waits
+ * for independent confirmation; a retired registration is never renewed. */
 export function subscribeProjectSeed(consumer: ProjectSeedConsumer): () => void {
-  consumers.add(consumer);
-  if (held.length > 0) {
-    const queue = held;
-    held = [];
-    const kept = queue.filter((seed) => !deliver(consumer, seed));
-    held = [...kept, ...held];
-  }
-  return () => { consumers.delete(consumer); };
+  const owner = workspaceOwnerSession();
+  if (!sameLifetime(owner, generation)) return () => {};
+  const registration: Registration = { owner, generation, consumer };
+  consumers.set(consumer, registration);
+  pending.add(registration);
+  flushPending();
+  return () => {
+    pending.delete(registration);
+    if (consumers.get(consumer) === registration) consumers.delete(consumer);
+  };
 }
 
-/** The ONLY hand-off. `delivered` is how many consumers received it and
- *  `failed` how many threw; when nobody received it (no intake mounted, or
- *  the mounted ones threw) the seed is held for the next intake. */
+/** The only hand-off. Counts reflect callbacks actually attempted during this
+ * call. A same-token suspension holds remaining deliveries, never replays a
+ * completed one. Failed-only seeds stay held for a later current intake. */
 export function dispatchProjectSeed(seed: ProjectSeed): { delivered: number; failed: number } {
-  const snapshot = copyOf(seed);
-  let delivered = 0;
-  let failed = 0;
-  for (const c of [...consumers]) {
-    if (deliver(c, snapshot)) delivered += 1;
-    else failed += 1;
-  }
-  if (delivered === 0) held.push(snapshot);
-  return { delivered, failed };
+  const owner = workspaceOwnerSession();
+  if (!admitted(owner, generation)) return { delivered: 0, failed: 0 };
+  const broadcast: Broadcast = {
+    value: { owner, generation, order: ++order, seed: copyOf(seed), attempted: new Set() },
+    remaining: [...consumers.values()], delivered: 0, failed: 0,
+  };
+  broadcasts.add(broadcast);
+  deliverBroadcast(broadcast);
+  return { delivered: broadcast.delivered, failed: broadcast.failed };
 }
 
-/** Test seam: forget every consumer and any held seed. */
+/** Test seam and private retirement: invalidate captured in-flight work too. */
 export function resetProjectSeedSeam(): void {
+  generation++;
   consumers.clear();
   held = [];
+  broadcasts.clear();
+  pending.clear();
 }
