@@ -3,7 +3,14 @@ import json
 import os
 
 from browser_harness.run import (
-    cdp, click_at_xy, close_tab, goto_url, js, new_tab, press_key, wait_for_load,
+    cdp,
+    click_at_xy,
+    close_tab,
+    goto_url,
+    js,
+    new_tab,
+    press_key,
+    wait_for_load,
 )
 
 BASE = os.environ.get("D2_ESCAPE_URL", "http://127.0.0.1:5196")
