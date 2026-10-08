@@ -6,7 +6,10 @@
  * before the companion's own close-with-undo, then focus return) and
  * useSyncProjectFilter (the selection → companionStore.projectFilter wire;
  * the store never reads the selection itself, openers.ts imports it and a
- * back-import would be a cycle).
+ * back-import would be a cycle). CompanionPane calls the wire: it is
+ * mounted whenever the strip is, so the filter can never go stale while a
+ * tab is visible (repair 2026-10-07T22:40Z, finding 1; AgentPane calling it
+ * unsubscribed with the pane, and the hidden-tab placeholder unmounts it).
  */
 import { useEffect } from "react";
 import { create } from "zustand";
@@ -71,13 +74,25 @@ export function closeAgentPane(tabId: string, title?: string): void {
   }, CLOSE_LINGER_MS);
 }
 
-/** The one wire from the selection to the companion's project filter. */
+/** The one wire from the selection to the companion's project filter.
+ *  Called by CompanionPane (both mounts; a second subscription writes the
+ *  same value). While it is mounted the filter MIRRORS the selection: a
+ *  store reset under it (auth.tsx resets the companion on an owner change)
+ *  re-applies the selection instead of leaving the filter null, which would
+ *  show every project's tabs until the next switch. */
 export function useSyncProjectFilter(): void {
   useEffect(() => {
-    const apply = (projectId: string) => useCompanion.getState().setProjectFilter(projectId);
-    apply(useSelection.getState().selection.projectId);
-    return useSelection.subscribe((s, p) => {
-      if (s.selection.projectId !== p.selection.projectId) apply(s.selection.projectId);
+    const apply = () => {
+      const projectId = useSelection.getState().selection.projectId;
+      if (useCompanion.getState().projectFilter !== projectId) useCompanion.getState().setProjectFilter(projectId);
+    };
+    apply();
+    const offSelection = useSelection.subscribe((s, p) => {
+      if (s.selection.projectId !== p.selection.projectId) apply();
     });
+    const offCompanion = useCompanion.subscribe((s, p) => {
+      if (s.projectFilter === null && p.projectFilter !== null) apply();
+    });
+    return () => { offSelection(); offCompanion(); };
   }, []);
 }

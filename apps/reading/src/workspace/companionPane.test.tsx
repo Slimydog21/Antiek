@@ -79,7 +79,7 @@ import { PanelLayout } from "./PanelLayout";
 import { COMPANION_PANEL_ID, useCompanion } from "./companionStore";
 import { useWorkspace } from "./WorkspaceStore";
 import { useWindows } from "./windowsStore";
-import { installShortcuts } from "./shortcuts";
+import { installShortcuts, SHORTCUT_EVENTS } from "./shortcuts";
 import { openDocumentInLeftPane, setOpenDocumentHandler } from "./crossPane";
 import { mothershipForPath } from "./documentSpace";
 import { useTabTrees } from "./tabTreeStore";
@@ -546,13 +546,27 @@ describe("SPR-07: project filter (companionStore)", () => {
   });
 });
 
-describe("SPR-07: CompanionPane renders the filter", () => {
+// Repair round 2026-10-07T22:40Z (finding 1): the filter is driven through
+// the ONE selection writer (contracts/selection.ts selectProject), never by
+// setProjectFilter directly — the wire from the selection is what the
+// placeholder scenario needs, and a test that bypasses it cannot see the
+// wire go stale.
+import { useSelection } from "./contracts/selection";
+import { AgentPane } from "./agent/AgentPane";
+import type { AgentPaneTab } from "./agent/agentTypes";
+import type { AgentTransport } from "./agent/agentTransport";
+
+const selectProject = (id: string) => act(() => { useSelection.getState().selectProject(id); });
+const stripIds = () => [...document.querySelectorAll("[data-agent-tab]")].map((el) => el.getAttribute("data-agent-tab"));
+
+describe("SPR-07: CompanionPane renders the filter (driven by the selection)", () => {
   function openProjectTabs() {
     let a = "", b = "", x = "";
+    selectProject("p-a");
     act(() => {
       a = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-a", title: "Agent A", scope: "project", projectId: "p-a" });
       b = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-b", title: "Agent B", scope: "project", projectId: "p-b" });
-      x = comp().openAgentTab({ kind: "dialogue", scope: "cross-project" });
+      x = comp().openAgentTab({ kind: "dialogue", scope: "cross-project", agentId: "x:0" });
     });
     return { a, b, x };
   }
@@ -568,42 +582,119 @@ describe("SPR-07: CompanionPane renders the filter", () => {
         </Profiler>
       </MemoryRouter>,
     );
-    const strip = () => [...document.querySelectorAll("[data-agent-tab]")].map((el) => el.getAttribute("data-agent-tab"));
-    expect(strip()).toEqual([a, b, x]);
+    expect(stripIds()).toEqual([a, x]);
     renders = 0;
-    act(() => comp().setProjectFilter("p-b"));
-    expect(strip()).toEqual([b, x]);
+    selectProject("p-b");
+    expect(stripIds()).toEqual([b, x]);
     // One render for the state change plus useStripOverflow's re-measure
     // commit (pre-existing). A filter computed INSIDE the zustand selector
     // returns a fresh array every call and never settles (the mutation is
     // "Maximum update depth exceeded", not a count), so a bound of 2 is
     // the honest pin.
     expect(renders).toBeLessThanOrEqual(2);
-    act(() => comp().setProjectFilter("p-a"));
-    expect(strip()).toEqual([a, x]);
+    selectProject("p-a");
+    expect(stripIds()).toEqual([a, x]);
     expect(comp().seq).toBe(seqBefore);
     expect(comp().tabs).toHaveLength(3);
+  });
+
+  it("with NO agent pane ever mounted, a project switch still hides the other project's tabs (finding 1, S2b)", () => {
+    const { b, x } = openProjectTabs();
+    mountPane();
+    selectProject("p-b");
+    expect(comp().projectFilter).toBe("p-b");
+    expect(stripIds()).toEqual([b, x]);
+  });
+
+  it("the wire outlives the agent pane: after the pane unmounts, a switch still filters (finding 1, S2a)", () => {
+    const { a, b, x } = openProjectTabs();
+    const transport: AgentTransport = { kind: "whole", send: vi.fn(async () => ({ text: "ok", shape: "SYNTHESIS" as const })) };
+    const cross: AgentPaneTab = { id: x, title: "cross agent", scope: "cross-project", agentId: "x:0" };
+    const Host = ({ withPane }: { withPane: boolean }) => (
+      <MemoryRouter><CompanionPane />{withPane ? <AgentPane tab={cross} transport={transport} /> : null}</MemoryRouter>
+    );
+    const r = render(<Host withPane />);
+    expect(stripIds()).toEqual([a, x]);
+    r.rerender(<Host withPane={false} />);
+    selectProject("p-b");
+    expect(stripIds()).toEqual([b, x]);
+  });
+
+  it("Phase-B-shaped host (the pane mounts only while its tab is visible): p-a → p-b (placeholder) → p-c hides p-b too (finding 1, S7)", () => {
+    const { a, b, x } = openProjectTabs();
+    let c = "";
+    act(() => {
+      c = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-c", title: "Agent C", scope: "project", projectId: "p-c" });
+      comp().activateAgentTab(a);
+    });
+    const transport: AgentTransport = { kind: "whole", send: vi.fn(async () => ({ text: "ok", shape: "SYNTHESIS" as const })) };
+    const pa: AgentPaneTab = { id: a, title: "Agent A", scope: "project", projectId: "p-a", agentId: "p:p-a" };
+    function PhaseBHost() {
+      const filter = useCompanion((s) => s.projectFilter);
+      return (
+        <MemoryRouter><CompanionPane />{tabVisible(pa, filter) ? <AgentPane tab={pa} transport={transport} /> : null}</MemoryRouter>
+      );
+    }
+    render(<PhaseBHost />);
+    expect(stripIds()).toEqual([a, x]);
+    selectProject("p-b");
+    expect(stripIds()).toEqual([b, x]);
+    expect(document.querySelector("[data-agent-hidden-placeholder]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-pane]")).toBeNull();
+    selectProject("p-c");
+    expect(comp().projectFilter).toBe("p-c");
+    expect(stripIds()).toEqual([x, c]);
+  });
+
+  it("a store reset while the strip is mounted (an owner change) does not leave the filter null", () => {
+    openProjectTabs();
+    mountPane();
+    selectProject("p-b");
+    act(() => comp().reset());
+    let d = "";
+    act(() => { d = comp().openAgentTab({ kind: "research-thread", investigationId: "inv-d", title: "Agent D", scope: "project", projectId: "p-a" }); });
+    expect(comp().projectFilter).toBe("p-b");
+    expect(stripIds()).toEqual([]);
+    expect(comp().tabs.map((t) => t.id)).toEqual([d]);
   });
 
   it("an active tab hidden by the filter renders the placeholder with Switch and Close, never its surface", () => {
     const { a } = openProjectTabs();
     act(() => comp().activateAgentTab(a));
-    render(<MemoryRouter><CompanionPane /></MemoryRouter>);
+    mountPane();
     expect(document.querySelector("[data-agent-surface]")).not.toBeNull();
-    act(() => comp().setProjectFilter("p-b"));
+    selectProject("p-b");
     const placeholder = document.querySelector("[data-agent-hidden-placeholder]")!;
     expect(placeholder).not.toBeNull();
     expect(placeholder.textContent).toContain("belongs to another project");
     expect(document.querySelector("[data-agent-surface]")).toBeNull();
-    expect(within(placeholder as HTMLElement).getByRole("button", { name: /switch to that project/i })).toBeTruthy();
-    fireEvent.click(within(placeholder as HTMLElement).getByRole("button", { name: /^close$/i }));
+    // "Switch project…" opens the project picker (the frozen writer census
+    // admits only the store, the mirror and the picker as selectProject
+    // callers); the picker's choice then goes through the one writer and
+    // the strip follows.
+    const toggles: Event[] = [];
+    const onToggle = (e: Event) => { toggles.push(e); };
+    window.addEventListener(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE, onToggle);
+    try {
+      fireEvent.click(within(placeholder as HTMLElement).getByRole("button", { name: /switch project/i }));
+    } finally {
+      window.removeEventListener(SHORTCUT_EVENTS.PROJECT_SELECT_TOGGLE, onToggle);
+    }
+    expect(toggles).toHaveLength(1);
+    expect(useSelection.getState().selection.projectId).toBe("p-b"); // the placeholder itself never writes the selection
+    selectProject("p-a"); // what the picker's choose() does
+    expect(document.querySelector("[data-agent-hidden-placeholder]")).toBeNull();
+    expect(document.querySelector("[data-agent-surface]")).not.toBeNull();
+    selectProject("p-b");
+    fireEvent.click(within(document.querySelector("[data-agent-hidden-placeholder]") as HTMLElement).getByRole("button", { name: /^close$/i }));
     expect(comp().tabs.some((t) => t.id === a)).toBe(false);
   });
 
   it("cycling into a hidden tab and reopening a hidden tab both land on the placeholder", () => {
     const { a, x } = openProjectTabs();
-    render(<MemoryRouter><CompanionPane /></MemoryRouter>);
-    act(() => { comp().activateAgentTab(x); comp().setProjectFilter("p-b"); });
+    mountPane();
+    act(() => { comp().activateAgentTab(x); });
+    selectProject("p-b");
     act(() => comp().cycleAgentTab(1)); // wraps x → a (hidden)
     expect(comp().activeTabId).toBe(a);
     expect(document.querySelector("[data-agent-hidden-placeholder]")).not.toBeNull();

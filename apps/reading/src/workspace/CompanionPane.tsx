@@ -29,8 +29,9 @@ import type { InvestigationSummary } from "../lib/api";
 import { AGENT_TAB_KINDS } from "./companionRegistry";
 import { sourceDocumentOf, tabVisible, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
-import { useSelection } from "./contracts/selection";
 import { agentTabDomId } from "./agentTabDomId";
+import { useSyncProjectFilter } from "./agent/agentPaneStore";
+import { toggleProjectPicker } from "./shortcuts";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { topModal } from "./escapeOverlay";
 
@@ -43,6 +44,10 @@ const AGENT_MENU_SEARCH_AFTER = 8;
 const NEW_AGENT_WORKING_FIRST = 6;
 
 export default function CompanionPane() {
+  // SPR-07 (repair, finding 1): the selection → projectFilter wire lives
+  // HERE, mounted whenever the strip is; never in a surface the strip can
+  // unmount (the hidden-tab placeholder replaces the agent pane).
+  useSyncProjectFilter();
   const tabs = useCompanion((s) => s.tabs);
   const projectFilter = useCompanion((s) => s.projectFilter);
   // SPR-07 (graft c): the filter is computed OUTSIDE the zustand selector —
@@ -187,9 +192,15 @@ const COMPANION_PANEL_DOM_ID = "companion-agent-panel";
 export { agentTabDomId };
 
 /** SPR-07: the active tab belongs to a project other than the selected
- *  one. The tab is hidden, never deleted; the operator may switch to that
- *  project (the one selection writer, contracts/selection.ts) or close the
- *  tab (the shared 10 s Undo). */
+ *  one. The tab is hidden, never deleted; the operator may switch project
+ *  or close the tab (the shared 10 s Undo). "Switch" OPENS THE PROJECT
+ *  PICKER (toggleProjectPicker, as the project tree's button does): the
+ *  frozen writer census (contracts/writerCensus.test.ts) admits exactly
+ *  the store, the mirror and the picker as selectProject callers, so a
+ *  direct one-click switch here would fork that contract. Repair
+ *  2026-10-07T22:40Z; the one-click switch is a handoff finding for the
+ *  SPR-06 owner (widen the census to this placeholder, pinned to the one
+ *  call shape). */
 function HiddenAgentPlaceholder({ tab }: { tab: AgentTabDescriptor }) {
   return (
     <div className="p-3 flex flex-col gap-2" data-agent-hidden-placeholder>
@@ -201,9 +212,10 @@ function HiddenAgentPlaceholder({ tab }: { tab: AgentTabDescriptor }) {
         <button
           type="button"
           className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
-          onClick={() => { if (tab.projectId) useSelection.getState().selectProject(tab.projectId); }}
+          title={tab.projectId ? `Open the project picker (choose ${tab.projectId})` : "Open the project picker"}
+          onClick={toggleProjectPicker}
         >
-          Switch to that project
+          Switch project…
         </button>
         <button
           type="button"

@@ -32,7 +32,7 @@ import { useSelection } from "../contracts/selection";
 import { anchorKey } from "../contracts/anchor";
 import { useTabTrees } from "../tabTreeStore";
 import { useTabTitles, titleKey } from "../tabTitles";
-import { useCompanion } from "../companionStore";
+import { tabVisible, useCompanion } from "../companionStore";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import { isTextEditing } from "../shortcuts";
 import { AgentComposer } from "./AgentComposer";
@@ -41,7 +41,7 @@ import { AgentReplyActions } from "./AgentReplyActions";
 import { AgentThread } from "./AgentThread";
 import { useAgentDraft } from "./agentDraft";
 import { agentDraftKey } from "./agentPaneId";
-import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore, useSyncProjectFilter } from "./agentPaneStore";
+import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore } from "./agentPaneStore";
 import { historyFor, useAgentThreads, type AgentTurn } from "./agentThreadStore";
 import { agentSystemContext, failureReasonOf, projectTreeSummary, thoughtPartnerTransport, type AgentTransport, type AgentTransportReply } from "./agentTransport";
 import { PANE, type AgentPaneTab } from "./agentTypes";
@@ -110,9 +110,8 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
   const selection = useSelection((s) => s.selection);
   const leftTabs = useLeftReaderTabs();
   const companionTabs = useCompanion((s) => s.tabs);
+  const projectFilter = useCompanion((s) => s.projectFilter);
   const inRouter = useInRouterContext();
-
-  useSyncProjectFilter();
 
   const draftKey = agentDraftKey({ ...(tab.projectId ? { projectId: tab.projectId } : {}), agentId: tab.agentId, pane: PANE });
   const [draft, setDraft] = useAgentDraft(draftKey);
@@ -142,10 +141,15 @@ export function AgentPane({ tab, transport = thoughtPartnerTransport, interview 
     }
   }, [anchorId, anchor, announce]);
 
+  // The @agent picker offers exactly the agents the strip shows (finding 2):
+  // a tab the project filter hides is not a candidate, so hiding it in the
+  // strip and hiding it here are one rule (tabVisible).
   const candidates = useMemo(() => ({
-    agents: companionTabs.filter((t) => t.id !== tab.id).map((t) => ({ id: t.id, label: t.title })),
+    agents: companionTabs
+      .filter((t) => t.id !== tab.id && tabVisible(t, projectFilter))
+      .map((t) => ({ id: t.id, label: t.title })),
     sources: sourceCandidates(tree, selection, leftTabs),
-  }), [companionTabs, tab.id, tree, selection, leftTabs]);
+  }), [companionTabs, projectFilter, tab.id, tree, selection, leftTabs]);
 
   const systemContext = useCallback(() => agentSystemContext({
     projectSummary: tab.scope === "project" && tab.projectId ? projectTreeSummary(tree, tab.projectId) : null,

@@ -236,3 +236,25 @@ describe("the draft survives close/reopen (M1)", () => {
     expect(document.querySelector<HTMLTextAreaElement>("[data-agent-pane] textarea")!.value).toBe("half a thought");
   });
 });
+
+describe("the @agent picker respects the project filter (finding 2)", () => {
+  it("a p-b project agent never offers a p-a agent the strip hides; cross-project agents stay offered", () => {
+    const { transport } = scripted([]);
+    useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "inv-a", title: "Agent A", scope: "project", projectId: "p-a" });
+    useCompanion.getState().openAgentTab({ kind: "dialogue", scope: "cross-project", agentId: "x:0" });
+    // The filter's one wire is CompanionPane's (finding 1); this standalone
+    // host sets the store value the wire would have written.
+    useCompanion.getState().setProjectFilter("p-b");
+    const pb: AgentPaneTab = { id: "agent:thread:inv-pane", title: "Agent B", scope: "project", projectId: "p-b", agentId: "p:p-b" };
+    host(transport, { tab: pb });
+    const textarea = document.querySelector<HTMLTextAreaElement>("[data-agent-pane] textarea")!;
+    fireEvent.change(textarea, { target: { value: "@" } });
+    const opts = [...document.querySelectorAll('[data-agent-pane] [role="option"]')].map((o) => o.textContent);
+    expect(opts).not.toContain("Agent A");
+    expect(opts).toContain("dialogue");
+    // Lifting the filter offers A again: the candidates follow the filter, not a snapshot.
+    act(() => { useCompanion.getState().setProjectFilter("p-a"); });
+    const after = [...document.querySelectorAll('[data-agent-pane] [role="option"]')].map((o) => o.textContent);
+    expect(after).toContain("Agent A");
+  });
+});
