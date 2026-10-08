@@ -27,7 +27,14 @@ import { isFeatureOn } from "../lib/featureFlags";
 import type { WorkspaceSnapshot } from "./panel.types";
 import type { LayoutPreset } from "./panel.types";
 import { accountStorageKey, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
-import type { PaneArrangement } from "./panel.types";
+import type { PaneArrangement, PaneTarget, PaneTile } from "./panel.types";
+import {
+  ARRANGEMENT_SLOTS,
+  isArrangementSlot,
+  type ArrangementPreset,
+  type PaneArrangementMap,
+  type ProjectSlots,
+} from "./paneArrangements";
 import { replaceNavigationStateWithoutPublication } from "./navigationLifetime";
 
 const LS_PREFIX = "antiek.workspace.";
@@ -577,4 +584,110 @@ export function writePaneArrangement(arrangement: PaneArrangement): void {
   if (typeof window === "undefined") return;
   try { window.localStorage.setItem(DESKTOP_PANE_KEY, JSON.stringify({ schemaVersion: 1, arrangement })); }
   catch { /* The current client choice survives unavailable storage. */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Numbered pane arrangements — SPR-01 M6 (R11). ADDITIVE: a SEPARATE
+// account-scoped, versioned blob, deliberately NOT folded into the layout
+// PersistedSnapshot, for the same reason as the layout preset and the tab
+// project above: arrangements are chrome preference, not layout state.
+// ─────────────────────────────────────────────────────────────────────
+//
+// One key (`antiek.workspace.pane-arrangements`), one schemaVersion, keyed
+// inside by the account project id (project.select's id). The guard is the
+// existing rule, applied WHOLE: a missing key reads as no arrangements; a
+// parse error, a schemaVersion mismatch, or any structurally invalid entry
+// discards the blob ENTIRELY with a warning — never a half-trusted preset.
+
+const PANE_ARRANGEMENTS_KEY = LS_PREFIX + "pane-arrangements";
+
+interface PersistedPaneArrangements {
+  schemaVersion: 1;
+  projects: PaneArrangementMap;
+}
+
+function validTarget(value: unknown): value is PaneTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (record.kind === "core" || record.kind === "companion") return true;
+  return record.kind === "window" && typeof record.id === "string" && record.id.length > 0;
+}
+
+function validTile(value: unknown): value is PaneTile {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (record.kind === "leaf") return validTarget(record.target);
+  if (record.kind !== "split") return false;
+  return (record.axis === "x" || record.axis === "y")
+    && typeof record.ratio === "number" && Number.isFinite(record.ratio)
+    && validTile(record.first) && validTile(record.second);
+}
+
+function validPreset(value: unknown): value is ArrangementPreset {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (record.arrangement === "horizontal" || record.arrangement === "tiled")
+    && Array.isArray(record.order) && record.order.every(validTarget)
+    && (record.tiles === null || validTile(record.tiles));
+}
+
+function validProjectSlots(value: unknown): value is ProjectSlots {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (!isArrangementSlot(record.current)) return false;
+  if (record.last !== null && !isArrangementSlot(record.last)) return false;
+  if (typeof record.presets !== "object" || record.presets === null) return false;
+  return Object.entries(record.presets as Record<string, unknown>).every(([slot, preset]) =>
+    (ARRANGEMENT_SLOTS as readonly string[]).includes(slot) && validPreset(preset));
+}
+
+/** Read every project's slots. {} on miss; the WHOLE blob is discarded on a
+ *  parse error, a version mismatch, or any invalid entry. */
+export function readPaneArrangements(): PaneArrangementMap {
+  if (typeof window === "undefined") return {};
+  const key = accountStorageKey(PANE_ARRANGEMENTS_KEY);
+  if (key === null) return {};
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    const valid = typeof parsed === "object" && parsed !== null
+      && (parsed as PersistedPaneArrangements).schemaVersion === 1
+      && typeof (parsed as PersistedPaneArrangements).projects === "object"
+      && (parsed as PersistedPaneArrangements).projects !== null
+      && Object.values((parsed as PersistedPaneArrangements).projects).every(validProjectSlots);
+    if (!valid) {
+      // eslint-disable-next-line no-console
+      console.warn("[antiek/persistence] discarding pane-arrangements blob (unknown version or invalid entry)");
+      return {};
+    }
+    return (parsed as PersistedPaneArrangements).projects;
+  } catch {
+    return {};
+  }
+}
+
+/** Write the whole map (one blob; arrangement ops are rare). Silent on
+ *  quota errors — the in-memory state stands. */
+export function writePaneArrangements(projects: PaneArrangementMap): void {
+  if (typeof window === "undefined") return;
+  const key = accountStorageKey(PANE_ARRANGEMENTS_KEY);
+  if (key === null) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ schemaVersion: 1, projects } satisfies PersistedPaneArrangements));
+  } catch {
+    // Quota exceeded / storage disabled — silent; in-memory state stands.
+  }
+}
+
+/** Delete the blob (reset-to-defaults). */
+export function clearPaneArrangements(): void {
+  if (typeof window === "undefined") return;
+  const key = accountStorageKey(PANE_ARRANGEMENTS_KEY);
+  if (key === null) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
 }

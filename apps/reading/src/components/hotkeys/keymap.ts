@@ -55,7 +55,7 @@ import { isFeatureOn } from "../../lib/featureFlags";
 export const KEYMAP_DECISION =
   "docs/decisions/mothership-keys-herdr-prefix.md (specs/antiek-mothership/DECISIONS.md D2)";
 
-export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed" | "lane-Sweep-SPR-02";
+export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed" | "lane-Sweep-SPR-02" | "lane-Sweep-SPR-01";
 export type KeymapScope = "anywhere" | "outside-text";
 export type KeymapTask = "find" | "go" | "panels" | "help";
 export type Platform = "mac" | "other";
@@ -88,6 +88,32 @@ export const ACTIONS = {
   "pane.focusRight": { label: PANE_FLOW_ON ? "Pane: focus the next pane" : "Pane: focus the right pane" },
   "pane.reorderLeft": { label: "Pane: move the focused pane left" },
   "pane.reorderRight": { label: "Pane: move the focused pane right" },
+  // SPR-01 M6 (R11): the ten numbered arrangements — one jump and one
+  // move-and-follow action per slot, plus cycle/last-used. Digit 0 is slot
+  // 10, Omarchy's own ordering.
+  "pane.arrangement1": { label: "Panes: jump to arrangement 1" },
+  "pane.arrangement2": { label: "Panes: jump to arrangement 2" },
+  "pane.arrangement3": { label: "Panes: jump to arrangement 3" },
+  "pane.arrangement4": { label: "Panes: jump to arrangement 4" },
+  "pane.arrangement5": { label: "Panes: jump to arrangement 5" },
+  "pane.arrangement6": { label: "Panes: jump to arrangement 6" },
+  "pane.arrangement7": { label: "Panes: jump to arrangement 7" },
+  "pane.arrangement8": { label: "Panes: jump to arrangement 8" },
+  "pane.arrangement9": { label: "Panes: jump to arrangement 9" },
+  "pane.arrangement10": { label: "Panes: jump to arrangement 10" },
+  "pane.moveToArrangement1": { label: "Panes: move the focused pane into arrangement 1 and follow" },
+  "pane.moveToArrangement2": { label: "Panes: move the focused pane into arrangement 2 and follow" },
+  "pane.moveToArrangement3": { label: "Panes: move the focused pane into arrangement 3 and follow" },
+  "pane.moveToArrangement4": { label: "Panes: move the focused pane into arrangement 4 and follow" },
+  "pane.moveToArrangement5": { label: "Panes: move the focused pane into arrangement 5 and follow" },
+  "pane.moveToArrangement6": { label: "Panes: move the focused pane into arrangement 6 and follow" },
+  "pane.moveToArrangement7": { label: "Panes: move the focused pane into arrangement 7 and follow" },
+  "pane.moveToArrangement8": { label: "Panes: move the focused pane into arrangement 8 and follow" },
+  "pane.moveToArrangement9": { label: "Panes: move the focused pane into arrangement 9 and follow" },
+  "pane.moveToArrangement10": { label: "Panes: move the focused pane into arrangement 10 and follow" },
+  "pane.nextArrangement": { label: "Panes: the next existing arrangement" },
+  "pane.prevArrangement": { label: "Panes: the previous existing arrangement" },
+  "pane.lastArrangement": { label: "Panes: the last-used arrangement" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
   "layout.togglePreset": { label: PANE_FLOW_ON ? "Layout: horizontal ⇄ tiled" : "Layout: cockpit inset ⇄ docked" },
   "tab.next": { label: "Tab: next tab in the focused pane" },
@@ -147,6 +173,63 @@ export type KeymapRow = KeymapBinding & (
 const D = KEYMAP_DECISION;
 const FLOW_DECISION = D + "; specs/codex-design-takeover-20260927/horizontal-pane-flow-20261002/contract.md (U1 cb8f0dd8)";
 
+// ── SPR-01 M6 (R11): numbered arrangements 1–0 per project ──────────────
+// The Omarchy mapping (refs/omarchy-herdr.md A2): prefix+digit and
+// ctrl+alt+digit JUMP to arrangement N (SUPER+N); prefix+shift+digit and
+// ctrl+alt+shift+digit MOVE the focused pane into arrangement N and follow
+// (SUPER+SHIFT+N); prefix+tab / prefix+shift+tab cycle the EXISTING
+// arrangements (SUPER+TAB, empty slots skip); prefix+ctrl+tab is the
+// last-used one (SUPER+CTRL+TAB). Digit 0 is slot 10, Omarchy's ordering.
+// Decision (the page's, recorded with its reconsider clause): prefix+digit
+// is an arrangement jump, NOT herdr's tab jump — tabs keep n/p.
+const M6_DECISION = "specs/antiek-keyboard-panes-agents-20261007/sprint-01-leader-key-tiling.html M6 (R11): prefix+digit is an arrangement jump, not herdr's tab jump (tabs keep n/p)";
+const M6_BLOCKED = "antiek.flag.pane.flow (SPR-01 M6: arrangements exist only in flow mode)";
+
+/** slot key → the two per-slot actions (literal, so ActionId stays exact).
+ *  Exported: the dispatcher's handlers derive from the same table, so a
+ *  key and its handler can never drift apart. */
+export const ARRANGEMENT_KEY_ACTIONS = [
+  { key: "1", jump: "pane.arrangement1", move: "pane.moveToArrangement1" },
+  { key: "2", jump: "pane.arrangement2", move: "pane.moveToArrangement2" },
+  { key: "3", jump: "pane.arrangement3", move: "pane.moveToArrangement3" },
+  { key: "4", jump: "pane.arrangement4", move: "pane.moveToArrangement4" },
+  { key: "5", jump: "pane.arrangement5", move: "pane.moveToArrangement5" },
+  { key: "6", jump: "pane.arrangement6", move: "pane.moveToArrangement6" },
+  { key: "7", jump: "pane.arrangement7", move: "pane.moveToArrangement7" },
+  { key: "8", jump: "pane.arrangement8", move: "pane.moveToArrangement8" },
+  { key: "9", jump: "pane.arrangement9", move: "pane.moveToArrangement9" },
+  { key: "0", jump: "pane.arrangement10", move: "pane.moveToArrangement10" },
+] as const;
+
+/**
+ * The 43 arrangement rows, one table for both worlds: implemented with the
+ * flag on, declared pending on it with the flag off (the reorder rows'
+ * precedent — the sheet says why and the dispatcher binds nothing). The
+ * rows own 1–9 / ctrl+alt+1–9 in BOTH variants, so RESERVED_FOR_LATER drops
+ * them unconditionally; 0 and the shift/tab forms were never reserved.
+ */
+function arrangementRows(implemented: boolean): KeymapRow[] {
+  const row = (binding: KeymapBinding): KeymapRow =>
+    implemented
+      ? { ...binding }
+      : { ...binding, status: "unimplemented", blockedBy: M6_BLOCKED };
+  const rows: KeymapRow[] = [];
+  for (const { key, jump, move } of ARRANGEMENT_KEY_ACTIONS) {
+    rows.push(
+      row({ id: `prefix-pane-arrangement-${key}`, action: jump, prefixKey: key, scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+      row({ id: `chord-pane-arrangement-${key}`, action: jump, chord: `ctrl+alt+${key}`, scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+      row({ id: `prefix-pane-move-arrangement-${key}`, action: move, prefixKey: `shift+${key}`, scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+      row({ id: `chord-pane-move-arrangement-${key}`, action: move, chord: `ctrl+alt+shift+${key}`, scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+    );
+  }
+  rows.push(
+    row({ id: "prefix-pane-arrangement-next", action: "pane.nextArrangement", prefixKey: "tab", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+    row({ id: "prefix-pane-arrangement-prev", action: "pane.prevArrangement", prefixKey: "shift+tab", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+    row({ id: "prefix-pane-arrangement-last", action: "pane.lastArrangement", prefixKey: "ctrl+tab", scope: "outside-text", origin: "lane-Sweep-SPR-01", decision: M6_DECISION }),
+  );
+  return rows;
+}
+
 const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
@@ -164,6 +247,8 @@ const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   // main does not use, so the sheet says why and the dispatcher binds nothing.
   { id: "prefix-pane-reorder-left", action: "pane.reorderLeft", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowleft", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
   { id: "prefix-pane-reorder-right", action: "pane.reorderRight", status: "unimplemented", blockedBy: "antiek.flag.pane.flow (SPR-01 M1 landing; flipped in SPR-05)", prefixKey: "shift+arrowright", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  // The arrangement rows occupy their keys in both worlds (below).
+  ...arrangementRows(false),
 ];
 const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
@@ -183,6 +268,8 @@ const FLOW_PANE_ROWS: readonly KeymapRow[] = [
   // Retain prefix+shift+i; i stays the inbox's.
   { id: "prefix-layout-preset", action: "layout.togglePreset", status: "implemented", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-layout-preset", action: "layout.togglePreset", status: "implemented", chord: "ctrl+alt+l", scope: "outside-text", origin: "D2", decision: FLOW_DECISION },
+  // SPR-01 M6: the numbered arrangement rows (implemented).
+  ...arrangementRows(true),
 ];
 
 
@@ -282,16 +369,16 @@ export const KEYMAP: readonly KeymapRow[] = [
  * the sheet derives that status from this table.)
  * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
  * prefix+a always works and the operator's platforms do not grab it.
+ * SPR-01 M6 took 1–9 and ctrl+alt+1–9 for the numbered arrangements (R11);
+ * the arrangement rows own them in both flag worlds. Digit 0 was never
+ * reserved and is theirs too.
  */
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
-    "1", "2", "3", "4", "5", "6", "7", "8", "9",
     "w", "shift+n", "m", "shift+m",
     "r", "a",
   ],
   chords: [
-    "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
-    "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
     "ctrl+alt+w",
     "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m",
     "ctrl+alt+r", "ctrl+alt+a",
@@ -477,6 +564,12 @@ export function eventMatchesCombo(e: KeyboardEvent, spec: string): boolean {
   const code = codeToKey(e.code ?? "");
   if (c.alt) return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
   if (c.key === "arrowleft" || c.key === "arrowright") return !altGraph(e) && e.shiftKey === c.shift && code === c.key;
+  // SPR-01 M6 rows: digits distinguish shift (prefix+1 jumps, prefix+shift+1
+  // moves), matched on the physical Digit code so a shifted glyph ("!") still
+  // resolves; Tab matches its named key with the shift distinction the
+  // raw-key branch below deliberately skips for punctuation.
+  if (/^[0-9]$/.test(c.key)) return e.shiftKey === c.shift && (e.key === c.key || code === c.key);
+  if (c.key === "tab") return e.shiftKey === c.shift && (e.key === "Tab" || e.code === "Tab");
   if (!c.mod && !c.ctrl && !c.meta && !/^[a-z]$/.test(c.key)) return e.key === c.key;
   return e.shiftKey === c.shift && (logicalKey(e) === c.key || (c.ctrl && code === c.key));
 }
