@@ -382,13 +382,24 @@ describe("the table after the decision", () => {
   });
 
   it("the reserved list still refuses the later sprints' keys", () => {
-    // SPR-07 took prefix+a for the agent pane; the rest stay reserved.
-    for (const k of ["1", "w", "m", "r"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
+    // SPR-04 took prefix+w for gear.toggle and SPR-07 took prefix+a for
+    // the agent pane; the rest stay reserved.
+    for (const k of ["1", "m", "r"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
     const probe = validateKeymap(
-      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "w", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
+      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "m", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
       handlerIds,
     );
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
+  });
+
+  it("prefix+w left the reserved list for gear.toggle (SPR-04 M3); ctrl+alt+w stays reserved", () => {
+    // herdr's "workspace navigate" is prefix+w, so SPR-04 moved "w" out of
+    // RESERVED_FOR_LATER.prefixKeys and into a real row (keymap.ts SPR-04 comment).
+    expect(RESERVED_FOR_LATER.prefixKeys).not.toContain("w");
+    expect(KEYMAP.find((r) => r.prefixKey === "w")?.action).toBe("gear.toggle");
+    expect(KEYMAP.find((r) => r.chord === "ctrl+alt+shift+w")?.action).toBe("gear.toggle");
+    expect(RESERVED_FOR_LATER.chords).toContain("ctrl+alt+w");
+    expect(KEYMAP.find((r) => r.chord === "ctrl+alt+w")).toBeUndefined();
   });
 });
 
