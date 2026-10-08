@@ -10,9 +10,9 @@ The page's motivating claim ("Shift+Arrow produces no FloatMenu today") is false
 
 Revised model: **selection origin decides the affordance, per selection epoch.**
 
-- Pointer-originated selection → FloatMenu (unchanged, including its Ask action).
-- Keyboard-originated selection (Shift+Arrows, Select-All-narrowed, vim-style) → the pill.
-- The two never render for the same selection. The selection hook gains an origin tag (`"pointer" | "keyboard"`), derived from whether a pointer event participated in the current selection epoch (pointerdown since last empty selection). Acceptance: property test over mixed input sequences asserts exactly one floating affordance per epoch.
+- The affordance follows the **modality of the most recent selection-changing input**, tracked the way focus-visible tracks modality: a keyboard event that changes the selection (Shift+Arrow et al.) marks the epoch keyboard; a pointer event that changes it (drag, shift+click, handle adjust) marks it pointer. Mixed gestures classify by the LAST change — click-then-Shift+Arrow is keyboard, keyboard-then-drag-adjust is pointer (Grok G1).
+- Pointer epoch → FloatMenu (unchanged, including its Ask action). Keyboard epoch → the pill.
+- The two never render for the same epoch, which removes the pill-above-FloatMenu stack: R4's arbitration e2e covers pill-above-*other* overlays (islands, slash menu), and FloatMenu and the pill never co-render to arbitrate between. Acceptance: property test over mixed-modality sequences asserts exactly one affordance **and that it is the one the epoch's last modality dictates** (a count-only check would pass on the wrong affordance).
 
 This makes the pill *necessary* (keyboard users currently get a mouse-shaped menu) rather than duplicative.
 
@@ -27,7 +27,8 @@ Revised: highlight→Ask calls `openAgentPane({ scope: "project", anchor, draft:
 A keyboard-first product cannot spec a pill with no keyboard path (J4b was unexecutable). Proposed rows, subject to the keymap census guard at implementation time:
 
 - `prefix+shift+a` / `ctrl+alt+shift+a` — "Ask about the current selection": opens the agent pane with the anchor and focuses the composer. With no selection, falls back to `openAgentPaneFromKey()` behavior (plain project agent).
-- The pill itself is focusable via the same key when a keyboard selection exists (it is the selection's affordance, not a mouse-only ornament), exposes `aria-keyshortcuts` from `ariaKeyshortcutsFor` (bindings.ts convention), and appears in the KeySheet via the keymap row — never as a parallel listing.
+- The pill is a pointer-first affordance: clickable, Tab-focusable for completeness, with `aria-keyshortcuts` from `ariaKeyshortcutsFor` and a KeySheet row derived from the keymap. Keyboard users never need to focus it — the Ask chord acts directly on the selection (Grok G2: the chord opens the pane and focuses the composer, full stop; it does not focus the pill first). The pill's lifetime: it lives while its epoch's selection survives, closes on Esc (R4), outside pointerdown, or selection collapse, and clicking it behaves exactly like the chord.
+- **Second passage while the pane is open**: Ask with a new selection REPLACES the armed anchor chip (the chip is singular) — unsent draft text survives the swap, the swap is announced in the chip's aria-label ("context replaced"), and the previous anchor is recoverable via the existing Undo path. Never stack, never refuse.
 
 `prefix+a` / `ctrl+alt+a` are taken by #3756 (SPR-07 pane open); `prefix+w` by #3757; `prefix+shift+j/g` by #3758. The proposed keys were free on every in-flight head at review time; the census test proves it at implementation time.
 
@@ -55,7 +56,7 @@ Resolve the three-way contradiction in favor of the shipped contract: `anchor.ts
 
 ## R7 — `data-quote-source-id` gets an owner: this sprint, milestone M0
 
-The same-source check depends on `data-quote-source-id` attributes that nothing sets (zero hits on main and every in-flight head). Added as M0 of the revised sprint: mark quotable regions — reader page blocks in `Reading/index.tsx` and writer blocks via `Write/Editor/locator.ts` identity (`sectionId/outlineBlockId/paragraphIndex`). Without M0 the same-source adversarial lenses have no mechanism; with it they are executable.
+The same-source check depends on `data-quote-source-id` attributes that nothing sets (zero hits on main and every in-flight head). Added as M0 of the revised sprint: mark quotable regions — reader page blocks in `Reading/index.tsx` and writer blocks via `Write/Editor/locator.ts`. **Value grammar** (Grok G3): `reader:<documentId>:<nodeId>` for the reader; `writer:<documentId>:<sectionId>:<outlineBlockId>:<paragraphIndex>` for the writer — colon-joined, each segment from the existing locator vocabulary, no free text. **Shift rule**: when prose edits move a block, the id's identity segments stay stable (they name the block, not its pixel position); a *deleted* block's id stops resolving and any anchor citing it follows R6's identity-absence refusal. Without M0 the same-source adversarial lenses have no mechanism; with it they are executable.
 
 ## R8 — The visual link survives focus
 
@@ -67,7 +68,7 @@ The operator ties the pane to the highlight; the DOM selection visually clears t
 
 ## R10 — The armed context fences continuously
 
-The quote chip's admission fence (accountWorkspaceOwner epoch) is checked at open *and* subscribed for the armed lifetime: an epoch bump (account/workspace replacement) drops the armed context with a one-line notice. Once-at-open would let a stale quote ride a replaced identity; the subscription is three lines against the existing epoch source.
+The quote chip's admission fence (accountWorkspaceOwner epoch) is checked at open *and* subscribed for the armed lifetime: an epoch bump (account/workspace replacement) drops the ARMED (unsent) context with a one-line notice. Already-sent turns stand untouched — they are history with provenance, and rewriting history would break the evidence base (Grok G3). Once-at-open would let a stale quote ride a replaced identity; the subscription is three lines against the existing epoch source.
 
 ## Revised acceptance set (replaces M1–M5 acceptance where contradicted)
 
