@@ -9,7 +9,8 @@
  *                      store + selection store; `surface="topbar"` mounts
  *                      the ONE PreBackendTreeFeed mount line and owns the
  *                      dialog; `surface="zen"` is a click-only chip that
- *                      fires the same window toggle.
+ *                      fires the same window toggle (no app caller at
+ *                      this head: the ZenHome slot mount follows #3749).
  *
  * Keys are element-level (the dialog's onKeyDown → the pure reducer);
  * Escape is ALSO declared as a window keyboard owner ("gear.escape",

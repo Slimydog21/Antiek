@@ -8,7 +8,14 @@
  *
  * The flag is re-read on every toggle event, so the keymap guard (and an
  * operator in devtools) can turn it on without a reload; with the flag
- * off the host renders nothing and the key is inert.
+ * off the host renders nothing and the key is inert. It registers no
+ * keyboard listener (the keymap dispatcher owns the keys); the
+ * GEAR_TOGGLE CustomEvent listener stays mounted with the flag off so
+ * the flag is re-read on the next toggle.
+ *
+ * Mounts at this head: the Topbar only (`surface="topbar"`). Nothing
+ * renders `surface="zen"` outside a test and a preview story; the ZenHome
+ * slot mount lands as a one-line follow-up when #3749 (ZenHome) merges.
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 

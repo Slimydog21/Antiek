@@ -67,5 +67,6 @@ export const StaleNight: Story = { args: { model: stale, ui: at(stale, 1) }, glo
 export const UnfedDay: Story = { args: { model: unfed, ui: null }, globals: day };
 export const UnfedNight: Story = { args: { model: unfed, ui: null }, globals: night };
 
-/** The zen slot's click-only chip. */
+/** Preview: the zen slot's click-only chip. Not mounted in the app at this
+ * head; the ZenHome slot mount lands as a one-line follow-up when #3749 merges. */
 export const ZenChipDay: Story = { args: { model: gear3, ui: null, surface: "zen" }, globals: day };
