@@ -16,7 +16,7 @@ import { useCompanion } from "../companionStore";
 import { AgentPane, CLOSE_LINGER_MS } from "./AgentPane";
 import { useAgentPaneStore } from "./agentPaneStore";
 import { useAgentThreads } from "./agentThreadStore";
-import type { AgentTransport, AgentTransportRequest } from "./agentTransport";
+import type { AgentTransport, AgentTransportReply, AgentTransportRequest } from "./agentTransport";
 import type { AgentPaneTab } from "./agentTypes";
 import { resetProjectSeedSeam, subscribeProjectSeed, type ProjectSeed } from "./interviewMode";
 
@@ -344,7 +344,7 @@ describe("the 8 s no-reply fallback at the pane (M8, repair C3)", () => {
   it("a reply at 7 900 ms is never overwritten by the 8 s timer: 30 s on, the answer stands, no failure copy, no Retry (second repair, finding 2)", async () => {
     const transport: AgentTransport = {
       kind: "whole",
-      send: vi.fn((req: AgentTransportRequest) => new Promise((resolve, reject) => {
+      send: vi.fn((req: AgentTransportRequest) => new Promise<AgentTransportReply>((resolve, reject) => {
         const t = setTimeout(() => resolve({ text: "Which era shall we study first, the 1830s or the 1970s?", shape: "SYNTHESIS" as const }), 7900);
         req.signal.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("aborted", "AbortError")); });
       })),
