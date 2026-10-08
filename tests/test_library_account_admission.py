@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 from test_operational_account_isolation import ALICE, BOB, OPERATOR, sign_in
@@ -368,7 +369,14 @@ def test_takedown_excluded_from_catalogue_without_changing_registered_metadata(
     assert metadata.json()["servable_full_text"] is False
     for suffix in ("/full-text", "/owner-full-text"):
         response = clients[owner].get(f"/books/taken-down{suffix}")
-        assert response.status_code == 403
+        assert response.status_code == 200
+        body = response.json()
+        assert body["full_text"] is None
+        assert body["snippet"] is None
+        assert body["servable"] is False
+        assert body["servability"] == "taken_down"
+        assert body["reason"] == "taken_down"
+        assert body["ad_eligible"] is False
         assert "PRIVATE_BODY_" not in response.text
 
 
@@ -422,27 +430,30 @@ def test_owner_filter_batches_and_takedown_use_one_read_snapshot(
 
     monkeypatch.setattr(library, "_CATALOG_BATCH_SIZE", 1)
     monkeypatch.setattr(library, "list_book_assets", batch)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        pending = pool.submit(clients[ALICE].get, "/library")
-        try:
-            assert entered.wait(timeout=5)
-            with db_lock.connect_write(db, purpose="test/library-concurrent-write") as con:
-                assert take_down(con, "public-before", reason="concurrent private control")
-                con.execute(
-                    "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
-                    [subjects[BOB], "alice-before"],
-                )
-                seed_book(con, "public-after", subjects[BOB], "public_domain", order=4)
-        finally:
-            release.set()
-        response = pending.result(timeout=5)
-    assert response.status_code == 200
-    assert response.json()["total"] == 2
-    assert {row["document_id"] for row in response.json()["works"]} == {
-        "public-before",
-        "alice-before",
-    }
-    first_request = False
-    result = page(clients[ALICE])
-    assert result["total"] == 1
-    assert {row["document_id"] for row in result["works"]} == {"public-after"}
+    # Keep the real same-process RW connection configuration available to
+    # connect_read's guarded fallback while another connection commits.
+    with duckdb.connect(db):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(clients[ALICE].get, "/library")
+            try:
+                assert entered.wait(timeout=5)
+                with db_lock.connect_write(db, purpose="test/library-concurrent-write") as con:
+                    assert take_down(con, "public-before", reason="concurrent private control")
+                    con.execute(
+                        "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
+                        [subjects[BOB], "alice-before"],
+                    )
+                    seed_book(con, "public-after", subjects[BOB], "public_domain", order=4)
+            finally:
+                release.set()
+            response = pending.result(timeout=5)
+        assert response.status_code == 200
+        assert response.json()["total"] == 2
+        assert {row["document_id"] for row in response.json()["works"]} == {
+            "public-before",
+            "alice-before",
+        }
+        first_request = False
+        result = page(clients[ALICE])
+        assert result["total"] == 1
+        assert {row["document_id"] for row in result["works"]} == {"public-after"}
