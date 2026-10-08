@@ -70,20 +70,26 @@ export interface ActionMeta {
   route?: string;
 }
 
+// Landing gate (SPR-01 M1, antiek.flag.pane.flow, default OFF), read ONCE at
+// load: with the flag off the pane rows AND their labels are main's; with it
+// on they are the packet's flow rows (S05 ctrl+alt+l → arrangement toggle,
+// arrow focus, shift+arrow reorder) and wording.
+const PANE_FLOW_ON = isFeatureOn("pane.flow");
+
 export const ACTIONS = {
   "palette.toggle": { label: "Switcher (command palette)" },
   "keysheet.toggle": { label: "Key sheet (this list)" },
   "projecttree.toggle": { label: "Toggle the sidebar (project tree)" },
   "aisidecar.toggle": { label: "Toggle the AI sidecar" },
-  "panel.focusPrev": { label: "Focus the previous panel or product window" },
-  "panel.focusNext": { label: "Focus the next panel or product window" },
+  "panel.focusPrev": { label: PANE_FLOW_ON ? "Focus the previous panel or product window" : "Focus the previous panel" },
+  "panel.focusNext": { label: PANE_FLOW_ON ? "Focus the next panel or product window" : "Focus the next panel" },
   "panel.closeFloating": { label: "Close the focused floating panel" },
-  "pane.focusLeft": { label: "Pane: focus the previous pane" },
-  "pane.focusRight": { label: "Pane: focus the next pane" },
+  "pane.focusLeft": { label: PANE_FLOW_ON ? "Pane: focus the previous pane" : "Pane: focus the left pane" },
+  "pane.focusRight": { label: PANE_FLOW_ON ? "Pane: focus the next pane" : "Pane: focus the right pane" },
   "pane.reorderLeft": { label: "Pane: move the focused pane left" },
   "pane.reorderRight": { label: "Pane: move the focused pane right" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
-  "layout.togglePreset": { label: "Layout: horizontal ⇄ tiled" },
+  "layout.togglePreset": { label: PANE_FLOW_ON ? "Layout: horizontal ⇄ tiled" : "Layout: cockpit inset ⇄ docked" },
   "tab.next": { label: "Tab: next tab in the focused pane" },
   "tab.prev": { label: "Tab: previous tab in the focused pane" },
   "tab.new": { label: "Tab: new tab (picker)" },
@@ -140,11 +146,6 @@ export type KeymapRow = KeymapBinding & (
 const D = KEYMAP_DECISION;
 const FLOW_DECISION = D + "; specs/codex-design-takeover-20260927/horizontal-pane-flow-20261002/contract.md (U1 cb8f0dd8)";
 
-// Landing gate (SPR-01 M1, antiek.flag.pane.flow, default OFF): the pane rows
-// are the packet's flow rows only when the flag is on — the S05 migration of
-// ctrl+alt+l from right-focus to the arrangement toggle, the arrow focus rows
-// and the pane.reorder rows. Flag off, the table is main's, byte for byte.
-const PANE_FLOW_ON = isFeatureOn("pane.flow");
 const LEGACY_PANE_ROWS: readonly KeymapRow[] = [
   { id: "prefix-pane-left", action: "pane.focusLeft", status: "implemented", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-left", action: "pane.focusLeft", status: "implemented", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },

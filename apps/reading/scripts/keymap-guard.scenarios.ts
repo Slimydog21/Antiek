@@ -85,6 +85,16 @@ function openPanels() {
 function focusedPanelB() {
   return until(() => !!document.querySelector('[role="region"][aria-label="Guard panel B"]:not(.opacity-95)') && !!document.querySelector('[role="region"][aria-label="Guard panel A"].opacity-95'), "panel.focus: visible focus did not move from A to B");
 }
+
+let reorderBefore = "";
+function reorderPrepare() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement === "legacy") s.setPaneArrangement("horizontal");
+  reorderBefore = useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|");
+}
+function reorderEffect(action: string) {
+  return until(() => useWorkspace.getState().paneOrder.map((t) => JSON.stringify(t)).join("|") !== reorderBefore, `${action}: logical pane order unchanged`);
+}
 interface Scenario { prepare?: () => void | Promise<void>; effect: () => void | Promise<void>; }
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
@@ -100,6 +110,11 @@ export const SCENARIOS = {
   "keysheet.toggle": { effect: () => see('[data-keymap-owner="keysheet.toggle"]') },
   "projecttree.toggle": { effect: () => see('[role="region"][aria-label="Project"]') },
   "aisidecar.toggle": { effect: () => see('[role="region"][aria-label="AI"]') },
+  // SPR-01 M1 (pane-flow landing): the reorder rows are implemented only with
+  // antiek.flag.pane.flow ON (the guard presses unimplemented rows and checks
+  // they do nothing); with it on, a reorder changes the logical pane order.
+  "pane.reorderLeft": { prepare: reorderPrepare, effect: () => reorderEffect("pane.reorderLeft") },
+  "pane.reorderRight": { prepare: reorderPrepare, effect: () => reorderEffect("pane.reorderRight") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {
