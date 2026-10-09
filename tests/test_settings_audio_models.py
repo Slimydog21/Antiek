@@ -374,3 +374,204 @@ def test_registry_fingerprint_substitution_is_not_current_authority(
     with pytest.raises(AudioModelUnavailable), service.guard_selection(request(), captured):
         pytest.fail("substituted registry fingerprint admitted")
     assert service.list(request()) == []
+
+
+def _stat_observation(info: os.stat_result, field: str, value: int) -> os.stat_result:
+    values: list[int | float] = [
+        info.st_mode,
+        info.st_ino,
+        info.st_dev,
+        info.st_nlink,
+        info.st_uid,
+        info.st_gid,
+        info.st_size,
+        info.st_atime,
+        info.st_mtime,
+        info.st_ctime,
+    ]
+    extras = {
+        "st_atime_ns": info.st_atime_ns,
+        "st_mtime_ns": info.st_mtime_ns,
+        "st_ctime_ns": info.st_ctime_ns,
+    }
+    indices = {
+        "st_mode": 0,
+        "st_ino": 1,
+        "st_dev": 2,
+        "st_nlink": 3,
+        "st_uid": 4,
+        "st_gid": 5,
+        "st_size": 6,
+    }
+    if field in indices:
+        values[indices[field]] = value
+    else:
+        extras[field] = value
+        values[{"st_atime_ns": 7, "st_mtime_ns": 8, "st_ctime_ns": 9}[field]] = value / 1e9
+    return os.stat_result(values, extras)
+
+
+def test_atime_only_fd_observations_preserve_real_current_selection(
+    service: AudioModelService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    public = service.create(request(), payload())
+    paths = [registry(service), service._root / "settings" / "audio-models.lock"]
+    identities = {(p.stat().st_dev, p.stat().st_ino) for p in paths}
+    native_fstat = os.fstat
+    observations = 0
+
+    def observed_fstat(fd: int) -> os.stat_result:
+        nonlocal observations
+        info = native_fstat(fd)
+        if (info.st_dev, info.st_ino) in identities:
+            observations += 1
+            return _stat_observation(info, "st_atime_ns", info.st_atime_ns + 1_000_000_000)
+        return info
+
+    monkeypatch.setattr(os, "fstat", observed_fstat)
+    captured = service.capture(request(), choice(str(public["id"])))
+    with service.guard_selection(request(), captured) as current:
+        assert current is captured
+    assert service.list(request()) == [public]
+    assert observations >= 6
+
+
+@pytest.mark.parametrize("chunk_size", [7, 64])
+def test_short_native_registry_chunks_consume_declared_body_and_one_eof(
+    service: AudioModelService, monkeypatch: pytest.MonkeyPatch, chunk_size: int
+) -> None:
+    public = service.create(request(), payload())
+    info = registry(service).stat()
+    native_read = os.read
+    reads: list[tuple[int, int]] = []
+
+    def short_read(fd: int, size: int) -> bytes:
+        current = os.fstat(fd)
+        if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+            return native_read(fd, size)
+        result = native_read(fd, min(size, chunk_size))
+        reads.append((size, len(result)))
+        return result
+
+    monkeypatch.setattr(os, "read", short_read)
+    assert service.list(request()) == [public]
+    assert sum(length for _, length in reads) == info.st_size
+    assert all(0 < length <= size for size, length in reads[:-1])
+    assert reads[-1] == (1, 0)
+    assert len(reads) > 2
+
+
+@pytest.mark.parametrize("failure", ["premature_eof", "growth"])
+def test_incomplete_or_growing_native_registry_refuses(
+    service: AudioModelService, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    service.create(request(), payload())
+    path = registry(service)
+    info = path.stat()
+    native_read = os.read
+    calls = 0
+    consumed = 0
+
+    def changing_read(fd: int, size: int) -> bytes:
+        nonlocal calls, consumed
+        current = os.fstat(fd)
+        if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+            return native_read(fd, size)
+        calls += 1
+        if failure == "premature_eof" and calls == 2:
+            return b""
+        if failure == "growth" and consumed == info.st_size:
+            with path.open("ab") as stream:
+                stream.write(b" ")
+        result = native_read(fd, min(size, 7))
+        consumed += len(result)
+        return result
+
+    monkeypatch.setattr(os, "read", changing_read)
+    with pytest.raises(AudioModelUnavailable):
+        service.list(request())
+    if failure == "premature_eof":
+        assert calls == 2
+        assert consumed == 7
+        assert path.stat().st_size == info.st_size
+    else:
+        assert consumed == info.st_size + 1
+        assert path.stat().st_size == info.st_size + 1
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    ],
+)
+def test_each_content_security_fd_identity_change_refuses(
+    service: AudioModelService, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    service.create(request(), payload())
+    info = registry(service).stat()
+    native_fstat = os.fstat
+    calls = 0
+
+    def changed_fstat(fd: int) -> os.stat_result:
+        nonlocal calls
+        current = native_fstat(fd)
+        if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+            return current
+        calls += 1
+        if calls == 2:
+            value = {
+                "st_dev": current.st_dev,
+                "st_ino": current.st_ino,
+                "st_mode": current.st_mode,
+                "st_uid": current.st_uid,
+                "st_gid": current.st_gid,
+                "st_nlink": current.st_nlink,
+                "st_size": current.st_size,
+                "st_mtime_ns": current.st_mtime_ns,
+                "st_ctime_ns": current.st_ctime_ns,
+            }[field]
+            return _stat_observation(current, field, value + 1)
+        return current
+
+    monkeypatch.setattr(os, "fstat", changed_fstat)
+    with pytest.raises(AudioModelUnavailable):
+        service.list(request())
+    assert calls == 2
+
+
+def test_registry_path_replacement_during_native_read_refuses(
+    service: AudioModelService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service.create(request(), payload())
+    path = registry(service)
+    info = path.stat()
+    native_read = os.read
+    replaced = False
+    body = path.read_bytes()
+
+    def replacing_read(fd: int, size: int) -> bytes:
+        nonlocal replaced
+        current = os.fstat(fd)
+        result = native_read(fd, size)
+        if (current.st_dev, current.st_ino) == (info.st_dev, info.st_ino) and not replaced:
+            replaced = True
+            path.rename(path.with_name("retired-registry.json"))
+            path.write_bytes(body)
+            path.chmod(0o600)
+        return result
+
+    monkeypatch.setattr(os, "read", replacing_read)
+    with pytest.raises(AudioModelUnavailable):
+        service.list(request())
+    assert replaced
+    assert path.stat().st_ino != info.st_ino
+    assert path.read_bytes() == body

@@ -118,6 +118,20 @@ def _secure_file(fd: int) -> os.stat_result:
     return info
 
 
+def _content_identity(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_gid,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
 def _pairs(items: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in items:
@@ -185,10 +199,9 @@ class AudioModelService:
             try:
                 identity = _secure_file(fd)
                 fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
-                if (
+                if _content_identity(
                     os.stat("audio-models.lock", dir_fd=directory, follow_symlinks=False)
-                    != identity
-                ):
+                ) != _content_identity(identity):
                     raise AudioModelUnavailable("replaced audio registry lock")
                 yield directory, self._read(directory)
             finally:
@@ -208,14 +221,24 @@ class AudioModelService:
             before = _secure_file(fd)
             if before.st_size > _MAX_BYTES:
                 raise AudioModelUnavailable("audio registry limit exceeded")
-            raw = os.read(fd, _MAX_BYTES + 1)
+            remaining = before.st_size
+            body = bytearray()
+            while remaining:
+                chunk = os.read(fd, min(remaining, 65_536))
+                if not chunk or len(chunk) > remaining:
+                    raise AudioModelUnavailable("incomplete audio registry")
+                body.extend(chunk)
+                remaining -= len(chunk)
             if (
                 os.read(fd, 1)
-                or before != os.fstat(fd)
-                or before
-                != os.stat("user_audio_models.json", dir_fd=directory, follow_symlinks=False)
+                or _content_identity(before) != _content_identity(os.fstat(fd))
+                or _content_identity(before)
+                != _content_identity(
+                    os.stat("user_audio_models.json", dir_fd=directory, follow_symlinks=False)
+                )
             ):
                 raise AudioModelUnavailable("changed audio registry")
+            raw = bytes(body)
         finally:
             os.close(fd)
         try:
