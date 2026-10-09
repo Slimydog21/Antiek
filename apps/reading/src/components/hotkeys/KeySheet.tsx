@@ -3,6 +3,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyn
 import { LemonModal } from "../lemon/LemonModal";
 import { readCustomHotkeys, type PersistedCustomHotkey } from "../../workspace/persistence";
 import {
+  awaitWorkspaceOwnerSession,
   isWorkspaceOwnerSession,
   subscribeWorkspaceOwnerAdmission,
   workspaceOwnerAdmission,
@@ -66,17 +67,28 @@ function useCustomHotkeys(): PersistedCustomHotkey[] | null {
   const admission = useSyncExternalStore(
     subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerAdmission,
   );
-  const [snapshot, setSnapshot] = useState(() => readCustomSnapshot(admission.session));
+  const [snapshot, setSnapshot] = useState<CustomSnapshot | null>(null);
 
   useEffect(() => {
+    const owner = admission.session;
     if (admission.state === "retiring" || admission.state === "failed"
-      || admission.session.subject === null) {
+      || owner.subject === null) {
       if (snapshot !== null) setSnapshot(null);
       return;
     }
-    if (admission.state === "ready" && snapshot?.owner !== admission.session) {
-      setSnapshot(readCustomSnapshot(admission.session));
-    }
+    if (admission.state !== "ready" || snapshot?.owner === owner) return;
+
+    const controller = new AbortController();
+    let live = true;
+    void awaitWorkspaceOwnerSession(owner, controller.signal).then((confirmed) => {
+      if (!confirmed || !live || !isWorkspaceOwnerSession(owner)) return;
+      const next = readCustomSnapshot(owner);
+      if (live && isWorkspaceOwnerSession(owner)) setSnapshot(next);
+    }, () => {});
+    return () => {
+      live = false;
+      controller.abort();
+    };
   }, [admission, snapshot]);
 
   // A cookie recheck retains this mounted snapshot, but cannot admit a fresh read.
