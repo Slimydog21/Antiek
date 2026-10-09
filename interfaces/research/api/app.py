@@ -2019,6 +2019,18 @@ def create_app(
                                     or (path == "/settings/models/catalog" and method == "GET")
                                     or path == "/settings/models/user"
                                     or re.fullmatch(r"/settings/models/user/[^/]+(?:/resolve)?", path) is not None
+                                    or (
+                                        path == "/settings/audio-models/catalog" and method == "GET"
+                                    )
+                                    or (
+                                        path == "/settings/audio-models/user"
+                                        and method in {"GET", "POST"}
+                                    )
+                                    or (
+                                        re.fullmatch(r"/settings/audio-models/user/[^/]+", path)
+                                        is not None
+                                        and method in {"PATCH", "DELETE"}
+                                    )
                                 )
                                 if not admitted:
                                     from fastapi.responses import JSONResponse
@@ -2263,6 +2275,9 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    from .settings_audio_model_routes import register_settings_audio_model_routes
+
+    register_settings_audio_model_routes(app)
     # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
     # time box, approved ceiling, route policy, source policy, and HTML/twin-note
     # artifact obligations. Does not launch agents or reserve budget.
