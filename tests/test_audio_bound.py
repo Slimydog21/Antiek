@@ -536,7 +536,7 @@ def test_synthetic_retirement_uncertainty_retains_exact_handles_and_blocks_new_c
             assert child.wait(timeout=0) is not None
             if bound._OWNED_CHILD is not None:
                 assert bound._OWNED_CHILD.child is child
-                setattr(bound, "_OWNED_CHILD", None)
+                bound.__dict__["_OWNED_CHILD"] = None
                 bound._SLOT.release()
 
 
