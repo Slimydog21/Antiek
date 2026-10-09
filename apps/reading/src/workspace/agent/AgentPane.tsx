@@ -11,7 +11,7 @@
  * ESCAPE LADDER (refs pattern 10; composerKeys.nextEscapeRung)
  *   rung        where              what one Esc does
  *   picker      composer           closes the @/# listbox
- *   recording   composer           stops the (stub) recording
+ *   recording   composer           stops the microphone recording
  *   chip        composer           removes the context chip, announces "Context removed"
  *   blur        composer           moves focus to the pane root ([data-agent-pane], tabIndex -1)
  *   close       root               closeAgentPane (the linger above)
@@ -24,9 +24,9 @@
  * enforced in this browser only (rigor #1): the server sees one
  * /thought-partner route with no project identity; the badge says so.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { awaitWorkspaceOwnerSession, workspaceOwnerAdmission, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, type WorkspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 import { parseAssistantReply, type AiAction } from "../../components/ai/aiActions";
 import { getReadingFocus, READING_FOCUS_EVENT, type ReadingFocus } from "../../lib/readingFocus";
@@ -42,6 +42,7 @@ import { AgentComposer } from "./AgentComposer";
 import { AgentEmptyState } from "./AgentEmptyState";
 import { AgentReplyActions } from "./AgentReplyActions";
 import { AgentThread } from "./AgentThread";
+import { AgentVoiceInput, type AgentVoiceAdmission } from "./AgentVoiceInput";
 import { useAgentDraft } from "./agentDraft";
 import { agentDraftKey } from "./agentPaneId";
 import { CLOSE_LINGER_MS, closeAgentPane, useAgentPaneStore, captureAgentPaneLease, isCurrentAgentPaneLease, useAgentOwnerAdmission, type AgentPaneLease } from "./agentPaneStore";
@@ -128,6 +129,9 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
 
   const draftKey = agentDraftKey({ ...(tab.projectId ? { projectId: tab.projectId } : {}), agentId: tab.agentId, pane: PANE });
   const [draft, setDraft] = useAgentDraft(draftKey);
+  const draftRef = useRef(draft);
+  useLayoutEffect(() => { draftRef.current = draft; }, [draft]);
+  const stopVoice = useRef<(() => void) | null>(null);
   const [chips, setChips] = useState<ComposerChip[]>([]);
   const [lifecycle, setLifecycle] = useState<LifecycleState>(IDLE);
   const [status, setStatus] = useState("");
@@ -140,6 +144,27 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
     const a = workspaceOwnerAdmission();
     return mounted.current && a.session === owner && a.state !== "failed" && a.state !== "retiring" && isCurrentAgentPaneLease(lease);
   }, [owner, lease]);
+  const captureVoiceAdmission = useCallback((): AgentVoiceAdmission | null => {
+    const trees = useTabTrees.getState();
+    const companion = useCompanion.getState();
+    const isCurrent = () => {
+      const t = useTabTrees.getState();
+      const c = useCompanion.getState();
+      const descriptor = c.tabs.find((entry) => entry.id === tab.id);
+      return active && current() && isConfirmedAgentOwner(owner)
+        && !useAgentPaneStore.getState().closing[tab.id]
+        && t.contextEpoch === trees.contextEpoch && t.projectId === trees.projectId
+        && c.projectFilter === companion.projectFilter && c.activeTabId === tab.id
+        && descriptor?.agentId === tab.agentId && descriptor.scope === tab.scope
+        && descriptor.projectId === tab.projectId;
+    };
+    if (!isCurrent()) return null;
+    return { isCurrent, subscribe: (retire) => {
+      const check = () => { if (!isCurrent()) retire(); };
+      const releases = [subscribeWorkspaceOwnerAdmission(check), useTabTrees.subscribe(check), useCompanion.subscribe(check), useAgentPaneStore.subscribe(check)];
+      return () => { for (const release of releases) release(); };
+    } };
+  }, [active, current, owner, tab.id, tab.agentId, tab.scope, tab.projectId]);
   const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const announce = useCallback((text: string) => {
@@ -238,7 +263,7 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
       });
       runnerRef.current = runner;
       runner.send();
-      if (!opts.hidden) { setDraft(""); setChips([]); }
+      if (!opts.hidden) { draftRef.current = ""; setDraft(""); setChips([]); }
     };
     if (isConfirmedAgentOwner(owner)) dispatch(true);
     else void awaitWorkspaceOwnerSession(owner, attempt.signal).then(dispatch);
@@ -441,6 +466,7 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
         onDraftChange={(value) => {
           if (!current()) return;
           pendingSend.current?.abort();
+          draftRef.current = value;
           setDraft(value);
         }}
         chips={chips}
@@ -452,13 +478,37 @@ function AdmittedAgentPane({ tab, transport = thoughtPartnerTransport, interview
         onEscapeRung={onRung}
         hasContextChip={chipVisible}
         recording={recording}
-        onStopRecording={() => { if (current() && isConfirmedAgentOwner(owner)) useAgentPaneStore.getState().setRecording(tab.id, false); }}
+        onStopRecording={() => {
+          if (!current() || !isConfirmedAgentOwner(owner)) return;
+          stopVoice.current?.();
+          if (current() && isConfirmedAgentOwner(owner)) useAgentPaneStore.getState().setRecording(tab.id, false);
+        }}
         active={active && !closing}
         openNonce={openNonce}
         rootRef={rootRef}
         announce={announce}
         disabled={closing}
         reducedMotion={reducedMotion}
+      />
+      <AgentVoiceInput
+        captureAdmission={captureVoiceAdmission}
+        registerStop={(stop) => {
+          stopVoice.current = stop;
+          return () => { if (stopVoice.current === stop) stopVoice.current = null; };
+        }}
+        onRecordingChange={(value) => {
+          // Suspension may retire this owner's capture, but cannot start one.
+          if (current() && (!value || isConfirmedAgentOwner(owner))) useAgentPaneStore.getState().setRecording(tab.id, value);
+        }}
+        onTranscript={(text) => {
+          if (!current() || !isConfirmedAgentOwner(owner)) return false;
+          pendingSend.current?.abort();
+          const value = draftRef.current ? `${draftRef.current}\n${text}` : text;
+          draftRef.current = value;
+          setDraft(value);
+          rootRef.current?.querySelector<HTMLTextAreaElement>("textarea[role='combobox']")?.focus();
+          return current() && isConfirmedAgentOwner(owner);
+        }}
       />
     </section>
   );
