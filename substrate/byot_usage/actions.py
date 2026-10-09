@@ -675,7 +675,10 @@ class _OwnerActionAccounting:
             return _owned_job(con, *row) if row else None
 
     def owned_wrestling_for_investigation(self, investigation_id: str) -> OwnedWrestlingJob | None:
-        _identity(investigation_id)
+        if type(investigation_id) is not str or investigation_id not in (
+            "__sidecar__", "__complete__",
+        ):
+            _identity(investigation_id)
         with self._action_transaction(write=False) as con:
             row = con.execute(
                 "SELECT owner_user_id,action_id FROM byot_owned_wrestling_job"
