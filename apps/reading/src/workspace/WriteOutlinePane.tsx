@@ -11,16 +11,21 @@ import { registerKeyboardOwner } from "./keyboardOwnership";
  *
  * Each block tab shows the block's content summary, its provenance kind,
  * and its source documents: the node-trace it was born from (when
- * node-backed) plus the sources the operator ASSIGNED by dropping them here
- * (repository search hits, left reader tabs). Assignment lands in
- * blockSources.ts, the honest session-scoped bridge until the write-through
- * endpoint lands (the copy says "session state", never a pretend-write).
+ * node-backed) plus the sources the operator ASSIGNED — by dropping them
+ * here (repository search hits, left reader tabs), or from the keyboard:
+ * a focused block tab's `a` opens the in-pane source picker (the same
+ * candidates the drag carries) and `x` removes the block's last
+ * assignment, both landing in blockSources.ts through the SAME callback
+ * the drop uses (the honest session-scoped bridge until the write-through
+ * endpoint lands; the copy says "session state", never a pretend-write).
  * A drop whose payload is not a source document is refused in words, and
  * nothing is assigned (parseSourceDragPayload).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
+import { ariaBinding } from "../components/hotkeys/bindings";
+import { prefixState } from "../components/hotkeys/prefixState";
 import { EmptyState, ErrorState, LoadingState } from "../components/states";
 import { getDeliverable } from "../lib/api";
 import type { SectionResponse } from "../lib/api";
@@ -33,6 +38,7 @@ import { useBlockSources } from "./blockSources";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { useWriteOutline } from "./writeOutlineStore";
 import { SOURCE_DOCUMENT_MIME } from "./sourceDrag";
+import WriteOutlineSourcePicker from "./WriteOutlineSourcePicker";
 
 export { SOURCE_DOCUMENT_MIME };
 
@@ -84,6 +90,9 @@ export default function WriteOutlinePane() {
   const [attempt, setAttempt] = useState(0);
   // The last drop that was not a source document, said once in words.
   const [refusedDrop, setRefusedDrop] = useState(false);
+  // The block the in-pane source picker is open for (the keyboard
+  // assignment path), or null.
+  const [pickerBlockId, setPickerBlockId] = useState<string | null>(null);
   const activeBlockId = useWriteOutline((s) => s.activeBlockId);
   const setActiveBlock = useWriteOutline((s) => s.setActiveBlock);
   const setBlocks = useWriteOutline((s) => s.setBlocks);
@@ -140,7 +149,39 @@ export default function WriteOutlinePane() {
     s.blocks.map((b) => ({ section: s.section, block: b })),
   );
   const active = flat.find((f) => f.block.outline_block_id === activeBlockId) ?? null;
+  const picker = pickerBlockId
+    ? (flat.find((f) => f.block.outline_block_id === pickerBlockId) ?? null)
+    : null;
 
+  /** The ONE write path for assigning a source to a block: the drop handler
+   *  and the keyboard picker's Enter both land here. A null payload is a
+   *  refused drop, said in words; a payload assigns and focuses the block. */
+  const assignToBlock = (blockId: string, payload: SourceDocumentDragPayload | null) => {
+    if (!payload) {
+      setRefusedDrop(true);
+      return;
+    }
+    setRefusedDrop(false);
+    assign(deliverableId ?? "", blockId, payload);
+    setActiveBlock(blockId);
+  };
+
+  /** `x` on a focused block tab removes its most recent assignment — the
+   *  keyboard undo of a mis-assignment (the per-source × buttons in the
+   *  card remain the per-row removal, reachable by Tab). */
+  const removeLastSource = (blockId: string) => {
+    if (!deliverableId) return;
+    const list = assignments[blockId] ?? [];
+    const last = list[list.length - 1];
+    if (last) unassign(deliverableId, blockId, last.document_id);
+  };
+
+  /** Closing the picker (Esc or a pick) returns focus to the block's tab. */
+  const closePicker = () => {
+    const blockId = pickerBlockId;
+    setPickerBlockId(null);
+    if (blockId) document.getElementById(blockTabDomId(blockId))?.focus();
+  };
 
   if (!deliverableId) {
     return (
@@ -159,7 +200,7 @@ export default function WriteOutlinePane() {
     <section
       aria-label="Outline"
       data-write-outline
-      className="flex h-full min-h-0 min-w-0 flex-col"
+      className="relative flex h-full min-h-0 min-w-0 flex-col"
     >
       {status === "loading" ? (
         <div className="shrink-0 border-b border-hairline">
@@ -172,15 +213,20 @@ export default function WriteOutlinePane() {
           activeBlockId={activeBlockId}
           assignments={assignments}
           onActivate={setActiveBlock}
-          onDropSource={(blockId, payload) => {
-            if (!payload) {
-              setRefusedDrop(true);
-              return;
-            }
-            setRefusedDrop(false);
-            assign(deliverableId, blockId, payload);
-            setActiveBlock(blockId);
+          onDropSource={assignToBlock}
+          onAssignIntent={(blockId) => setPickerBlockId(blockId)}
+          onRemoveIntent={removeLastSource}
+        />
+      ) : null}
+      {picker ? (
+        <WriteOutlineSourcePicker
+          blockLabel={blockDisplayText(picker.block)}
+          onPick={(payload) => {
+            assignToBlock(picker.block.outline_block_id, payload);
+            closePicker();
           }}
+          onClose={closePicker}
+          onDismiss={() => setPickerBlockId(null)}
         />
       ) : null}
       {refusedDrop ? <DropRefusedNote onDismiss={() => setRefusedDrop(false)} /> : null}
@@ -239,12 +285,18 @@ function BlockStrip({
   assignments,
   onActivate,
   onDropSource,
+  onAssignIntent,
+  onRemoveIntent,
 }: {
   flat: { section: SectionResponse; block: OutlineBlockView }[];
   activeBlockId: string | null;
   assignments: Record<string, { document_id: string; document_title: string | null }[]>;
   onActivate: (id: string) => void;
   onDropSource: (blockId: string, payload: SourceDocumentDragPayload | null) => void;
+  /** `a` on a focused block tab: open the source picker for it. */
+  onAssignIntent: (blockId: string) => void;
+  /** `x` / Delete on a focused block tab: remove its last assignment. */
+  onRemoveIntent: (blockId: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const blockKey = useMemo(() => flat.map((f) => f.block.outline_block_id).join("\u0000"), [flat]);
@@ -280,6 +332,33 @@ function BlockStrip({
             // The ARIA tabs pattern, automatic activation: a block card swaps
             // in place, so the arrow keys select as they move.
             if (e.ctrlKey || e.metaKey || e.altKey || flat.length === 0) return;
+            // The pane-scoped assignment keys (the drop's keyboard
+            // alternative): only from a block tab itself — never mid-IME-
+            // composition, never from an editable child, and never while the
+            // keymap prefix is armed (the next key is the prefix's then).
+            const tabEl =
+              e.target instanceof HTMLElement ? e.target.closest<HTMLElement>("[data-block-tab]") : null;
+            if (
+              tabEl &&
+              !e.shiftKey &&
+              // React's synthetic keyboard event doesn't proxy isComposing;
+              // the native event carries it.
+              !e.nativeEvent.isComposing &&
+              !tabEl.closest('input,textarea,select,[contenteditable="true"]') &&
+              !prefixState.isArmed()
+            ) {
+              const blockId = tabEl.dataset.blockTab!;
+              if (e.key === "a") {
+                e.preventDefault();
+                onAssignIntent(blockId);
+                return;
+              }
+              if (e.key === "x" || e.key === "Delete") {
+                e.preventDefault();
+                onRemoveIntent(blockId);
+                return;
+              }
+            }
             // -1 = no active block: ArrowRight lands on the first, ArrowLeft
             // on the last.
             const i = flat.findIndex((f) => f.block.outline_block_id === activeBlockId);
@@ -307,6 +386,7 @@ function BlockStrip({
                 aria-controls={BLOCK_PANEL_DOM_ID}
                 tabIndex={block.outline_block_id === rovingId ? 0 : -1}
                 data-block-tab={block.outline_block_id}
+                aria-keyshortcuts={`${ariaBinding("a")} ${ariaBinding("x")} Delete`}
                 onClick={() => onActivate(block.outline_block_id)}
                 onDragOver={(e) => {
                   if (e.dataTransfer.types.includes(SOURCE_DOCUMENT_MIME)) e.preventDefault();
@@ -322,7 +402,7 @@ function BlockStrip({
                     ? "bg-ice-2 text-ink dark:bg-charcoal-1 dark:text-bright"
                     : "text-ink-soft hover:bg-ice-2 dark:text-moonlight dark:hover:bg-charcoal-1"
                 }`}
-                title={`${section.title ?? "section"} · drop a source document to assign it`}
+                title={`${section.title ?? "section"} · drop a source document to assign it, or press A · X removes the last`}
               >
                 <span className="truncate">{blockDisplayText(block)}</span>
                 {assigned.length > 0 ? (
@@ -524,8 +604,9 @@ export function BlockCard({
         {assigned.length === 0 ? (
           <p className="mt-1 text-xs text-ink-soft dark:text-moonlight" data-no-sources>
             None assigned yet. Drag a repository hit or a document tab from the left
-            onto this block&apos;s tab. Assignments are session state for now: they
-            aren&apos;t saved with the piece yet.
+            onto this block&apos;s tab — or focus the tab and press A to pick one.
+            Assignments are session state for now: they aren&apos;t saved with the
+            piece yet.
           </p>
         ) : (
           <ul className="mt-1 flex flex-col gap-0.5" data-assigned-sources>
