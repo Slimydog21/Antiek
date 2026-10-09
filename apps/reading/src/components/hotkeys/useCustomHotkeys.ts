@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   type PersistedCustomHotkey,
@@ -6,6 +6,11 @@ import {
   writeCustomHotkeys,
   clearCustomHotkeys,
 } from "../../workspace/persistence";
+import {
+  accountStorageKey, awaitWorkspaceOwnerSession, isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerSession,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 import { setCustomHotkeys } from "../../workspace/shortcuts";
 import {
   type Conflict,
@@ -70,9 +75,13 @@ export interface AssignResult {
 // v1 envelope on a version mismatch (see persistence.ts). We accept that
 // trade deliberately: the cost of writing/maintaining a migration outweighs
 // re-binding a handful of personal hotkeys.
+const noBindings: PersistedCustomHotkey[] = [];
 const liveListeners = new Set<() => void>();
-function notifyCustomHotkeysChanged() {
-  for (const fn of liveListeners) fn();
+function notifyCustomHotkeysChanged(owner: WorkspaceOwnerSession) {
+  for (const fn of liveListeners) {
+    if (!isWorkspaceOwnerSession(owner)) return;
+    fn();
+  }
 }
 
 let nextIdCounter = 0;
@@ -108,69 +117,93 @@ export interface UseCustomHotkeys {
 }
 
 export function useCustomHotkeys(): UseCustomHotkeys {
-  const [bindings, setBindings] = useState<PersistedCustomHotkey[]>(
-    () => readCustomHotkeys().bindings,
+  const [owner] = useState(workspaceOwnerSession);
+  const admission = useSyncExternalStore(
+    subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerAdmission,
   );
+  const live = useRef(true);
+  const confirmed = useRef(owner.subject !== null && isWorkspaceOwnerSession(owner));
+  const current = useCallback(() => live.current && confirmed.current
+    && owner.subject !== null && isWorkspaceOwnerSession(owner), [owner]);
+  const [initial] = useState(() => {
+    if (!current()) return { bindings: noBindings, loaded: false };
+    const next = readCustomHotkeys().bindings;
+    return current() ? { bindings: next, loaded: true } : { bindings: noBindings, loaded: false };
+  });
+  const loaded = useRef(initial.loaded);
+  const [bindings, setBindings] = useState(initial.bindings);
 
-  // Whenever the React map changes, persist + push the resolvable subset to
-  // the live keydown handler so presses fire without a remount, then signal
-  // sibling instances so they re-read (same-tab liveness).
   useEffect(() => {
+    if (!loaded.current || !current()) return;
     writeCustomHotkeys({ schemaVersion: 1, bindings });
-    setCustomHotkeys(
-      bindings.map((b) => ({
-        id: b.id,
-        spec: b.spec,
-        route: b.route,
-        entityId: b.entityId,
-      })),
-    );
-    notifyCustomHotkeysChanged();
-  }, [bindings]);
+    if (!current()) return;
+    setCustomHotkeys(bindings.map((b) => ({
+      id: b.id, spec: b.spec, route: b.route, entityId: b.entityId,
+    })), owner);
+    if (current()) notifyCustomHotkeysChanged(owner);
+  }, [bindings, current, owner]);
 
-  // Stay live across sibling instances (same-tab pub-sub) and other tabs
-  // (the `storage` event). On any signal, re-read the canonical blob — this is
-  // idempotent for the writer (it just wrote the same value) and corrects a
-  // stale sibling. The push to the keydown handler is driven by the effect
-  // above when this re-read actually changes our state.
   useEffect(() => {
-    // Re-read, but bail if the persisted value already matches our state — so
-    // the instance that JUST wrote (and triggered the notify) doesn't loop:
-    // its re-read is value-equal, the functional update returns `prev`, and the
-    // `[bindings]` effect doesn't re-run.
-    const sync = () =>
-      setBindings((prev) => {
-        const next = readCustomHotkeys().bindings;
-        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-      });
-    liveListeners.add(sync);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === null || e.key.endsWith("custom-hotkeys")) sync();
+    live.current = true;
+    const sync = () => {
+      if (!current()) return;
+      const next = readCustomHotkeys().bindings;
+      if (!current()) return;
+      loaded.current = true;
+      setCustomHotkeys(next, owner);
+      if (!current()) return;
+      setBindings((prev) => !current() || JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
     };
+    liveListeners.add(sync);
+    const storageKey = accountStorageKey("antiek.workspace.custom-hotkeys", owner);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === storageKey) sync();
+    };
+    const unsubscribe = subscribeWorkspaceOwnerAdmission((snapshot) => {
+      confirmed.current = false;
+      if (snapshot.session !== owner || snapshot.state === "retiring" || snapshot.state === "failed") {
+        loaded.current = false;
+        setBindings([]);
+        return;
+      }
+      if (snapshot.state === "ready") {
+        void awaitWorkspaceOwnerSession(owner).then((ready) => {
+          if (!live.current || !ready || !isWorkspaceOwnerSession(owner)) return;
+          confirmed.current = true;
+          sync();
+        });
+      }
+    });
     window.addEventListener("storage", onStorage);
     return () => {
+      live.current = false;
       liveListeners.delete(sync);
+      unsubscribe();
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [current, owner]);
+
+  const visibleBindings = admission.session === owner
+    && (admission.state === "ready" || admission.state === "suspended") ? bindings : noBindings;
 
   const bindingForEntity = useCallback(
-    (entityId: string) => bindings.find((b) => b.entityId === entityId),
-    [bindings],
+    (entityId: string) => visibleBindings.find((b) => b.entityId === entityId),
+    [visibleBindings],
   );
 
   const checkConflict = useCallback(
     (spec: string, selfId?: string): Conflict | null =>
       detectConflict(
         spec,
-        bindings.map((b) => ({ id: b.id, spec: b.spec })),
+        visibleBindings.map((b) => ({ id: b.id, spec: b.spec })),
         selfId,
       ),
-    [bindings],
+    [visibleBindings],
   );
 
   const assign = useCallback(
     (input: CustomHotkeyInput, force = false): AssignResult => {
+      if (!current()) return { ok: false, conflict: { kind: "reserved", withId: "", message: "The account is not ready for custom hotkey changes." } };
       const spec = normalizeBinding(input.spec);
       // Shape gate (defence-in-depth with the capture affordance): a custom
       // binding must carry a modifier and must not be a chord. We reject a
@@ -227,7 +260,9 @@ export function useCustomHotkeys(): UseCustomHotkeys {
         label: input.label,
       };
 
+      if (!current()) return { ok: false, conflict: null };
       setBindings((prev) => {
+        if (!current()) return prev;
         // Drop: (a) any other binding holding this spec (override), and
         // (b) this entity's previous binding (re-bind).
         const cleaned = prev.filter(
@@ -239,24 +274,27 @@ export function useCustomHotkeys(): UseCustomHotkeys {
 
       return { ok: true, conflict, binding };
     },
-    [bindings],
+    [bindings, current],
   );
 
   const removeForEntity = useCallback((entityId: string) => {
-    setBindings((prev) => prev.filter((b) => b.entityId !== entityId));
-  }, []);
+    if (!current()) return;
+    setBindings((prev) => current() ? prev.filter((b) => b.entityId !== entityId) : prev);
+  }, [current]);
 
   const removeById = useCallback((id: string) => {
-    setBindings((prev) => prev.filter((b) => b.id !== id));
-  }, []);
+    if (!current()) return;
+    setBindings((prev) => current() ? prev.filter((b) => b.id !== id) : prev);
+  }, [current]);
 
   const resetAll = useCallback(() => {
+    if (!current()) return;
     clearCustomHotkeys();
-    setBindings([]);
-  }, []);
+    if (current()) setBindings([]);
+  }, [current]);
 
   return {
-    bindings,
+    bindings: visibleBindings,
     bindingForEntity,
     checkConflict,
     assign,

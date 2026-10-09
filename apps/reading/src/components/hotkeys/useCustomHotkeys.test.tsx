@@ -1,9 +1,13 @@
+import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 import { useCustomHotkeys } from "./useCustomHotkeys";
 import { getCustomHotkeys } from "../../workspace/shortcuts";
 import { readCustomHotkeys } from "../../workspace/persistence";
+
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
 
 const ENTITY = {
   entityId: "inv-1",

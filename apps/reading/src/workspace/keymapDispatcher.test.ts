@@ -1,3 +1,4 @@
+import { setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 /**
  * keymapDispatcher.test.ts — MS-01 milestone 4: the one dispatcher.
  *
@@ -20,6 +21,9 @@ import { SHORTCUT_EVENTS, installShortcuts, setCustomHotkeys } from "./shortcuts
 import { useWorkspace } from "./WorkspaceStore";
 import { countingHandlers, keyInit, pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
 
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
+
 let uninstall: (() => void) | null = null;
 
 afterEach(() => {
@@ -27,7 +31,7 @@ afterEach(() => {
   uninstall = null;
   unpinPlatform();
   prefixState.disarm();
-  setCustomHotkeys([]);
+  setCustomHotkeys([], workspaceOwnerSession());
   useWorkspace.getState().reset();
   document.body.innerHTML = "";
   vi.useRealTimers();

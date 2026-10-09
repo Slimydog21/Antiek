@@ -1,8 +1,12 @@
+import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 
 import { AssignHotkey } from "./AssignHotkey";
 import { readCustomHotkeys } from "../../workspace/persistence";
+
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
 
 beforeAll(() => {
   if (!window.matchMedia) {

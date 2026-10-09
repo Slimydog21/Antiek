@@ -1,3 +1,4 @@
+import { setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
@@ -12,6 +13,9 @@ import {
   emitProductActivate,
   type ProductActivateDetail,
 } from "../components/hotkeys/bindings";
+
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
 
 /** Helper: dispatch a keydown on window, optionally from a text-editing
  *  element so we can exercise the isTextEditing guard. */
@@ -43,14 +47,14 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
 
   beforeEach(() => {
     navigate = vi.fn();
-    setCustomHotkeys([]);
+    setCustomHotkeys([], workspaceOwnerSession());
     uninstall = installShortcuts(navigate as never);
   });
 
   afterEach(() => {
     uninstall();
     vi.useRealTimers();
-    setCustomHotkeys([]);
+    setCustomHotkeys([], workspaceOwnerSession());
   });
 
   // ── product ⌘+key navigates (one modifier, one keypress) ──────────────
@@ -177,7 +181,7 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
   it("a custom ⌥+key binding fires only with the modifier held, and emits activate", () => {
     setCustomHotkeys([
       { id: "x", spec: "alt+j", route: "/inv/abc", entityId: "abc" },
-    ]);
+    ], workspaceOwnerSession());
     const spy = vi.fn();
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, spy);
 
@@ -203,7 +207,7 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
     // any fixed table, so a custom binding can own it.
     setCustomHotkeys([
       { id: "y", spec: "mod+.", route: "/read/doc9", entityId: "doc9" },
-    ]);
+    ], workspaceOwnerSession());
     const spy = vi.fn();
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, spy);
     press(".", { metaKey: true });
@@ -218,7 +222,7 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
   it("setCustomHotkeys normalises the stored spec", () => {
     setCustomHotkeys([
       { id: "z", spec: "Mod+.", route: "/x", entityId: "e" },
-    ]);
+    ], workspaceOwnerSession());
     expect(getCustomHotkeys()[0].spec).toBe("mod+.");
   });
 
@@ -232,7 +236,7 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
   });
 
   it("⌘K does NOT also resolve a product combo (built-in branch wins + returns)", () => {
-    setCustomHotkeys([{ id: "k1", spec: "mod+k", route: "/should-not", entityId: "x" }]);
+    setCustomHotkeys([{ id: "k1", spec: "mod+k", route: "/should-not", entityId: "x" }], workspaceOwnerSession());
     // Even a (stale/impossible) custom mod+k can't win: the built-in branch
     // handles ⌘K and returns before resolveExtended is reached.
     press("k", { metaKey: true });
@@ -243,13 +247,13 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
 describe("shortcuts boot-hydration — M2 reload-persistence (the live handler reads the blob on mount)", () => {
   afterEach(() => {
     window.localStorage.clear();
-    setCustomHotkeys([]);
+    setCustomHotkeys([], workspaceOwnerSession());
     vi.useRealTimers();
   });
 
   it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", () => {
     // Simulate a prior session: a custom ⌥J → /inv/persisted is in localStorage.
-    setCustomHotkeys([]); // live map empty (as on a cold boot)
+    setCustomHotkeys([], workspaceOwnerSession()); // live map empty (as on a cold boot)
     writeCustomHotkeys({
       schemaVersion: 1,
       bindings: [
