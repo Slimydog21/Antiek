@@ -12,6 +12,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import KeySheet from "./KeySheet";
 import { ACTIONS, KEYMAP, isActiveOn, type Platform } from "./keymap";
 import { writeCustomHotkeys } from "../../workspace/persistence";
+import { awaitWorkspaceOwnerSession, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -127,8 +128,11 @@ describe("the filter (herdr keybind-help semantics)", () => {
 });
 
 describe("custom hotkeys and ownership", () => {
-  it("lists the operator's custom bindings, and states plainly when there are none", () => {
+  it("lists the operator's custom bindings, and states plainly when there are none", async () => {
     const { unmount } = render(<KeySheet onClose={() => {}} platform="mac" />);
+    await act(async () => {
+      await awaitWorkspaceOwnerSession(workspaceOwnerSession());
+    });
     expect(sheet().textContent).toMatch(/haven.t assigned any custom hotkeys/i);
     unmount();
     writeCustomHotkeys({
@@ -138,6 +142,9 @@ describe("custom hotkeys and ownership", () => {
       ],
     });
     render(<KeySheet onClose={() => {}} platform="mac" />);
+    await act(async () => {
+      await awaitWorkspaceOwnerSession(workspaceOwnerSession());
+    });
     expect(sheet().textContent).toContain("My pinned research");
   });
 

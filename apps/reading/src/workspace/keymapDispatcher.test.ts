@@ -1,3 +1,5 @@
+import { act } from "@testing-library/react";
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 /**
  * keymapDispatcher.test.ts — MS-01 milestone 4: the one dispatcher.
  *
@@ -20,6 +22,9 @@ import { SHORTCUT_EVENTS, installShortcuts, setCustomHotkeys } from "./shortcuts
 import { useWorkspace } from "./WorkspaceStore";
 import { countingHandlers, keyInit, pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
 
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
+
 let uninstall: (() => void) | null = null;
 
 afterEach(() => {
@@ -27,7 +32,7 @@ afterEach(() => {
   uninstall = null;
   unpinPlatform();
   prefixState.disarm();
-  setCustomHotkeys([]);
+  setCustomHotkeys([], workspaceOwnerSession());
   useWorkspace.getState().reset();
   document.body.innerHTML = "";
   vi.useRealTimers();
@@ -43,12 +48,13 @@ function listen(name: string) {
 // 1. every legacy binding still works (real handlers, real effects)
 // ─────────────────────────────────────────────────────────────────────
 
-type Probe = (platform: Platform) => void;
+type Probe = (platform: Platform) => Promise<void>;
 
 function legacyProbe(row: KeymapRow): Probe {
-  return (platform) => {
+  return async (platform) => {
     const navigate = vi.fn();
     uninstall = installShortcuts(navigate as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const activations: ProductActivateDetail[] = [];
     const onActivate = (e: Event) => activations.push((e as CustomEvent<ProductActivateDetail>).detail);
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate);
@@ -113,22 +119,24 @@ describe("every legacy binding still works (one test per binding, real handlers)
     const rows = legacyRows.filter((r) => isActiveOn(r, platform));
     it.each(rows.map((r) => [r.chord!, r.action, r] as const))(
       `${platform}: %s → %s`,
-      (_chord, _action, row) => {
+      async (_chord, _action, row) => {
         pinPlatform(platform);
-        legacyProbe(row)(platform);
+        await legacyProbe(row)(platform);
       },
     );
   }
 
-  it("⌘W with no floating panel focused is left to the browser (not prevented)", () => {
+  it("⌘W with no floating panel focused is left to the browser (not prevented)", async () => {
     uninstall = installShortcuts(vi.fn() as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const e = press(document.body, "mod+w", "other");
     expect(e.defaultPrevented).toBe(false);
   });
 
-  it("off the Mac, ⌘B (Win+B) is not bound; ctrl+b is the prefix", () => {
+  it("off the Mac, ⌘B (Win+B) is not bound; ctrl+b is the prefix", async () => {
     pinPlatform("other");
     uninstall = installShortcuts(vi.fn() as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "meta+b", "other");
     expect(useWorkspace.getState().panels["shortcuts:projecttree"]).toBeUndefined();
     press(document.body, "ctrl+b", "other");
@@ -147,9 +155,10 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(readPrefix()).toBe("ctrl+b");
   });
 
-  it("ctrl+b arms; the next key runs its prefix row and disarms", () => {
+  it("ctrl+b arms; the next key runs its prefix row and disarms", async () => {
     const { handlers, calls } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const arm = press(document.body, "ctrl+b", "mac");
     expect(arm.defaultPrevented).toBe(true);
     expect(prefixState.isArmed()).toBe(true);
@@ -158,10 +167,11 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(prefixState.isArmed()).toBe(false);
   });
 
-  it("stays armed with no timeout (a minute later the next key still goes to the keymap)", () => {
+  it("stays armed with no timeout (a minute later the next key still goes to the keymap)", async () => {
     vi.useFakeTimers();
     const { handlers, calls } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     vi.advanceTimersByTime(60_000);
     expect(prefixState.isArmed()).toBe(true);
@@ -169,9 +179,10 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(calls["projecttree.toggle"]).toBe(1);
   });
 
-  it("Esc disarms and runs nothing", () => {
+  it("Esc disarms and runs nothing", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     const esc = pressKey(document.body, { key: "Escape", code: "Escape" });
     expect(esc.defaultPrevented).toBe(true);
@@ -179,9 +190,10 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(total()).toBe(0);
   });
 
-  it("prefix+? : the Shift keydown does not disarm; '?' opens the key sheet", () => {
+  it("prefix+? : the Shift keydown does not disarm; '?' opens the key sheet", async () => {
     const { handlers, calls } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     pressKey(document.body, { key: "Shift", code: "ShiftLeft", shiftKey: true });
     expect(prefixState.isArmed()).toBe(true);
@@ -189,9 +201,10 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(calls["keysheet.toggle"]).toBe(1);
   });
 
-  it("an unbound next key is swallowed and disarms (nothing else sees it)", () => {
+  it("an unbound next key is swallowed and disarms (nothing else sees it)", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const other = vi.fn();
     window.addEventListener("keydown", other);
     press(document.body, "ctrl+b", "mac");
@@ -203,19 +216,21 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(prefixState.isArmed()).toBe(false);
   });
 
-  it("a key reserved for a later sprint (prefix+1) is swallowed, not passed on", () => {
+  it("a key reserved for a later sprint (prefix+1) is swallowed, not passed on", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     const k = press(document.body, "1", "mac");
     expect(k.defaultPrevented).toBe(true);
     expect(total()).toBe(0);
   });
 
-  it("a held prefix stays armed, its repeats reach nothing; pressing it again cancels (critic r2 #1)", () => {
+  it("a held prefix stays armed, its repeats reach nothing; pressing it again cancels (critic r2 #1)", async () => {
     // On a Mac "mod" also accepts Ctrl, so a leaked ctrl+b repeat would be
     // the legacy ⌘B row and toggle the sidebar.
     uninstall = installShortcuts(vi.fn() as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const sidebar = () => Boolean(useWorkspace.getState().panels["shortcuts:projecttree"]);
     press(document.body, "ctrl+b", "mac");
     for (let i = 0; i < 4; i++) {
@@ -244,9 +259,10 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(sidebar()).toBe(false);
   });
 
-  it("if focus moves into a text field or a dialog while armed, the key is the field's (critic r1 #1)", () => {
+  it("if focus moves into a text field or a dialog while armed, the key is the field's (critic r1 #1)", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     expect(prefixState.isArmed()).toBe(true);
     const input = document.createElement("input");
@@ -275,18 +291,20 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(prefixState.isArmed()).toBe(false);
   });
 
-  it("leaving the window (focus into an iframe or another app) disarms", () => {
+  it("leaving the window (focus into an iframe or another app) disarms", async () => {
     uninstall = installShortcuts(vi.fn() as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     press(document.body, "ctrl+b", "mac");
     window.dispatchEvent(new Event("blur"));
     expect(prefixState.isArmed()).toBe(false);
   });
 
-  it("a configured prefix replaces ctrl+b", () => {
+  it("a configured prefix replaces ctrl+b", async () => {
     window.localStorage.setItem("antiek.keymap.prefix", "ctrl+a");
     try {
       const { handlers, calls } = countingHandlers();
       uninstall = installShortcuts(vi.fn() as never, { handlers });
+      await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
       press(document.body, "ctrl+b", "mac");
       expect(prefixState.isArmed()).toBe(false);
       press(document.body, "ctrl+a", "mac");
@@ -304,26 +322,29 @@ describe("the prefix engine (herdr semantics)", () => {
 // ─────────────────────────────────────────────────────────────────────
 
 describe("ctrl+alt chords match KeyboardEvent.code", () => {
-  it("ctrl+alt+b fires on a Mac although option composed e.key into '∫'", () => {
+  it("ctrl+alt+b fires on a Mac although option composed e.key into '∫'", async () => {
     pinPlatform("mac");
     const { handlers, calls } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const e = pressKey(document.body, { key: "∫", code: "KeyB", ctrlKey: true, altKey: true });
     expect(calls["projecttree.toggle"]).toBe(1);
     expect(e.defaultPrevented).toBe(true);
   });
 
-  it("plain alt+b (option+b) never fires: macOS types '∫' with it", () => {
+  it("plain alt+b (option+b) never fires: macOS types '∫' with it", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const e = pressKey(document.body, { key: "∫", code: "KeyB", altKey: true });
     expect(total()).toBe(0);
     expect(e.defaultPrevented).toBe(false);
   });
 
-  it("an AltGr press (ctrl+alt reported as AltGraph) is a character, not a chord", () => {
+  it("an AltGr press (ctrl+alt reported as AltGraph) is a character, not a chord", async () => {
     const { handlers, total } = countingHandlers();
     uninstall = installShortcuts(vi.fn() as never, { handlers });
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const e = new KeyboardEvent("keydown", {
       key: "{",
       code: "KeyB",
@@ -392,10 +413,11 @@ describe("fuzz: no key reaches two handlers, and every row reaches its own", () 
   for (const platform of ["mac", "other"] as const) {
     const rows = KEYMAP.filter((r) => isActiveOn(r, platform));
     for (const ctx of contexts) {
-      it(`${platform} · ${ctx}: ${rows.length} rows`, () => {
+      it(`${platform} · ${ctx}: ${rows.length} rows`, async () => {
         pinPlatform(platform);
         const { handlers, calls, total } = countingHandlers();
         uninstall = installShortcuts(vi.fn() as never, { handlers });
+        await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
         // A late window listener stands in for any other keydown owner.
         const late = vi.fn();
         window.addEventListener("keydown", late);

@@ -1,3 +1,8 @@
+import {
+  accountStorageKey, awaitWorkspaceOwnerSession, isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission, workspaceOwnerSession,
+  type WorkspaceOwnerSession,
+} from "../lib/accountWorkspaceOwner";
 import { registerKeyboardOwner, traceKeyboardAction } from "./keyboardOwnership";
 /**
  * The keymap dispatcher: the ONE window-level owner of every global key.
@@ -106,21 +111,25 @@ export interface CustomHotkeyBinding {
   entityId: string;
 }
 
-let customBindings: CustomHotkeyBinding[] = [];
+interface CustomHotkeyMap {
+  readonly owner: WorkspaceOwnerSession;
+  readonly bindings: CustomHotkeyBinding[];
+}
+let customBindings: CustomHotkeyMap | null = null;
 
 /** Runtime updater — the custom-hotkeys hook calls this whenever the
  *  persisted map changes so the live handler sees new/removed bindings
  *  without a remount. */
-export function setCustomHotkeys(bindings: CustomHotkeyBinding[]): void {
-  customBindings = bindings.map((b) => ({
-    ...b,
-    spec: normalizeBinding(b.spec),
-  }));
+export function setCustomHotkeys(bindings: CustomHotkeyBinding[], owner: WorkspaceOwnerSession): void {
+  if (!owner || owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
+  const next = bindings.map((b) => ({ ...b, spec: normalizeBinding(b.spec) }));
+  if (!isWorkspaceOwnerSession(owner)) return;
+  customBindings = { owner, bindings: next };
 }
 
 /** Read the current custom bindings (test/inspection helper). */
 export function getCustomHotkeys(): CustomHotkeyBinding[] {
-  return customBindings;
+  return customBindings && isWorkspaceOwnerSession(customBindings.owner) ? customBindings.bindings : [];
 }
 
 /**
@@ -138,8 +147,10 @@ export function getCustomHotkeys(): CustomHotkeyBinding[] {
  * personally set is data, not instruction, so this respects the
  * data/instruction boundary the daemon work flagged.
  */
-function hydrateCustomFromStorage(): void {
-  setCustomHotkeys(readCustomHotkeys().bindings);
+function hydrateCustomFromStorage(owner: WorkspaceOwnerSession, current: () => boolean): void {
+  if (!current()) return;
+  const next = readCustomHotkeys().bindings;
+  if (current()) setCustomHotkeys(next, owner);
 }
 
 /** Exported for element-scoped key guards (PanelLayout's fullscreen-pane Esc
@@ -503,11 +514,39 @@ export function installShortcuts(
   // Seed the live custom-binding map from the persisted blob on every mount,
   // so a custom hotkey set in a previous session fires after a reload
   // WITHOUT waiting for an <AssignHotkey> surface to mount (SPR-08 M2).
-  hydrateCustomFromStorage();
+  const customOwner = workspaceOwnerSession();
+  let customLive = true;
+  let customConfirmed = false;
+  let customGeneration = 0;
+  const customController = new AbortController();
+  const customCurrent = () => customLive && customConfirmed
+    && customOwner.subject !== null && isWorkspaceOwnerSession(customOwner);
+  const confirmCustom = () => {
+    const attempt = ++customGeneration;
+    void awaitWorkspaceOwnerSession(customOwner, customController.signal).then((ready) => {
+      if (!customLive || attempt !== customGeneration || !ready || !isWorkspaceOwnerSession(customOwner)) return;
+      customConfirmed = true;
+      hydrateCustomFromStorage(customOwner, customCurrent);
+    }, () => {
+      if (attempt === customGeneration) customConfirmed = false;
+    });
+  };
+  const unsubscribeCustomOwner = subscribeWorkspaceOwnerAdmission((admission) => {
+    customGeneration += 1;
+    customConfirmed = false;
+    if (admission.session !== customOwner || admission.state === "retiring" || admission.state === "failed") {
+      customController.abort();
+      if (customBindings?.owner === customOwner) customBindings = null;
+      return;
+    }
+    if (admission.state === "ready") confirmCustom();
+  });
+  confirmCustom();
+  const customStorageKey = accountStorageKey("antiek.workspace.custom-hotkeys", customOwner);
   // A custom binding assigned in another tab lands in localStorage; re-hydrate
   // on the cross-tab `storage` signal so this tab's handler sees it too.
   const onStorage = (e: StorageEvent) => {
-    if (e.key === null || e.key.endsWith("custom-hotkeys")) hydrateCustomFromStorage();
+    if (customCurrent() && (e.key === null || e.key === customStorageKey)) hydrateCustomFromStorage(customOwner, customCurrent);
   };
 
   const handlers: Partial<Record<ActionId, KeyHandler>> = {
@@ -568,8 +607,10 @@ export function installShortcuts(
     }
     if (ctx.kind !== "default" || !hasAnyModifier(e)) return null;
     const spec = comboSpecFor(e);
-    const custom = spec ? customBindings.find((b) => b.spec === spec) : undefined;
-    return custom ? { custom } : null;
+    const map = customBindings;
+    if (!customCurrent() || !map || map.owner !== customOwner) return null;
+    const custom = spec ? map.bindings.find((b) => b.spec === spec) : undefined;
+    return custom ? { custom, map } : null;
   }
 
   function onBubble(e: KeyboardEvent) {
@@ -582,10 +623,14 @@ export function installShortcuts(
       }
       return;
     }
-    const { custom } = candidate;
+    const { custom, map } = candidate;
+    const currentCustom = () => customCurrent() && customBindings === map && map.owner === customOwner;
+    if (!currentCustom()) return;
     e.preventDefault();
     navigate(custom.route);
+    if (!currentCustom()) return;
     traceKeyboardAction(e, custom.id, `custom:${custom.id}`, true);
+    if (!currentCustom()) return;
     emitProductActivate({
       productId: "custom", route: custom.route, entityId: custom.entityId, source: "hotkey",
     });
@@ -605,6 +650,11 @@ export function installShortcuts(
   }, onBubble);
   window.addEventListener("blur", onBlur);
   return () => {
+    customLive = false;
+    customConfirmed = false;
+    customGeneration += 1;
+    customController.abort();
+    unsubscribeCustomOwner();
     window.removeEventListener("storage", onStorage);
     removePrefix();
     removeDirect();
