@@ -441,3 +441,127 @@ def test_native_invalid_noaudio_or_network_playlist_refused() -> None:
     for source in (b"invalid-audio", b"#EXTM3U\nhttps://127.0.0.1:1/audio\n", wav_bytes(0)):
         with pytest.raises(bound.AudioNormalizationError):
             run(config, source)
+
+
+def test_custody_published_before_pump_and_cleared_after_actual_retirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_pump = bound._pump
+    observed: list[Any] = []
+
+    def observe(child: Any, *args: Any) -> None:
+        custody = bound._OWNED_CHILD
+        assert custody is not None and custody.child is child
+        assert custody.streams == (child.stdin, child.stdout, child.stderr)
+        assert custody.fault is None
+        assert set(custody.__slots__) == {"child", "streams", "fault"}
+        observed.append(custody)
+        original_pump(child, *args)
+
+    monkeypatch.setattr(bound, "_pump", observe)
+    result = run(output_tool(tmp_path, 4))
+    assert result.facts.cleanup_complete and len(observed) == 1
+    assert bound._OWNED_CHILD is None
+    assert observed[0].child.returncode == 0
+    assert all(stream.closed for stream in observed[0].streams)
+    assert bound._SLOT.acquire(blocking=False)
+    bound._SLOT.release()
+
+
+@pytest.mark.parametrize("uncertainty", ["unreaped", "unclosed", "exception"])
+def test_synthetic_retirement_uncertainty_retains_exact_handles_and_blocks_new_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uncertainty: str
+) -> None:
+    # Injected uncertainty is a custody control, not a native cleanup failure.
+    original_popen = bound.subprocess.Popen
+    original_retire = bound._retire
+    captured: list[Any] = []
+    test_deadline = time.monotonic() + 12
+    config = tool(tmp_path, "time.sleep(20)\n")
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        child = original_popen(*args, **kwargs)
+        captured.append(child)
+        return child
+
+    def refuse_pump(child: Any, *args: Any) -> None:
+        custody = bound._OWNED_CHILD
+        assert custody is not None and custody.child is child
+        assert custody.streams == (child.stdin, child.stdout, child.stderr)
+        raise bound.AudioNormalizationError("cancelled")
+
+    def uncertain_retire(child: Any, streams: Any, deadline: float) -> Any:
+        assert child is captured[0] and bound._OWNED_CHILD.child is child
+        if uncertainty == "exception":
+            raise OSError("synthetic retirement uncertainty")
+        if uncertainty == "unclosed":
+            child.kill()
+            child.wait(timeout=max(0.0, min(2.0, test_deadline - time.monotonic())))
+            assert any(not stream.closed for stream in streams)
+            return False, True, True, False
+        return False, False, False, False
+
+    monkeypatch.setattr(bound.subprocess, "Popen", capture)
+    monkeypatch.setattr(bound, "_pump", refuse_pump)
+    monkeypatch.setattr(bound, "_retire", uncertain_retire)
+    try:
+        expected = "decoder_unavailable" if uncertainty == "exception" else "cancelled"
+        with pytest.raises(bound.AudioNormalizationError, match=expected):
+            run(config)
+        assert len(captured) == 1
+        custody = bound._OWNED_CHILD
+        assert custody is not None and custody.child is captured[0]
+        assert custody.streams == (captured[0].stdin, captured[0].stdout, captured[0].stderr)
+        expected_fault = {
+            "exception": "retirement_exception",
+            "unclosed": "streams_unclosed",
+            "unreaped": "reap_unconfirmed",
+        }[uncertainty]
+        assert custody.fault == expected_fault
+        assert set(custody.__slots__) == {"child", "streams", "fault"}
+        assert not bound._SLOT.acquire(blocking=False)
+        with pytest.raises(bound.AudioNormalizationError, match="deadline_exceeded"):
+            bound.normalize_audio(wav_bytes(), config=config, deadline=time.monotonic() + 5.1)
+        assert len(captured) == 1 and bound._OWNED_CHILD is custody
+    finally:
+        # Test-only recovery: direct native retirement before releasing test state.
+        # Production has no observer, retry or automatic recovery of uncertainty.
+        if captured:
+            child = captured[0]
+            streams = (child.stdin, child.stdout, child.stderr)
+            _, _, reaped, closed = original_retire(child, streams, test_deadline)
+            assert reaped and closed and time.monotonic() <= test_deadline
+            assert child.wait(timeout=0) is not None
+            if bound._OWNED_CHILD is not None:
+                assert bound._OWNED_CHILD.child is child
+                bound._OWNED_CHILD = None
+                bound._SLOT.release()
+
+
+def test_retirement_requires_returned_direct_wait_not_cached_returncode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The real child is reaped first; only the later wait observation is synthetic.
+    child = subprocess.Popen(
+        [sys.executable, "-I", "-S", "-c", "pass"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    streams = (child.stdin, child.stdout, child.stderr)
+    deadline = time.monotonic() + 5
+    try:
+        assert child.wait(timeout=4) == 0
+
+        def uncertain_wait(timeout: float) -> int:
+            raise subprocess.TimeoutExpired(child.args, timeout)
+
+        monkeypatch.setattr(child, "wait", uncertain_wait)
+        _, _, reaped, closed = bound._retire(child, streams, deadline)
+        assert child.returncode == 0 and not reaped and closed
+    finally:
+        monkeypatch.undo()
+        assert child.wait(timeout=max(0.0, deadline - time.monotonic())) == 0
+        for stream in streams:
+            assert stream is not None
+            stream.close()

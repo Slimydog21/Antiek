@@ -17,7 +17,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import IO, Protocol
+from typing import IO, Literal, Protocol
 
 MAX_INPUT_BYTES = 25 * 1024 * 1024
 SAMPLE_RATE_HZ = 16_000
@@ -114,6 +114,16 @@ class _Digest(Protocol):
     def update(self, data: bytes) -> None: ...
 
     def hexdigest(self) -> str: ...
+
+
+@dataclass(slots=True)
+class _ChildCustody:
+    child: subprocess.Popen[bytes] = field(repr=False)
+    streams: tuple[IO[bytes] | None, ...] = field(repr=False)
+    fault: Literal["retirement_exception", "reap_unconfirmed", "streams_unclosed"] | None = None
+
+
+_OWNED_CHILD: _ChildCustody | None = None
 
 
 @dataclass(slots=True)
@@ -295,12 +305,16 @@ def _retire(
             killed = True
         except OSError:
             pass
-    with suppress(subprocess.TimeoutExpired):
+    reaped = False
+    try:
         child.wait(timeout=max(0.0, cleanup_deadline - time.monotonic()))
+        reaped = True
+    except subprocess.TimeoutExpired:
+        pass
     return (
         terminated,
         killed,
-        child.returncode is not None,
+        reaped,
         all(stream is None or stream.closed for stream in streams),
     )
 
@@ -340,6 +354,7 @@ def normalize_audio(
     Configuration and monotonic deadline belong to the trusted server caller.
     This producer does not admit a payer, provider send, tariff or route.
     """
+    global _OWNED_CHILD
     started = time.monotonic()
     if type(audio) is not bytes or not audio:
         raise AudioNormalizationError("empty_or_invalid_audio")
@@ -386,7 +401,9 @@ def normalize_audio(
             cwd=worker.parent,
         )
         release_slot = False
-        streams = (child.stdin, child.stdout, child.stderr)
+        custody = _ChildCustody(child, (child.stdin, child.stdout, child.stderr))
+        _OWNED_CHILD = custody
+        streams = custody.streams
         try:
             _pump(child, audio, progress, decode_deadline, cancelled)
             if child.returncode != 0 or progress.stderr_bytes:
@@ -402,8 +419,16 @@ def normalize_audio(
         except AudioNormalizationError as exc:
             failure = exc
         finally:
-            terminated, killed, reaped, closed = _retire(child, streams, total_deadline)
-            release_slot = reaped
+            try:
+                terminated, killed, reaped, closed = _retire(child, streams, total_deadline)
+            except BaseException:
+                custody.fault = "retirement_exception"
+                raise
+            release_slot = reaped and closed
+            if release_slot:
+                _OWNED_CHILD = None
+            else:
+                custody.fault = "reap_unconfirmed" if not reaped else "streams_unclosed"
             complete = reaped and closed and time.monotonic() <= total_deadline
             facts = DecodeFacts(
                 progress.written,
@@ -449,7 +474,7 @@ def normalize_audio(
     except OSError:
         raise AudioNormalizationError("decoder_unavailable", facts) from None
     finally:
-        # If the owned child could not be reaped, retain its concurrency slot.
+        # Unknown reap or stream closure retains exact handles and the slot.
         # A later caller times out honestly instead of starting a second child.
         if child is None or release_slot:
             _SLOT.release()
