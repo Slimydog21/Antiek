@@ -558,11 +558,11 @@ def test_retirement_requires_returned_direct_wait_not_cached_returncode(
         def uncertain_wait(timeout: float) -> int:
             raise subprocess.TimeoutExpired(child.args, timeout)
 
-        monkeypatch.setattr(child, "wait", uncertain_wait)
-        _, _, reaped, closed = bound._retire(child, streams, deadline)
-        assert child.returncode == 0 and not reaped and closed
+        with monkeypatch.context() as wait_patch:
+            wait_patch.setattr(child, "wait", uncertain_wait)
+            _, _, reaped, closed = bound._retire(child, streams, deadline)
+            assert child.returncode == 0 and not reaped and closed
     finally:
-        monkeypatch.undo()
         assert child.wait(timeout=max(0.0, deadline - time.monotonic())) == 0
         for stream in streams:
             assert stream is not None
