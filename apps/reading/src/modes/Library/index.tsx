@@ -108,9 +108,18 @@ function waitForCatalogRetry(
       return;
     }
     signal.addEventListener("abort", cancel, { once: true });
-    timer = setTimeout(() => {
+    timer = setTimeout(function checkTime() {
+      if (settled) return;
       const current = performance.now();
-      finish(!signal.aborted && isCurrent() && current >= notBefore && current < cutoff);
+      if (signal.aborted || !isCurrent() || !Number.isFinite(current) || current >= cutoff) {
+        finish(false);
+        return;
+      }
+      if (current < notBefore) {
+        timer = setTimeout(checkTime, Math.ceil(notBefore - current));
+        return;
+      }
+      finish(true);
     }, delayMs);
   });
 }

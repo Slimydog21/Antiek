@@ -174,4 +174,119 @@ describe("Library server-directed automatic GET retries", () => {
     expect(screen.getByRole("alert").textContent).toContain("catalog is unavailable");
     await advance(60000); expect(request).toHaveBeenCalledTimes(1);
   });
+
+  it("rearms early legacy callbacks against the same 200ms and 400ms targets", async () => {
+    request.mockImplementation(async () => failure(null));
+    mount(); await flush();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(199.5);
+    await advance(200);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockRestore();
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    const secondClock = vi.spyOn(performance, "now").mockReturnValue(600.5);
+    await advance(400);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(vi.getTimerCount()).toBe(1);
+    secondClock.mockRestore();
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(3);
+    failedShelf();
+    expect(vi.getTimerCount()).toBe(0);
+    await advance(60000);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it("rearms an early two-second callback without renewing its target", async () => {
+    mount(); await flush();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1999.5);
+    await advance(2000);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockRestore();
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(1999);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(3);
+    failedShelf();
+  });
+
+  it("retires the latest rearmed timer and original listener on unmount", async () => {
+    const view = mount(); await flush();
+    const signal = request.mock.calls[0][1]?.signal;
+    if (!signal) throw new Error("Catalogue GET lacks its captured signal");
+    const removed = vi.spyOn(signal, "removeEventListener");
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1999.5);
+    await advance(2000);
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockRestore();
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+    expect(removed).toHaveBeenCalledTimes(1);
+    expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(vi.getTimerCount()).toBe(0);
+    await advance(60000);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("retires an obsolete rearm when the catalogue generation changes", async () => {
+    mount(); await flush();
+    const oldSignal = request.mock.calls[0][1]?.signal;
+    if (!oldSignal) throw new Error("Catalogue GET lacks its captured signal");
+    const removed = vi.spyOn(oldSignal, "removeEventListener");
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1999.5);
+    await advance(2000);
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockRestore();
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await flush();
+    expect(oldSignal.aborted).toBe(true);
+    expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    await advance(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    await advance(1999);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(String(request.mock.calls[2][0])).toContain("filter=gated");
+  });
+
+  it("refuses a rearmed callback at the same original cutoff", async () => {
+    mount(); await flush();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1999.5);
+    await advance(2000);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(vi.getTimerCount()).toBe(1);
+    clock.mockReturnValue(60000);
+    await advance(1);
+    failedShelf();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "refuses a nonfinite rearmed wait clock %s", async (current) => {
+      mount(); await flush();
+      const clock = vi.spyOn(performance, "now").mockReturnValue(1999.5);
+      await advance(2000);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(vi.getTimerCount()).toBe(1);
+      clock.mockReturnValue(current);
+      await advance(1);
+      failedShelf();
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 });
