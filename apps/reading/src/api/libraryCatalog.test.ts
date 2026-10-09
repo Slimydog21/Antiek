@@ -201,6 +201,7 @@ describe("fetchLibraryCatalog", () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
+      headers: new Headers(),
       text: async () => "db down",
       json: async () => ({}),
     } as unknown as Response);
@@ -322,6 +323,7 @@ describe("production Library browse integration", () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 404,
+      headers: new Headers(),
       text: async () => "not found",
       json: async () => ({}),
     } as unknown as Response);
