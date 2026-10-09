@@ -11,6 +11,8 @@ import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonT
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PrefixChip } from "./components/hotkeys/PrefixChip";
 import { NewTabPicker } from "./workspace/NewTabPicker";
+import { AgentGoto } from "./workspace/agents/AgentGoto";
+import { AgentMonitor } from "./workspace/agents/AgentMonitor";
 import { ProjectPicker } from "./workspace/ProjectPicker";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
@@ -208,6 +210,13 @@ export function AppShell({ children }: Props) {
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
+
+      {/* SPR-10 — the agent monitor (status store + list poller + status
+          toasts + the pre-backend tree feed) and the agent goto picker
+          (prefix+shift+g / ctrl+alt+g). Entry-safe shells; everything
+          behind them loads lazily. */}
+      <AgentMonitor />
+      <AgentGoto />
 
       {/* The key sheet (`?` or prefix+?). Mounted ONCE here; the uncontrolled
           instance self-subscribes to the HELP_TOGGLE window event the keymap

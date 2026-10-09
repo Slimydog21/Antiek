@@ -94,6 +94,8 @@ export const ACTIONS = {
   "inbox.toggle": { label: "Attention inbox" },
   "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "agent.openPane": { label: "Agent: open the project's agent pane (or focus its composer)" },
+  "agents.gotoToast": { label: "Agents: go to the agent the toast is about" },
+  "agents.goto": { label: "Agents: go to an agent (picker, filters by state)" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -217,6 +219,19 @@ export const KEYMAP: readonly KeymapRow[] = [
   // column folds away (a container query), and this brings it back in the
   // pane. shift+c, beside c (new tab), for "contents".
   { id: "prefix-reader-toc", action: "reader.tocToggle", status: "implemented", prefixKey: "shift+c", scope: "outside-text", origin: "lane-A-proposed", decision: "lane A proposal 2026-09-27 (A1c), pending ratification" },
+
+  // ── SPR-10 agents (herdr B7 toast jump, B6 goto picker). herdr binds o and
+  // g; here prefix+o is tab.visitChild (D2) and prefix+g is the Switcher, and
+  // #3751 (SPR-02) holds the shifted twin shift+o / ctrl+alt+shift+o for
+  // switcher.open. The toast key is therefore j, "jump to what the toast is
+  // about" (herdr B7:379 "jumps"), shifted so a later pane.focusDown can keep
+  // the plain letter; the picker is g shifted (the shift+p / shift+c
+  // precedent). Both pending ratification; the sprint page's literal prefix+o
+  // cannot be met while tab.visitChild owns it (INBOX 2026-10-07T23:06Z).
+  { id: "prefix-agents-toast", action: "agents.gotoToast", status: "implemented", prefixKey: "shift+j", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+o is tab.visitChild, shift+o is PR 3751 switcher.open; j = jump), pending ratification" },
+  { id: "chord-agents-toast", action: "agents.gotoToast", status: "implemented", chord: "ctrl+alt+shift+j", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z, pending ratification" },
+  { id: "prefix-agents-goto", action: "agents.goto", status: "implemented", prefixKey: "shift+g", scope: "outside-text", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z (prefix+g stays palette.toggle), pending ratification" },
+  { id: "chord-agents-goto", action: "agents.goto", status: "implemented", chord: "ctrl+alt+g", scope: "anywhere", origin: "lane-A-proposed", decision: "SPR-10 agent monitoring 2026-10-07T23:06Z; the chord is what closes the picker from inside it (shortcuts.ts scopeAllows), pending ratification" },
 
   // ── D2 attention inbox (D4): declared unimplemented; no handler is installed ─
   { id: "prefix-inbox", action: "inbox.toggle", status: "unimplemented", blockedBy: "MS-03 M7; THREAD-CONTRACT §1.5 inbox delivery after created-owner authority acceptance", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
