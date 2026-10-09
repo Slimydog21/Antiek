@@ -14,7 +14,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 10px 4px 6px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1;
   color: var(--text-2);
   background: var(--bg-card);
@@ -31,7 +31,7 @@
   height: 18px;
   padding: 0 4px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 10.5px;
+  font-size: var(--fs-xxs);
   color: var(--text-1);
   background: var(--bg-inset);
   border: 1px solid var(--keycap-edge);
