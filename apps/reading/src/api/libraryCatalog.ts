@@ -56,19 +56,34 @@ const FULL_TEXT_SERVABLE = new Set<Servability>([
   "source_declared_open",
 ]);
 
+type LibraryCatalogRetryAfter =
+  | { readonly kind: "absent" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "delay"; readonly delayMs: number };
+
+function decodeRetryAfter(value: string | null): LibraryCatalogRetryAfter {
+  if (value === null) return { kind: "absent" };
+  if (value.length > 64) return { kind: "invalid" };
+  const match = /^[\t ]*([12][0-9]|30|[1-9])[\t ]*/.exec(value);
+  if (!match || match[0].length !== value.length) return { kind: "invalid" };
+  return { kind: "delay", delayMs: Number(match[1]) * 1000 };
+}
+
 export class LibraryCatalogHttpError extends Error {
   readonly status: number;
+  readonly retryAfter: LibraryCatalogRetryAfter;
 
-  constructor(status: number) {
+  constructor(status: number, retryAfter: string | null = null) {
     super("library catalog request failed");
     this.name = "LibraryCatalogHttpError";
     this.status = status;
+    this.retryAfter = decodeRetryAfter(retryAfter);
   }
 }
 
 async function readOkBody(res: Response): Promise<unknown> {
   if (!res.ok) {
-    throw new LibraryCatalogHttpError(res.status);
+    throw new LibraryCatalogHttpError(res.status, res.headers.get("Retry-After"));
   }
   return res.json() as Promise<unknown>;
 }
