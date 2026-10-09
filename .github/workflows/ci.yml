@@ -131,8 +131,7 @@ jobs:
 
       - name: Install local media runtime
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          python tools/ci/ensure_media_runtime.py
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
 
@@ -235,8 +234,7 @@ jobs:
 
       - name: Install local media runtime
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          python tools/ci/ensure_media_runtime.py
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
 
