@@ -14,8 +14,8 @@ component branch does not demonstrate that composed journey.
 ## Evidence and baseline
 
 `READ` means selected primary source. `OBS` means an observed state at the stated
-time. `INF` means an inference from the cited source. No candidate was imported,
-compiled, tested, or run during this audit.
+time. `INF` means an inference from the cited source. The source audit itself used no candidate execution. Separately authorized
+keyboard verification and its narrower evidence scope are recorded below.
 
 - OBS, 09:33 UTC: GitHub main is
   `d0bee39aefd09c115b337467b9ee4a4da4e523c1`, tree
@@ -31,7 +31,9 @@ compiled, tested, or run during this audit.
   ancestor of the pinned main. Its implementation is present, but the complete
   project-to-agent and every-island journey remains unproved.
 
-The following are independently observed PR heads at 09:29 UTC. Check counts are
+The following are independently observed PR heads at 09:29 UTC. The later
+keyboard successors are recorded below; this dated table is not overwritten.
+Check counts are
 reported contexts observed at 09:03 UTC, not a fresh required-policy certificate.
 
 | Unit | Head | State | Reported completed contexts |
@@ -129,45 +131,74 @@ without fetching refs. It is not a whole-PR semantic verdict. Reconcile these
 joins with the existing monitoring, typed-tree, and companion holders before
 writing a successor.
 
-## Exact keyboard proof dependencies
+## Keyboard successors and fresh gate boundary
 
-Both unpublished partial terminals and their expired verification slots remain
-immutable. No test was rerun by this document.
+OBS, 10:20 UTC: Root's exact serial fixture allocation `92d58bc0` was executed,
+custom first and KeySheet second, each under its own fresh 1,800-second clock.
+Both ONE terminals were frozen and returned on the existing coordination routes.
+Return is not Root intake, whole-source acceptance, or permission to merge.
 
 ### Custom hotkeys
 
-The retained changed suite has 119 pass and 8 fail out of 127. Its 32 account,
-lifetime, and accepted-edit controls passed. The old fixture edit stacked waits
+The immutable prior attempt remains 119 pass and 8 fail out of 127, including its
+late closure and diagnostic-accounting qualifications. Its 32 current account,
+lifetime, and accepted-edit controls passed. The old fixture writer stacked waits
 at the first matching render instead of placing one at each actual boundary.
 
-A read-only proposal maps the existing canonical confirmation wait to 39 actual
-render/install boundaries: 16 hook mounts, 4 AssignHotkey renders, 17 dispatcher
-installs, and 2 existing shortcut installs. Three fixture files change;
-`shortcuts.test.ts` remains byte-identical. All other bytes, including all 95 old
-assertions and cases, remain exact. Every proposed splice has an exact inverse.
+The authorized correction relocates the same 39 canonical confirmation lines:
+16 hook mounts, 4 AssignHotkey renders, 17 dispatcher installs, and 2 already
+correct shortcut installs. Only three fixture files change; every non-readiness
+byte and the fourth fixture are exact. Product and current control bodies are
+unchanged by this fixture successor. Complete inverses restore the preimages.
 
-The proposal does not establish a new pass. Root must issue the precise fixture
-amendment and a fresh changed-suite slot before applying or verifying it. Keep
-the accepted same-token edit through suspension without private I/O, replacement
+Fresh selected Vitest passed **127/127**, with all 95 original and 32 current case
+identities preserved and no failed/skipped/pending/todo case. Explicit strict
+app and node noEmit both exited 0 with empty streams. Normal draft
+[PR #3788](https://github.com/Slimydog21/Antiek/pull/3788) has head
+`0a80c9c2a6913f45a8a26d693f6ad4150ed42bce`, tree
+`ce7f6cf96e9f091052a34b5434c09bd165244c15`, sole parent `a7cd7c4b`.
+All 6,013 unallocated committed tuples are preserved. Keep accepted-edit
+retention through same-token suspension without private I/O, replacement
 refusal, and sibling/overwrite continuity.
 
 ### KeySheet
 
-Published #3784 remains at `4fef92c8`; its description now separates the held
-confirmation boundary from historical passing controls. The unpublished
-successor has 151 pass and 1 fail out of 152. The four new and nine old account
-controls passed. Its sole protected old case expects private labels immediately
-after two synchronous renders.
+The immutable unpublished prior attempt remains 151 pass and 1 fail out of 152.
+The four new and nine old account controls passed; the sole old failing case
+expected private labels immediately after two synchronous renders.
 
-The precise proposed amendment is an async case callback, a canonical
-`awaitWorkspaceOwnerSession(workspaceOwnerSession())` within `act` after each of
-those two renders, and the directly necessary import. Every original assertion,
-input, case, timeout, and other byte remains in order. The import lies outside
-the case and must be explicitly named in the amendment. An empty async `act`
-flush was rejected as a substitute for real confirmation.
+The authorized correction adds only the canonical confirmation import, an async
+case callback, and real confirmation within `act` after those two renders.
+All original 6,775 bytes remain in order, including assertions, inputs and
+fixtures. The whole inverse restores the preimage. Product and new controls
+remain exact; an empty async `act` was not substituted for confirmation.
 
-Finish the custom unit first, then KeySheet. Neither consumed clock authorizes
-another test run, source edit, or publication.
+Fresh selected Vitest passed **152/152**, with all 148 original and four current
+case identities preserved and no failed/skipped/pending/todo case. Explicit
+strict app and node noEmit both exited 0 with empty streams. One normal nonforce
+author push advanced existing
+[PR #3784](https://github.com/Slimydog21/Antiek/pull/3784) from verified `4fef92c8`
+to `fd9fcab9e390042bc7c816d2faa9d1f528ae28e0`, tree
+`88ee364ffeda91522df19c6e8433d927b84deb31`, sole parent `4fef92c8`.
+All 6,017 unallocated committed tuples and other protected source/config bodies
+are preserved.
+
+Each genuine locked/CAS registration observed 37 independently mapped foreign
+missing-worktree errors in pre/candidate/post, with no own/new error and all
+prior rows and unrelated fields exact. This is not global GREEN. KeySheet's
+administrative wrong-filename and phase-ledger attribution failures are retained;
+the clock was not renewed and no retrospective full-meter certificate is made.
+Both matching private installations were retired by captured identity. Direct
+process reap and stream EOF do not certify a complete loaded-origin or global
+descendant census.
+
+OBS, 10:20 UTC: fresh custom frontend checks succeeded while four Python shards
+were in progress; fresh KeySheet hosted gates were in progress. Local counts are
+synthetic UNIT evidence, not receiving, signed-account, provider, or browser
+journey acceptance. Dated Doctor results were not rerun. Root retains FIRST
+intake, whole-source/security/current receiving, complete fresh required gates,
+and normal merge/deploy. Both author units are terminal; the wider goal remains
+incomplete.
 
 ## Reference behavior checklist
 
@@ -192,8 +223,9 @@ not justify replacing identity, admission, draft, provider, or anchor contracts.
 
 ## Execution order and ownership
 
-1. Root issues the two exact fixture amendments and fresh verification slots.
-   Complete their real confirmation controls without weakening assertions.
+1. Root consumes the two completed keyboard successor terminals, reconciles
+   receiving source, and requires their fresh whole gates. The fixture author
+   work is complete; no failed slot or clock is replayed.
 2. Existing Zen/backend/tree/gears holders agree the authentic identity/member/
    refresh/selection handoff. Then connect the Zen switcher slot.
 3. Existing pane/dispatcher holder proves flag-off legacy behavior and the full
