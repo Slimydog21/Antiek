@@ -69,25 +69,55 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
 ];
 const PAGE_SIZE = 20;
 
-/**
- * A contended database is a RETRYABLE state, not a missing catalog.
- *
- * GET /library answers 503 + Retry-After while another process holds the
- * DuckDB file - a bulk arXiv ingest holds it ~97% of the time. Production
- * showed the cost of conflating the two: a 500 carrying no CORS headers reached
- * the browser as a CORS failure, and this mode rendered "the catalog is
- * unavailable" for a corpus that was intact.
- */
+// A visible server hint controls the wait; only an absent hint uses the
+// legacy client policy. Every automatic retry shares the initial cutoff.
 const CATALOG_BUSY_RETRIES = 2;
 const CATALOG_BUSY_RETRY_MS = 200;
+const CATALOG_RETRY_START_WINDOW_MS = 60_000;
 
-function isCatalogBusy(e: unknown): boolean {
+function isCatalogBusy(e: unknown): e is LibraryCatalogHttpError {
   return e instanceof LibraryCatalogHttpError && e.status === 503;
+}
+
+function catalogRetryDelay(error: LibraryCatalogHttpError, attempt: number): number | null {
+  switch (error.retryAfter.kind) {
+    case "absent": return CATALOG_BUSY_RETRY_MS * attempt;
+    case "delay": return error.retryAfter.delayMs;
+    case "invalid": return null;
+  }
+}
+
+function waitForCatalogRetry(
+  signal: AbortSignal, delayMs: number, cutoff: number, isCurrent: () => boolean,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = (allowed: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      signal.removeEventListener("abort", cancel);
+      resolve(allowed);
+    };
+    const cancel = () => finish(false);
+    const now = performance.now();
+    const notBefore = now + delayMs;
+    if (signal.aborted || !isCurrent() || !Number.isFinite(now) || !(notBefore < cutoff)) {
+      finish(false);
+      return;
+    }
+    signal.addEventListener("abort", cancel, { once: true });
+    timer = setTimeout(() => {
+      const current = performance.now();
+      finish(!signal.aborted && isCurrent() && current >= notBefore && current < cutoff);
+    }, delayMs);
+  });
 }
 
 function catalogFailureCopy(e: unknown): string {
   return isCatalogBusy(e)
-    ? "The library is busy: another job is using the database. Try again in a moment."
+    ? "The library is busy or temporarily unavailable. Try again."
     : "The library catalog is unavailable. Try again.";
 }
 
@@ -190,7 +220,11 @@ export default function Library() {
   const [indexReceipt, setIndexReceipt] = useState<BookHtmlIndexJobResponse | null>(null);
 
   const reload = useCallback(async (signal: AbortSignal) => {
+    const retryStartCutoff = performance.now() + CATALOG_RETRY_START_WINDOW_MS;
     const generation = ++requestGeneration.current;
+    const isCurrent = () => generation === requestGeneration.current && !signal.aborted;
+    const canStartRetry = () =>
+      isCurrent() && Number.isFinite(retryStartCutoff) && performance.now() < retryStartCutoff;
     setLoading(true);
     setError(null);
     setCatalogFailed(false);
@@ -206,9 +240,11 @@ export default function Library() {
           break;
         } catch (e: unknown) {
           if (!isCatalogBusy(e) || attempt >= CATALOG_BUSY_RETRIES) throw e;
+          const delayMs = catalogRetryDelay(e, attempt + 1);
+          if (delayMs === null || !canStartRetry()) throw e;
           attempt += 1;
-          await new Promise((resolve) => setTimeout(resolve, CATALOG_BUSY_RETRY_MS * attempt));
-          if (signal.aborted) throw e;
+          const allowed = await waitForCatalogRetry(signal, delayMs, retryStartCutoff, isCurrent);
+          if (!allowed || !canStartRetry()) throw e;
         }
       }
       if (generation !== requestGeneration.current || signal.aborted) return;
