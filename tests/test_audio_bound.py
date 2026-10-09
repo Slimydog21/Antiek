@@ -333,6 +333,8 @@ def test_fixed_pipe_only_single_stream_command_and_replacement_env(tmp_path: Pat
     body += "import resource\nassert resource.getrlimit(resource.RLIMIT_CPU)==(20,20)\n"
     body += "if sys.platform=='linux': assert resource.getrlimit(resource.RLIMIT_AS)==(536870912,536870912)\n"
     body += "while os.read(0,65536): pass\nos.write(1,b'\\x01\\x00')\n"
+    if sys.platform == "darwin":
+        body = "os.environ.pop('__CF_USER_TEXT_ENCODING', None)\n" + body
     result = run(tool(tmp_path, body))
     assert result.sample_count == 1
 
@@ -534,7 +536,7 @@ def test_synthetic_retirement_uncertainty_retains_exact_handles_and_blocks_new_c
             assert child.wait(timeout=0) is not None
             if bound._OWNED_CHILD is not None:
                 assert bound._OWNED_CHILD.child is child
-                bound._OWNED_CHILD = None
+                setattr(bound, "_OWNED_CHILD", None)
                 bound._SLOT.release()
 
 
