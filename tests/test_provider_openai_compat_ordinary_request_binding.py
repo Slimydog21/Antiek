@@ -194,7 +194,7 @@ def test_catalogue_snapshot_uses_real_variant_then_caller(
     assert isinstance(provider, OpenAICompatProvider)
     provider._extra_body = {"thinking": {"type": "constructor"}, "seed": 7}
     requests: list[httpx.Request] = []
-    caller = {"thinking": {"type": "caller"}, "stop": ["captured"]}
+    caller: dict[str, Any] = {"thinking": {"type": "caller"}, "stop": ["captured"]}
 
     def resolve() -> str:
         provider._extra_body.update({"model": "replacement", "seed": 99})

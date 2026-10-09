@@ -260,12 +260,19 @@ class OpenAICompatProvider:
         ):
             raise ProviderError(
                 f"{self.name}: vendor options cannot replace core request fields",
-                provider=self.name, model=model, latency_ms=0, retryable=False,
+                provider=self.name,
+                model=model,
+                latency_ms=0,
+                retryable=False,
             )
         api_key = self._resolve_api_key()
         built = self.build_request(
-            model=model, prompt=prompt, max_tokens=max_tokens,
-            temperature=temperature, api_key=api_key, extra_body=caller_options,
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            api_key=api_key,
+            extra_body=caller_options,
             _vendor_defaults=vendor_defaults,
         )
         model = built.model
