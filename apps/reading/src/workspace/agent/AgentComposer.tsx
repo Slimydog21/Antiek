@@ -226,7 +226,7 @@ export function AgentComposer(p: AgentComposerProps) {
         </div>
       ) : null}
       {p.recording ? (
-        <p className="text-xxs font-mono text-emperor" data-agent-recording>Recording… (stub; Esc stops)</p>
+        <p className="text-xxs font-mono text-emperor" data-agent-recording>Recording… (Esc stops)</p>
       ) : null}
       <div className="relative">
         <textarea
