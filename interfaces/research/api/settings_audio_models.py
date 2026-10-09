@@ -246,7 +246,11 @@ class AudioModelService:
             if not isinstance(data, list) or len(data) > _MAX_RECORDS:
                 raise AudioModelUnavailable("invalid audio registry")
             records = [UserAudioModelRecord.model_validate(row) for row in data]
-        except ValueError, ValidationError, TypeError:
+        except (
+            ValueError,
+            ValidationError,
+            TypeError,
+        ):
             raise AudioModelUnavailable("invalid audio registry") from None
         if len({record.id for record in records}) != len(records):
             raise AudioModelUnavailable("duplicate audio record")
@@ -397,7 +401,10 @@ class AudioModelService:
                     cleanup = store.delete_credential(
                         metadata.cred_id, artifact_path=self._artifact
                     )
-                except OSError, ValueError:
+                except (
+                    OSError,
+                    ValueError,
+                ):
                     pass
                 raise AudioPublicationError(cleanup_confirmed=cleanup) from None
 
@@ -425,7 +432,10 @@ class AudioModelService:
         owner = _owner(request)
         try:
             choice = UserModelChoice.model_validate(choice.model_dump())
-        except AttributeError, ValidationError:
+        except (
+            AttributeError,
+            ValidationError,
+        ):
             raise AudioModelUnavailable("invalid audio choice") from None
         with self._registry(exclusive=False) as (_, records):
             record = self._owned(records, owner, choice.provider_id)
