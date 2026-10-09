@@ -41,6 +41,11 @@ WorkingDirectory={{ antiek_install_dir }}
 # privileges to {{ antiek_user }}.
 EnvironmentFile={{ antiek_secrets_file }}
 
+# A later file overrides only the Prime executable, through the same release
+# pointer as this API. Optional so rollback to a pre-Prime release still starts.
+# It contains no credentials or model/RLM enable flags.
+EnvironmentFile=-{{ antiek_install_dir }}/.prime-agent.env
+
 # Path so the venv's `uvicorn` resolves. Don't rely on the user's
 # .bashrc — systemd doesn't source it.
 Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"

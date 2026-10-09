@@ -1,0 +1,2067 @@
+{
+  "schema": 1,
+  "version": "0.9.8",
+  "platform": "linux-x86_64-glibc",
+  "url": "https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev/releases/v0.9.8/prime-agent-0.9.8-linux-x64-baseline.tar.gz",
+  "archive_bytes": 60716124,
+  "archive_sha256": "425f3e57ed8b86c8e1078b6e80bf9c678be262d377e23f4d82c036c1d6734442",
+  "expanded_tar_bytes": 172062720,
+  "members": [
+    {
+      "path": "prime-agent",
+      "kind": "regular",
+      "bytes": 163566792,
+      "archive_mode": 493,
+      "sha256": "d253a126bbba941f2703bc499237e7089ec89cc58c63f36b0e5ee1db768b7b36"
+    },
+    {
+      "path": "package.json",
+      "kind": "regular",
+      "bytes": 4109,
+      "archive_mode": 420,
+      "sha256": "1579458be8304e7e24684d4b62f8e13c5968f34e67527bbf4b292c8c1aea9bc8"
+    },
+    {
+      "path": "install.sh",
+      "kind": "regular",
+      "bytes": 79636,
+      "archive_mode": 493,
+      "sha256": "310e5aa82e55a58494ec2e95ecb0a47f88e2951f62bc4aeeb8a7421086a6c41a"
+    },
+    {
+      "path": "README.md",
+      "kind": "regular",
+      "bytes": 33857,
+      "archive_mode": 420,
+      "sha256": "0aeab41af61d7f87d711e43fa59e68135bdc7b98380bf62a5ed131853a7f6d56"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "kind": "regular",
+      "bytes": 216736,
+      "archive_mode": 420,
+      "sha256": "9b72c4ff235d3b2e1f6690c742ddd527da349ca2a47a098ae032e4eed6ef9179"
+    },
+    {
+      "path": "LICENSE",
+      "kind": "regular",
+      "bytes": 1105,
+      "archive_mode": 420,
+      "sha256": "b288615fb31dc504623582fb790a28e6d86bc2f5c1396845af555e43386da5a0"
+    },
+    {
+      "path": "prime-agent-runtime",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "prime-agent-runtime/pyproject.toml",
+      "kind": "regular",
+      "bytes": 363,
+      "archive_mode": 420,
+      "sha256": "407c81e6a31f5c105d2a1f0833f5eb5b3f9320a12f336fe433d3b0c4a4e023c2"
+    },
+    {
+      "path": "prime-agent-runtime/uv.lock",
+      "kind": "regular",
+      "bytes": 140220,
+      "archive_mode": 420,
+      "sha256": "9f1c9bd7c6597a9ebe78d1be524853fbfd70842800b63cfc5894c19591dc5457"
+    },
+    {
+      "path": "prime-agent-runtime/test",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "prime-agent-runtime/test/test_winjob.py",
+      "kind": "regular",
+      "bytes": 24061,
+      "archive_mode": 420,
+      "sha256": "a25a819237fec6c6b866386f44f7be51f3eec1e6abc74848db9d9616002042fe"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_mcp.py",
+      "kind": "regular",
+      "bytes": 53036,
+      "archive_mode": 420,
+      "sha256": "6d0592f146056eb1bbf6ecbf67bfb85d26716b5833b1ac312057dabb649e43a8"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_subagent_registry.py",
+      "kind": "regular",
+      "bytes": 24070,
+      "archive_mode": 420,
+      "sha256": "ba3bd6b781295aecd81b6fe7a609a8bc468b90ead91a84928fa44f81a4e34151"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_bash.py",
+      "kind": "regular",
+      "bytes": 64086,
+      "archive_mode": 420,
+      "sha256": "d48473fbac2963e7c90141eabcbfcbc5b142ffa3f9c32463ae6902257266f581"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_create_session.py",
+      "kind": "regular",
+      "bytes": 2805,
+      "archive_mode": 420,
+      "sha256": "cdebb9378df0f6cb826a39f1dd04bfb8bb3bc08179769725dd1dd551fa0b5a31"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_harness.py",
+      "kind": "regular",
+      "bytes": 64452,
+      "archive_mode": 420,
+      "sha256": "1d31ce512c9db8893e5c1473c503a129f934e2d70867c9cef0592c42945b0e77"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_agent_message_skill.py",
+      "kind": "regular",
+      "bytes": 1827,
+      "archive_mode": 420,
+      "sha256": "bb7ef35865a6a053264811cc047f6e594e7d9a5e6c06af1dde903f85799b17a9"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_repl.py",
+      "kind": "regular",
+      "bytes": 124236,
+      "archive_mode": 420,
+      "sha256": "fdf29026ce72812efa623eaf92dade084afdaa063f8a0f5e01a08d43f5d576a0"
+    },
+    {
+      "path": "prime-agent-runtime/test/test_mcp_base.py",
+      "kind": "regular",
+      "bytes": 11519,
+      "archive_mode": 420,
+      "sha256": "ad3f4c1aa3c49e352bb89af91e053770f3d8bf718e88e9717880d16b0cd2202f"
+    },
+    {
+      "path": "prime-agent-runtime/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/mcp_base.py",
+      "kind": "regular",
+      "bytes": 13836,
+      "archive_mode": 420,
+      "sha256": "0f1e5b1d66806bf4af12b1ef81f13453d5e9413846d3e5b4bb254f0c40aec4cb"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/repl.py",
+      "kind": "regular",
+      "bytes": 57570,
+      "archive_mode": 420,
+      "sha256": "fa449a5bf740a5f9570d26cae43d82c4b9f16801269514fb3da9563f14e2724b"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/mcp.py",
+      "kind": "regular",
+      "bytes": 42280,
+      "archive_mode": 420,
+      "sha256": "1d4704b24a913e1e5d46547b3b0d011e2d5f9806139a046eef80983169d3bf0d"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/skill.py",
+      "kind": "regular",
+      "bytes": 1152,
+      "archive_mode": 420,
+      "sha256": "23f1ecba340b24a4e75880437f33fa72fbd510a2da496a87a9d033fc66b92a7a"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/repl.md",
+      "kind": "regular",
+      "bytes": 9988,
+      "archive_mode": 420,
+      "sha256": "da35b684df35328598b298a89ad5cf81ac5993b0b855ba8f3412874c69aa3c30"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/_winjob.py",
+      "kind": "regular",
+      "bytes": 17177,
+      "archive_mode": 420,
+      "sha256": "11243f5c7ba6527e70ed1f20a0e875a374b9013aca6fc4c70bcdb4653ea11296"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/harness.py",
+      "kind": "regular",
+      "bytes": 44991,
+      "archive_mode": 420,
+      "sha256": "026130e79706c72a41947c0c86257c6a22b8dea4d1f61d57541622b2489ff9c1"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/__init__.py",
+      "kind": "regular",
+      "bytes": 24432,
+      "archive_mode": 420,
+      "sha256": "cf998db175d3743034ebbc30635a681eb813d4db61fb3a63d5584916c6269527"
+    },
+    {
+      "path": "prime-agent-runtime/src/rlm/bash.py",
+      "kind": "regular",
+      "bytes": 49404,
+      "archive_mode": 420,
+      "sha256": "2f65c84a04c72e40333598d0667e6a14922dc9f308ba84045fb89f710f8d9431"
+    },
+    {
+      "path": "skills",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/mcp",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/mcp/SKILL.md",
+      "kind": "regular",
+      "bytes": 4471,
+      "archive_mode": 420,
+      "sha256": "930f99ad79037b9b2080e9a737180470505c855799667b1d26ae4ded0615fb5a"
+    },
+    {
+      "path": "skills/edit",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/edit/pyproject.toml",
+      "kind": "regular",
+      "bytes": 262,
+      "archive_mode": 420,
+      "sha256": "fcca6dcb584499a3b54b29c11da5e9bb3372e13b3779b25f2dd6f98a45668f90"
+    },
+    {
+      "path": "skills/edit/.gitignore",
+      "kind": "regular",
+      "bytes": 34,
+      "archive_mode": 420,
+      "sha256": "52899f7caa3760b4e8e82d397fe3544a3d0a99cce4a5e928de00b7db45589a3d"
+    },
+    {
+      "path": "skills/edit/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/edit/src/edit",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/edit/src/edit/__init__.py",
+      "kind": "regular",
+      "bytes": 2395,
+      "archive_mode": 420,
+      "sha256": "b1986c8c72198395656b6b2028bf3b51d798dab7eb0d923e2ce781c00186498f"
+    },
+    {
+      "path": "skills/edit/SKILL.md",
+      "kind": "regular",
+      "bytes": 828,
+      "archive_mode": 420,
+      "sha256": "5e687f0d6fc45a48b5ffa7285e342e07b2595c00481c8dcd028c3a8932f67d90"
+    },
+    {
+      "path": "skills/refine",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/refine/pyproject.toml",
+      "kind": "regular",
+      "bytes": 583,
+      "archive_mode": 420,
+      "sha256": "f482f85516873881b63743e23db6bd8a966ed7c5a2137bff7537675b6ebfb8b8"
+    },
+    {
+      "path": "skills/refine/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/refine/src/refine",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/refine/src/refine/__init__.py",
+      "kind": "regular",
+      "bytes": 1839,
+      "archive_mode": 420,
+      "sha256": "00737a6e2d3951dff6df6f4eb02578beccfe81caccbc09cfeb1f1ac6bb618844"
+    },
+    {
+      "path": "skills/refine/SKILL.md",
+      "kind": "regular",
+      "bytes": 2076,
+      "archive_mode": 420,
+      "sha256": "048b0e5a3df1d8d5b17ad2650d08956fd2fd92bf60f9d2d02430a87aca2e6173"
+    },
+    {
+      "path": "skills/websearch",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/websearch/pyproject.toml",
+      "kind": "regular",
+      "bytes": 415,
+      "archive_mode": 420,
+      "sha256": "dfc40160b1d4ae3043fd41321ca981770eca628474c360c5fe913f7b4cb568fc"
+    },
+    {
+      "path": "skills/websearch/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/websearch/src/websearch",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/websearch/src/websearch/__init__.py",
+      "kind": "regular",
+      "bytes": 71,
+      "archive_mode": 420,
+      "sha256": "fea6738c4a8d7d36c6bd7e5945ee019cdb5b0d0bc62bdd1c581a326f72bfda37"
+    },
+    {
+      "path": "skills/websearch/src/websearch/websearch.py",
+      "kind": "regular",
+      "bytes": 6332,
+      "archive_mode": 420,
+      "sha256": "949130e2292466d47b3cf0b72c8e7e4c976bb47206525b1cd600a044cff6ced0"
+    },
+    {
+      "path": "skills/websearch/SKILL.md",
+      "kind": "regular",
+      "bytes": 1015,
+      "archive_mode": 420,
+      "sha256": "039ab81c25cfe1f35465cb04afc16132c1d48e2ad963376d73ff3358a7e18ed5"
+    },
+    {
+      "path": "skills/.gitignore",
+      "kind": "regular",
+      "bytes": 19,
+      "archive_mode": 420,
+      "sha256": "862263fa1f46c20f0d1e4dac5ffcc75abd55c08211b2c3864c5f8764b9d87793"
+    },
+    {
+      "path": "skills/compact",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/compact/pyproject.toml",
+      "kind": "regular",
+      "bytes": 585,
+      "archive_mode": 420,
+      "sha256": "1d2c7e380700da31e0a1fd6dda95584aae90bb099f6c728a3506875102174f71"
+    },
+    {
+      "path": "skills/compact/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/compact/src/compact",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/compact/src/compact/__init__.py",
+      "kind": "regular",
+      "bytes": 1502,
+      "archive_mode": 420,
+      "sha256": "126ee36620089cb9a9cf16e88b9bf36c41b5feeb3e70a15bd9bd67d041c3e0dc"
+    },
+    {
+      "path": "skills/compact/SKILL.md",
+      "kind": "regular",
+      "bytes": 1844,
+      "archive_mode": 420,
+      "sha256": "25697c118cbc43364b072c0edde49cee995f6fe94e1f9ff72eaa81e8479eed25"
+    },
+    {
+      "path": "skills/rlm-heartbeat",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/rlm-heartbeat/pyproject.toml",
+      "kind": "regular",
+      "bytes": 616,
+      "archive_mode": 420,
+      "sha256": "e9e04a90898739767f8b9cb83a72bd18fdad318c9b179f76fdbb6b7b1f64abbd"
+    },
+    {
+      "path": "skills/rlm-heartbeat/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/rlm-heartbeat/src/rlm_heartbeat",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/rlm-heartbeat/src/rlm_heartbeat/__init__.py",
+      "kind": "regular",
+      "bytes": 4284,
+      "archive_mode": 420,
+      "sha256": "81b3121c4f6dd227a5e093b1b5372d72f01eb1b174c4aafcff04c9f2118155db"
+    },
+    {
+      "path": "skills/rlm-heartbeat/SKILL.md",
+      "kind": "regular",
+      "bytes": 2364,
+      "archive_mode": 420,
+      "sha256": "021daa60f9e9a89d682eee8257703d8b34355d1e0d05124860e37db3e3117565"
+    },
+    {
+      "path": "skills/attach-image",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/attach-image/pyproject.toml",
+      "kind": "regular",
+      "bytes": 429,
+      "archive_mode": 420,
+      "sha256": "0c9449d8bbce4b5be2a245b16eec8bad7e1fd5c12c5fcaa444eac14f5caa6fb4"
+    },
+    {
+      "path": "skills/attach-image/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/attach-image/src/attach_image",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/attach-image/src/attach_image/attach_image.py",
+      "kind": "regular",
+      "bytes": 9649,
+      "archive_mode": 420,
+      "sha256": "89c69f84d4035ece79da569f6b592129016a866f316e1c56ce05e2fb4673cfc4"
+    },
+    {
+      "path": "skills/attach-image/src/attach_image/__init__.py",
+      "kind": "regular",
+      "bytes": 126,
+      "archive_mode": 420,
+      "sha256": "dfdd880227666f043b3d96b7c4e5ab48c3a34f82de0f8c783bcfa7b49c382e9e"
+    },
+    {
+      "path": "skills/attach-image/SKILL.md",
+      "kind": "regular",
+      "bytes": 1871,
+      "archive_mode": 420,
+      "sha256": "0939d6ecbfc71089f7802a9d8902298a3f88c34b2d11140ea553fcfa82812d8a"
+    },
+    {
+      "path": "skills/agent-observe",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-observe/pyproject.toml",
+      "kind": "regular",
+      "bytes": 335,
+      "archive_mode": 420,
+      "sha256": "91b8bacb768158a1fb7776faa01d53f4a82328c8980458d861543c558ad4eb46"
+    },
+    {
+      "path": "skills/agent-observe/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-observe/src/agent_observe",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-observe/src/agent_observe/__init__.py",
+      "kind": "regular",
+      "bytes": 1743,
+      "archive_mode": 420,
+      "sha256": "ff2b9ca45340c7435cae04c0dc67ac13c467c7ff3ea2fab65bec21bc2b9760b3"
+    },
+    {
+      "path": "skills/agent-observe/SKILL.md",
+      "kind": "regular",
+      "bytes": 2890,
+      "archive_mode": 420,
+      "sha256": "6229624c4e63c376183cf3945cbb42cae4eceb1bef5de89bfa6e8efbb3f2a97d"
+    },
+    {
+      "path": "skills/agent-message",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-message/pyproject.toml",
+      "kind": "regular",
+      "bytes": 301,
+      "archive_mode": 420,
+      "sha256": "73bb902d87f2832814fab367c73f29a7c50210da2d790a76ac0c44cbe47dc7fa"
+    },
+    {
+      "path": "skills/agent-message/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-message/src/agent_message",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/agent-message/src/agent_message/__init__.py",
+      "kind": "regular",
+      "bytes": 3026,
+      "archive_mode": 420,
+      "sha256": "0aa2d84fbf0a2e96b302f91c971d6c53050342a53500b969ab2066709ec953f9"
+    },
+    {
+      "path": "skills/agent-message/SKILL.md",
+      "kind": "regular",
+      "bytes": 3050,
+      "archive_mode": 420,
+      "sha256": "5547aa6b0c2371edbe7fe4566e4942a663ef86d497254ef42a8ad24953aab3f0"
+    },
+    {
+      "path": "skills/prime-intellect",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/prime-intellect/references",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/prime-intellect/references/environments.md",
+      "kind": "regular",
+      "bytes": 4385,
+      "archive_mode": 420,
+      "sha256": "35cd70f12b2e53030481f07bf41fe9b603170e5360ece4d146ca97ff2ceb5cad"
+    },
+    {
+      "path": "skills/prime-intellect/references/inference.md",
+      "kind": "regular",
+      "bytes": 1777,
+      "archive_mode": 420,
+      "sha256": "7f981c9829dad63277689f98299b44913155f463bbeb1990615c8b274bae63e5"
+    },
+    {
+      "path": "skills/prime-intellect/references/sandboxes.md",
+      "kind": "regular",
+      "bytes": 3276,
+      "archive_mode": 420,
+      "sha256": "0ae3ecc12b2853c8284d7eb755b1f668842c3cb436e8a5e37da754dbed075f33"
+    },
+    {
+      "path": "skills/prime-intellect/references/compute.md",
+      "kind": "regular",
+      "bytes": 2001,
+      "archive_mode": 420,
+      "sha256": "dcf5fdffc716b87cbb54a4a682901fdc8a95145cec2889941e68246ce824f347"
+    },
+    {
+      "path": "skills/prime-intellect/SKILL.md",
+      "kind": "regular",
+      "bytes": 5117,
+      "archive_mode": 420,
+      "sha256": "331d5ea7bed3d8d8132d36f9c053c4a45e23062adc0ce025aef57848cac9c5ca"
+    },
+    {
+      "path": "skills/skill-creator",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/skill-creator/references",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/skill-creator/references/python-skills.md",
+      "kind": "regular",
+      "bytes": 5583,
+      "archive_mode": 420,
+      "sha256": "c632b20d3ec8a1f2e39455a555d6d226f7184b4b7ddcf6228b04eb2b395daef7"
+    },
+    {
+      "path": "skills/skill-creator/SKILL.md",
+      "kind": "regular",
+      "bytes": 4947,
+      "archive_mode": 420,
+      "sha256": "1d40998c697f2ecf46c76029c16a07f775c27d4875bb69a05ac4c4f089f680a3"
+    },
+    {
+      "path": "skills/goal",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/goal/pyproject.toml",
+      "kind": "regular",
+      "bytes": 577,
+      "archive_mode": 420,
+      "sha256": "49f32e237c446dcf03d5c10def022b0a7bb534fb2311ac3d7f4b316db9c1cf52"
+    },
+    {
+      "path": "skills/goal/src",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/goal/src/goal",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "skills/goal/src/goal/__init__.py",
+      "kind": "regular",
+      "bytes": 2039,
+      "archive_mode": 420,
+      "sha256": "a96fcee0bbba5b232b40bcb6b7cf679747bc91d5baa739b956237ee75036608d"
+    },
+    {
+      "path": "skills/goal/SKILL.md",
+      "kind": "regular",
+      "bytes": 2194,
+      "archive_mode": 420,
+      "sha256": "da1694a20929517b59485e61e95ffcd292d67b30826155ba8a8831f9afd4dbf1"
+    },
+    {
+      "path": "theme",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "theme/light.json",
+      "kind": "regular",
+      "bytes": 2348,
+      "archive_mode": 420,
+      "sha256": "e571dfbafab8eb7c2810ae394e193ba35374bbd8d9886f8f81f1849642204b70"
+    },
+    {
+      "path": "theme/dark.json",
+      "kind": "regular",
+      "bytes": 2339,
+      "archive_mode": 420,
+      "sha256": "d339db2d2bdd8741af4a7c6a07e9952f3a6641914e23c1e50b351ba960fca354"
+    },
+    {
+      "path": "theme/prime.json",
+      "kind": "regular",
+      "bytes": 2382,
+      "archive_mode": 420,
+      "sha256": "eb26a43c6474cef1a2c08a6e98c6fc1db764e4a07208d977eb3fe6e9a54ce245"
+    },
+    {
+      "path": "theme/theme-schema.json",
+      "kind": "regular",
+      "bytes": 9724,
+      "archive_mode": 420,
+      "sha256": "38cbc0d67a144251f96f3dc9bfdfee0be71a4ad9532796f020e5f9e084be65da"
+    },
+    {
+      "path": "assets",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "assets/clankolas.png",
+      "kind": "regular",
+      "bytes": 539053,
+      "archive_mode": 420,
+      "sha256": "169acd0dfe6fbb8d8742ed24a3fc654fd0b2e2d4223c733249c5493723f1b72d"
+    },
+    {
+      "path": "export-html",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "export-html/template.css",
+      "kind": "regular",
+      "bytes": 21911,
+      "archive_mode": 420,
+      "sha256": "4398991fafd155ace74f0458f2fbd27864b847ec5557eddb1c3ace2542f2c1ea"
+    },
+    {
+      "path": "export-html/vendor",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "export-html/vendor/marked.min.js",
+      "kind": "regular",
+      "bytes": 39055,
+      "archive_mode": 420,
+      "sha256": "74c9f2e02c180c3e6caa09881a0b24032c86473af90acb1c87b6dc7255d491dd"
+    },
+    {
+      "path": "export-html/vendor/highlight.min.js",
+      "kind": "regular",
+      "bytes": 121727,
+      "archive_mode": 420,
+      "sha256": "837a6fa5b0c736b52bbde2b2b6190f305da3fc9ed41681db5321507057b5c846"
+    },
+    {
+      "path": "export-html/template.html",
+      "kind": "regular",
+      "bytes": 2135,
+      "archive_mode": 420,
+      "sha256": "e87e94897a03a394268a91b29bcf5b48c9d9848daf892c9bac2f0545cfab2932"
+    },
+    {
+      "path": "export-html/template.js",
+      "kind": "regular",
+      "bytes": 68264,
+      "archive_mode": 420,
+      "sha256": "90c6a70f86efff659a7a72cd1f37929928b09a7a284dd53a496e2f3c9251fc14"
+    },
+    {
+      "path": "docs",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "docs/themes.md",
+      "kind": "regular",
+      "bytes": 8566,
+      "archive_mode": 420,
+      "sha256": "63d808479a109625d2c9e1ea9ebfe6bb0e8384669be68e88eea34305f5f50442"
+    },
+    {
+      "path": "docs/quickstart.md",
+      "kind": "regular",
+      "bytes": 5981,
+      "archive_mode": 420,
+      "sha256": "9b73d27035ed408a3d966030e0301550ffb5870fdf174fb3c178dbc4cdb21cb7"
+    },
+    {
+      "path": "docs/compaction.md",
+      "kind": "regular",
+      "bytes": 16841,
+      "archive_mode": 420,
+      "sha256": "10ee93d86171b93111c93d6dfcf525970ba48f1199714e86c8023fec2db548e7"
+    },
+    {
+      "path": "docs/usage.md",
+      "kind": "regular",
+      "bytes": 22050,
+      "archive_mode": 420,
+      "sha256": "fb0f8942f12e982548f7ca7dedc63f780d7a4c9dc4810982bed5c4af23abdd91"
+    },
+    {
+      "path": "docs/providers.md",
+      "kind": "regular",
+      "bytes": 14177,
+      "archive_mode": 420,
+      "sha256": "a659c13ff7617eb1a459ff4199369d98495e284a62fd2d203d54d947f242a988"
+    },
+    {
+      "path": "docs/extensions.md",
+      "kind": "regular",
+      "bytes": 99005,
+      "archive_mode": 420,
+      "sha256": "7a0fefd36d7387ece3448b75abcaca3b596ce866c1bc35efc1cb83dde4aa24a8"
+    },
+    {
+      "path": "docs/docs.json",
+      "kind": "regular",
+      "bytes": 3674,
+      "archive_mode": 420,
+      "sha256": "33daec29d84393a0409b3eb258e74e61c62b8c42d8f079f3919b9e72663f9fa1"
+    },
+    {
+      "path": "docs/windows.md",
+      "kind": "regular",
+      "bytes": 406,
+      "archive_mode": 420,
+      "sha256": "2b32c8dbd70d8fcc3487f76e8747e852e52357ef08faca6d814caee00393c454"
+    },
+    {
+      "path": "docs/tmux.md",
+      "kind": "regular",
+      "bytes": 1845,
+      "archive_mode": 420,
+      "sha256": "df5db90daa9f3bb28439d3ccc8d861388c591764f0aeeb25c116d97c99c961b5"
+    },
+    {
+      "path": "docs/rlm.md",
+      "kind": "regular",
+      "bytes": 8897,
+      "archive_mode": 420,
+      "sha256": "80ba455576e7599152151d592e4dcf210cd463e274d816d876c50b82e3998499"
+    },
+    {
+      "path": "docs/index.md",
+      "kind": "regular",
+      "bytes": 3947,
+      "archive_mode": 420,
+      "sha256": "1fe2ecf005e23a34e2fb328e1be01ab1920e18d81490aaf29c56ae47960e1338"
+    },
+    {
+      "path": "docs/standalone-binaries.md",
+      "kind": "regular",
+      "bytes": 18571,
+      "archive_mode": 420,
+      "sha256": "ac3cd3bba32c65e9ca4038e3c05cdd52a3782f4e0fe8d528f8227641b6d410c1"
+    },
+    {
+      "path": "docs/shell-aliases.md",
+      "kind": "regular",
+      "bytes": 368,
+      "archive_mode": 420,
+      "sha256": "d6b30e91a18edfe1ba969f0214b2b3c7e2538cd52d7d70be46866ae9722e2d54"
+    },
+    {
+      "path": "docs/session-format.md",
+      "kind": "regular",
+      "bytes": 16121,
+      "archive_mode": 420,
+      "sha256": "243e5ffeb41173efbbb43966f3ace807529ce7793db483d606f0f5bba38d26df"
+    },
+    {
+      "path": "docs/development.md",
+      "kind": "regular",
+      "bytes": 9116,
+      "archive_mode": 420,
+      "sha256": "880c8b237ead5a862ab30866c66833bc15266b18dc977a3132bfda535d2045e6"
+    },
+    {
+      "path": "docs/acp.md",
+      "kind": "regular",
+      "bytes": 6319,
+      "archive_mode": 420,
+      "sha256": "6c915eb28facf2d567ef3723b5bfb83bffca6cdc32c6e5140822d09ebfd022dc"
+    },
+    {
+      "path": "docs/terminal-setup.md",
+      "kind": "regular",
+      "bytes": 4079,
+      "archive_mode": 420,
+      "sha256": "0a56928a3e425bfe586ba51d0e5ac2ec4362d1bb526e939ff77621c17c839ae3"
+    },
+    {
+      "path": "docs/packages.md",
+      "kind": "regular",
+      "bytes": 8258,
+      "archive_mode": 420,
+      "sha256": "45010ae1f7881c5a0add867d2468e43570b2e9ee6dea8079ca01d85c18d1fa5c"
+    },
+    {
+      "path": "docs/termux.md",
+      "kind": "regular",
+      "bytes": 3251,
+      "archive_mode": 420,
+      "sha256": "3372b93451483acc97021380a4c4f0fa6f849f194a8547951c51101651662d0f"
+    },
+    {
+      "path": "docs/daemon.md",
+      "kind": "regular",
+      "bytes": 9696,
+      "archive_mode": 420,
+      "sha256": "90d1d1d328ae9d1e6f44bd12a3068b4737540c3f4830831b6954bfa339d6c1f2"
+    },
+    {
+      "path": "docs/rlm-runtime.md",
+      "kind": "regular",
+      "bytes": 13855,
+      "archive_mode": 420,
+      "sha256": "da373b5dd851fdc5d8428996d4dd1ba4e4648e9dab183603c06c6e72aca12f7e"
+    },
+    {
+      "path": "docs/sessions.md",
+      "kind": "regular",
+      "bytes": 5520,
+      "archive_mode": 420,
+      "sha256": "4d576c09ccce2707dba6b712d9713712e795e271da03d0065e0a5733282e2729"
+    },
+    {
+      "path": "docs/long-running-agents.md",
+      "kind": "regular",
+      "bytes": 11586,
+      "archive_mode": 420,
+      "sha256": "dd45d964cd41e1394582dd1b2624e5d47355d0c339012311dea2961d2e00999b"
+    },
+    {
+      "path": "docs/custom-provider.md",
+      "kind": "regular",
+      "bytes": 20675,
+      "archive_mode": 420,
+      "sha256": "21ba04f2fa4ea8b7fd14964b25a0ef3c8903ac0cb15b8857aa59a775cd63b753"
+    },
+    {
+      "path": "docs/sdk.md",
+      "kind": "regular",
+      "bytes": 33176,
+      "archive_mode": 420,
+      "sha256": "433a157af674c798291c8cfd00d58cbc25497b95bc44664c8d0c5c5e559edca7"
+    },
+    {
+      "path": "docs/images",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "docs/images/doom-extension.png",
+      "kind": "regular",
+      "bytes": 171987,
+      "archive_mode": 420,
+      "sha256": "c3b89b5e1fba711a5bcfa188e13d8695a84f7cdda12d9e127bb45b36d13cbb27"
+    },
+    {
+      "path": "docs/images/tree-view.png",
+      "kind": "regular",
+      "bytes": 281981,
+      "archive_mode": 420,
+      "sha256": "ca61e7bbf300dfb3840cc191dc66dc4e9f5166b2f1f4089e6fb13fd04a2c3c66"
+    },
+    {
+      "path": "docs/images/interactive-mode.png",
+      "kind": "regular",
+      "bytes": 329142,
+      "archive_mode": 420,
+      "sha256": "54de24b4c95a4f1833b2462000ce7de64a41e961745be7a776b30083c8b69715"
+    },
+    {
+      "path": "docs/images/exy.png",
+      "kind": "regular",
+      "bytes": 1510779,
+      "archive_mode": 420,
+      "sha256": "a8f253347440aed01ff659f41f573d340bcfd6010d829726ae92fe18abf601de"
+    },
+    {
+      "path": "docs/prompt-templates.md",
+      "kind": "regular",
+      "bytes": 2646,
+      "archive_mode": 420,
+      "sha256": "e7e015ac3dae9db82b66e2aa8699dcbe2c9d10224268b4fcc8bee257f75554e2"
+    },
+    {
+      "path": "docs/json.md",
+      "kind": "regular",
+      "bytes": 3061,
+      "archive_mode": 420,
+      "sha256": "08f5ffb19e08b884a87b415a80401cf2da612c0833fcf578c00093036d3f7a9f"
+    },
+    {
+      "path": "docs/tui.md",
+      "kind": "regular",
+      "bytes": 29208,
+      "archive_mode": 420,
+      "sha256": "842acdac97b7797004aa268db00cb1788f0b55eba3a792790dc37c38dcc26c7d"
+    },
+    {
+      "path": "docs/models.md",
+      "kind": "regular",
+      "bytes": 15763,
+      "archive_mode": 420,
+      "sha256": "559dafacb9953ad1a027a1fd886ca7e8fb7323dcb83f0e4a76fef1b806d55d55"
+    },
+    {
+      "path": "docs/mcp-integrations.md",
+      "kind": "regular",
+      "bytes": 9126,
+      "archive_mode": 420,
+      "sha256": "c11a26b065816a9bd49c45805f2216c8315150a4e53a24e5f4c3919a730b2a60"
+    },
+    {
+      "path": "docs/architecture.md",
+      "kind": "regular",
+      "bytes": 3919,
+      "archive_mode": 420,
+      "sha256": "4c848c75ff5081694f03da6be2aa24973bd6cd618d3da22fdf1694e251f994bf"
+    },
+    {
+      "path": "docs/keybindings.md",
+      "kind": "regular",
+      "bytes": 10282,
+      "archive_mode": 420,
+      "sha256": "a48dfffaac5d691389063a263efa059ffd9ebd82c4f6c271fa40788ff49cb594"
+    },
+    {
+      "path": "docs/settings.md",
+      "kind": "regular",
+      "bytes": 21112,
+      "archive_mode": 420,
+      "sha256": "4eca4922e72190eb803b648c1ff7075213a7c8421e2ac67a2c337f8aa2f162b0"
+    },
+    {
+      "path": "docs/rpc.md",
+      "kind": "regular",
+      "bytes": 37851,
+      "archive_mode": 420,
+      "sha256": "a577f9aa41d6f038f37968756af705d0a2de67787149058de16e2d2dde13cff2"
+    },
+    {
+      "path": "docs/skills.md",
+      "kind": "regular",
+      "bytes": 13736,
+      "archive_mode": 420,
+      "sha256": "ffa8ad01e224427d9a693ee6d22a7926f3b9b54aee3e0dc38a50c25bc6151c14"
+    },
+    {
+      "path": "docs/agent-connection.md",
+      "kind": "regular",
+      "bytes": 9056,
+      "archive_mode": 420,
+      "sha256": "33ee007dead2c79dca5dce69dc116568c435deaae8a815860c86171093ff5a10"
+    },
+    {
+      "path": "examples",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/rpc-extension-ui.ts",
+      "kind": "regular",
+      "bytes": 16682,
+      "archive_mode": 420,
+      "sha256": "3035ffdc4fb957969f5e5f45effc3bf8ae10e7d807b3cea4ea246b522c52c8c8"
+    },
+    {
+      "path": "examples/extensions",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/status-line.ts",
+      "kind": "regular",
+      "bytes": 937,
+      "archive_mode": 420,
+      "sha256": "26e27b1158e980551f63f46e55dad055ac613779c2b8c39df4cddc11be26103d"
+    },
+    {
+      "path": "examples/extensions/reload-runtime.ts",
+      "kind": "regular",
+      "bytes": 1155,
+      "archive_mode": 420,
+      "sha256": "235acbadb313614e6c697768ae4bcc02912348e0341eeb3d2f001b99d412a971"
+    },
+    {
+      "path": "examples/extensions/interactive-shell.ts",
+      "kind": "regular",
+      "bytes": 4780,
+      "archive_mode": 420,
+      "sha256": "1d58144711044591cf1c5bb22971304f42a201fc07c4a1ae8c48bd292d3c46f8"
+    },
+    {
+      "path": "examples/extensions/custom-provider-gitlab-duo",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/custom-provider-gitlab-duo/.gitignore",
+      "kind": "regular",
+      "bytes": 14,
+      "archive_mode": 420,
+      "sha256": "4d56952b0fb13bf8f9b6c13a6d4c34a075bac3af447636a1df4335d7576e2f97"
+    },
+    {
+      "path": "examples/extensions/custom-provider-gitlab-duo/index.ts",
+      "kind": "regular",
+      "bytes": 10747,
+      "archive_mode": 420,
+      "sha256": "8be057640cbbf8ee167f7314835bfc292a4e628221fa2f5d67be60d82a7826e3"
+    },
+    {
+      "path": "examples/extensions/custom-provider-gitlab-duo/package.json",
+      "kind": "regular",
+      "bytes": 316,
+      "archive_mode": 420,
+      "sha256": "a5e3510796245df75f741830dbc45b9bd6077447af4b974d269d529a1799bd21"
+    },
+    {
+      "path": "examples/extensions/custom-provider-gitlab-duo/test.ts",
+      "kind": "regular",
+      "bytes": 2690,
+      "archive_mode": 420,
+      "sha256": "80acf7ac0f4d91281f8dc977b0481d526e4c017bf8df5b1337b46c845b7ab281"
+    },
+    {
+      "path": "examples/extensions/minimal-mode.ts",
+      "kind": "regular",
+      "bytes": 4748,
+      "archive_mode": 420,
+      "sha256": "e968cc2f73a063995cd3dd8d291d9849eab58960c690361e3ecc59a8880e8836"
+    },
+    {
+      "path": "examples/extensions/dynamic-resources",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/dynamic-resources/dynamic.md",
+      "kind": "regular",
+      "bytes": 160,
+      "archive_mode": 420,
+      "sha256": "e61e2c971d02d628a58f7c36b9b37bd3e636e4ad60618a7f65e2b41410c38f35"
+    },
+    {
+      "path": "examples/extensions/dynamic-resources/index.ts",
+      "kind": "regular",
+      "bytes": 457,
+      "archive_mode": 420,
+      "sha256": "dfbc49418fe46ebc9696fa335709df2ed0d4c4703da8c1ad0eb317d11fce8433"
+    },
+    {
+      "path": "examples/extensions/dynamic-resources/dynamic.json",
+      "kind": "regular",
+      "bytes": 2068,
+      "archive_mode": 420,
+      "sha256": "9aae1cd8173f56fb482d4f95ac8c3b5ebcd38a27535201341e8ef82e4b22c361"
+    },
+    {
+      "path": "examples/extensions/dynamic-resources/SKILL.md",
+      "kind": "regular",
+      "bytes": 177,
+      "archive_mode": 420,
+      "sha256": "f8f34b0d81aa791a2d56501756fe0ace21fb78ca2754025d093f41d3b0ccaf69"
+    },
+    {
+      "path": "examples/extensions/overlay-test.ts",
+      "kind": "regular",
+      "bytes": 5371,
+      "archive_mode": 420,
+      "sha256": "0dfc4883fabf47e5738ca5ef8e8c6281dd9d5f7dc7be42d7a6c2fa036c4b1ced"
+    },
+    {
+      "path": "examples/extensions/git-checkpoint.ts",
+      "kind": "regular",
+      "bytes": 1468,
+      "archive_mode": 420,
+      "sha256": "cd8741c95ef41d9d267687820ada97f402f962cca8b92200f4a202e4bf68e188"
+    },
+    {
+      "path": "examples/extensions/timed-confirm.ts",
+      "kind": "regular",
+      "bytes": 2246,
+      "archive_mode": 420,
+      "sha256": "c19cec5f41af75f9fcf9a783644a07e8824152bf3b99362a3c14cc3c2c5b2007"
+    },
+    {
+      "path": "examples/extensions/send-user-message.ts",
+      "kind": "regular",
+      "bytes": 2832,
+      "archive_mode": 420,
+      "sha256": "9261e433c782f354530105e1c9723a19798868f72fd1f5d68af3a4624ad7e446"
+    },
+    {
+      "path": "examples/extensions/qna.ts",
+      "kind": "regular",
+      "bytes": 3735,
+      "archive_mode": 420,
+      "sha256": "7d43525674b2b21d5d8c7653392c502234998e54a92c497a6a8f5040268ec928"
+    },
+    {
+      "path": "examples/extensions/dirty-repo-guard.ts",
+      "kind": "regular",
+      "bytes": 1336,
+      "archive_mode": 420,
+      "sha256": "e0dc90d40e5dafeac11d0d721832e0854d0473484b762530fa51d63ce213c143"
+    },
+    {
+      "path": "examples/extensions/message-renderer.ts",
+      "kind": "regular",
+      "bytes": 1670,
+      "archive_mode": 420,
+      "sha256": "9497950faf08d039cbacf22a263a70e6e86fbbb9eb2badf294fea1b9bcfcad6d"
+    },
+    {
+      "path": "examples/extensions/sandbox",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/sandbox/package-lock.json",
+      "kind": "regular",
+      "bytes": 2531,
+      "archive_mode": 420,
+      "sha256": "5c006ee3253f47b63723ba85fec50d30f364e45ff021f5f2d767e6538a11327b"
+    },
+    {
+      "path": "examples/extensions/sandbox/.gitignore",
+      "kind": "regular",
+      "bytes": 13,
+      "archive_mode": 420,
+      "sha256": "16d30e4462189fb14dd611bdb708c510630c576a1f35b9383e89a4352da36c97"
+    },
+    {
+      "path": "examples/extensions/sandbox/index.ts",
+      "kind": "regular",
+      "bytes": 8995,
+      "archive_mode": 420,
+      "sha256": "da876d5e77623e6cb0f7efb99678156bf0d19ac662d7b4593a93190b5bd7afd4"
+    },
+    {
+      "path": "examples/extensions/sandbox/package.json",
+      "kind": "regular",
+      "bytes": 344,
+      "archive_mode": 420,
+      "sha256": "bd4aa4821f7e97abb5c9cf89cdcb5462aab5725e3bd58377805bff7e93ec1836"
+    },
+    {
+      "path": "examples/extensions/with-deps",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/with-deps/package-lock.json",
+      "kind": "regular",
+      "bytes": 892,
+      "archive_mode": 420,
+      "sha256": "0095cc74e2b5366b2b46956c24fb14e692c950aa41095e9c945634435252987b"
+    },
+    {
+      "path": "examples/extensions/with-deps/.gitignore",
+      "kind": "regular",
+      "bytes": 14,
+      "archive_mode": 420,
+      "sha256": "4d56952b0fb13bf8f9b6c13a6d4c34a075bac3af447636a1df4335d7576e2f97"
+    },
+    {
+      "path": "examples/extensions/with-deps/index.ts",
+      "kind": "regular",
+      "bytes": 1012,
+      "archive_mode": 420,
+      "sha256": "8d4dbc7028c891eac7f0386d25eecea3e9ac0de7fd841b5bb08137e2ec5ab443"
+    },
+    {
+      "path": "examples/extensions/with-deps/package.json",
+      "kind": "regular",
+      "bytes": 397,
+      "archive_mode": 420,
+      "sha256": "c8189f5ff7f770fc96ed44c967d11f91bd24abc17a049802e6c253a0ff3982a4"
+    },
+    {
+      "path": "examples/extensions/working-indicator.ts",
+      "kind": "regular",
+      "bytes": 3426,
+      "archive_mode": 420,
+      "sha256": "e88295d765b78fd6aac0e93db92b183ee9b7103dc21577e3c5a42665dfad032c"
+    },
+    {
+      "path": "examples/extensions/system-prompt-header.ts",
+      "kind": "regular",
+      "bytes": 528,
+      "archive_mode": 420,
+      "sha256": "aa97f1add4fe347b3fc37cd3709950a105b0db5d6cdaf19325b58a9fbfd05223"
+    },
+    {
+      "path": "examples/extensions/structured-output.ts",
+      "kind": "regular",
+      "bytes": 2187,
+      "archive_mode": 420,
+      "sha256": "72a3a665ce3de1419c837db6eb8a0e7a890310c6e02e4d59c454e5c9514c15ec"
+    },
+    {
+      "path": "examples/extensions/built-in-tool-renderer.ts",
+      "kind": "regular",
+      "bytes": 5412,
+      "archive_mode": 420,
+      "sha256": "5faf73b97f8943809f9d008a47db1dfc20cd97fa47474ec7d5876642c50d9ee0"
+    },
+    {
+      "path": "examples/extensions/confirm-destructive.ts",
+      "kind": "regular",
+      "bytes": 1680,
+      "archive_mode": 420,
+      "sha256": "55502f82109df07e922ef3ec41af1b1a5ed33d4d6d56076654ab2bc88e2e0888"
+    },
+    {
+      "path": "examples/extensions/space-invaders.ts",
+      "kind": "regular",
+      "bytes": 15166,
+      "archive_mode": 420,
+      "sha256": "b2129d8eb5c867fd0578a6ccaa184bfaa2bdfaff698b1b9fd5824376a172afb4"
+    },
+    {
+      "path": "examples/extensions/model-status.ts",
+      "kind": "regular",
+      "bytes": 802,
+      "archive_mode": 420,
+      "sha256": "acc91b608df6b62a619869764445e6c2b8e120ef7e6f738b23349f10f195ab80"
+    },
+    {
+      "path": "examples/extensions/provider-payload.ts",
+      "kind": "regular",
+      "bytes": 671,
+      "archive_mode": 420,
+      "sha256": "1877ddeeaa11a8f2bff7db1a2380d1c5e0ceff9c2c74b8d1cc0a283b285cfd80"
+    },
+    {
+      "path": "examples/extensions/tic-tac-toe.ts",
+      "kind": "regular",
+      "bytes": 35374,
+      "archive_mode": 420,
+      "sha256": "9da274dd795de6209f29beca1535951910827a41f178f9016e8bd48d6f667234"
+    },
+    {
+      "path": "examples/extensions/input-transform.ts",
+      "kind": "regular",
+      "bytes": 1444,
+      "archive_mode": 420,
+      "sha256": "cf0f65d610631ca75d18aae1c8f1408139702f674cb2835f8c009b943776474b"
+    },
+    {
+      "path": "examples/extensions/bookmark.ts",
+      "kind": "regular",
+      "bytes": 1491,
+      "archive_mode": 420,
+      "sha256": "f62778eb0e14cfc7e31c64b28de0f1aaef9eaac954e36b330072c9423dca8e8d"
+    },
+    {
+      "path": "examples/extensions/overlay-qa-tests.ts",
+      "kind": "regular",
+      "bytes": 41852,
+      "archive_mode": 420,
+      "sha256": "93ac4f4131b0785d501b16a9a440890179d4d5ddae5bac3eb0ee5ae5f089fe5c"
+    },
+    {
+      "path": "examples/extensions/rainbow-editor.ts",
+      "kind": "regular",
+      "bytes": 2386,
+      "archive_mode": 420,
+      "sha256": "f95f17ba8a0376180bd23510c20151e83aadc74142e989f14227bf5c4196883f"
+    },
+    {
+      "path": "examples/extensions/tool-override.ts",
+      "kind": "regular",
+      "bytes": 4499,
+      "archive_mode": 420,
+      "sha256": "6199b70ee29f84a9ac2fd3376c311c6ce9e00398c44110e0938cc2b350d6338f"
+    },
+    {
+      "path": "examples/extensions/event-bus.ts",
+      "kind": "regular",
+      "bytes": 1348,
+      "archive_mode": 420,
+      "sha256": "1185942b7afd83692d9e8da029e8594d702157398c693ec8b3ddb02b0780828a"
+    },
+    {
+      "path": "examples/extensions/custom-footer.ts",
+      "kind": "regular",
+      "bytes": 2149,
+      "archive_mode": 420,
+      "sha256": "1e5f17bec95a48d407fbcc092faf7e1f6021c30cee4a66ec09bc120412292cb2"
+    },
+    {
+      "path": "examples/extensions/questionnaire.ts",
+      "kind": "regular",
+      "bytes": 12821,
+      "archive_mode": 420,
+      "sha256": "cf9dc0a0c401252b9c1c19506a38bc4006345344e7fdbd6dd0a96179760f7227"
+    },
+    {
+      "path": "examples/extensions/protected-paths.ts",
+      "kind": "regular",
+      "bytes": 767,
+      "archive_mode": 420,
+      "sha256": "f778ad0e2217e4e4b390b0074979bb817513b574589702bf0909426d5e277c57"
+    },
+    {
+      "path": "examples/extensions/commands.ts",
+      "kind": "regular",
+      "bytes": 2594,
+      "archive_mode": 420,
+      "sha256": "36716b53da169936c7e1360a4fde1e2fc0c3356a6505f177235f09c5538c6e4f"
+    },
+    {
+      "path": "examples/extensions/permission-gate.ts",
+      "kind": "regular",
+      "bytes": 1019,
+      "archive_mode": 420,
+      "sha256": "e32086ba9dd9b4ba0fd308b65241d9affa0b5ecd3f90ef7ea1b9f2b30cab8cc1"
+    },
+    {
+      "path": "examples/extensions/truncated-tool.ts",
+      "kind": "regular",
+      "bytes": 6403,
+      "archive_mode": 420,
+      "sha256": "14a6f645bdaea291ced979ae78726b42202cb75f80da1f64a334ae30a7123bb5"
+    },
+    {
+      "path": "examples/extensions/trigger-compact.ts",
+      "kind": "regular",
+      "bytes": 1350,
+      "archive_mode": 420,
+      "sha256": "92c3b831f9f7bf01a3e0a2df11f4e404f5ac5843000b94e8340a5d78f3cb3add"
+    },
+    {
+      "path": "examples/extensions/hello.ts",
+      "kind": "regular",
+      "bytes": 640,
+      "archive_mode": 420,
+      "sha256": "0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934"
+    },
+    {
+      "path": "examples/extensions/pirate.ts",
+      "kind": "regular",
+      "bytes": 1461,
+      "archive_mode": 420,
+      "sha256": "dd6ce684bbe7630e4a749fe133ef8b8b875adbc7e31284b17fe0b8157d51e013"
+    },
+    {
+      "path": "examples/extensions/doom-overlay",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom/build",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom/build/doom.js",
+      "kind": "regular",
+      "bytes": 64607,
+      "archive_mode": 420,
+      "sha256": "c3147cf4881c88b4210c017c26828f52aff83f0c4db27d7dad3fe6cda9ade1fb"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom/build/doom.wasm",
+      "kind": "regular",
+      "bytes": 380169,
+      "archive_mode": 493,
+      "sha256": "571d161956593508cf4ade732ae93753f00484bb526667a8676571cca14dec7d"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom/build.sh",
+      "kind": "regular",
+      "bytes": 3366,
+      "archive_mode": 493,
+      "sha256": "ab09c9b6dc98ea7c1fa8e74c13981ce69b698c01aec77309c5c7d40ad114d38c"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom/doomgeneric_pi.c",
+      "kind": "regular",
+      "bytes": 1709,
+      "archive_mode": 420,
+      "sha256": "98210909e1e7dee71cbbdba64f1db4bebd88b504e861ee36ea42093c59b251a1"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/wad-finder.ts",
+      "kind": "regular",
+      "bytes": 1552,
+      "archive_mode": 420,
+      "sha256": "ab699a3004a78a768e4a6d9fc9c134570e47c0f8940660035a5a0b79f295abf7"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom-component.ts",
+      "kind": "regular",
+      "bytes": 3645,
+      "archive_mode": 420,
+      "sha256": "733efa126fea6141b6dfe55817f4bbb693a5fe7a0c5a6b248ae061e969850347"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/.gitignore",
+      "kind": "regular",
+      "bytes": 41,
+      "archive_mode": 420,
+      "sha256": "b26aa26693c610d46d9c8b387b28d20dc5196a73b979f5522e24dd689aab7bc8"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/index.ts",
+      "kind": "regular",
+      "bytes": 2109,
+      "archive_mode": 420,
+      "sha256": "8faf8dff21aa990e48f2a98f71384b2c1884101e585bdaf08a3f2799a85cedfc"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom-keys.ts",
+      "kind": "regular",
+      "bytes": 3495,
+      "archive_mode": 420,
+      "sha256": "e8bd99a4ce90dd44ad120c58f3b2ba7bc0b0c662bcdc4ed4994d059130be9fdd"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/README.md",
+      "kind": "regular",
+      "bytes": 1322,
+      "archive_mode": 420,
+      "sha256": "e17bc73b76c7977ffeef99120c7896ff992cf5938a60c4d7427a7b19fc180d97"
+    },
+    {
+      "path": "examples/extensions/doom-overlay/doom-engine.ts",
+      "kind": "regular",
+      "bytes": 4914,
+      "archive_mode": 420,
+      "sha256": "706e43f70bd374b73928e5a44d196d1dd5c03d93979d08bdfc01d049b5083855"
+    },
+    {
+      "path": "examples/extensions/question.ts",
+      "kind": "regular",
+      "bytes": 7778,
+      "archive_mode": 420,
+      "sha256": "892d3b77588a126dbd836ca3372c7fa03930636d32ffe160239e66424a7144a7"
+    },
+    {
+      "path": "examples/extensions/custom-compaction.ts",
+      "kind": "regular",
+      "bytes": 4279,
+      "archive_mode": 420,
+      "sha256": "2ce2fb96e4f6bf9dd67e7173a79505d9448eef31bb35800ac661f123378c8338"
+    },
+    {
+      "path": "examples/extensions/dynamic-tools.ts",
+      "kind": "regular",
+      "bytes": 2211,
+      "archive_mode": 420,
+      "sha256": "4394098c11f98ffc26e2487acda2e09b9467ef9ff5867def7273cb0c82a2b6c0"
+    },
+    {
+      "path": "examples/extensions/border-status-editor.ts",
+      "kind": "regular",
+      "bytes": 4511,
+      "archive_mode": 420,
+      "sha256": "cfaebe6e2053ebd22459c92a9fda8651585086d40055aef4dc694c98bea3f193"
+    },
+    {
+      "path": "examples/extensions/bash-spawn-hook.ts",
+      "kind": "regular",
+      "bytes": 696,
+      "archive_mode": 420,
+      "sha256": "c79c87653e20ac6bd9f4813aa4bb01a483b3637700fa2edda220703958532662"
+    },
+    {
+      "path": "examples/extensions/claude-rules.ts",
+      "kind": "regular",
+      "bytes": 2476,
+      "archive_mode": 420,
+      "sha256": "c42652e27d4c24ee975da783a78da1be1636b6e566e722775e800f97c7de40d8"
+    },
+    {
+      "path": "examples/extensions/session-name.ts",
+      "kind": "regular",
+      "bytes": 785,
+      "archive_mode": 420,
+      "sha256": "a0b9fd94e2cc827931150cc409238b473da635ab1a1cddce633cae5937a3ae24"
+    },
+    {
+      "path": "examples/extensions/ssh.ts",
+      "kind": "regular",
+      "bytes": 5511,
+      "archive_mode": 420,
+      "sha256": "28d19274a08999ce7cd63344327fc967a59202f66f92b9f62f7190e5b8f02ed9"
+    },
+    {
+      "path": "examples/extensions/github-issue-autocomplete.ts",
+      "kind": "regular",
+      "bytes": 5282,
+      "archive_mode": 420,
+      "sha256": "4646ef360e57aa98c787ba21ca2f2e8acb3db30c4db0503e64cdbea4a4c2ac65"
+    },
+    {
+      "path": "examples/extensions/mac-system-theme.ts",
+      "kind": "regular",
+      "bytes": 1216,
+      "archive_mode": 420,
+      "sha256": "0ad006546a36a52c37aefe0f5a6b1da5ef5a1dd04d60d0c50e41b22be8e3fea4"
+    },
+    {
+      "path": "examples/extensions/custom-provider-anthropic",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/custom-provider-anthropic/package-lock.json",
+      "kind": "regular",
+      "bytes": 651,
+      "archive_mode": 420,
+      "sha256": "2667fc32855f1a2d591ee783d36a326e55d04c456fa9ce135650b0bb15fbd69d"
+    },
+    {
+      "path": "examples/extensions/custom-provider-anthropic/.gitignore",
+      "kind": "regular",
+      "bytes": 14,
+      "archive_mode": 420,
+      "sha256": "4d56952b0fb13bf8f9b6c13a6d4c34a075bac3af447636a1df4335d7576e2f97"
+    },
+    {
+      "path": "examples/extensions/custom-provider-anthropic/index.ts",
+      "kind": "regular",
+      "bytes": 19158,
+      "archive_mode": 420,
+      "sha256": "f878fd71c268a274d3a71ec60a82386429302f9cbf5eb28986fe9c97b4cee3c1"
+    },
+    {
+      "path": "examples/extensions/custom-provider-anthropic/package.json",
+      "kind": "regular",
+      "bytes": 375,
+      "archive_mode": 420,
+      "sha256": "da2b503872b76da1b66c42f811b41b523373cce26a7014e38a1d4ca89a0d1c5f"
+    },
+    {
+      "path": "examples/extensions/shutdown-command.ts",
+      "kind": "regular",
+      "bytes": 2045,
+      "archive_mode": 420,
+      "sha256": "68dc7f9561aa9b1c0f39cae19c0f41d56171a99875972e5998de3caa75f96e09"
+    },
+    {
+      "path": "examples/extensions/rpc-demo.ts",
+      "kind": "regular",
+      "bytes": 3632,
+      "archive_mode": 420,
+      "sha256": "3d54a396eee12eb04ea12d0ea03716a6edd3e8743502b6a529e3b8d429ae640d"
+    },
+    {
+      "path": "examples/extensions/auto-commit-on-exit.ts",
+      "kind": "regular",
+      "bytes": 1385,
+      "archive_mode": 420,
+      "sha256": "decd27119c6184bde364b6b2ebf1c872adfa225631b223ad8e2f16caf5526089"
+    },
+    {
+      "path": "examples/extensions/snake.ts",
+      "kind": "regular",
+      "bytes": 9413,
+      "archive_mode": 420,
+      "sha256": "b1e9fa590476d7e1ed1acc9e2bc8f8f74cdc31ddb380a541dd26bbe26307b734"
+    },
+    {
+      "path": "examples/extensions/README.md",
+      "kind": "regular",
+      "bytes": 9579,
+      "archive_mode": 420,
+      "sha256": "6f56e667ecc205224909d8e1cdbbe312dbd713cfb5aac7a89aa109b5a620cf66"
+    },
+    {
+      "path": "examples/extensions/prompt-customizer.ts",
+      "kind": "regular",
+      "bytes": 2878,
+      "archive_mode": 420,
+      "sha256": "3c10215a549995c638c4e9ee6ae64e6f5631e3e025b66c0cf56d24c1771d9f77"
+    },
+    {
+      "path": "examples/extensions/custom-header.ts",
+      "kind": "regular",
+      "bytes": 2399,
+      "archive_mode": 420,
+      "sha256": "8b477a126e47b2583a62bd0f9431e8da8de2790dee13a4e53c5ef1429c3f441f"
+    },
+    {
+      "path": "examples/extensions/plan-mode",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/plan-mode/index.ts",
+      "kind": "regular",
+      "bytes": 10629,
+      "archive_mode": 420,
+      "sha256": "1510cbbb1466b12785ce2673ec8d4ed71a103f9db3f9f6407d9ee4e28793c1df"
+    },
+    {
+      "path": "examples/extensions/plan-mode/README.md",
+      "kind": "regular",
+      "bytes": 1960,
+      "archive_mode": 420,
+      "sha256": "1266c09f8af6829d10d0d9d05c85056ccb1c30af47f2297f83fca6ef84277e37"
+    },
+    {
+      "path": "examples/extensions/plan-mode/utils.ts",
+      "kind": "regular",
+      "bytes": 4129,
+      "archive_mode": 420,
+      "sha256": "12ea28d57cc55e68e8d52a2f1d16df8b2e7f2749cd694d41453028002a2bdad9"
+    },
+    {
+      "path": "examples/extensions/notify.ts",
+      "kind": "regular",
+      "bytes": 1912,
+      "archive_mode": 420,
+      "sha256": "1a0f642402bec7777b2dedefd592627006b2877c0a081efeca472a6165b1e271"
+    },
+    {
+      "path": "examples/extensions/subagent",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/subagent/agents.ts",
+      "kind": "regular",
+      "bytes": 3348,
+      "archive_mode": 420,
+      "sha256": "0135bb8ad668af4dd238af6ee8aca233defbc26a858b06e8f22462551359cb99"
+    },
+    {
+      "path": "examples/extensions/subagent/agents",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/subagent/agents/worker.md",
+      "kind": "regular",
+      "bytes": 664,
+      "archive_mode": 420,
+      "sha256": "ca2b2298fcbd8bfafcfe61977dc8075001a64b9c4d8c289c3b5eaa896efe6238"
+    },
+    {
+      "path": "examples/extensions/subagent/agents/planner.md",
+      "kind": "regular",
+      "bytes": 914,
+      "archive_mode": 420,
+      "sha256": "4b6253793afdae6052d1f74c25fffaca9b1e1e8028c3dc912e693f74d69b9fce"
+    },
+    {
+      "path": "examples/extensions/subagent/agents/scout.md",
+      "kind": "regular",
+      "bytes": 1299,
+      "archive_mode": 420,
+      "sha256": "c38981615bf1b402a29c80495e5442cf4305e181891b8f6011b4ab5c15eb478e"
+    },
+    {
+      "path": "examples/extensions/subagent/agents/reviewer.md",
+      "kind": "regular",
+      "bytes": 941,
+      "archive_mode": 420,
+      "sha256": "75c9a9e6f9252061df9344dfdfe7d99317e1afe4576a60bb148aaee6adb4a1e8"
+    },
+    {
+      "path": "examples/extensions/subagent/index.ts",
+      "kind": "regular",
+      "bytes": 33018,
+      "archive_mode": 420,
+      "sha256": "e7b0efdacb60650713fc3458c2b7552cf72572f2b450b46150159607540c5ad2"
+    },
+    {
+      "path": "examples/extensions/subagent/prompts",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/extensions/subagent/prompts/implement.md",
+      "kind": "regular",
+      "bytes": 579,
+      "archive_mode": 420,
+      "sha256": "65462de33c97ac1372cfed270dad9af164605b05028c069dd4c013ff9792675b"
+    },
+    {
+      "path": "examples/extensions/subagent/prompts/implement-and-review.md",
+      "kind": "regular",
+      "bytes": 494,
+      "archive_mode": 420,
+      "sha256": "019ba4bf42d596ea03fc4564be5b2cc55a06227c95db19a4d5a5bb96697a75f9"
+    },
+    {
+      "path": "examples/extensions/subagent/prompts/scout-and-plan.md",
+      "kind": "regular",
+      "bytes": 496,
+      "archive_mode": 420,
+      "sha256": "9506399391e0d2c71826c45f26cc332175dd964465f99a8bb880e109f8ed89f4"
+    },
+    {
+      "path": "examples/extensions/subagent/README.md",
+      "kind": "regular",
+      "bytes": 5997,
+      "archive_mode": 420,
+      "sha256": "ff3a249eb03094b54d20b11377b7fb8e3cb4a8c67dc12e658dce9f55c2ab5339"
+    },
+    {
+      "path": "examples/extensions/handoff.ts",
+      "kind": "regular",
+      "bytes": 6127,
+      "archive_mode": 420,
+      "sha256": "5eeccc49de5348fa5efc61840ff0f6e53758d399b80a08ed8859b401ee8fd0ed"
+    },
+    {
+      "path": "examples/extensions/todo.ts",
+      "kind": "regular",
+      "bytes": 8840,
+      "archive_mode": 420,
+      "sha256": "ddb7d1e92f1bd87c18e11c574f7297e0e4ecc45a9079d4adc2d9ec98576399fc"
+    },
+    {
+      "path": "examples/extensions/modal-editor.ts",
+      "kind": "regular",
+      "bytes": 2417,
+      "archive_mode": 420,
+      "sha256": "4742283930949fad1920359540aa9d42c833d2d24eaa49564bfc08f90e328b0d"
+    },
+    {
+      "path": "examples/extensions/file-trigger.ts",
+      "kind": "regular",
+      "bytes": 1033,
+      "archive_mode": 420,
+      "sha256": "6f5fc3dc8fa387d8ca6973786c521feb94da58838b0e171a881fb6b3a5243ac0"
+    },
+    {
+      "path": "examples/extensions/working-message-test.ts",
+      "kind": "regular",
+      "bytes": 904,
+      "archive_mode": 420,
+      "sha256": "91ee09378f13cce142a4314bec1bfe9784e10484c33463c4fe3139c391c117a0"
+    },
+    {
+      "path": "examples/extensions/widget-placement.ts",
+      "kind": "regular",
+      "bytes": 367,
+      "archive_mode": 420,
+      "sha256": "ffabd33cf58efb908de2025aac4cb41daf13dbeee24b5ad8dcd0361b43eff6d7"
+    },
+    {
+      "path": "examples/extensions/preset.ts",
+      "kind": "regular",
+      "bytes": 14233,
+      "archive_mode": 420,
+      "sha256": "3a52d58b3c2f2ca6261803b7d5ded4860dda9abad95c5cf89fb915957b31be67"
+    },
+    {
+      "path": "examples/extensions/titlebar-spinner.ts",
+      "kind": "regular",
+      "bytes": 1627,
+      "archive_mode": 420,
+      "sha256": "ef6ed2fcd1b62019dcb5fbd31160279ce73844de9cfe8d5ceece456fbec72526"
+    },
+    {
+      "path": "examples/extensions/custom-refinement.ts",
+      "kind": "regular",
+      "bytes": 4001,
+      "archive_mode": 420,
+      "sha256": "bf5b70da72b2260d963f7dd591fe5fa885a3fd2d1b10dfdb69e74e86d2ff7cc8"
+    },
+    {
+      "path": "examples/extensions/tools.ts",
+      "kind": "regular",
+      "bytes": 3766,
+      "archive_mode": 420,
+      "sha256": "dd7c1efbb15fc0acf7822c607c6106ae5e422e63a2d41ab14c87810e7a49b623"
+    },
+    {
+      "path": "examples/extensions/inline-bash.ts",
+      "kind": "regular",
+      "bytes": 2958,
+      "archive_mode": 420,
+      "sha256": "69b9dfc34e7b1ada9afe10cda3384b0b1a6f3c3a47da5fb7d16f914399b023d4"
+    },
+    {
+      "path": "examples/extensions/summarize.ts",
+      "kind": "regular",
+      "bytes": 5218,
+      "archive_mode": 420,
+      "sha256": "5efd711d163c31ff69d0537409589ece3c1cf27adf491fc8648e223b0e946e3e"
+    },
+    {
+      "path": "examples/extensions/hidden-thinking-label.ts",
+      "kind": "regular",
+      "bytes": 1614,
+      "archive_mode": 420,
+      "sha256": "fbbcac27adc1a9e04393c4c1b82ec7c3f463a9a66fd8a75628644322fc9392b7"
+    },
+    {
+      "path": "examples/README.md",
+      "kind": "regular",
+      "bytes": 912,
+      "archive_mode": 420,
+      "sha256": "73944e62baa0f4771a3f06e8c70d3fefcd11783a58887ff6d07951c15caa18d4"
+    },
+    {
+      "path": "examples/sdk",
+      "kind": "directory",
+      "bytes": 0,
+      "archive_mode": 493
+    },
+    {
+      "path": "examples/sdk/07-context-files.ts",
+      "kind": "regular",
+      "bytes": 1137,
+      "archive_mode": 420,
+      "sha256": "55bd0a290256d31f0a58616bbcefba8309afdf9c770bc32015ea3bc41b8e7223"
+    },
+    {
+      "path": "examples/sdk/02-custom-model.ts",
+      "kind": "regular",
+      "bytes": 1483,
+      "archive_mode": 420,
+      "sha256": "806c56c453ee822d2b1ac5c5e413f9d491ba5002ffe1a690df9cc6b1711d146c"
+    },
+    {
+      "path": "examples/sdk/11-sessions.ts",
+      "kind": "regular",
+      "bytes": 1743,
+      "archive_mode": 420,
+      "sha256": "1e0f2dd855a3b94dd394c54ebe24f0756257977bbd95678a0ee756e600f80a6c"
+    },
+    {
+      "path": "examples/sdk/04-skills.ts",
+      "kind": "regular",
+      "bytes": 1433,
+      "archive_mode": 420,
+      "sha256": "942e0560d21b60b646bfc5bf164082f9ffb7defc531098ecd8a1efb16cabf8a8"
+    },
+    {
+      "path": "examples/sdk/13-session-runtime.ts",
+      "kind": "regular",
+      "bytes": 1915,
+      "archive_mode": 420,
+      "sha256": "ae9801383187801b0241164fb20d20bebfd9315ae602e0f369af08214d3b948f"
+    },
+    {
+      "path": "examples/sdk/03-custom-prompt.ts",
+      "kind": "regular",
+      "bytes": 1825,
+      "archive_mode": 420,
+      "sha256": "6e29625b53dac5235025c55dcd420532d396b611a257289644acd242c02544be"
+    },
+    {
+      "path": "examples/sdk/09-api-keys-and-oauth.ts",
+      "kind": "regular",
+      "bytes": 1568,
+      "archive_mode": 420,
+      "sha256": "f69932fb4f621ff4d64a3a01c74d7593ea17809abf322a9813fb06dbc22397e2"
+    },
+    {
+      "path": "examples/sdk/06-extensions.ts",
+      "kind": "regular",
+      "bytes": 2611,
+      "archive_mode": 420,
+      "sha256": "57115106bcd2526d3e35b79a344a5038eb130254d7ecc3a18e9666eaa74a843b"
+    },
+    {
+      "path": "examples/sdk/12-full-control.ts",
+      "kind": "regular",
+      "bytes": 2024,
+      "archive_mode": 420,
+      "sha256": "9b088b52f5312216cf9c22816c662fb9545f1454ee6b0c343f5ae896378b068c"
+    },
+    {
+      "path": "examples/sdk/README.md",
+      "kind": "regular",
+      "bytes": 4958,
+      "archive_mode": 420,
+      "sha256": "ea3362c57398df1679514e7703d5a5f3345955f8fd6ba9cdbe91bd6346d19c29"
+    },
+    {
+      "path": "examples/sdk/08-prompt-templates.ts",
+      "kind": "regular",
+      "bytes": 1336,
+      "archive_mode": 420,
+      "sha256": "de20ef5c4355146233c2b944ffb368fe9ebaad7e4303a628c3ce3df1042cecf1"
+    },
+    {
+      "path": "examples/sdk/01-minimal.ts",
+      "kind": "regular",
+      "bytes": 639,
+      "archive_mode": 420,
+      "sha256": "2076ee11788b5221b3eeca39d52f535a9b071a0280dd4a670894f8e54693a5e4"
+    },
+    {
+      "path": "examples/sdk/10-settings.ts",
+      "kind": "regular",
+      "bytes": 1575,
+      "archive_mode": 420,
+      "sha256": "6b09b94c6648398f0d2b7e4d9de0c2b903503cffc4d495a26db0a8dd6a09f5a9"
+    },
+    {
+      "path": "examples/sdk/05-tools.ts",
+      "kind": "regular",
+      "bytes": 1284,
+      "archive_mode": 420,
+      "sha256": "a7b7f01fe8de3375cdb4cce4159fb22c082621fab3f75bce98fff36bb35f6521"
+    },
+    {
+      "path": "photon_rs_bg.wasm",
+      "kind": "regular",
+      "bytes": 1881634,
+      "archive_mode": 420,
+      "sha256": "10468181565c56004c867f3a4af96f89a0ef5a63a72f2b5fb12c1f1992a3615c"
+    },
+    {
+      "path": "models.bundled.json",
+      "kind": "regular",
+      "bytes": 615968,
+      "archive_mode": 420,
+      "sha256": "952e83915d111d45d7b5d48a18fd1760cf2248b07e046da05d300e40a58af49d"
+    },
+    {
+      "path": "mcp-services.bundled.json",
+      "kind": "regular",
+      "bytes": 52401,
+      "archive_mode": 420,
+      "sha256": "2257ad3b25eb7ea1a30a6ec550680165eb56e6a3ecac01a3bcf9cedba43447c3"
+    }
+  ]
+}
