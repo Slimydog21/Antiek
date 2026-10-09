@@ -1,7 +1,14 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { LemonModal } from "../lemon/LemonModal";
-import { readCustomHotkeys } from "../../workspace/persistence";
+import { readCustomHotkeys, type PersistedCustomHotkey } from "../../workspace/persistence";
+import {
+  awaitWorkspaceOwnerSession,
+  isWorkspaceOwnerSession,
+  subscribeWorkspaceOwnerAdmission,
+  workspaceOwnerAdmission,
+  type WorkspaceOwnerSession,
+} from "../../lib/accountWorkspaceOwner";
 import { formatBinding } from "./bindings";
 import { NOTES, PENDING, TASK_OF, TASK_TITLES, comboParts } from "./keymapView";
 import {
@@ -43,6 +50,52 @@ interface ActionEntry {
 }
 
 const TASK_ORDER: KeymapTask[] = ["find", "go", "panels", "help"];
+
+interface CustomSnapshot {
+  owner: WorkspaceOwnerSession;
+  bindings: PersistedCustomHotkey[];
+}
+
+function readCustomSnapshot(owner: WorkspaceOwnerSession): CustomSnapshot | null {
+  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return null;
+  const bindings = readCustomHotkeys().bindings;
+  // Storage can call back into the app. Never adopt a read across retirement.
+  return isWorkspaceOwnerSession(owner) ? { owner, bindings } : null;
+}
+
+function useCustomHotkeys(): PersistedCustomHotkey[] | null {
+  const admission = useSyncExternalStore(
+    subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerAdmission,
+  );
+  const [snapshot, setSnapshot] = useState<CustomSnapshot | null>(null);
+
+  useEffect(() => {
+    const owner = admission.session;
+    if (admission.state === "retiring" || admission.state === "failed"
+      || owner.subject === null) {
+      if (snapshot !== null) setSnapshot(null);
+      return;
+    }
+    if (admission.state !== "ready" || snapshot?.owner === owner) return;
+
+    const controller = new AbortController();
+    let live = true;
+    void awaitWorkspaceOwnerSession(owner, controller.signal).then((confirmed) => {
+      if (!confirmed || !live || !isWorkspaceOwnerSession(owner)) return;
+      const next = readCustomSnapshot(owner);
+      if (live && isWorkspaceOwnerSession(owner)) setSnapshot(next);
+    }, () => {});
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [admission, snapshot]);
+
+  // A cookie recheck retains this mounted snapshot, but cannot admit a fresh read.
+  return snapshot?.owner === admission.session
+    && (admission.state === "ready" || admission.state === "suspended")
+    ? snapshot.bindings : null;
+}
 
 function Keys({ parts }: { parts: string[] }) {
   return (
@@ -91,7 +144,7 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
     })).filter((g) => g.entries.length > 0);
   }, [platform]);
 
-  const custom = useMemo(() => readCustomHotkeys().bindings, []);
+  const custom = useCustomHotkeys();
 
   const needle = filter.trim().toLowerCase();
   const visible = needle
@@ -100,8 +153,8 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
         .filter((g) => g.entries.length > 0)
     : groups;
   const visibleCustom = needle
-    ? custom.filter((c) => `${c.label} ${formatBinding(c.spec)} ${c.spec}`.toLowerCase().includes(needle))
-    : custom;
+    ? (custom ?? []).filter((c) => `${c.label} ${formatBinding(c.spec)} ${c.spec}`.toLowerCase().includes(needle))
+    : custom ?? [];
 
   // Give focus back, on close, to whatever had it when the sheet opened. A
   // layout effect reads it before the dialog's own effect moves focus in.
@@ -236,7 +289,11 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
           <h3 id="keysheet-custom" className="antiek-keysheet__heading">
             Your custom hotkeys
           </h3>
-          {custom.length === 0 ? (
+          {custom === null ? (
+            <p className="antiek-keysheet__empty" role="status">
+              Custom hotkeys are unavailable until your account is ready.
+            </p>
+          ) : custom.length === 0 ? (
             <p className="antiek-keysheet__empty">You haven&apos;t assigned any custom hotkeys yet.</p>
           ) : (
             <ul className="antiek-keysheet__custom">
