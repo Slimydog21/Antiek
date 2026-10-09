@@ -33,3 +33,27 @@ export function composeThoughtPartnerSystemContext(
   if (!reading) return base;
   return `${base}\n\n${reading}`;
 }
+
+/**
+ * FFX-KPA SPR-03 M5 — seed a pane that may not be mounted yet. The AISidecar
+ * is a lazy panel: opening it and dispatching in the same tick would fire the
+ * event before its listener exists. So the seed is parked here as well as
+ * broadcast; a listener that is already mounted takes it on the event, and a
+ * sidecar that mounts afterwards takes it on mount. A parked seed expires so
+ * an old draft never lands in a pane opened much later.
+ */
+const PENDING_SEED_TTL_MS = 10_000;
+let pendingSeed: { detail: ThoughtPartnerSeedDetail; at: number } | null = null;
+
+export function seedThoughtPartner(detail: ThoughtPartnerSeedDetail): void {
+  pendingSeed = { detail, at: Date.now() };
+  window.dispatchEvent(new CustomEvent(THOUGHT_PARTNER_SEED_EVENT, { detail }));
+}
+
+/** Take (and clear) a parked seed that is still fresh. */
+export function takePendingThoughtPartnerSeed(now = Date.now()): ThoughtPartnerSeedDetail | null {
+  const seed = pendingSeed;
+  pendingSeed = null;
+  if (!seed || now - seed.at > PENDING_SEED_TTL_MS) return null;
+  return seed.detail;
+}
