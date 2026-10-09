@@ -136,3 +136,47 @@ describe("real normal-account audio Settings", () => {
     render(<AudioModelsPanel />); await loaded(); fill(); fireEvent.submit(form()); await screen.findByText(confirmed ? /Credential cleanup was confirmed/ : /Credential cleanup is unconfirmed/); expect(screen.queryByText("My audio")).toBeNull();
   });
 });
+
+describe("503 successor: real panel mutation uncertainty", () => {
+  it("503 successor: committed create clears the key, refuses retained submission and refreshes by GET only", async () => {
+    onRequest = (request) => {
+      if (request.method === "POST") { inventory = [row]; return Promise.resolve(response({ detail: "PRIVATE unit-audio-secret" }, 503)); }
+      return Promise.resolve(response({ models: request.url.endsWith("catalog") ? [descriptor] : inventory }));
+    };
+    render(<AudioModelsPanel />); await loaded(); fill();
+    const retainedForm = form(); const retainedSave = screen.getByRole("button", { name: "Save audio model" });
+    fireEvent.submit(retainedForm); expect(input("Audio API key").value).toBe("");
+    await screen.findByText(/The change could not be confirmed/);
+    expect(retainedSave.matches(":disabled")).toBe(true);
+    fireEvent.submit(retainedForm); fireEvent.click(retainedSave);
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "POST"]);
+    expect(screen.queryByText("My audio")).toBeNull();
+    expect(document.body.textContent).not.toContain("unit-audio-secret");
+    expect(document.body.textContent).not.toContain("PRIVATE");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh audio models" })); await screen.findByText("My audio");
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "POST", "GET", "GET"]);
+    expect(input("Audio API key").value).toBe("");
+    expect(screen.queryByText(/The change could not be confirmed/)).toBeNull();
+  });
+  it.each(["PATCH", "DELETE"])("503 successor: committed %s blocks the retained button until a GET-only refresh", async (method) => {
+    inventory = [row];
+    onRequest = (request) => {
+      if (request.method === method) {
+        inventory = method === "PATCH" ? [{ ...row, enabled: false, registered: false }] : [];
+        return Promise.resolve(response({ detail: "PRIVATE unit-audio-secret" }, 503));
+      }
+      return Promise.resolve(response({ models: request.url.endsWith("catalog") ? [descriptor] : inventory }));
+    };
+    render(<AudioModelsPanel />); await screen.findByText("My audio");
+    const retainedButton = screen.getByRole("button", { name: method === "PATCH" ? "Disable My audio" : "Remove My audio" });
+    fireEvent.click(retainedButton); await screen.findByText(/The change could not be confirmed/);
+    expect(retainedButton.matches(":disabled")).toBe(true); fireEvent.click(retainedButton);
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", method]);
+    expect(document.body.textContent).not.toContain("PRIVATE");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh audio models" }));
+    if (method === "PATCH") await screen.findByText(/Whisper · Disabled · Registration unavailable/);
+    else await screen.findByText("No saved audio models.");
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", method, "GET", "GET"]);
+    expect(screen.queryByText(/The change could not be confirmed/)).toBeNull();
+  });
+});

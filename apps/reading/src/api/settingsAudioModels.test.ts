@@ -89,3 +89,23 @@ describe("real audio client transport", () => {
     expect(await deleteAudioModel(row.id, signal())).toEqual({ kind: "unknown" }); expect(transport).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("503 successor: ambiguous audio mutations", () => {
+  it.each(["POST", "PATCH", "DELETE"])("503 successor: %s is unknown after one request and never retries", async (method) => {
+    const transport = vi.fn(() => Promise.resolve(response({ detail: "PRIVATE unit-audio-secret" }, 503)));
+    vi.stubGlobal("fetch", transport);
+    const credential = { value: "unit-audio-secret" };
+    const pending = method === "POST" ? createAudioModel(descriptor, "My audio", credential, signal())
+      : method === "PATCH" ? disableAudioModel(row.id, signal()) : deleteAudioModel(row.id, signal());
+    if (method === "POST") expect(credential.value).toBe("");
+    expect(await pending).toEqual({ kind: "unknown" });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+  it.each(["catalog", "user"])("503 successor: GET %s remains unavailable without retry", async (resource) => {
+    const transport = vi.fn(() => Promise.resolve(response({ detail: "PRIVATE unit-audio-secret" }, 503)));
+    vi.stubGlobal("fetch", transport);
+    const result = resource === "catalog" ? await fetchAudioCatalog(signal()) : await fetchAudioModels(signal());
+    expect(result).toEqual({ kind: "failure", reason: "unavailable" });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+});

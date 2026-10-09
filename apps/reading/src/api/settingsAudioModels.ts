@@ -88,7 +88,7 @@ async function consume<T>(pending: Promise<Response>, status: number, mutation: 
     if (response.status === 401) return { kind: "failure", reason: "auth" };
     if (response.status === 404) return { kind: "failure", reason: "missing" };
     if (response.status === 422 || response.status === 413) return { kind: "failure", reason: "validation" };
-    if (response.status === 503) return { kind: "failure", reason: "unavailable" };
+    if (response.status === 503) return mutation ? { kind: "unknown" } : { kind: "failure", reason: "unavailable" };
     return mutation ? { kind: "unknown" } : { kind: "failure", reason: "unavailable" };
   } catch { return mutation ? { kind: "unknown" } : { kind: "failure", reason: "unavailable" }; }
 }
