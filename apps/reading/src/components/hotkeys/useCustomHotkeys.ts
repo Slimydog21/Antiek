@@ -122,66 +122,95 @@ export function useCustomHotkeys(): UseCustomHotkeys {
     subscribeWorkspaceOwnerAdmission, workspaceOwnerAdmission, workspaceOwnerAdmission,
   );
   const live = useRef(true);
-  const confirmed = useRef(owner.subject !== null && isWorkspaceOwnerSession(owner));
+  const confirmed = useRef(false);
+  const loaded = useRef(false);
+  const snapshot = useRef<PersistedCustomHotkey[]>(noBindings);
+  const pendingEdit = useRef(false);
   const current = useCallback(() => live.current && confirmed.current
     && owner.subject !== null && isWorkspaceOwnerSession(owner), [owner]);
-  const [initial] = useState(() => {
-    if (!current()) return { bindings: noBindings, loaded: false };
-    const next = readCustomHotkeys().bindings;
-    return current() ? { bindings: next, loaded: true } : { bindings: noBindings, loaded: false };
-  });
-  const loaded = useRef(initial.loaded);
-  const [bindings, setBindings] = useState(initial.bindings);
+  const [bindings, setBindings] = useState<PersistedCustomHotkey[]>(noBindings);
 
   useEffect(() => {
     if (!loaded.current || !current()) return;
-    writeCustomHotkeys({ schemaVersion: 1, bindings });
-    if (!current()) return;
-    setCustomHotkeys(bindings.map((b) => ({
-      id: b.id, spec: b.spec, route: b.route, entityId: b.entityId,
-    })), owner);
-    if (current()) notifyCustomHotkeysChanged(owner);
+    const next = snapshot.current;
+    writeCustomHotkeys({ schemaVersion: 1, bindings: next });
+    if (!current() || snapshot.current !== next) return;
+    setCustomHotkeys(next, owner);
+    if (!current() || snapshot.current !== next) return;
+    notifyCustomHotkeysChanged(owner);
+    if (current() && snapshot.current === next) pendingEdit.current = false;
   }, [bindings, current, owner]);
 
   useEffect(() => {
     live.current = true;
+    confirmed.current = false;
+    const controller = new AbortController();
+    let generation = 0;
     const sync = () => {
       if (!current()) return;
+      if (pendingEdit.current) {
+        setBindings([...snapshot.current]);
+        return;
+      }
       const next = readCustomHotkeys().bindings;
       if (!current()) return;
+      const wasLoaded = loaded.current;
       loaded.current = true;
       setCustomHotkeys(next, owner);
       if (!current()) return;
-      setBindings((prev) => !current() || JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+      if (!wasLoaded || JSON.stringify(snapshot.current) !== JSON.stringify(next)) {
+        snapshot.current = next;
+        setBindings(next);
+      }
+    };
+    const confirm = () => {
+      const attempt = ++generation;
+      void awaitWorkspaceOwnerSession(owner, controller.signal).then((ready) => {
+        if (!live.current || attempt !== generation || !ready || !isWorkspaceOwnerSession(owner)) return;
+        confirmed.current = true;
+        sync();
+      }, () => {
+        if (attempt === generation) confirmed.current = false;
+      });
     };
     liveListeners.add(sync);
     const storageKey = accountStorageKey("antiek.workspace.custom-hotkeys", owner);
     const onStorage = (e: StorageEvent) => {
       if (e.key === null || e.key === storageKey) sync();
     };
-    const unsubscribe = subscribeWorkspaceOwnerAdmission((snapshot) => {
+    const unsubscribe = subscribeWorkspaceOwnerAdmission((admission) => {
+      generation += 1;
       confirmed.current = false;
-      if (snapshot.session !== owner || snapshot.state === "retiring" || snapshot.state === "failed") {
+      if (admission.session !== owner || admission.state === "retiring" || admission.state === "failed") {
+        controller.abort();
         loaded.current = false;
-        setBindings([]);
+        pendingEdit.current = false;
+        snapshot.current = noBindings;
+        setBindings(noBindings);
         return;
       }
-      if (snapshot.state === "ready") {
-        void awaitWorkspaceOwnerSession(owner).then((ready) => {
-          if (!live.current || !ready || !isWorkspaceOwnerSession(owner)) return;
-          confirmed.current = true;
-          sync();
-        });
-      }
+      if (admission.state === "ready") confirm();
     });
     window.addEventListener("storage", onStorage);
+    confirm();
     return () => {
       live.current = false;
+      confirmed.current = false;
+      generation += 1;
+      controller.abort();
       liveListeners.delete(sync);
       unsubscribe();
       window.removeEventListener("storage", onStorage);
     };
   }, [current, owner]);
+
+  const accept = useCallback((next: PersistedCustomHotkey[]) => {
+    if (!current()) return false;
+    snapshot.current = next;
+    pendingEdit.current = true;
+    setBindings(next);
+    return true;
+  }, [current]);
 
   const visibleBindings = admission.session === owner
     && (admission.state === "ready" || admission.state === "suspended") ? bindings : noBindings;
@@ -236,10 +265,10 @@ export function useCustomHotkeys(): UseCustomHotkeys {
       }
       // If this entity already has a binding, re-binding it is allowed
       // (we pass its id as `selfId` so it doesn't conflict with itself).
-      const existing = bindings.find((b) => b.entityId === input.entityId);
+      const existing = snapshot.current.find((b) => b.entityId === input.entityId);
       const conflict = detectConflict(
         spec,
-        bindings.map((b) => ({ id: b.id, spec: b.spec })),
+        snapshot.current.map((b) => ({ id: b.id, spec: b.spec })),
         existing?.id,
       );
 
@@ -260,38 +289,29 @@ export function useCustomHotkeys(): UseCustomHotkeys {
         label: input.label,
       };
 
-      if (!current()) return { ok: false, conflict: null };
-      setBindings((prev) => {
-        if (!current()) return prev;
-        // Drop: (a) any other binding holding this spec (override), and
-        // (b) this entity's previous binding (re-bind).
-        const cleaned = prev.filter(
-          (b) =>
-            normalizeBinding(b.spec) !== spec && b.entityId !== input.entityId,
-        );
-        return [...cleaned, binding];
-      });
-
+      // Retain an admitted edit before React runs its state update.
+      const cleaned = snapshot.current.filter(
+        (b) => normalizeBinding(b.spec) !== spec && b.entityId !== input.entityId,
+      );
+      if (!accept([...cleaned, binding])) return { ok: false, conflict: null };
       return { ok: true, conflict, binding };
     },
-    [bindings, current],
+    [accept, current],
   );
 
   const removeForEntity = useCallback((entityId: string) => {
-    if (!current()) return;
-    setBindings((prev) => current() ? prev.filter((b) => b.entityId !== entityId) : prev);
-  }, [current]);
+    if (current()) accept(snapshot.current.filter((b) => b.entityId !== entityId));
+  }, [accept, current]);
 
   const removeById = useCallback((id: string) => {
-    if (!current()) return;
-    setBindings((prev) => current() ? prev.filter((b) => b.id !== id) : prev);
-  }, [current]);
+    if (current()) accept(snapshot.current.filter((b) => b.id !== id));
+  }, [accept, current]);
 
   const resetAll = useCallback(() => {
     if (!current()) return;
     clearCustomHotkeys();
-    if (current()) setBindings([]);
-  }, [current]);
+    if (current()) accept([]);
+  }, [accept, current]);
 
   return {
     bindings: visibleBindings,

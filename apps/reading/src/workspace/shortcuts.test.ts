@@ -1,4 +1,5 @@
-import { setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
+import { act } from "@testing-library/react";
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
@@ -45,10 +46,11 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
   let navigate: ReturnType<typeof vi.fn>;
   let uninstall: () => void;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     navigate = vi.fn();
     setCustomHotkeys([], workspaceOwnerSession());
     uninstall = installShortcuts(navigate as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
   });
 
   afterEach(() => {
@@ -251,7 +253,7 @@ describe("shortcuts boot-hydration — M2 reload-persistence (the live handler r
     vi.useRealTimers();
   });
 
-  it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", () => {
+  it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", async () => {
     // Simulate a prior session: a custom ⌥J → /inv/persisted is in localStorage.
     setCustomHotkeys([], workspaceOwnerSession()); // live map empty (as on a cold boot)
     writeCustomHotkeys({
@@ -271,6 +273,7 @@ describe("shortcuts boot-hydration — M2 reload-persistence (the live handler r
     // Fresh install (a page reload) — the handler hydrates from the blob.
     const navigate = vi.fn();
     const uninstall = installShortcuts(navigate as never);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
 
     // The live map now holds the persisted binding (no consumer mounted).
     expect(getCustomHotkeys().some((b) => b.spec === "alt+j")).toBe(true);

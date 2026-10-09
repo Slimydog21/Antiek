@@ -1,4 +1,4 @@
-import { setWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
@@ -24,8 +24,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     window.localStorage.clear();
   });
 
-  it("assigns a free ⌘+key combo and persists it (versioned blob)", () => {
+  it("assigns a free ⌘+key combo and persists it (versioned blob)", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       const res = result.current.assign({ ...ENTITY, spec: "mod+." });
       expect(res.ok).toBe(true);
@@ -37,8 +38,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(blob.bindings[0].entityId).toBe("inv-1");
   });
 
-  it("REJECTS an Option-only (⌥) combo — the scheme is ⌘+key only", () => {
+  it("REJECTS an Option-only (⌥) combo — the scheme is ⌘+key only", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "alt+j" });
@@ -48,8 +50,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings).toHaveLength(0);
   });
 
-  it("REJECTS a bare single key (a custom binding must carry a modifier)", () => {
+  it("REJECTS a bare single key (a custom binding must carry a modifier)", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "j" });
@@ -59,8 +62,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings).toHaveLength(0);
   });
 
-  it("REJECTS a chord (no key sequences after SPR-08)", () => {
+  it("REJECTS a chord (no key sequences after SPR-08)", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "g 1" });
@@ -70,8 +74,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings).toHaveLength(0);
   });
 
-  it("persists a ⌘+key custom binding across reload (re-mount reads from localStorage)", () => {
+  it("persists a ⌘+key custom binding across reload (re-mount reads from localStorage)", async () => {
     const first = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       const res = first.result.current.assign({ ...ENTITY, spec: "mod+." });
       expect(res.ok).toBe(true);
@@ -80,6 +85,7 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
 
     // Simulate a reload: a fresh hook instance round-trips the persisted ⌘ combo.
     const second = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     expect(second.result.current.bindings).toHaveLength(1);
     expect(second.result.current.bindings[0].spec).toBe("mod+.");
     expect(second.result.current.bindingForEntity("inv-1")?.route).toBe(
@@ -87,8 +93,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     );
   });
 
-  it("pushes the live map into the keydown handler", () => {
+  it("pushes the live map into the keydown handler", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       result.current.assign({ ...ENTITY, spec: "mod+." });
     });
@@ -96,8 +103,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(live.some((b) => b.spec === "mod+." && b.entityId === "inv-1")).toBe(true);
   });
 
-  it("REJECTS assigning a key that shadows a built-in (precedence)", () => {
+  it("REJECTS assigning a key that shadows a built-in (precedence)", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "mod+k" });
@@ -107,8 +115,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings).toHaveLength(0);
   });
 
-  it("REJECTS assigning a key that shadows a PRODUCT combo", () => {
+  it("REJECTS assigning a key that shadows a PRODUCT combo", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "mod+e" }); // Read
@@ -118,8 +127,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings).toHaveLength(0);
   });
 
-  it("REJECTS a reserved browser combo", () => {
+  it("REJECTS a reserved browser combo", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     let res: ReturnType<typeof result.current.assign>;
     act(() => {
       res = result.current.assign({ ...ENTITY, spec: "mod+t" });
@@ -128,8 +138,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(res!.conflict?.kind).toBe("reserved");
   });
 
-  it("custom-vs-custom: warns without force, overrides with force", () => {
+  it("custom-vs-custom: warns without force, overrides with force", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       result.current.assign({
         entityId: "inv-1",
@@ -171,8 +182,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings[0].entityId).toBe("inv-2");
   });
 
-  it("re-binding the same entity replaces its key (no self-conflict)", () => {
+  it("re-binding the same entity replaces its key (no self-conflict)", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       result.current.assign({ ...ENTITY, spec: "mod+." });
     });
@@ -184,8 +196,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(result.current.bindings[0].spec).toBe("mod+,");
   });
 
-  it("removeForEntity drops the binding", () => {
+  it("removeForEntity drops the binding", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       result.current.assign({ ...ENTITY, spec: "mod+." });
     });
@@ -196,8 +209,9 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(readCustomHotkeys().bindings).toHaveLength(0);
   });
 
-  it("resetAll clears everything", () => {
+  it("resetAll clears everything", async () => {
     const { result } = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     act(() => {
       result.current.assign({ ...ENTITY, spec: "mod+." });
       result.current.assign({
@@ -215,9 +229,11 @@ describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
     expect(readCustomHotkeys().bindings).toHaveLength(0);
   });
 
-  it("a sibling instance stays live — an assign in one surfaces in another without a remount", () => {
+  it("a sibling instance stays live — an assign in one surfaces in another without a remount", async () => {
     const a = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     const b = renderHook(() => useCustomHotkeys());
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     expect(b.result.current.bindings).toHaveLength(0);
 
     act(() => {

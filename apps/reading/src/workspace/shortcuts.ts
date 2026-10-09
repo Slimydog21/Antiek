@@ -147,10 +147,10 @@ export function getCustomHotkeys(): CustomHotkeyBinding[] {
  * personally set is data, not instruction, so this respects the
  * data/instruction boundary the daemon work flagged.
  */
-function hydrateCustomFromStorage(owner: WorkspaceOwnerSession): void {
-  if (owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
+function hydrateCustomFromStorage(owner: WorkspaceOwnerSession, current: () => boolean): void {
+  if (!current()) return;
   const next = readCustomHotkeys().bindings;
-  if (isWorkspaceOwnerSession(owner)) setCustomHotkeys(next, owner);
+  if (current()) setCustomHotkeys(next, owner);
 }
 
 /** Exported for element-scoped key guards (PanelLayout's fullscreen-pane Esc
@@ -516,29 +516,37 @@ export function installShortcuts(
   // WITHOUT waiting for an <AssignHotkey> surface to mount (SPR-08 M2).
   const customOwner = workspaceOwnerSession();
   let customLive = true;
-  let customConfirmed = customOwner.subject !== null && isWorkspaceOwnerSession(customOwner);
+  let customConfirmed = false;
+  let customGeneration = 0;
+  const customController = new AbortController();
   const customCurrent = () => customLive && customConfirmed
     && customOwner.subject !== null && isWorkspaceOwnerSession(customOwner);
-  if (customCurrent()) hydrateCustomFromStorage(customOwner);
-  const unsubscribeCustomOwner = subscribeWorkspaceOwnerAdmission((snapshot) => {
+  const confirmCustom = () => {
+    const attempt = ++customGeneration;
+    void awaitWorkspaceOwnerSession(customOwner, customController.signal).then((ready) => {
+      if (!customLive || attempt !== customGeneration || !ready || !isWorkspaceOwnerSession(customOwner)) return;
+      customConfirmed = true;
+      hydrateCustomFromStorage(customOwner, customCurrent);
+    }, () => {
+      if (attempt === customGeneration) customConfirmed = false;
+    });
+  };
+  const unsubscribeCustomOwner = subscribeWorkspaceOwnerAdmission((admission) => {
+    customGeneration += 1;
     customConfirmed = false;
-    if (snapshot.session !== customOwner || snapshot.state === "retiring" || snapshot.state === "failed") {
+    if (admission.session !== customOwner || admission.state === "retiring" || admission.state === "failed") {
+      customController.abort();
       if (customBindings?.owner === customOwner) customBindings = null;
       return;
     }
-    if (snapshot.state === "ready") {
-      void awaitWorkspaceOwnerSession(customOwner).then((ready) => {
-        if (!customLive || !ready || !isWorkspaceOwnerSession(customOwner)) return;
-        customConfirmed = true;
-        hydrateCustomFromStorage(customOwner);
-      });
-    }
+    if (admission.state === "ready") confirmCustom();
   });
+  confirmCustom();
   const customStorageKey = accountStorageKey("antiek.workspace.custom-hotkeys", customOwner);
   // A custom binding assigned in another tab lands in localStorage; re-hydrate
   // on the cross-tab `storage` signal so this tab's handler sees it too.
   const onStorage = (e: StorageEvent) => {
-    if (customCurrent() && (e.key === null || e.key === customStorageKey)) hydrateCustomFromStorage(customOwner);
+    if (customCurrent() && (e.key === null || e.key === customStorageKey)) hydrateCustomFromStorage(customOwner, customCurrent);
   };
 
   const handlers: Partial<Record<ActionId, KeyHandler>> = {
@@ -643,6 +651,9 @@ export function installShortcuts(
   window.addEventListener("blur", onBlur);
   return () => {
     customLive = false;
+    customConfirmed = false;
+    customGeneration += 1;
+    customController.abort();
     unsubscribeCustomOwner();
     window.removeEventListener("storage", onStorage);
     removePrefix();
