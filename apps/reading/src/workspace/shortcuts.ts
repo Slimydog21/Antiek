@@ -371,7 +371,12 @@ function tabTreeKey(run: (store: TabTreeStore, mothership: Mothership) => void) 
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
 
 /** n/p and ctrl+alt+]/[: the focused pane's next or previous tab. */
-function cycleTab(direction: 1 | -1) {
+function cycleTab(direction: 1 | -1, event?: KeyboardEvent) {
+  // A hosted window has no cockpit tab strip. Its event remains its own even
+  // if a local handler moves focus before the global bubble listener runs.
+  const inWindow = (target: EventTarget | null | undefined) =>
+    target instanceof Element && target.closest("[data-workspace-window]") !== null;
+  if (inWindow(event?.target) || inWindow(document.activeElement)) return false;
   if (tabKeySide() === "right") cycleRightPaneTab(direction);
   else tabTreeKey((t, m) => t.getState().cycleSibling(m, direction));
 }
@@ -473,8 +478,8 @@ export function createActionHandlers(navigate: NavigateFunction) {
     "pane.focusRight": () => focusPane("right"),
     "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
-    "tab.next": () => cycleTab(1),
-    "tab.prev": () => cycleTab(-1),
+    "tab.next": (event?: KeyboardEvent) => cycleTab(1, event),
+    "tab.prev": (event?: KeyboardEvent) => cycleTab(-1, event),
     "tab.new": () => toggleNewTabPicker(),
     "tab.parent": () => tabTreeKey((t, m) => t.getState().goToParent(m)),
     "tab.visitChild": () => tabTreeKey((t, m) => t.getState().visitChildOfActive(m)),
