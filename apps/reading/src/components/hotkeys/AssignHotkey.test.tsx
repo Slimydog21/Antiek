@@ -1,8 +1,12 @@
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { act, render, fireEvent } from "@testing-library/react";
 
 import { AssignHotkey } from "./AssignHotkey";
 import { readCustomHotkeys } from "../../workspace/persistence";
+
+beforeEach(() => { setWorkspaceOwner("custom-hotkey-positive-unit"); });
+afterEach(() => { setWorkspaceOwner(null); });
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -42,8 +46,9 @@ describe("AssignHotkey — SPR-08", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => window.localStorage.clear());
 
-  it("opens a capture dialog and saves a free ⌘+key combo, persisting it", () => {
+  it("opens a capture dialog and saves a free ⌘+key combo, persisting it", async () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     fireEvent.click(buttonByText(/assign hotkey/i)!);
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).toBeTruthy();
@@ -63,8 +68,9 @@ describe("AssignHotkey — SPR-08", () => {
     unmount();
   });
 
-  it("rejects an Option-only (⌥) combo — the scheme is ⌘+key only (Save disabled)", () => {
+  it("rejects an Option-only (⌥) combo — the scheme is ⌘+key only (Save disabled)", async () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     fireEvent.click(buttonByText(/assign hotkey/i)!);
     const dialog = document.body.querySelector('[role="dialog"]')!;
     const capture = dialog.querySelector('[role="textbox"]') as HTMLElement;
@@ -79,8 +85,9 @@ describe("AssignHotkey — SPR-08", () => {
     unmount();
   });
 
-  it("discourages a bare single key (Save disabled, modifier required)", () => {
+  it("discourages a bare single key (Save disabled, modifier required)", async () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     fireEvent.click(buttonByText(/assign hotkey/i)!);
     const dialog = document.body.querySelector('[role="dialog"]')!;
     const capture = dialog.querySelector('[role="textbox"]') as HTMLElement;
@@ -93,8 +100,9 @@ describe("AssignHotkey — SPR-08", () => {
     unmount();
   });
 
-  it("blocks a built-in collision (Save disabled)", () => {
+  it("blocks a built-in collision (Save disabled)", async () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);
+    await act(async () => { await awaitWorkspaceOwnerSession(workspaceOwnerSession()); });
     fireEvent.click(buttonByText(/assign hotkey/i)!);
     const dialog = document.body.querySelector('[role="dialog"]')!;
     const capture = dialog.querySelector('[role="textbox"]') as HTMLElement;
