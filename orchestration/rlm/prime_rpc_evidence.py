@@ -9,6 +9,7 @@ upstream rename fails a test rather than silently metering a zero-cost call.
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -78,7 +79,19 @@ def invoke_prime_rpc_evidence(
     """Execute one already-authorized call; every ambiguous outcome retains its hold."""
     if not prompt or sha256(prompt.encode("utf-8")).hexdigest() != authorization.prompt_digest:
         raise ValueError("prompt does not match the authorized digest")
-    if timeout_seconds <= 0 or max_record_bytes <= 0 or max_total_bytes < max_record_bytes:
+    if (
+        type(timeout_seconds) not in (int, float)
+        or type(max_record_bytes) is not int
+        or type(max_total_bytes) is not int
+        or max_record_bytes <= 0
+        or max_total_bytes < max_record_bytes
+    ):
+        raise ValueError("RPC bounds are invalid")
+    try:
+        timeout_seconds = float(timeout_seconds)
+    except OverflowError as exc:
+        raise ValueError("RPC bounds are invalid") from exc
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("RPC bounds are invalid")
     installed_version = ".".join(map(str, installation.version))
     if installed_version != authorization.prime_version:
