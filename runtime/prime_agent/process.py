@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import ctypes
+import math
 import os
 import selectors
 import shutil
@@ -242,9 +243,19 @@ class PrimeAgentProcessConfig:
             raise ValueError("Prime Agent binary must be an absolute regular file")
         if not self.cwd.is_absolute() or not self.cwd.is_dir():
             raise ValueError("Prime Agent cwd must be an absolute existing directory")
-        if self.timeout_seconds <= 0 or self.terminate_grace_seconds < 0:
+        if (
+            not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+            or not math.isfinite(self.terminate_grace_seconds)
+            or self.terminate_grace_seconds < 0
+        ):
             raise ValueError("Prime Agent deadlines must be valid")
-        if self.max_stdout_bytes <= 0 or self.max_stderr_bytes <= 0:
+        if (
+            type(self.max_stdout_bytes) is not int
+            or type(self.max_stderr_bytes) is not int
+            or self.max_stdout_bytes <= 0
+            or self.max_stderr_bytes <= 0
+        ):
             raise ValueError("Prime Agent output limits must be positive")
         if self.provider_environment is not None:
             keys = set(self.provider_environment)
@@ -283,6 +294,8 @@ class PrimeAgentManagedProcess:
         self._stdout_buffer = bytearray()
         self._stdout_total = 0
         self._stderr_total = 0
+        self._stdout_eof = False
+        self._stderr_eof = False
         self._closed = False
         self.session_dir = session_dir
         self._generation_lease = generation_lease
@@ -318,38 +331,57 @@ class PrimeAgentManagedProcess:
 
     def read_line(self, *, max_bytes: int, deadline: float) -> bytes | None:
         """Read one LF-terminated stdout record while continuously draining stderr."""
+        if type(max_bytes) is not int or max_bytes <= 0:
+            raise ValueError("Prime Agent RPC record limit must be a positive integer")
         assert self.process.stdout is not None and self.process.stderr is not None
         while True:
             newline = self._stdout_buffer.find(b"\n")
             if newline >= 0:
+                if newline + 1 > max_bytes:
+                    raise RuntimeError("Prime Agent RPC stdout record exceeded limit")
                 record = bytes(self._stdout_buffer[: newline + 1])
                 del self._stdout_buffer[: newline + 1]
                 return record
             if len(self._stdout_buffer) > max_bytes:
                 raise RuntimeError("Prime Agent RPC stdout record exceeded limit")
+            if self._stdout_eof and self._stdout_buffer:
+                raise RuntimeError("Prime Agent RPC closed with an unterminated record")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("Prime Agent RPC stdout deadline exceeded")
-            readable, _, _ = select_select(
-                (self.process.stdout, self.process.stderr), (), (), remaining
-            )
+            if self._stdout_eof and self._stderr_eof:
+                try:
+                    self.process.wait(timeout=remaining)
+                except subprocess.TimeoutExpired as exc:
+                    raise TimeoutError("Prime Agent RPC exit deadline exceeded") from exc
+                return None
+            # EOF descriptors stay readable forever. Retire them independently;
+            # a reaped leader is not proof that stderr has been fully drained.
+            readers = []
+            if not self._stdout_eof:
+                readers.append(self.process.stdout)
+            if not self._stderr_eof:
+                readers.append(self.process.stderr)
+            readable, _, _ = select_select(readers, (), (), remaining)
             if not readable:
                 raise TimeoutError("Prime Agent RPC stdout deadline exceeded")
             for stream in readable:
                 chunk = os.read(stream.fileno(), _READ_SIZE)
+                if not chunk:
+                    if stream is self.process.stdout:
+                        self._stdout_eof = True
+                    else:
+                        self._stderr_eof = True
+                    continue
                 if stream is self.process.stderr:
                     self._stderr_total += len(chunk)
                     if self._stderr_total > self.config.max_stderr_bytes:
                         raise RuntimeError("Prime Agent RPC stderr exceeded limit")
-                elif chunk:
+                else:
                     self._stdout_total += len(chunk)
                     if self._stdout_total > self.config.max_stdout_bytes:
                         raise RuntimeError("Prime Agent RPC stdout exceeded total limit")
                     self._stdout_buffer.extend(chunk)
-                elif self.process.poll() is not None:
-                    if self._stdout_buffer:
-                        raise RuntimeError("Prime Agent RPC closed with an unterminated record")
-                    return None
 
     def poll(self) -> int | None:
         return self.process.poll()
