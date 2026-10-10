@@ -16,7 +16,7 @@ import re
 import stat
 import threading
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from interfaces.research.api.settings_models_admin import UserModelChoice, request_owner_user_id
 from runtime.byok import store
 from runtime.research_runner.audio_provider_catalog import AudioModelDescriptor, get_audio_model
+from substrate.byot_usage.actions import checked_int
+from substrate.byot_usage.ledger import ByotUsageLedger
 
 _MAX_BYTES = 1_048_576
 _MAX_RECORDS = 128
@@ -349,6 +351,70 @@ class AudioModelService:
                 and row.credential_id in metadata
                 and self._metadata_matches(row, metadata[row.credential_id])
             ]
+
+    def _budget(
+        self,
+        request: Request,
+        record_id: str,
+        *,
+        limit_cents: int | None = None,
+        on_mutation_started: Callable[[], None] | None = None,
+    ) -> dict[str, object]:
+        owner = _owner(request)
+        if limit_cents is not None:
+            checked_int(limit_cents)
+        with self._registry(exclusive=False) as (_, records):
+            record = self._owned(records, owner, record_id)
+            with store.guard_current_credential(
+                record.credential_id, prepared_master_key=self._key, artifact_path=self._artifact
+            ) as guarded:
+                if not self._metadata_matches(record, guarded.metadata):
+                    raise AudioModelUnavailable("audio credential unavailable")
+                # The registry/store guards precede even ledger construction.
+                # Disabled/unregistered rows retain their independent liabilities.
+                ledger = ByotUsageLedger()
+                if limit_cents is not None:
+                    if on_mutation_started is not None:
+                        on_mutation_started()
+                    ledger.set_limit(record.id, owner, limit_cents)
+                usage = ledger.key_usage(record.id, owner)
+                if limit_cents is not None and (usage is None or usage.limit_cents != limit_cents):
+                    raise AudioModelUnavailable("audio budget publication unconfirmed")
+                limit = usage.limit_cents if usage is not None else None
+                if limit is not None:
+                    checked_int(limit)
+                used = checked_int(usage.used_cents) if usage is not None else 0
+                held = checked_int(usage.held_cents) if usage is not None else 0
+                return {
+                    "id": record.id,
+                    "currency": "USD",
+                    "basis": "local_byot_usage_ledger",
+                    "approved": limit is not None,
+                    "limit_cents": limit,
+                    "used_cents": used,
+                    "held_cents": held,
+                    "available_cents": max(0, limit - used - held) if limit is not None else None,
+                }
+
+    def get_budget(self, request: Request, record_id: str) -> dict[str, object]:
+        return self._budget(request, record_id)
+
+    def set_budget(
+        self,
+        request: Request,
+        record_id: str,
+        limit_cents: int,
+        *,
+        on_mutation_started: Callable[[], None],
+    ) -> dict[str, object]:
+        _owner(request)
+        checked_int(limit_cents)
+        return self._budget(
+            request,
+            record_id,
+            limit_cents=limit_cents,
+            on_mutation_started=on_mutation_started,
+        )
 
     def create(self, request: Request, payload: Mapping[str, object]) -> dict[str, object]:
         owner = _owner(request)

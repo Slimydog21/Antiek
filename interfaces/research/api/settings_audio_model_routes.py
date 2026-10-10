@@ -23,6 +23,7 @@ from interfaces.research.api.settings_audio_models import (
 )
 from runtime.byok import store
 from runtime.research_runner.audio_provider_catalog import AUDIO_MODEL_CATALOG
+from substrate.byot_usage.actions import checked_int
 
 _PREFIX = "/settings/audio-models"
 _BODY_LIMIT = 8192
@@ -323,6 +324,53 @@ async def _operation(
     return JSONResponse(result, status_code=status_code, headers=_CACHE_HEADERS)
 
 
+def _budget_limit(payload: dict[str, object]) -> int:
+    try:
+        if set(payload) != {"limit_cents"}:
+            raise ValueError("exact budget required")
+        return checked_int(payload["limit_cents"])
+    except ValueError:
+        raise HTTPException(422, "invalid audio budget request") from None
+
+
+async def _budget_operation(
+    binding: _AppAudioBinding,
+    request: Request,
+    record_id: str,
+    *,
+    limit_cents: int | None = None,
+) -> Response:
+    mutation_started = False
+
+    def action(service: AudioModelService) -> dict[str, object]:
+        def started() -> None:
+            nonlocal mutation_started
+            mutation_started = True
+
+        if limit_cents is None:
+            return service.get_budget(request, record_id)
+        return service.set_budget(request, record_id, limit_cents, on_mutation_started=started)
+
+    try:
+        result = await run_in_threadpool(binding.perform, request, action)
+    except Exception as exc:
+        if mutation_started:
+            return JSONResponse(
+                {"detail": "audio budget mutation unconfirmed", "mutation_confirmed": False},
+                status_code=503,
+                headers=_CACHE_HEADERS,
+            )
+        code = (
+            404
+            if isinstance(exc, AudioModelUnavailable) and exc.args == ("audio record unavailable",)
+            else 503
+        )
+        return JSONResponse(
+            {"detail": "audio budget unavailable"}, status_code=code, headers=_CACHE_HEADERS
+        )
+    return JSONResponse(result, headers=_CACHE_HEADERS)
+
+
 def register_settings_audio_model_routes(
     app: FastAPI, *, binding_paths: AudioBindingPaths | None = None
 ) -> None:
@@ -379,5 +427,16 @@ def register_settings_audio_model_routes(
             request,
             lambda service: {"credential_removed": service.delete(request, record_id)},
         )
+
+    @router.get("/user/{record_id}/budget")
+    async def get_budget(request: Request, record_id: str) -> Response:
+        _admit_account(request)
+        return await _budget_operation(binding, request, record_id)
+
+    @router.put("/user/{record_id}/budget")
+    async def put_budget(request: Request, record_id: str) -> Response:
+        _admit_account(request)
+        limit = _budget_limit(await _body(request))
+        return await _budget_operation(binding, request, record_id, limit_cents=limit)
 
     app.include_router(router)

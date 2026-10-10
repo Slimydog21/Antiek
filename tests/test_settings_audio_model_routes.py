@@ -505,7 +505,23 @@ def test_registration_performs_no_private_IO(monkeypatch: pytest.MonkeyPatch) ->
     register_settings_audio_model_routes(app)
     assert isinstance(app.state.audio_model_binding, _AppAudioBinding)
     assert app.state.audio_model_binding._service is None
-    assert len([r for r in app.routes if getattr(r, "path", "").startswith(PREFIX)]) == 5
+    operations = {
+        (path, method)
+        for path, definition in app.openapi()["paths"].items()
+        if path.startswith(PREFIX)
+        for method in definition
+        if method in {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+    }
+    assert len(operations) == 7
+    assert operations == {
+        (PREFIX + "/catalog", "get"),
+        (PREFIX + "/user", "get"),
+        (PREFIX + "/user", "post"),
+        (PREFIX + "/user/{record_id}", "patch"),
+        (PREFIX + "/user/{record_id}", "delete"),
+        (PREFIX + "/user/{record_id}/budget", "get"),
+        (PREFIX + "/user/{record_id}/budget", "put"),
+    }
 
 
 def test_constructor_injection_is_absolute_and_keeps_direct_default(tmp_path: Path) -> None:
