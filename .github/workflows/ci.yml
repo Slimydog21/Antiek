@@ -135,6 +135,10 @@ jobs:
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
 
+      - name: Prepare verified official Docker test image
+        timeout-minutes: 10
+        run: python tools/ci/prepare_docker_test_image.py
+
       - name: Require pytest disk headroom
         run: |
           available_kib=$(df --output=avail -k / | tail -n 1)
