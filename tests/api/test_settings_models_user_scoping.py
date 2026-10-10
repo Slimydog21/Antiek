@@ -26,6 +26,9 @@ _BODY = {
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-only-auth-secret-at-least-32-bytes")
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "user-a@example.test,user-b@example.test")
+    monkeypatch.setenv("ANTIEK_OPEN_SIGNUP", "0")
+    monkeypatch.setenv("ANTIEK_ACCOUNT_STORE", str(tmp_path / "legacy-uncreated-accounts.json"))
+    monkeypatch.delenv("ANTIEK_LEGACY_OPERATOR_EMAIL", raising=False)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
