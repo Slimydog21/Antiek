@@ -6,6 +6,9 @@ import { MemoryRouter } from "react-router-dom";
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
 vi.mock("../useViewportTier", () => ({ useViewportTier: () => tierRef.current }));
 
+import { awaitWorkspaceOwnerSession, setWorkspaceOwner, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
+import { isConfirmedAgentOwner } from "./turnLifecycle";
+
 import { PanelLayout } from "../PanelLayout";
 import { useWorkspace } from "../WorkspaceStore";
 import { usePaneWidthStore } from "./paneWidthStore";
@@ -16,8 +19,24 @@ beforeAll(() => {
     value: (query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false }),
   });
 });
-beforeEach(() => { tierRef.current = "xl"; useWorkspace.getState().reset(); useWorkspace.getState().setLayoutPreset("omarchy-inset"); usePaneWidthStore.getState().reset(); window.localStorage.clear(); });
-afterEach(() => { cleanup(); useWorkspace.getState().reset(); useWorkspace.getState().setLayoutPreset("docked"); window.localStorage.removeItem("antiek.workspace.layout-preset"); });
+beforeEach(async () => {
+  setWorkspaceOwner(null);
+  setWorkspaceOwner("panel-layout-resizer-unit-owner");
+  const owner = workspaceOwnerSession();
+  expect(await awaitWorkspaceOwnerSession(owner)).toBe(true);
+  await waitFor(() => {
+    expect(isConfirmedAgentOwner(owner)).toBe(true);
+    expect(usePaneWidthStore.getState().ready).toBe(true);
+  });
+  tierRef.current = "xl"; useWorkspace.getState().reset(); useWorkspace.getState().setLayoutPreset("omarchy-inset"); usePaneWidthStore.getState().reset(); window.localStorage.clear();
+});
+afterEach(() => {
+  try {
+    cleanup(); useWorkspace.getState().reset(); useWorkspace.getState().setLayoutPreset("docked"); window.localStorage.removeItem("antiek.workspace.layout-preset");
+  } finally {
+    setWorkspaceOwner(null);
+  }
+});
 
 const SEP = '[role="separator"][aria-label="Resize the agents pane"]';
 function mount(path = "/read/doc-1") {
