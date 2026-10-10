@@ -41,6 +41,7 @@ import {
 } from "../../api/settingsUsage";
 import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import AddModelPanel from "./AddModelPanel";
+import AudioModelsPanel from "./AudioModelsPanel";
 import AppearancePanel from "./AppearancePanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
@@ -868,6 +869,7 @@ export default function Settings() {
         </LemonCard>
 
         <AddModelPanel />
+        <AudioModelsPanel />
 
         <UsagePanel />
         <ComputeCapacityPanel />
