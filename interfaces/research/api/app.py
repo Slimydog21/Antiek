@@ -2031,6 +2031,13 @@ def create_app(
                                         is not None
                                         and method in {"PATCH", "DELETE"}
                                     )
+                                    or (
+                                        re.fullmatch(
+                                            r"/settings/audio-models/user/[^/]+/budget", path
+                                        )
+                                        is not None
+                                        and method in {"GET", "PUT"}
+                                    )
                                 )
                                 if not admitted:
                                     from fastapi.responses import JSONResponse
