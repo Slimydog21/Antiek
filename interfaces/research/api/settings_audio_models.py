@@ -148,16 +148,28 @@ class AudioModelService:
     Durable rows alone never manufacture registration or send authority.
     """
 
-    def __init__(self, *, state_root: Path, prepared_master_key: bytes) -> None:
+    def __init__(
+        self,
+        *,
+        state_root: Path,
+        prepared_master_key: bytes,
+        artifact_path: Path | None = None,
+    ) -> None:
+        artifact = (
+            artifact_path if artifact_path is not None else state_root / "byok" / "credentials.enc"
+        )
         if (
             not state_root.is_absolute()
             or ".." in state_root.parts
             or len(prepared_master_key) != 32
+            or not isinstance(artifact, Path)
+            or not artifact.is_absolute()
+            or ".." in artifact.parts
         ):
             raise AudioModelUnavailable("invalid audio service configuration")
         self._root = state_root
         self._key = prepared_master_key
-        self._artifact = str(state_root / "byok" / "credentials.enc")
+        self._artifact = str(artifact)
         self._registrations: dict[str, _Registration] = {}
         self._registration_lock = threading.RLock()
 
