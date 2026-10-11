@@ -18,6 +18,55 @@ LOCAL_TAG = "alpine:latest"
 PLATFORM = "linux/amd64"
 LOCAL_DAEMON = "unix:///var/run/docker.sock"
 MAX_INSPECT_BYTES = 65536
+MAX_DIAGNOSTIC_BYTES = 65536
+_FAILURE_MARKERS: tuple[tuple[str, tuple[bytes, ...]], ...] = (
+    (
+        "connection",
+        (
+            b"cannot connect to the docker daemon",
+            b"connection refused",
+            b"connection reset",
+            b"connection timed out",
+            b"context deadline exceeded",
+            b"i/o timeout",
+        ),
+    ),
+    (
+        "dns",
+        (
+            b"no such host",
+            b"temporary failure in name resolution",
+            b"could not resolve host",
+        ),
+    ),
+    (
+        "tls",
+        (
+            b"x509:",
+            b"tls handshake",
+            b"certificate signed by unknown authority",
+            b"certificate has expired",
+            b"certificate verify failed",
+        ),
+    ),
+    (
+        "access",
+        (
+            b"unauthorized:",
+            b"authentication required",
+            b"access denied",
+            b"requested access to the resource is denied",
+            b"denied:",
+            b"403 forbidden",
+            b"401 unauthorized",
+        ),
+    ),
+    ("rate-limit", (b"toomanyrequests:", b"too many requests", b"rate limit")),
+    (
+        "digest-unavailable",
+        (b"manifest unknown", b"manifest_unknown", b"no such manifest", b"manifest not found"),
+    ),
+)
 
 
 class ImagePreparationError(Exception):
@@ -33,6 +82,26 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _failure_diagnostic(stderr: BinaryIO) -> tuple[str, str]:
+    # Only the prefix read is bounded. The private temporary sink can grow while
+    # the direct child runs; it is closed and discarded with the command.
+    try:
+        stderr.seek(0, os.SEEK_END)
+        truncated = "yes" if stderr.tell() > MAX_DIAGNOSTIC_BYTES else "no"
+        stderr.seek(0)
+        prefix = stderr.read(MAX_DIAGNOSTIC_BYTES).lower()
+    except OSError:
+        return "unknown", "unknown"
+    except ValueError:
+        return "unknown", "unknown"
+    matches = [
+        category
+        for category, markers in _FAILURE_MARKERS
+        if any(marker in prefix for marker in markers)
+    ]
+    return (matches[0] if len(matches) == 1 else "unknown"), truncated
+
+
 def _command(
     prefix: list[str],
     arguments: list[str],
@@ -42,14 +111,14 @@ def _command(
 ) -> bytes:
     # run kills and waits for the direct child on timeout. Files close after it returns;
     # this does not promise retirement of Docker daemon work or unrelated processes.
-    with tempfile.TemporaryFile() as output:
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostic:
         destination: BinaryIO | int = output if inspect else subprocess.DEVNULL
         try:
             result = subprocess.run(
                 [*prefix, *arguments],
                 stdin=subprocess.DEVNULL,
                 stdout=destination,
-                stderr=subprocess.DEVNULL,
+                stderr=diagnostic,
                 env=environment,
                 timeout=120 if arguments[0] == "pull" else 30,
                 check=False,
@@ -57,8 +126,10 @@ def _command(
         except (OSError, subprocess.TimeoutExpired) as error:
             raise ImagePreparationError(f"Docker {arguments[0]} did not complete") from error
         if result.returncode != 0:
+            category, truncated = _failure_diagnostic(diagnostic)
             raise ImagePreparationError(
-                f"Docker {arguments[0]} failed with exit {result.returncode}"
+                f"Docker {arguments[0]} failed with exit {result.returncode}; "
+                f"diagnostic={category}; stderr_truncated={truncated}"
             )
         if not inspect:
             return b""
