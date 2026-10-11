@@ -31,6 +31,10 @@ _WORKFLOWS = frozenset({
     "long_document_wrestling", "long_corpus_synthesis", "investigation",
     "repl_query", "repl_batch", "dag_planning", "dag_execution", "equipped_batch",
 })
+OwnerActionKind = RlmWorkflow | Literal["audio_transcription"]
+_AUDIO_ACTION_KIND = "audio_transcription"
+_AUDIO_CANONICAL_VERSION = "owned-canonical-audio-http.v1"
+_ACTION_KINDS = _WORKFLOWS | {_AUDIO_ACTION_KIND}
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,255}\Z")
 
@@ -77,7 +81,7 @@ class ApprovedOwnerRoute:
 class OwnerActionDecision:
     owner_user_id: str
     action_id: str
-    action_kind: RlmWorkflow
+    action_kind: OwnerActionKind
     budget_cents: int
     body_authority_digest: str
     owner_decision_digest: str
@@ -86,7 +90,7 @@ class OwnerActionDecision:
     def __post_init__(self) -> None:
         _identity(self.owner_user_id)
         _identity(self.action_id)
-        if type(self.action_kind) is not str or self.action_kind not in _WORKFLOWS:
+        if type(self.action_kind) is not str or self.action_kind not in _ACTION_KINDS:
             raise ValueError("action workflow is invalid")
         checked_int(self.budget_cents)
         _digest(self.body_authority_digest)
@@ -152,8 +156,47 @@ class CanonicalInputBinding:
     def __post_init__(self) -> None:
         _digest(self.logical_digest)
         _digest(self.policy_digest)
-        if self.version != "owned-canonical-http.v1":
+        if self.version not in ("owned-canonical-http.v1", _AUDIO_CANONICAL_VERSION):
             raise ValueError("canonical input version is unsupported")
+
+
+def _validate_attempt_protocol(
+    decision: OwnerActionDecision,
+    proposal: AttemptProposal,
+    binding: CanonicalInputBinding | None,
+) -> None:
+    from substrate.byot_usage.ledger import OperationConflict
+
+    if decision.action_kind == _AUDIO_ACTION_KIND:
+        if (
+            type(binding) is not CanonicalInputBinding
+            or type(binding.version) is not str
+            or binding.version != _AUDIO_CANONICAL_VERSION
+        ):
+            raise OperationConflict("audio requires its canonical input binding")
+        _digest(binding.logical_digest)
+        _digest(binding.policy_digest)
+        if (
+            type(proposal.attempt_kind) is not str
+            or proposal.attempt_kind != "canonical"
+            or proposal.parent_operation_id is not None
+            or proposal.native_session_id is not None
+        ):
+            raise OperationConflict("audio requires an independent canonical attempt")
+    elif binding is not None and binding.version == _AUDIO_CANONICAL_VERSION:
+        raise OperationConflict("audio canonical input requires an audio action")
+
+
+def _require_audio_record_cap(con: sqlite3.Connection, owner: str, record: str) -> None:
+    from substrate.byot_usage.ledger import OperationConflict
+
+    limit = con.execute(
+        "SELECT limit_cents FROM byot_key_usage WHERE owner_user_id=? AND api_key_id=?",
+        (owner, record),
+    ).fetchone()
+    if limit is None or limit[0] is None:
+        raise OperationConflict("audio requires an explicit local record limit")
+    checked_int(limit[0])
 
 
 @dataclass(frozen=True, slots=True)
@@ -879,6 +922,9 @@ class _OwnerActionAccounting:
             raise ValueError("canonical input binding is invalid")
         with self._action_transaction() as con:
             action = self._require_action(con, owner, action_id)
+            _validate_attempt_protocol(action.decision, proposal, canonical_input)
+            if action.decision.action_kind == _AUDIO_ACTION_KIND:
+                _require_audio_record_cap(con, owner, proposal.user_model_id)
             existing = self._attempt(con, owner, proposal.operation_id)
             if existing is not None:
                 if existing.proposal != proposal or existing.operation.action_id != action_id:
@@ -966,6 +1012,7 @@ class _OwnerActionAccounting:
             attempt = self._require_attempt(con, owner, attempt_id)
             action = self._require_action(con, owner, attempt.operation.action_id or "")
             proposal = attempt.proposal
+            _validate_attempt_protocol(action.decision, proposal, facts.canonical_input)
             if self._canonical_input(con, owner, attempt_id) != facts.canonical_input:
                 raise OperationConflict("canonical input differs from allocation")
             if (facts.authority_digest != proposal.authority_digest
@@ -982,6 +1029,8 @@ class _OwnerActionAccounting:
             if action.state != "open" or action.epoch != facts.action_epoch:
                 raise OperationConflict("action claim was revoked")
             self._admit_owner(con, owner, 0)
+            if action.decision.action_kind == _AUDIO_ACTION_KIND:
+                _require_audio_record_cap(con, owner, proposal.user_model_id)
             limit = con.execute(
                 "SELECT limit_cents FROM byot_key_usage WHERE owner_user_id=? AND api_key_id=?",
                 (owner, proposal.user_model_id),
@@ -1047,6 +1096,12 @@ class _OwnerActionAccounting:
         from substrate.byot_usage.ledger import OperationConflict, SettlementEvidenceError
 
         attempt = self._require_attempt(con, owner, attempt_id)
+        action_kind = con.execute(
+            "SELECT action_kind FROM byot_action_journal WHERE owner_user_id=? AND action_id=?",
+            (owner, attempt.operation.action_id),
+        ).fetchone()
+        if action_kind is not None and action_kind[0] == _AUDIO_ACTION_KIND and facts.result_text:
+            raise SettlementEvidenceError("audio transcript is not an accounting result")
         if (facts.provider_id != attempt.proposal.provider_id
             or facts.model_id != attempt.proposal.model_id
             or facts.request_digest != attempt.request_digest):
