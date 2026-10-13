@@ -31,7 +31,7 @@
 }
 
 .st-title {
-  font-size: 15px;
+  font-size: var(--fs-base);
   line-height: 22px;
   font-weight: 600;
   display: flex;
@@ -42,7 +42,7 @@
   justify-content: center;
 }
 .st-body {
-  font-size: 14px;
+  font-size: var(--fs-sm);
   line-height: 21px;
   color: var(--text-2);
 }
@@ -68,7 +68,7 @@
   border: 1.5px solid currentColor;
   border-radius: 50%;
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--fs-xxs);
   font-weight: 700;
   line-height: 1;
 }
@@ -120,7 +120,7 @@
   padding: 0 0.5rem;
 }
 .st:has(> .st-skel[data-skeleton="strip"]) > .st-body {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 18px;
   white-space: nowrap;
 }

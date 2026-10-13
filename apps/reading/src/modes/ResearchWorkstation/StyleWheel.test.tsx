@@ -195,7 +195,7 @@ describe("StyleWheel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fork a style" }));
     fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "field-notes" } });
     fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Field notes" } });
-    const secretCss = ":root { --private-preview-token: rgb(18 52 86); }";
+    const secretCss = ":root { --private-preview-token: rebeccapurple; }";
     fireEvent.change(screen.getByLabelText("Theme CSS"), { target: { value: secretCss } });
     fireEvent.submit(screen.getByRole("button", { name: "Save fork" }).closest("form")!);
     await waitFor(() =>

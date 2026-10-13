@@ -137,11 +137,11 @@ describe("useTheme", () => {
     const meta = document.createElement("meta");
     meta.name = "theme-color";
     document.head.appendChild(meta);
-    document.documentElement.style.setProperty("--bg-page", "rgb(18, 52, 86)");
+    document.documentElement.style.setProperty("--bg-page", "rebeccapurple");
     try {
       render(<Probe />);
       click("dark");
-      expect(meta.getAttribute("content")).toBe("rgb(18, 52, 86)");
+      expect(meta.getAttribute("content")).toBe("rebeccapurple");
     } finally {
       meta.remove();
       document.documentElement.style.removeProperty("--bg-page");

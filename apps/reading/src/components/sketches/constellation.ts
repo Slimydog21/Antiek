@@ -8,7 +8,7 @@
  * Pure Canvas2D. No p5.js. Token colours only (design/tokens).
  */
 
-import { accent, sun, sunLight, surface } from "../../design/tokens";
+import { accent, sun, sunLight, surface, veil } from "../../design/tokens";
 import { coerceSeed, makeRng } from "./seed";
 import type { SketchBaseParams, SketchRender } from "./types";
 
@@ -150,8 +150,8 @@ export const renderConstellation: SketchRender<ConstellationParams> = (
     height * 0.5,
     Math.min(width, height) * 0.65,
   );
-  g.addColorStop(0, "rgba(0,0,0,0)");
-  g.addColorStop(1, mode === "night" ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.06)");
+  g.addColorStop(0, veil.black(0));
+  g.addColorStop(1, veil.black(mode === "night" ? 0.35 : 0.06));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
 

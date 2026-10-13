@@ -12,7 +12,7 @@
  * params + size → identical pixels.
  */
 
-import { pitch, sun, sunLight } from "../../design/tokens";
+import { pitch, sun, sunLight, veil } from "../../design/tokens";
 import { FORMATION } from "../../api/settingsLineup";
 import { coerceSeed, makeRng } from "./seed";
 import type { SketchBaseParams, SketchRender } from "./types";
@@ -174,7 +174,7 @@ export const renderLineupPitch: SketchRender<LineupPitchParams> = (
 
   // ── Line markings: hand-jittered, translucent white ───────────────────
   const jitter = (): number => rng.range(-1.6, 1.6);
-  const white = mode === "night" ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.5)";
+  const white = veil.white(mode === "night" ? 0.28 : 0.5);
   ctx.strokeStyle = white;
   ctx.lineWidth = 1.4;
 
@@ -319,8 +319,8 @@ export const renderLineupPitch: SketchRender<LineupPitchParams> = (
     width * 0.5, height * 0.5, minDim * 0.35,
     width * 0.5, height * 0.5, minDim * 0.75,
   );
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, mode === "night" ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.14)");
+  vignette.addColorStop(0, veil.black(0));
+  vignette.addColorStop(1, veil.black(mode === "night" ? 0.4 : 0.14));
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
 

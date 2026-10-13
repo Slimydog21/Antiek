@@ -16,7 +16,7 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--text-muted);
   text-decoration: underline;
   cursor: pointer;
@@ -27,7 +27,7 @@
 
 .antiek-assign-hotkey__hint {
   margin: 0 0 12px 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -48,12 +48,12 @@
 
 .antiek-assign-hotkey__prompt {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .antiek-assign-hotkey__conflict {
   margin: 10px 0 0 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--sun-deep);
 }
 .antiek-assign-hotkey__conflict--blocked {
@@ -62,7 +62,7 @@
 
 .antiek-assign-hotkey__ok {
   margin: 10px 0 0 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--success);
 }
 

@@ -112,7 +112,15 @@ export function WriteEditor({
     ],
     content: initialContent ?? "",
     // The prose layer (index.css) gives headings, lists and rhythm back.
-    editorProps: { attributes: { class: "prose-antiek focus:outline-none" } },
+    // outline-none would suppress the global :focus-visible outline, so it
+    // is paired with the ring idiom (focus.guard.test.ts): keyboard focus on
+    // the writing surface never disappears.
+    editorProps: {
+      attributes: {
+        class:
+          "prose-antiek focus:outline-none focus-visible:ring-2 focus-visible:ring-sun",
+      },
+    },
     onCreate: ({ editor: ed }) => {
       prevBlocks.current = docToBlocks(ed.getJSON());
     },

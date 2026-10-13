@@ -24,10 +24,15 @@
  * the scale unguarded — 1,157 arbitrary `text-[Npx]` sat off the named scale,
  * concentrated at 10–13px. The codemod snapped every one to the nearest named
  * step (8/9px floored UP to xxs; ties round up; 12.5px settled to xs). This
- * lint now also fails on any NEW sub-ceiling (≤24px) `text-[Npx]`, integer or
- * decimal: every size at or under the ceiling has a named step, so an
+ * lint now also fails on any NEW sub-ceiling (≤24px) arbitrary size, integer
+ * or decimal, in EITHER hatch — `text-[Npx]` or a raw CSS `font-size: Npx`:
+ * every size at or under the ceiling has a named step (Tailwind `text-*`,
+ * mirrored for raw stylesheets as `var(--fs-*)` in tokens.css), so an
  * arbitrary px there is always an escape hatch. The content exemption does
  * NOT apply sub-ceiling — reading-body prose uses the same named scale.
+ * (The raw-CSS half of this rule landed 2026-10-02; until then the ban
+ * reached only `text-[Npx]` and sub-floor raw CSS like the 10.5px keycaps
+ * in KeyChip.css / PrefixChip.css shipped past the gate.)
  *
  * Known residual (accepted): the named keys ABOVE the 2xl ceiling (`text-3xl`+
  * = 30px+) still resolve via Tailwind's own defaults — no `text-3xl`+ key is
@@ -79,9 +84,11 @@ const ALLOW_DIRS = [
 ];
 
 /** Raw CSS `font-size: NNpx` and Tailwind arbitrary `text-[NNpx]` (integer or
- *  decimal). The two scale-bypass escape hatches. The capture group is the px
- *  value as written. */
-const RAW_FONT_SIZE = /font-size:\s*(\d+)px/g;
+ *  decimal — the two patterns are deliberately symmetric: a decimal px is the
+ *  same escape hatch with a point in it). The capture group is the px value
+ *  as written. rem/em/% sizes are NOT scanned (residual blind spot: their px
+ *  equivalent depends on an inherited root size this lint does not model). */
+const RAW_FONT_SIZE = /font-size:\s*(\d+(?:\.\d+)?)px/g;
 const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -102,7 +109,10 @@ function isContent(rel: string): boolean {
 
 /** Sorted entries for the two enforced rules. The entry records the offending
  *  token verbatim so the baseline reads like the source:
- *    `relpath\tfont-size:NNpx`  — raw CSS size above the ceiling (chrome only)
+ *    `relpath\tfont-size:NNpx`  — raw CSS size above the ceiling (chrome only),
+ *                                 OR any raw size at/under the ceiling
+ *                                 (off-scale; applies to content too — every
+ *                                 size ≤ 24px has a named step / var(--fs-*))
  *    `relpath\ttext-[NNpx]`     — arbitrary size above the ceiling (chrome only),
  *                                 OR any arbitrary size at/under the ceiling
  *                                 (off-scale; applies to content too — every
@@ -117,7 +127,11 @@ function collect(): string[] {
     let m: RegExpExecArray | null;
     RAW_FONT_SIZE.lastIndex = 0;
     while ((m = RAW_FONT_SIZE.exec(text)) !== null) {
-      if (!content && Number(m[1]) > CEILING_PX)
+      // Same contract as text-[Npx] below: at/under the ceiling the named
+      // scale (and its CSS-var mirror, var(--fs-*)) covers every size, so a
+      // raw px is always an escape hatch — in content too. Above the ceiling
+      // it is a chrome violation; reading-body content stays exempt.
+      if (Number(m[1]) <= CEILING_PX || !content)
         found.push(`${rel}\tfont-size:${m[1]}px`);
     }
     ARBITRARY_TEXT.lastIndex = 0;
@@ -151,13 +165,14 @@ if (fresh.length) {
   console.error(
     `\ntype-scale lint FAILED: ${fresh.length} new off-scale font-size(s) — ` +
       `either above the ${CEILING_PX}px chrome ceiling (2xl == 24px) or an ` +
-      `arbitrary text-[NNpx] at/under it (Q14: the named scale covers every ` +
-      `size ≤ 24px).`,
+      `arbitrary size at/under it — text-[NNpx] or raw font-size: Npx ` +
+      `(the named scale covers every size ≤ 24px).`,
   );
   console.error(
     "Use a named fontSize token (Tailwind: text-xxs / text-xs / text-sm / " +
-      "text-base / text-lg / text-xl / text-2xl) instead of a raw px or " +
-      "text-[NNpx]. If this is genuinely reading-body CONTENT (not chrome) " +
+      "text-base / text-lg / text-xl / text-2xl; raw stylesheets: " +
+      "var(--fs-xxs) … var(--fs-2xl) from tokens.css) instead of a raw px " +
+      "or text-[NNpx]. If this is genuinely reading-body CONTENT (not chrome) " +
       "AND above the ceiling, it belongs under a reading-content subtree — " +
       "see ALLOW_DIRS in this file.",
   );
