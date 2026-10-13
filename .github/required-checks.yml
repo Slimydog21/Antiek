@@ -36,6 +36,13 @@ required:
   - pytest shard 1 of 4
   - pytest shard 2 of 4
   - pytest shard 3 of 4
+  # Promoted 2026-10-02, paired with the operator's ruleset edit: this rollup
+  # carries 17 substantive invariant gates on top of the four shards, and
+  # PR #3210 merged with it red. The deploy fence
+  # (tools/deploy/require_green.sh) already required it; the merge fence did
+  # not. This entry takes effect when the operator adds `pytest` to ruleset
+  # 23702536 — until then this list leads the ruleset by one.
+  - pytest
 
 # Checks the workflows emit that are NOT in the fence, each with a reason.
 # This list is where an omission becomes visible instead of invisible.
@@ -48,14 +55,6 @@ emitted_but_not_required:
       is a read-only alarm: it finds PRs whose required run was cancelled with
       nothing replacing it, and exits 2 (UNTRUSTED) rather than reporting a false
       clean when the ruleset read returns too few contexts.
-  pytest:
-    why: >-
-      KNOWN GAP, not a decision. This job runs 17 substantive invariant gates
-      (reachability, contract conformance, four boundary checks, codegen
-      staleness, the anti-stranding gate) on top of requiring the four shards.
-      It is emitted by ci.yml and is NOT required, so those gates cannot block
-      a merge. PR #3210 merged with this job red. Adding it to the ruleset is
-      an operator action.
   pytest coverage (informational):
     why: >-
       From coverage_report.yml. Informational by design: measures test coverage
