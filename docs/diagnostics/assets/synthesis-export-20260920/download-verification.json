@@ -1,0 +1,17 @@
+{
+  "file": "browser-export-proof.html",
+  "bytes": 9942,
+  "sha256": "b17b3f8a0ac0e35cc69e570e77ddb9969f2bca67c6506f69440a880d125cc5a9",
+  "script_free": true,
+  "public_passage": true,
+  "private_passage_absent": true,
+  "provenance": {
+    "complete": true,
+    "fully_sourced": 2,
+    "total": 2
+  },
+  "scope": "real browser download from local scratch app, bearer authentication, typed synthetic archive",
+  "source_commit": "c9b5c81b1e78f217e0c4627887b232be4cbe8ed9",
+  "refusal": "real component displays specific reason from synthetic restricted export fixture",
+  "known_gap": "Relative /read document links resolve to file:///read/... when downloaded; source navigation not portable."
+}
