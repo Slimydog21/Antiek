@@ -34,6 +34,10 @@ import { useSyncProjectFilter } from "./agent/agentPaneStore";
 import { toggleProjectPicker } from "./shortcuts";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { topModal } from "./escapeOverlay";
+import { useContextTree } from "./contracts/treeStore";
+import { AttentionBadge } from "./agents/AttentionBadge";
+import { useAgentAttention } from "./agents/agentStatusStore";
+import { StatusDot } from "./agents/StatusDot";
 
 /** Past this many agents the overflow menu gets a search box: scanning a
  *  longer list is not navigation (DESIGN-MODEL §1, the switcher's rule). */
@@ -159,6 +163,8 @@ export default function CompanionPane() {
             onActivate={activateAgentTab}
           />
         ) : null}
+        {/* SPR-10 M6: the workspace rollup (max over every agent the tree knows). */}
+        <AttentionBadge scope={{ kind: "workspace" }} className="shrink-0 px-1" />
         <NewAgentButton investigations={investigations} onPick={openAgentTab} />
       </div>
 
@@ -265,6 +271,12 @@ function AgentTab({
   const meta = metaFor(tab);
   const glyph = meta.glyph(tab, summary);
   const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
+  // SPR-10 M6: a research tab's glyph reads the agent status store once the
+  // context tree is fed (the registry glyph stays the fallback while
+  // "unfed"); a dialogue keeps its brand dot (no run exists).
+  const treeStatus = useContextTree((t) => t.status);
+  const attention = useAgentAttention(tab.investigationId ?? tab.id);
+  const onStore = tab.kind === "research-thread" && treeStatus !== "unfed";
   // The tab IS the button (the ARIA tabs pattern: a tab's children are
   // presentational, so it can never hold a second control). Close is a mouse
   // affordance outside the tab; from the keyboard, Delete closes (never
@@ -295,12 +307,16 @@ function AgentTab({
         }}
         className="flex items-center gap-1 min-w-0 pl-1.5 py-0.5 text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
       >
-        <span
-          role="img"
-          className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`}
-          aria-label={glyph.label}
-          title={glyph.label}
-        />
+        {onStore ? (
+          <StatusDot status={attention.state} reason={attention.reason} variant="symbol" word="sr" className="shrink-0" />
+        ) : (
+          <span
+            role="img"
+            className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`}
+            aria-label={glyph.label}
+            title={glyph.label}
+          />
+        )}
         <span className="truncate">{title}</span>
       </button>
       <button

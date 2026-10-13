@@ -41,6 +41,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "inbox.toggle": "panels",
   "reader.tocToggle": "panels",
   "agent.openPane": "panels",
+  "agents.gotoToast": "go",
+  "agents.goto": "find",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -93,6 +95,8 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
   "agent.openPane":
     "Opens the agent for the selected project beside your work, with the composer focused; in writing the outline keeps the right pane and the key does nothing.",
+  "agents.gotoToast": "Only while a status toast is showing; opens or focuses that agent's tab and marks it seen.",
+  "agents.goto": "Every agent grouped by project; b/w/i/d filter by state, a shows all, / searches, Enter focuses or opens; ctrl+alt+g closes it again.",
 };
 
 /** Actions whose key is held for a surface that has not shipped: the sheet

@@ -39,6 +39,10 @@ export interface ToastOptions {
   /** When set, the toast becomes a navigation affordance. */
   target?: ToastTarget;
   action?: ToastAction;
+  /** Runs once, after the listeners have seen the removal, whichever way
+   *  the toast went (✕, action, ttl, goTo, or `toast.dismiss`). SPR-10's
+   *  status queue promotes its next toast from here. */
+  onDismiss?: () => void;
 }
 
 /** The undo window. Longer than every other lifetime (4/6/8 s): an undo is
@@ -52,6 +56,7 @@ type Item = {
   ttl: number;
   target?: ToastTarget;
   action?: ToastAction;
+  onDismiss?: () => void;
 };
 
 let _nextId = 1;
@@ -89,6 +94,7 @@ function emit(kind: Kind, msg: string, opts: ToastOptions = {}) {
     ttl: opts.ttl ?? DEFAULT_TTL[kind],
     target: opts.target,
     action: opts.action,
+    onDismiss: opts.onDismiss,
   };
   _items = [..._items, item];
   _listeners.forEach((l) => l(_items));
@@ -97,8 +103,10 @@ function emit(kind: Kind, msg: string, opts: ToastOptions = {}) {
 }
 
 function dismiss(id: number) {
+  const item = _items.find((it) => it.id === id);
   _items = _items.filter((it) => it.id !== id);
   _listeners.forEach((l) => l(_items));
+  item?.onDismiss?.();
 }
 
 /** Navigate to a toast's target. No-op when no navigator is registered

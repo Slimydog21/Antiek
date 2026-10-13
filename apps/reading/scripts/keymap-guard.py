@@ -76,6 +76,10 @@ def press(spec, platform):
             "p": "π",
             "[": "“",
             "]": "‘",
+            # SPR-10 chords: option+g and option+j (with shift, macOS composes
+            # "Ô"; any composed glyph is the field's, so the chord must not fire).
+            "g": "©",
+            "j": "∆",
         }.get(key, key)
     cdp("Input.dispatchKeyEvent", type="keyDown", key=actual, code=code, modifiers=mask)
     cdp("Input.dispatchKeyEvent", type="keyUp", key=actual, code=code, modifiers=mask)

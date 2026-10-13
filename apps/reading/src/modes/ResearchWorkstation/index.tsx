@@ -9,7 +9,7 @@ import { parseSynthesis } from "../../lib/synthesisParser";
 import AIActionFailure from "../../shared/AIActionFailure";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
-import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { focusedSide, useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import DistillView from "./DistillView";
 import HighlightToolbar from "./HighlightToolbar";
@@ -133,6 +133,15 @@ export default function ResearchWorkstation() {
   );
 }
 
+/** Is the operator looking at the centre pane right now? Document focused
+ *  and visible, and the keyboard focus on the centre side (the companion's
+ *  tabs are their own surfaces with their own seen marks). */
+function watchingCentre(): boolean {
+  if (typeof document === "undefined") return false;
+  if (!document.hasFocus() || document.visibilityState === "hidden") return false;
+  return focusedSide(useWorkspace.getState()) !== "right";
+}
+
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -142,12 +151,22 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   // this timestamp, so landing on /inv/:id clears the unread flag — same
   // semantics as reading an email. We ALSO re-mark when the status
   // transitions (a research that completes WHILE you are watching it was
-  // seen completing, not left unread) and when the window regains focus.
+  // seen completing, not left unread) and when the window regains focus,
+  // but only while the operator is WATCHING this pane: the document
+  // focused and visible, and the keyboard focus on the centre, not the
+  // companion. SPR-10's agent monitor derives "done" from the same map
+  // (herdr R17: done persists until the pane is focused; reading it, or a
+  // completion arriving in an unfocused or hidden window, does not clear
+  // it). Navigation itself is an explicit act and marks seen unconditionally.
+  const status = investigation.status;
   useEffect(() => {
     markSeen(investigationId);
-  }, [investigationId, investigation.status]);
+  }, [investigationId]);
   useEffect(() => {
-    const onFocus = () => markSeen(investigationId);
+    if (watchingCentre()) markSeen(investigationId);
+  }, [investigationId, status]);
+  useEffect(() => {
+    const onFocus = () => { if (watchingCentre()) markSeen(investigationId); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [investigationId]);

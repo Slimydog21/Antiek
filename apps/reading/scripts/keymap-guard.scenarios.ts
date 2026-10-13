@@ -2,6 +2,9 @@ import { createElement, Fragment, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { LemonModal } from "../src/components/lemon/LemonModal";
 import { WriteEditor } from "../src/modes/Write/Editor/Editor";
+import { useCompanion } from "../src/workspace/companionStore";
+import { _seedForGuard, resetStatusToasts } from "../src/workspace/agents/statusToasts";
+import { keyInit } from "../src/workspace/keymapTestKit";
 import { KEYMAP, ACTIONS, currentPlatform, isActiveOn, readPrefix, validateKeymap, type ActionId } from "../src/components/hotkeys/keymap";
 import { createActionHandlers } from "../src/workspace/shortcuts";
 import { readKeyboardOwnership } from "../src/workspace/keyboardOwnership";
@@ -51,6 +54,8 @@ async function reset() {
   document.querySelectorAll<HTMLElement>("[data-guard-narrow]").forEach((el) => { el.style.removeProperty("max-width"); el.removeAttribute("data-guard-narrow"); });
   document.querySelectorAll("#guard-text").forEach((el) => el.remove());
   prefixState.disarm();
+  resetStatusToasts();
+  useCompanion.getState().reset();
   for (const button of document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button[aria-label="Close"]')) button.click();
   await settle();
   disablePersistence();
@@ -125,6 +130,27 @@ export const SCENARIOS = {
   "tab.next": { prepare: () => tabs(), effect: () => readerAt("c") },
   "tab.prev": { prepare: () => tabs(), effect: () => readerAt("a") },
   "tab.new": { effect: () => see('[data-keymap-owner="tab.new"]') },
+  // SPR-10: the picker opens on the key and the chord twin closes it from
+  // inside (the prefix never arms in a modal, so only the chord can).
+  "agents.goto": {
+    effect: async () => {
+      await see('[data-keymap-owner="agents.goto"]');
+      window.dispatchEvent(new KeyboardEvent("keydown", { ...keyInit("ctrl+alt+g", currentPlatform()), bubbles: true, cancelable: true }));
+      await until(() => !visible('[data-keymap-owner="agents.goto"]'), "agents.goto: second ctrl+alt+g did not close the picker");
+    },
+  },
+  // SPR-10: a seeded visible status toast about an open agent tab; the key
+  // lands on that tab.
+  "agents.gotoToast": {
+    prepare: () => {
+      resetStatusToasts();
+      useCompanion.getState().reset();
+      useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "guard-inv-b", title: "Guard agent B" });
+      useCompanion.getState().openAgentTab({ kind: "research-thread", investigationId: "guard-inv-a", title: "Guard agent A" });
+      _seedForGuard({ runId: "guard-inv-b", viewId: "agent:thread:guard-inv-b", viewOpen: true, investigationId: "guard-inv-b", title: "Guard agent B", kind: "finished" });
+    },
+    effect: () => until(() => useCompanion.getState().activeTabId === "agent:thread:guard-inv-b", "agents.gotoToast: the toast's agent tab did not become active"),
+  },
   "tab.parent": { prepare: () => tabs("c", true), effect: () => readerAt("a") },
   "tab.visitChild": { prepare: () => tabs("a", true), effect: () => readerAt("c") },
   "tab.close": { prepare: () => tabs(), effect: () => until(() => location.pathname !== "/read/guard-b" && !document.querySelector('[data-document-strip] [role="tab"][aria-selected="true"]')?.textContent?.includes("Guard book B"), "tab.close: closed tab B still on screen") },
