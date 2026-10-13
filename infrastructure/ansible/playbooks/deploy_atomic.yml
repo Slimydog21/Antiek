@@ -315,6 +315,111 @@
           changed_when: false
           tags: [code]
 
+        - name: read the gated Prime artifact pin and require its host platform
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/env
+              - -i
+              - PATH=/usr/bin:/bin
+              - LANG=C
+              - /usr/bin/python3
+              - -I
+              - -S
+              - "{{ antiek_release_dir }}/tools/deploy/install_prime_agent.py"
+              - describe
+          register: prime_artifact_description
+          changed_when: false
+          tags: [code]
+
+        - name: bind only the gated Prime artifact transport metadata
+          ansible.builtin.set_fact:
+            prime_artifact: "{{ prime_artifact_description.stdout | from_json }}"
+          tags: [code]
+
+        - name: observe curl version before relying on its streaming size limit
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/env
+              - -i
+              - PATH=/usr/bin:/bin
+              - LANG=C
+              - /usr/bin/curl
+              - -q
+              - --version
+          register: prime_curl_version
+          changed_when: false
+          tags: [code]
+
+        - name: require curl 8.4 or newer for unknown-length download bounds
+          ansible.builtin.assert:
+            that:
+              - prime_curl_version.stdout_lines | length > 0
+              - prime_curl_version.stdout_lines[0] is match('^curl [0-9]+\\.[0-9]+\\.[0-9]+ ')
+              - prime_curl_version.stdout_lines[0].split()[1] is version('8.4.0', '>=')
+            fail_msg: >-
+              Prime transport requires curl >=8.4.0 because older versions do
+              not enforce --max-filesize while streaming an unknown-length body.
+          tags: [code]
+
+        # No install.sh, host-wide cache, redirect, curlrc or inherited proxy.
+        # The data-only installer independently checks exact bytes and hashes.
+        - name: download the exact Prime archive into the unpublished release
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/env
+              - -i
+              - PATH=/usr/bin:/bin
+              - LANG=C
+              - /usr/bin/curl
+              - -q
+              - --fail
+              - --silent
+              - --show-error
+              - --proto
+              - '=https'
+              - --noproxy
+              - '*'
+              - --max-redirs
+              - '0'
+              - --retry
+              - '0'
+              - --connect-timeout
+              - '10'
+              - --max-time
+              - '120'
+              - --max-filesize
+              - "{{ prime_artifact.archive_bytes | string }}"
+              - --output
+              - "{{ antiek_release_dir }}/.prime-agent-download.tar.gz"
+              - "{{ prime_artifact.url }}"
+          tags: [code]
+
+        - name: install the complete Prime bundle as readonly release data
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/env
+              - -i
+              - PATH=/usr/bin:/bin
+              - LANG=C
+              - /usr/bin/python3
+              - -I
+              - -S
+              - "{{ antiek_release_dir }}/tools/deploy/install_prime_agent.py"
+              - install
+              - --release
+              - "{{ antiek_release_dir }}"
+              - --archive
+              - "{{ antiek_release_dir }}/.prime-agent-download.tar.gz"
+              - --public
+              - "{{ antiek_public_dir }}"
+          tags: [code]
+
+        - name: remove the validated Prime transport archive
+          ansible.builtin.file:
+            path: "{{ antiek_release_dir }}/.prime-agent-download.tar.gz"
+            state: absent
+          tags: [code]
+
         - name: publish the frontend into the immutable release
           ansible.posix.synchronize:
             src: "{{ playbook_dir }}/../../../apps/reading/dist/"
@@ -349,6 +454,8 @@
               exact_sync=pass
               bootstrap_uv_removed=pass
               frontend_index_present=pass
+              prime_agent_archive_sha256={{ prime_artifact.archive_sha256 }}
+              prime_agent_manifest_sha256={{ prime_artifact.manifest_sha256 }}
             owner: root
             group: root
             mode: "0644"
@@ -376,6 +483,37 @@
         fail_msg: >-
           {{ antiek_release_dir }} has no release receipt; refusing to publish
           an incomplete release.
+      tags: [code]
+
+    # Also runs when an existing receipt skipped the entire build block.
+    # Never repair a receipted release: it may already be a rollback target.
+    - name: require the gate to have cleared this exact SHA before reading its Prime installer
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          Refusing Prime verification: the gate did not run or did not clear
+          this exact release SHA.
+      tags: [code]
+
+    - name: verify the frozen Prime bundle and receipt before any live mutation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/env
+          - -i
+          - PATH=/usr/bin:/bin
+          - LANG=C
+          - /usr/bin/python3
+          - -I
+          - -S
+          - "{{ antiek_release_dir }}/tools/deploy/install_prime_agent.py"
+          - verify
+          - --release
+          - "{{ antiek_release_dir }}"
+          - --public
+          - "{{ antiek_public_dir }}"
+      changed_when: false
       tags: [code]
 
     - name: stat the frozen frontend entrypoint and root
