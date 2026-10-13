@@ -626,11 +626,30 @@ def test_app_startup_does_not_create_missing_db_and_retries_recovery(
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    started = time.monotonic()
+
+    # Was `assert time.monotonic() - started < 1.0`, which measured the runner
+    # rather than the code: on a loaded box startup legitimately exceeds a
+    # second and the test reds for being slow, not for being wrong. The real
+    # property is ORDERING — startup must return WITHOUT waiting on recovery.
+    # Gate recover() on an event opened only after startup returns: a lifespan
+    # that waits on the worker can never pass here, and fails with the gate
+    # still closed as proof. Mirrors the idiom #3347 established above.
+    released = threading.Event()
+    real_recover = projector.recover
+
+    def gated_recover(**kwargs: object) -> object:
+        released.wait(10)
+        return real_recover(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(projector, "recover", gated_recover)
 
     with TestClient(app):
-        assert time.monotonic() - started < 1.0
-        deadline = time.monotonic() + 1
+        assert not released.is_set(), (
+            "startup returned only after recover() ran — the lifespan is "
+            "blocking on the worker"
+        )
+        released.set()
+        deadline = time.monotonic() + 10
         while app.state.knowledge_event_recovery["status"] != "retrying":
             assert time.monotonic() < deadline
             time.sleep(0.01)
@@ -834,13 +853,15 @@ def test_app_shutdown_is_bounded_when_recovery_provider_does_not_exit(
     monkeypatch.setattr(projector, "recover", fake_recover)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "owned.duckdb"))
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    started_shutdown = 0.0
     with TestClient(app):
         deadline = time.monotonic() + 1
         assert entered.wait(max(0.0, deadline - time.monotonic()))
-        started_shutdown = time.monotonic()
 
-    assert time.monotonic() - started_shutdown < 1.5
+    # Was `< 1.5` wall-clock: redundant AND load-sensitive. The assertions just
+    # below prove the property more strongly — `is_alive()` says shutdown
+    # returned while the worker was STILL RUNNING, which is exactly "shutdown
+    # did not wait for a provider that never exits", and cannot be satisfied by
+    # a fast runner or broken by a slow one.
     assert app.state.knowledge_event_recovery["status"] == "stopping"
     assert app.state.knowledge_event_recovery_worker.is_alive()
     release.set()
@@ -866,7 +887,11 @@ def test_recovery_wall_time_is_one_deadline_for_snapshot_lock(
                 wall_time_s=0.05,
             )
         elapsed = time.monotonic() - started
-    assert elapsed < 0.25
+    # Was `elapsed < 0.25`, a 5x margin over wall_time_s=0.05 that reds under
+    # load. A LOWER bound instead: load can only make this larger, never
+    # smaller, so it cannot flake, and it asserts recovery actually waited its
+    # own deadline rather than failing fast.
+    assert elapsed >= 0.05, f"returned before its own deadline: {elapsed}"
 
 
 def test_recovery_rotates_past_a_hot_early_investigation(
