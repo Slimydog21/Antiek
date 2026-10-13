@@ -59,11 +59,13 @@ def _seed_versions(db_path: str, monkeypatch, tmp_path) -> tuple[ArtifactVersion
     version_one = f"<html><body><main>{island}</main></body></html>"
     version_one_hash = _digest(version_one.encode())
     assert store.add_version(
-        "artifact-1", "owner-1", "stone", version_one, version_one_hash
+        "artifact-1", "owner-1", "stone", version_one, version_one_hash,
+        source_hash=source_hash,
     )[0] == 1
     version_two = f"<html><body><article>{island}</article></body></html>"
     assert store.add_version(
-        "artifact-1", "owner-1", "paper", version_two, _digest(version_two.encode())
+        "artifact-1", "owner-1", "paper", version_two, _digest(version_two.encode()),
+        source_hash=source_hash,
     )[0] == 2
     with connect_write(db_path, purpose="test/seed-artifact-source-rights") as con:
         con.execute(
