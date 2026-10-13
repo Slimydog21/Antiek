@@ -93,11 +93,17 @@ auto-categorization, and one brain mascot we're rather fond of.
   fixture must fail until the mitigation ships. We don't fix bugs; we
   make bugs impossible to reintroduce quietly.
 - **A locked craft signature:** the inline synthesis-rubric scorer's
-  p95 latency is baselined (194.85 μs) and CI fails on a >10%
-  regression (`python -m benchmarks.rubric_latency --check-regression`).
-  Every *other* perf dimension is explicitly declared "good enough" in
-  `docs/craft_signature.md` — one number defended ruthlessly beats
-  twenty numbers watched vaguely.
+  p95 latency is baselined (194.85 μs) and
+  `python -m benchmarks.rubric_latency --check-regression` exits 2 on a
+  >10% regression. **CI runs it and warns, but does not fail on it** — on a
+  shared `ubuntu-latest` runner it warns on *every* run, because that
+  runner reads ~2x slower than the hardware the baseline was minted on, so
+  the number there is noise; re-minting to the runner's number would
+  corrupt the signature itself. The authoritative enforcement is
+  operator-side, where the number is reliable. Every *other* perf
+  dimension is explicitly declared "good enough" in
+  `docs/craft_signature.md` — one number defended ruthlessly beats twenty
+  numbers watched vaguely.
 - **Scoped strictness:** `mypy --strict` on the modules that must be
   bulletproof (event log, lock primitives) without letting strict-mode
   adoption theater block the rest of the tree.
