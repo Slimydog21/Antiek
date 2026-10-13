@@ -565,3 +565,19 @@ class AudioModelService:
                     ):
                         raise AudioModelUnavailable("stale audio registration")
                     yield selection
+
+    @contextmanager
+    def guard_selected_credential(
+        self, request: Request, selection: AudioSelection
+    ) -> Iterator[store.GuardedCredential]:
+        with (
+            self.guard_selection(request, selection),
+            store.guard_current_credential(
+                selection.record.credential_id,
+                prepared_master_key=self._key,
+                artifact_path=self._artifact,
+            ) as guarded,
+        ):
+            if not self._metadata_matches(selection.record, guarded.metadata):
+                raise AudioModelUnavailable("audio credential unavailable")
+            yield guarded
