@@ -5,7 +5,8 @@ This is the load-bearing join that makes Antiek **actually** bring-your-own-toke
 for the certified provider set: instead of every provider reading its key straight
 from ``os.environ`` at boot (``bootstrap.py``), each provider asks this module for
 its key. The resolver prefers a key the operator (or, later, the signed-in user)
-has stored in the encrypted BYOK store (``runtime.byok.store``) under the
+has explicitly stored for the shared ``__operator__`` namespace in the
+encrypted BYOK store (``runtime.byok.store``) under the
 provider-scoped handle ``provider:<name>``; if none is stored it falls back to the
 environment variable, exactly as before. So:
 
@@ -25,6 +26,10 @@ supplied *custom* endpoints; that requires the preset-catalog + route-authority
 qualification seam (spec ``byot-onboarding.md`` §5.C) and is intentionally out of
 scope here so the spend-safety invariant is never weakened.
 
+Account-owned and legacy unbound credentials cannot authorize shared startup
+dispatch. Account keys are resolved by the request-scoped authority path; shared
+keys must be stored with the current owner-authenticated v3 binding.
+
 The plaintext key is handled as a redacting ``SecretStr`` right up to the moment it
 is handed to the provider constructor; it is never logged.
 """
@@ -40,6 +45,9 @@ logger = logging.getLogger("substrate.dispatch.providers.byok_key_source")
 # ``pipeline_kind`` namespace so provider-dispatch keys never collide with
 # ingest/tool credentials in the same store.
 _PROVIDER_PIPELINE_PREFIX = "provider:"
+# Startup has no authenticated request owner. Personal account keys belong to
+# request-scoped dispatch, even after the operator's account namespace migrates.
+_SHARED_PROVIDER_OWNER = "__operator__"
 
 _TRUE = frozenset({"1", "true", "yes", "on"})
 
@@ -72,14 +80,16 @@ def _lookup_byok_key(provider_handle: str) -> str | None:
             meta
             for meta in byok_store.list_credentials()
             if meta.pipeline_kind == want
+            and meta.owner_user_id == _SHARED_PROVIDER_OWNER
+            and meta.binding_version == 3
         ]
     except Exception:
         # No artifact yet, unreadable store, permission error → env fallback.
         return None
     if not matches:
         return None
-    # Deterministic pick if the operator somehow stored more than one for a
-    # provider: the most-recently written wins (last in the artifact order).
+    # The store sorts by credential ID, not creation time. Preserve that
+    # deterministic choice among shared credentials only.
     chosen = matches[-1]
     try:
         secret = byok_store.load_credential(chosen.cred_id)
@@ -87,7 +97,7 @@ def _lookup_byok_key(provider_handle: str) -> str | None:
         # Ciphertext present but master key missing/rotated → do NOT crash boot;
         # fall back to env. Surface once, without the secret.
         logger.warning(
-            "byok key for %s present but could not be decrypted; using env fallback",
+            "shared byok key for %s could not be decrypted",
             provider_handle,
         )
         return None
