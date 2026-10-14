@@ -9,10 +9,12 @@ one thing that makes research trustworthy: per-source provenance.
 Antiek is the workstation that refuses that trade. Cursor for knowledge
 work, built on a substrate where every claim can show its receipts.
 
-This is not a demo repo. The platform is built, tested (6,000+ test
-functions), and running in production at [antiek.ai](https://antiek.ai)
-with its API at `api.antiek.ai`. What remains open is deliberate — see
-[What we deliberately have NOT built](#what-we-deliberately-have-not-built).
+Antiek has automated tests and deployed services at
+[antiek.ai](https://antiek.ai), with its API at `api.antiek.ai`.
+As of 2026-10-09, the genuine signed Reader journey — open a real book,
+read, reload, leave and return — remains unproved end to end. Operational
+engineering remains open alongside the
+[deliberate deferrals](#what-we-deliberately-have-not-built).
 
 ---
 
@@ -55,8 +57,8 @@ knowledge graph is not.
 
 ## What's actually built
 
-We keep the status honest because a README that oversells is a bug.
-Every row below is verifiable on `main`, not aspirational.
+The inventory below describes modules present on `main`. Their source
+and automated tests are separate evidence from live workflow acceptance.
 
 **The substrate.** Typed event capture (Pydantic v2 schemas,
 `substrate/schemas/events.py` is canonical), a DuckDB-backed knowledge
@@ -74,13 +76,16 @@ state-machine in code rather than a prose protocol, with append-only
 phase logs and audit trails.
 
 **The reading platform** (`apps/reading/`, React + strict TypeScript).
-The full Research / Read / Write / Speak roadmap is on `main` — not
-scaffolding, shipped modules: the reading geometry pass and layout map,
+The frontend includes modules for the reading geometry pass and layout map,
 the notebook block-canvas with auto-notebook, the float menu, the
 research home with plan mode, the library feed and in-book reader,
 talk-to-book with shared ASR-in/TTS-out voice infrastructure, the Write
 X-ray, biography templates, a personal doc space with
 auto-categorization, and one brain mascot we're rather fond of.
+The [reading-comfort rationale](docs/decisions/reading-comfort-20261001.md)
+records the research behind the paper and library-at-night themes, with
+green accents and a lime highlighter. Reduced fatigue and superiority
+over physical reading have not been established.
 
 **The paranoia, as code.** This is where the craft lives:
 
@@ -159,10 +164,10 @@ prevents is expensive and quiet.
 
 ## What we deliberately have NOT built
 
-Engineering scope on the spec is essentially complete. The open items
-are **operator-bound gates** (legal review, publisher opt-in, real ads
-and Stripe activation, the multi-user pivot) and **explicit
-deferrals** — each documented with what unlocks it:
+Open work includes operational engineering and live acceptance, alongside
+**operator-bound gates** (legal review, publisher opt-in, real ads and
+Stripe activation, the multi-user pivot) and **explicit deferrals**.
+The following documents track gates and deferrals and what unlocks them:
 
 - `docs/operator_gate_actions.md` — the binding gates, each with
   Status / Owner / Blocks-what / Action-needed.
