@@ -12,6 +12,9 @@ After=network-online.target antiek.service
 
 [Service]
 Type=oneshot
+# Only public recipient, source-inventory and R2-prefix configuration belongs
+# here. The recovery private key must never be installed on the source host.
+EnvironmentFile=-/etc/antiek/backup.env
 ExecStart=/usr/local/bin/antiek-backup
 StandardOutput=append:/var/log/antiek-backup.log
 StandardError=append:/var/log/antiek-backup.log

@@ -5,7 +5,8 @@
 #
 # Snapshots DuckDB consistently (EXPORT DATABASE → directory of SQL +
 # Parquet), rsyncs the append-only event log and knowledge-skills dir,
-# tar+gzip, uploads to R2, then reads the object back for verification.
+# snapshots critical state, encrypts to an off-host recovery recipient, uploads
+# the data and separate BYOK-key objects to R2, then reads both back.
 #
 # Runs as a bounded systemd oneshot at {{ backup_cron_hour }}:{{ backup_cron_minute }}
 # UTC. Output is appended to /var/log/antiek-backup.log by the unit.
@@ -51,7 +52,8 @@
 #     own emptiness — it would verify, upload, and stamp a fresh marker,
 #     certifying data loss. Deliberate and loud, set only for a legitimately
 #     empty install.
-# Deployed defaults are unchanged when all overrides are unset.
+# Encrypted critical backups additionally require the protected source inventory
+# and public recipient below; unset/missing configuration cannot upload plaintext.
 #
 # Injection posture: the shell expands ${...} into the python heredocs below,
 # i.e. env values become Python SOURCE TEXT. Every env-sourced value is
@@ -135,21 +137,35 @@ fi
 find "${STAGING_ROOT}" -maxdepth 1 -name 'antiek-backup.*' -mtime +2 -exec rm -rf -- {} +
 readonly STAGING="$(mktemp -d "${STAGING_ROOT%/}/antiek-backup.XXXXXXXX")"
 readonly ARCHIVE="${STAGING}.tar.gz"
+readonly ENCRYPTED_ARCHIVE="${ARCHIVE}.enc"
+readonly BYOK_ESCROW="${STAGING}.byok-key"
+readonly ENCRYPTED_BYOK_KEY="${BYOK_ESCROW}.enc"
 # Portable UTC ISO stamp (+%Y-%m-%dT%H:%M:%SZ): GNU date's --iso-8601 is not
 # portable to the BSD date the test harness may run under; output for UTC is
 # equivalent.
 readonly LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
-readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-3"
-readonly REMOTE="r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
-
-echo "${LOG_PREFIX} backup starting → ${REMOTE}"
+readonly SCRIPT_VERSION="backup.sh/2026-10-07.encrypted-critical-v1"
+readonly REMOTE_PREFIX="${ANTIEK_BACKUP_REMOTE_PREFIX:-r2:${BUCKET}/nightly/encrypted-v1}"
+_REMOTE_RE='^r2:[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$'
+# Keep the legacy logical archive basename for the existing freshness checker.
+# The encrypted-v1 namespace and marker identify its actual encrypted format.
+readonly REMOTE="${REMOTE_PREFIX}/antiek-${TIMESTAMP}.tar.gz"
+readonly KEY_REMOTE="${REMOTE_PREFIX}/antiek-${TIMESTAMP}.byok-key.enc"
+readonly CRITICAL_CONFIG="${ANTIEK_BACKUP_CRITICAL_CONFIG:-/etc/antiek/backup-critical-sources.json}"
+readonly RECIPIENT="${ANTIEK_BACKUP_RECIPIENT_FILE:-/etc/antiek/backup-recovery-public.hex}"
 
 # Always clean staging on exit, even if something below fails. Prevents
 # the staging root filling up if a partial backup is left behind.
 cleanup() {
-    rm -rf "${STAGING}" "${ARCHIVE}"
+    rm -rf "${STAGING}" "${ARCHIVE}" "${ENCRYPTED_ARCHIVE}" \
+        "${BYOK_ESCROW}" "${ENCRYPTED_BYOK_KEY}" "${STAGING}.transfer.log"
 }
 trap cleanup EXIT
+if [[ ! "${REMOTE_PREFIX}" =~ ${_REMOTE_RE} ]]; then
+    echo "ERROR: backup: invalid configured R2 prefix; refusing" >&2
+    exit 11
+fi
+echo "${LOG_PREFIX} backup starting → ${REMOTE}"
 
 # DuckDB EXPORT below runs as the antiek user (file ownership of
 # the snapshot matches the substrate's process); the staging dir
@@ -537,17 +553,43 @@ else
     echo "${LOG_PREFIX} no knowledge_skills directory yet; skipping"
 fi
 
-# ── 4. Compress + upload ──────────────────────────────────────────────────
+# ── 4. Critical state + separate key escrow, then encrypt ─────────────────
+# Root controls this explicit path inventory. Missing sources/recipient or an
+# unsafe/incoherent snapshot refuses; there is no plaintext upload fallback.
+# Paths are passed as arguments, never interpolated into Python source.
+{{ antiek_install_dir }}/.venv/bin/python3 "{{ antiek_install_dir }}/tools/critical_state_backup.py" prepare \
+    --sources "${CRITICAL_CONFIG}" --state "${STATE_DIR}" \
+    --destination "${STAGING}/critical-state" --escrow "${BYOK_ESCROW}" --recipient "${RECIPIENT}"
 echo "${LOG_PREFIX} tar+gzip"
-tar -czf "${ARCHIVE}" -C "${STAGING_ROOT}" "$(basename "${STAGING}")"
+# BSD tar otherwise creates AppleDouble ._ members outside the single archive
+# root. Suppress generated filesystem metadata, never application file bodies.
+# GNU tar ignores this environment variable, preserving the deployed Linux path.
+COPYFILE_DISABLE=1 tar -czf "${ARCHIVE}" -C "${STAGING_ROOT}" "$(basename "${STAGING}")"
+{{ antiek_install_dir }}/.venv/bin/python3 "{{ antiek_install_dir }}/tools/critical_state_backup.py" encrypt \
+    --source "${ARCHIVE}" --destination "${ENCRYPTED_ARCHIVE}" --recipient "${RECIPIENT}"
+# Minimize plaintext archive lifetime. The owned staging trap covers all arms.
+rm -f "${ARCHIVE}"
 
-readonly ARCHIVE_SIZE_HUMAN="$(du -h "${ARCHIVE}" | cut -f1)"
+readonly ARCHIVE_SIZE_HUMAN="$(du -h "${ENCRYPTED_ARCHIVE}" | cut -f1)"
 echo "${LOG_PREFIX} archive size: ${ARCHIVE_SIZE_HUMAN}"
 
 echo "${LOG_PREFIX} uploading to R2"
-rclone copyto "${ARCHIVE}" "${REMOTE}" \
-    --config /etc/rclone/rclone.conf
-readonly ARCHIVE_SHA256="$(sha256sum "${ARCHIVE}" | cut -d' ' -f1)"
+for transfer in data key; do
+    if [[ "${transfer}" == data ]]; then
+        source_object="${ENCRYPTED_ARCHIVE}"; remote_object="${REMOTE}"
+    else
+        source_object="${ENCRYPTED_BYOK_KEY}"; remote_object="${KEY_REMOTE}"
+    fi
+    # Provider diagnostics can contain credentials. Keep them in private owned
+    # staging, report only the failed phase, and remove them in the EXIT trap.
+    if ! rclone copyto "${source_object}" "${remote_object}" \
+        --config /etc/rclone/rclone.conf >"${STAGING}.transfer.log" 2>&1; then
+        echo "ERROR: backup: encrypted ${transfer} upload failed; no freshness marker" >&2
+        exit 12
+    fi
+done
+readonly ARCHIVE_SHA256="$(sha256sum "${ENCRYPTED_ARCHIVE}" | cut -d' ' -f1)"
+readonly KEY_SHA256="$(sha256sum "${ENCRYPTED_BYOK_KEY}" | cut -d' ' -f1)"
 
 # ── 5. Remote verification ────────────────────────────────────────────────
 # Download-and-compare the just-uploaded object. A successful copy command is
@@ -556,13 +598,23 @@ readonly ARCHIVE_SHA256="$(sha256sum "${ARCHIVE}" | cut -d' ' -f1)"
 # must never be able to delete the last known-good backup. Configure an R2
 # lifecycle policy (and bucket versioning where available) independently.
 echo "${LOG_PREFIX} verifying uploaded object by read-back"
-readonly REMOTE_SHA256="$(rclone hashsum SHA-256 "${REMOTE}" \
-    --download \
-    --config /etc/rclone/rclone.conf | awk 'NR == 1 {print $1}')"
-if [[ ! "${REMOTE_SHA256}" =~ ^[0-9a-f]{64}$ ]] || [[ "${REMOTE_SHA256}" != "${ARCHIVE_SHA256}" ]]; then
-    echo "ERROR: backup: remote read-back SHA-256 mismatch; refusing freshness marker" >&2
-    exit 9
-fi
+for transfer in data key; do
+    if [[ "${transfer}" == data ]]; then
+        remote_object="${REMOTE}"; expected_sha="${ARCHIVE_SHA256}"
+    else
+        remote_object="${KEY_REMOTE}"; expected_sha="${KEY_SHA256}"
+    fi
+    if ! rclone hashsum SHA-256 "${remote_object}" --download \
+        --config /etc/rclone/rclone.conf >"${STAGING}.transfer.log" 2>&1; then
+        echo "ERROR: backup: encrypted ${transfer} read-back failed; no freshness marker" >&2
+        exit 12
+    fi
+    actual_sha="$(awk 'NR == 1 {print $1}' "${STAGING}.transfer.log")"
+    if [[ ! "${actual_sha}" =~ ^[0-9a-f]{64}$ ]] || [[ "${actual_sha}" != "${expected_sha}" ]]; then
+        echo "ERROR: backup: remote read-back SHA-256 mismatch; refusing freshness marker" >&2
+        exit 9
+    fi
+done
 
 # The marker asserts "nightly backups are landing and the system is healthy".
 # It must not be written while antiek.service is down because WE stopped it and
@@ -588,6 +640,8 @@ import pwd
 
 with open("${STAGING}/source_manifest.json") as f:
     counts = json.load(f)["counts"]
+with open("${STAGING}/critical-state/manifest.json") as f:
+    critical = json.load(f)
 marker = {
     "completed_at": "${MARKER_TS}",
     "archive": "antiek-${TIMESTAMP}.tar.gz",
@@ -595,6 +649,12 @@ marker = {
     "sha256": "${ARCHIVE_SHA256}",
     "counts": counts,
     "script_version": "${SCRIPT_VERSION}",
+    "encrypted_object_contract_version": 1,
+    "encryption": "libsodium-sealedbox+secretstream-xchacha20poly1305-v1",
+    "byok_key_remote": "${KEY_REMOTE}",
+    "byok_key_sha256": "${KEY_SHA256}",
+    "recovery_recipient_sha256": critical["encrypted_byok_key"]["recipient_sha256"],
+    "critical_snapshot_consistency": critical["snapshot_consistency"],
 }
 tmp = "${STATE_DIR}/backup_freshness.json.tmp"
 with open(tmp, "w") as f:
