@@ -48,6 +48,8 @@ import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { companionVisible } from "./companionVisibility";
+import { companionHandle } from "./companionHandle";
+import { isWorkspaceOwnerSession, workspaceOwnerSession } from "../lib/accountWorkspaceOwner";
 import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./writeOutlineStore";
 import { mothershipForPath } from "./mothershipForPath";
 import type { Mothership } from "./tabTree";
@@ -324,13 +326,15 @@ function rightPaneHoldsBlocks(): boolean {
   return writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]));
 }
 
-/** A right-pane agent-tab action, only while the right pane holds the
- *  companion and it is visible (an honest no-op otherwise). The store ships
- *  with the lazy pane; when the pane is visible it is already loaded, so
- *  this resolves from the module cache. */
-function onAgentTabs(run: (store: typeof import("./companionStore")["useCompanion"]) => void): void {
+/** Act on the companion present at the keystroke, before another account,
+ *  project, or pane can replace it. A lazy/unconfirmed pane admits no key;
+ *  suspension keeps its state, but does not queue a key for later delivery. */
+function onAgentTabs(run: (store: NonNullable<(typeof companionHandle)["store"]>) => void): void {
   if (rightPaneHoldsBlocks() || !companionVisible()) return;
-  void import("./companionStore").then(({ useCompanion }) => run(useCompanion));
+  const store = companionHandle.store;
+  const owner = workspaceOwnerSession();
+  if (!store || owner.subject === null || !isWorkspaceOwnerSession(owner)) return;
+  run(store);
 }
 
 /**

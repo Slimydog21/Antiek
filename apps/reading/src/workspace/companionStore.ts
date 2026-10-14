@@ -18,6 +18,7 @@
  * right-dock panel — visible iff that panel is open.
  */
 import { create } from "zustand";
+import { companionHandle } from "./companionHandle";
 
 import { toast } from "../components/lemon/LemonToast";
 import type { DocumentAnchor } from "./contracts/anchor";
@@ -320,3 +321,5 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
 
   reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0, projectFilter: null }),
 }));
+
+companionHandle.store = useCompanion;
