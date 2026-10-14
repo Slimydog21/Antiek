@@ -80,6 +80,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     )
 
 _ResponseT = TypeVar("_ResponseT", bound=_ResponseLike)
+_PassT = TypeVar("_PassT")
 
 
 class _HttpxClientKwargs(TypedDict, total=False):
@@ -449,12 +450,12 @@ class ArxivRateGovernor:
                 _release_initial_hop(token)
 
 
-def governed_request[ResponseT: _ResponseLike](
-    send: Callable[[], ResponseT],
+def governed_request(  # noqa: UP047 - pyproject supports Python 3.11
+    send: Callable[[], _ResponseT],
     *,
     governor: ArxivRateGovernor | None = None,
     throttle: ArxivThrottle | None = None,
-) -> ResponseT:
+) -> _ResponseT:
     """Convenience seam: route one arXiv send through a host-global governor.
 
     Pass an existing ``governor`` to reuse its throttle + lock, or pass a
@@ -466,13 +467,13 @@ def governed_request[ResponseT: _ResponseLike](
     return gov.governed_request(send)
 
 
-def govern_if_arxiv[ResponseT](
+def govern_if_arxiv(  # noqa: UP047 - pyproject supports Python 3.11
     url: str,
-    send: Callable[[], ResponseT],
+    send: Callable[[], _PassT],
     *,
     throttle: ArxivThrottle | None = None,
     governor: ArxivRateGovernor | None = None,
-) -> ResponseT:
+) -> _PassT:
     """THE ROOT host-based runtime gate (SPR-09 round-4).
 
     The FETCH-boundary helper every external-PDF/HTTP fetcher that can resolve
@@ -498,7 +499,7 @@ def govern_if_arxiv[ResponseT](
     Because the host check is at the boundary on the resolved URL, a fetcher
     cannot bypass the arXiv governor by living outside ``acquisition/arxiv/``.
 
-    Type contract: ``ResponseT`` is UNBOUNDED because the non-arXiv branch is a
+    Type contract: ``_PassT`` is UNBOUNDED because the non-arXiv branch is a
     pure passthrough — a caller fetching a non-arXiv host may return any type
     (e.g. the X API client sends a ``str`` body through the boundary
     convention). A send that CAN resolve to an arXiv host must produce a
@@ -509,7 +510,7 @@ def govern_if_arxiv[ResponseT](
         eff_throttle = throttle if throttle is not None else canonical_arxiv_throttle()
         governed_send = cast("Callable[[], _ResponseLike]", send)
         return cast(
-            "ResponseT", governed_request(governed_send, governor=governor, throttle=eff_throttle)
+            "_PassT", governed_request(governed_send, governor=governor, throttle=eff_throttle)
         )
     return send()
 
