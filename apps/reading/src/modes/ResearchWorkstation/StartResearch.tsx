@@ -1,6 +1,4 @@
-import { accountStorageKey, isWorkspaceOwnerSession, workspaceOwnerSession } from "../../lib/accountWorkspaceOwner";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useModeNavigate } from "../../workspace/useModeNavigate";
+import { useCallback, useRef, useState } from "react";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
@@ -10,15 +8,9 @@ import LemonSelect from "../../components/lemon/LemonSelect";
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { ErrorState } from "../../components/states";
-import { CelebrateBurst, useCelebrate } from "../../shared/delight";
-import { useStartInvestigation } from "../../hooks/useStartInvestigation";
-import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
-import type {
-  ResearchSourcePolicy,
-  ResearchTier,
-  UserModelChoice,
-} from "../../lib/api";
-import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
+import { CelebrateBurst } from "../../shared/delight";
+import type { ResearchSourcePolicy, ResearchTier } from "../../lib/api";
+import { modelKey, URL_RE, useProjectIntake } from "../Home/useProjectIntake";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -82,44 +74,10 @@ const EXAMPLE_PROMPTS: readonly string[] = [
   "Where do these authors disagree, and which side has the better-grounded claims?",
 ];
 
-const OWNER_LAUNCH_KEY = "antiek.research.pending-owner-launch.session.v1";
-const modelKey = (providerId: string, modelId: string) => `${providerId}\u0000${modelId}`;
-const isExecutable = (model: UserModelRow) =>
-  model.enabled && model.key_present && model.registered && model.route_eligible &&
-  model.pricing_status === "known" && model.hard_ceiling_eligible &&
-  model.execution_status === "executable";
-
 const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string; hint: string }> = [
   { value: "fast", label: "Fast", hint: "lower-latency established route" },
   { value: "deep", label: "Deep", hint: "reasoning-heavier established route" },
 ];
-
-interface PendingOwnerLaunch {
-  question: string;
-  modelChoice: UserModelChoice;
-  operationId: string;
-}
-
-function readPendingOwnerLaunch(): PendingOwnerLaunch | null {
-  const key = accountStorageKey(OWNER_LAUNCH_KEY);
-  if (key === null) return null;
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PendingOwnerLaunch>;
-    if (
-      typeof value.question !== "string" ||
-      typeof value.operationId !== "string" ||
-      value.operationId.length === 0 ||
-      value.modelChoice?.authority !== "user_model" ||
-      typeof value.modelChoice.provider_id !== "string" ||
-      typeof value.modelChoice.model_id !== "string"
-    ) return null;
-    return value as PendingOwnerLaunch;
-  } catch {
-    return null;
-  }
-}
 
 const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
   value: ResearchSourcePolicy;
@@ -131,77 +89,49 @@ const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
   { value: "arxiv", label: "arXiv", hint: "papers and preprints" },
   { value: "substack", label: "Substack", hint: "newsletter feeds and essays" },
 ];
-const DEFAULT_SOURCE_POLICY: ResearchSourcePolicy[] = ["operator_corpus", "web"];
-
-/** Grace period before navigating even if no event has streamed yet, so a
- *  slow WS connection doesn't strand the operator on the start surface. */
-const NAVIGATE_GRACE_MS = 1500;
-
-/** SPR-05 M1 — match PasteIngest's URL test so the home routes a pasted/typed
- *  link to ingestSource and any other text to ingestVoiceNote, the same split
- *  PasteIngest uses. Kept identical on purpose (PasteIngest.tsx:120). */
-const URL_RE = /^https?:\/\/\S+$/i;
-/** Text-file extensions the browser can read as text (mirror of
- *  PasteIngest.TEXT_EXTENSIONS). A binary blob is rejected honestly. */
-const TEXT_EXTENSIONS = /\.(txt|md|markdown|csv|json|log|rtf)$/i;
-
-/** SPR-05 M1 (operator decision) — attachment-only with an EMPTY prompt is
- *  accepted with a sensible DERIVED prompt rather than blocked. The derived
- *  prompt is shown in the composer (editable) so it is never silently chosen
- *  behind the operator's back, and labelled in the UI as derived. */
-function derivePromptFor(title: string): string {
-  const t = title.trim();
-  return t
-    ? `Understand and distill “${t}”, and surface its key claims and open questions.`
-    : "Understand and distill the attached material, and surface its key claims and open questions.";
-}
-
-/** What an attach attempt produced. Mirrors PasteIngest's Outcome shape but
- *  scoped to the home (no investigation yet). */
-type AttachState =
-  | { kind: "idle" }
-  | { kind: "absorbing" }
-  | { kind: "absorbed"; title: string }
-  | { kind: "rejected"; why: string }
-  | { kind: "failed"; reason: string | null };
 
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
-  const [owner] = useState(workspaceOwnerSession);
-  const navigate = useModeNavigate();
-  const start = useStartInvestigation();
-  const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
-  const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
-  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
-  // Recorded on the investigation server-side so it's queryable after.
-  const [tier, setTier] = useState<ResearchTier>("deep");
-  const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
-    DEFAULT_SOURCE_POLICY,
-  );
-  const [models, setModels] = useState<UserModelRow[]>([]);
-  const [modelsState, setModelsState] = useState<"loading" | "ready" | "error">("loading");
-  const [modelChoice, setModelChoice] = useState<UserModelChoice | null>(
-    restoredLaunch?.modelChoice ?? null,
-  );
-  const [operationId, setOperationId] = useState(
-    restoredLaunch?.operationId ?? `research-${crypto.randomUUID()}`,
-  );
+  // FFX-KPA SPR-03 M1: the intake machine (prompt, voice, URL / text-file
+  // attach, derived prompt, tier / sources / owner model, submit, the
+  // research-starts beat and the navigate grace) lives in useProjectIntake so
+  // the zen home shares it. This component keeps the cascade toggle and the
+  // markup.
+  const intake = useProjectIntake();
+  const {
+    start,
+    navigate,
+    composerRef: taRef,
+    question,
+    setQuestion,
+    promptDerived,
+    setPromptDerived,
+    tier,
+    setTier,
+    sourcePolicy,
+    toggleSourcePolicy,
+    models,
+    modelsState,
+    modelChoice,
+    setModelChoice,
+    selectedModel,
+    selectModel,
+    refreshModels,
+    attach,
+    setAttach,
+    absorbUrl,
+    handleFile,
+    applyTranscript: onVoiceTranscript,
+    fillExample,
+    onSubmit,
+    onTryAgain,
+    celebrating,
+  } = intake;
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
   // problem text the user typed seeds the proposal.
   const [cascadeProblem, setCascadeProblem] = useState<string | null>(null);
-  // SPR-05 M1 — attach state (a file / URL / passage absorbed into the corpus
-  // before the run). Whether the prompt was auto-derived from an attachment is
-  // tracked so we can label it honestly in the UI.
-  const [attach, setAttach] = useState<AttachState>({ kind: "idle" });
-  const [promptDerived, setPromptDerived] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // The research-starts signature beat (U-05 M2) — Brain's one-shot
-  // celebrate the moment a research is genuinely under way. Non-blocking:
-  // it only arms a timer; navigation + the live banner below are driven by
-  // their own effects and don't wait on it.
-  const { celebrating, celebrate } = useCelebrate();
 
   const {
     startedId,
@@ -212,153 +142,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     failureReason,
     error,
     busy,
-    submit,
-    reset,
   } = start;
-
-  const refreshModels = useCallback(async () => {
-    setModelsState("loading");
-    try {
-      const inventory = await fetchUserModels();
-      setModels(inventory.models.filter(isExecutable));
-      setModelsState("ready");
-    } catch {
-      setModels([]);
-      setModelsState("error");
-    }
-  }, []);
-
-  useEffect(() => { void refreshModels(); }, [refreshModels]);
-
-  const selectedModel = modelChoice
-    ? models.find((model) => model.id === modelChoice.provider_id && model.model_id === modelChoice.model_id)
-    : null;
-
-  useEffect(() => {
-    if (modelsState === "ready" && modelChoice && !selectedModel) setModelChoice(null);
-  }, [modelsState, modelChoice, selectedModel]);
-
-  const onSubmit = useCallback(async () => {
-    if (!isWorkspaceOwnerSession(owner)) return;
-    const key = accountStorageKey(OWNER_LAUNCH_KEY, owner);
-    if (key === null) return;
-    const pending = modelChoice && selectedModel
-      ? { question, modelChoice, operationId } satisfies PendingOwnerLaunch
-      : null;
-    if (pending) window.sessionStorage.setItem(key, JSON.stringify(pending));
-    const id = await submit(modelChoice && selectedModel
-      ? { question, modelChoice, operationId, sourcePolicy }
-      : { question, researchTier: tier, sourcePolicy });
-    if (id && isWorkspaceOwnerSession(owner)) {
-      window.sessionStorage.removeItem(key);
-      setQuestion("");
-    }
-  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy, owner]);
-
-  const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
-    setSourcePolicy((current) => {
-      const next = current.includes(value)
-        ? current.filter((item) => item !== value)
-        : [...current, value];
-      return next.length > 0 ? next : current;
-    });
-  }, []);
-
-  const selectModel = useCallback((value: string) => {
-    const model = models.find((row) => modelKey(row.id, row.model_id) === value);
-    if (!model) return;
-    setModelChoice({ authority: "user_model", provider_id: model.id, model_id: model.model_id });
-    setOperationId(`research-${crypto.randomUUID()}`);
-  }, [models]);
-
-  const fillExample = useCallback((prompt: string) => {
-    setQuestion(prompt);
-    setPromptDerived(false);
-    taRef.current?.focus();
-  }, []);
-
-  // SPR-05 M1 — voice fills the prompt. VoiceChaseButton owns the record +
-  // transcribe + honest-failure path; here a successful transcript just
-  // becomes the prompt text (a user-authored question), exactly like typing.
-  // We never assert the words on the user's behalf — the transcript lands in
-  // the editable composer so it is confirmed/corrected before Ask, the same
-  // correct-before-commit guard VoiceChaseButton documents.
-  const onVoiceTranscript = useCallback((transcript: string) => {
-    const t = transcript.trim();
-    if (!t) return; // empty/silent transcript → leave the prompt untouched
-    setQuestion(t);
-    setPromptDerived(false);
-    taRef.current?.focus();
-  }, []);
-
-  // SPR-05 M1 — attach a URL / passage / text file. Reuses PasteIngest's
-  // ingest calls (ingestSource for a URL, ingestVoiceNote for text) with NO
-  // investigation_id: on the home there is no investigation yet, so the backend
-  // bins the doc to the `__operator__` corpus sentinel — it is ADDED TO THE
-  // CORPUS, NOT auto-retrieved by the run launched next (the UI copy says exactly
-  // that; wiring the doc into the launched investigation is the documented SPR-05
-  // follow-up). On success, if the prompt is still empty we DERIVE one (operator
-  // decision) and mark it derived; the operator sees + can edit it before Ask.
-  const onAbsorbed = useCallback(
-    (title: string) => {
-      setAttach({ kind: "absorbed", title });
-      setQuestion((q) => {
-        if (q.trim().length > 0) return q; // keep an explicit prompt
-        setPromptDerived(true);
-        return derivePromptFor(title);
-      });
-    },
-    [],
-  );
-
-  const absorbUrl = useCallback(
-    async (url: string) => {
-      setAttach({ kind: "absorbing" });
-      try {
-        const r = await ingestSource({ url }); // no investigation_id on the home
-        if (r.status === "error") {
-          setAttach({ kind: "failed", reason: r.error_message });
-          return;
-        }
-        onAbsorbed(r.title ?? url);
-      } catch (e) {
-        setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
-      }
-    },
-    [onAbsorbed],
-  );
-
-  const absorbText = useCallback(
-    async (text: string, title: string) => {
-      setAttach({ kind: "absorbing" });
-      try {
-        const r = await ingestVoiceNote({ transcript: text, title });
-        onAbsorbed(r.title ?? title);
-      } catch (e) {
-        setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
-      }
-    },
-    [onAbsorbed],
-  );
-
-  const handleFile = useCallback(
-    async (file: File) => {
-      // A binary blob the browser can't read as text has no shipped multipart
-      // endpoint here — reject it plainly (rigor #1), don't pretend to absorb.
-      if (!TEXT_EXTENSIONS.test(file.name) && !file.type.startsWith("text/")) {
-        setAttach({
-          kind: "rejected",
-          why:
-            `“${file.name}” isn’t a kind I can absorb directly yet. ` +
-            "Paste a link to it, or paste its text.",
-        });
-        return;
-      }
-      const text = await file.text();
-      await absorbText(text, file.name);
-    },
-    [absorbText],
-  );
 
   // Enter cascade mode with the typed problem space. Same >= 3-char floor as
   // Ask so an empty composer can't propose an empty plan.
@@ -373,69 +157,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const onCascadeFallBack = useCallback(() => {
     setCascadeProblem(null);
     taRef.current?.focus();
-  }, []);
-
-  // Try again after a failed run: tear the started id / stream down (which
-  // clears the failure) and put the operator back on the composer. The
-  // question was deliberately not cleared on failure, so it's still there to
-  // re-submit; we just refocus it.
-  const onTryAgain = useCallback(() => {
-    reset();
-    taRef.current?.focus();
-  }, [reset]);
-
-  // On failure, restore the question the operator typed so the run is
-  // recoverable. (onSubmit clears it only on a successful POST; but the run
-  // can fail *after* the POST returned an id, so we re-seed it here.)
-  const lastQuestionRef = useRef("");
-  useEffect(() => {
-    if (question) lastQuestionRef.current = question;
-  }, [question]);
-  useEffect(() => {
-    if (failed && !question && lastQuestionRef.current) {
-      setQuestion(lastQuestionRef.current);
-    }
-  }, [failed, question]);
-
-  // Fire the research-starts beat exactly once, at the transition into the
-  // started-and-not-failed state (an id is back, the run is live). It's
-  // independent of the navigate effect below: `celebrate()` returns
-  // immediately, so the beat never sits between "research is under way" and
-  // the operator seeing it. A failed run never celebrates.
-  const startedAndLive = Boolean(startedId) && !failed;
-  const celebratedRef = useRef(false);
-  useEffect(() => {
-    if (startedAndLive && !celebratedRef.current) {
-      celebratedRef.current = true;
-      celebrate();
-    }
-    if (!startedId) celebratedRef.current = false; // re-arm after reset
-  }, [startedAndLive, startedId, celebrate]);
-
-  // Once we have an id, route to the full investigation surface as soon as
-  // real activity begins — or after a grace window if the socket is slow.
-  // Either way the navigation is to the SAME live feed (TrajectoryView via
-  // useInvestigation), so nothing is faked and no progress is lost.
-  //
-  // Failure-aware: if the run hit a terminal investigation.failed, we must
-  // NOT navigate — /inv/:id would be a dead/empty surface. We suppress both
-  // the event-driven navigate and the grace-timer navigate so the operator
-  // stays on the start surface and sees the honest error below.
-  useEffect(() => {
-    if (!startedId) return;
-    if (failed) return;
-    if (events.length > 0) {
-      navigate(`/inv/${startedId}`);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      // Re-check at fire time: a failure event may have arrived during the
-      // grace window. The effect re-runs on `failed` so this guard is belt-
-      // and-suspenders, but it keeps the timer path honest regardless.
-      if (!failed) navigate(`/inv/${startedId}`);
-    }, NAVIGATE_GRACE_MS);
-    return () => window.clearTimeout(t);
-  }, [startedId, failed, events.length, navigate]);
+  }, [taRef]);
 
   // ── Starting state: id returned, stream attached, run still progressing.
   //    A terminal failure falls through to the composer surface below, where

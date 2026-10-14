@@ -11,6 +11,15 @@
  */
 import { API_BASE, ApiError, apiFetch } from "../api";
 
+/**
+ * Whether the "create a project from a seed" contract is live (FFX-KPA SPR-03
+ * M6). False until SPR-B's ffx-nav-backend-intake publishes the project-seed
+ * response and the project-creation decision; until then the zen home skips
+ * POST /projects and the investigation id doubles as the project id.
+ * TODO(ffx-nav-backend-intake): flip when the intake contract lands.
+ */
+export const PROJECT_SEED_CONTRACT_LIVE = false;
+
 export type ProjectKind = "project" | "reading";
 export type MemberKind = "node" | "investigation" | "document" | "deliverable";
 
