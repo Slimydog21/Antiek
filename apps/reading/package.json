@@ -30,7 +30,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "visualtest": "npm run build-storybook && lost-pixel",
-    "visualtest:update": "npm run build-storybook && lost-pixel update",
+    "visualtest:update": "tsx scripts/visualtest_update_guard.ts && npm run build-storybook && lost-pixel update",
     "test": "vitest run",
     "test:watch": "vitest",
     "guard:keymap:serve": "vite --config vite.keymap-guard.config.ts",
