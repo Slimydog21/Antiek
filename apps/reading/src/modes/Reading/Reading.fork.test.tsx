@@ -239,6 +239,45 @@ describe("the companion's fork action (SPR-01 verdict C)", () => {
   });
 });
 
+describe("the fork tab's 'bring in outcomes' surface (SPR-03)", () => {
+  it("offers the composed review on a fork, carrying the fork + parent threads", async () => {
+    recordFork(FORK_ROW);
+    const onCompose = vi.fn();
+    render(
+      <MemoryRouter>
+        <ReadingCompanion
+          documentId="doc-fork-1"
+          title="Meditations (fork)"
+          readingThreadId="read-doc-fork-1"
+          pageIndex={0}
+          onComposeOutcomes={onCompose}
+        />
+      </MemoryRouter>,
+    );
+    const button = screen.getByRole("button", { name: "Bring in outcomes…" });
+    fireEvent.click(button);
+    expect(onCompose).toHaveBeenCalledWith({
+      investigationIds: ["read-doc-fork-1", "read-doc-1"],
+      forkId: "fork-1",
+      forkDocumentId: "doc-fork-1",
+    });
+  });
+
+  it("is absent on a plain document", () => {
+    render(
+      <MemoryRouter>
+        <ReadingCompanion
+          documentId="doc-1"
+          title="Meditations"
+          readingThreadId="read-doc-1"
+          onComposeOutcomes={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("button", { name: "Bring in outcomes…" })).toBeNull();
+  });
+});
+
 describe("the fork tab's provenance header (salvaged from spike B)", () => {
   it("renders the provenance line for a fork", () => {
     recordFork(FORK_ROW);

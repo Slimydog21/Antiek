@@ -52,6 +52,7 @@ import {
 } from "../../api/composerProjection";
 import ResearchPanel from "./ResearchPanel";
 import SessionSourceReceipt from "./SessionSourceReceipt";
+import ComposeView from "./ComposeView";
 import Canvas from "./Canvas/Canvas";
 import {
   chooseEvidenceWindowRect,
@@ -400,6 +401,14 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // default live-card monitor (non-breaking: the existing shell is unchanged
   // until the operator opts into the canvas).
   const [canvasFor, setCanvasFor] = useState<string | null>(null);
+  // SPR-03 (thread-merge + document fork): the monitor's multi-select into
+  // the composed evidence view. composeSelecting arms per-card checkboxes;
+  // 2+ chosen threads swap the grid for the side-by-side review (the
+  // canvasFor precedent — in place, non-breaking). Selection state is
+  // client-local and dies with the view.
+  const [composeSelecting, setComposeSelecting] = useState(false);
+  const [composeSelected, setComposeSelected] = useState<ReadonlySet<string>>(new Set());
+  const [composeFor, setComposeFor] = useState<string[] | null>(null);
   // SPR-04: the block whose detail (the SECOND FloatMenu host) is open, or null.
   // Clicking a BlockCard on the canvas opens its detail as an overlay panel —
   // a highlight inside it mounts the SAME shared FloatMenu the synthesis host
@@ -476,6 +485,25 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     );
   }
 
+  // SPR-03: the composed evidence view over the multi-selected threads.
+  if (composeFor) {
+    return (
+      <div className="flex h-full flex-col gap-2">
+        <ComposeView
+          investigationIds={composeFor}
+          threadTitles={Object.fromEntries(
+            session.researches.map((r) => [r.investigation_id, r.sub_question]),
+          )}
+          onClose={() => {
+            setComposeFor(null);
+            setComposeSelecting(false);
+            setComposeSelected(new Set());
+          }}
+        />
+      </div>
+    );
+  }
+
   // SPR-03: render the organism canvas for the chosen completed research.
   if (canvasFor) {
     return (
@@ -529,6 +557,31 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           )}
         </h2>
         <div className="flex items-center gap-3">
+          {/* SPR-03: multi-select into the composed evidence view. Arming
+              adds a checkbox to each card; 2+ chosen threads review
+              together. The view composes OUTCOMES — never the researches. */}
+          {session.researches.length >= 2 && (
+            <LemonButton
+              variant={composeSelecting ? "secondary" : "tertiary"}
+              size="sm"
+              onClick={() => {
+                setComposeSelecting((on) => !on);
+                setComposeSelected(new Set());
+              }}
+              title="Choose two or more researches to review their outcomes side by side — this never merges the researches themselves"
+            >
+              {composeSelecting ? "cancel selection" : "select to compare"}
+            </LemonButton>
+          )}
+          {composeSelecting && composeSelected.size >= 2 && (
+            <LemonButton
+              variant="primary"
+              size="sm"
+              onClick={() => setComposeFor([...composeSelected].sort())}
+            >
+              Review outcomes together ({composeSelected.size})
+            </LemonButton>
+          )}
           {/* SPR-03 entry: open the first completed research as the organism
               canvas. A completed research's insight/question graph is the
               durable product the canvas lays out. */}
@@ -569,13 +622,36 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
       />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {session.researches.map((r) => (
-          <ResearchPanel
-            key={r.investigation_id}
-            research={r}
-            costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
-            busy={busy || steering === r.investigation_id}
-            onSteer={steer(r.investigation_id)}
-          />
+          <div key={r.investigation_id} className="relative">
+            {composeSelecting && (
+              <label
+                className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-ice-0/90 px-1.5 py-0.5 font-mono text-xxs text-ink dark:bg-charcoal-2/90 dark:text-bright"
+                title="Include this research's outcomes in the side-by-side review"
+              >
+                <input
+                  type="checkbox"
+                  data-compose-select={r.investigation_id}
+                  checked={composeSelected.has(r.investigation_id)}
+                  onChange={() =>
+                    setComposeSelected((s) => {
+                      const next = new Set(s);
+                      if (next.has(r.investigation_id)) next.delete(r.investigation_id);
+                      else next.add(r.investigation_id);
+                      return next;
+                    })
+                  }
+                  className="accent-sun-deep"
+                />
+                compare
+              </label>
+            )}
+            <ResearchPanel
+              research={r}
+              costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
+              busy={busy || steering === r.investigation_id}
+              onSteer={steer(r.investigation_id)}
+            />
+          </div>
         ))}
       </div>
     </div>
