@@ -172,6 +172,53 @@ def test_privileged_owner_path_still_sees_personal_node(db, emb) -> None:
     )
 
 
+@pytest.mark.parametrize("policy_tag", ["private_research", "operator_only"])
+def test_owner_subgraph_renders_personal_reading_insight(db, emb, monkeypatch, policy_tag):
+    """#700: DB-authorized owner labels must survive the live render layer."""
+    import processing.embedding.embed as embedding
+    from orchestration.loop_one.orchestrator import (
+        _render_subgraph_block_for_sub_question,
+    )
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setattr(embedding, "default_embedding_provider", lambda: emb)
+    # The explicitly threaded policy, not an environment re-read, controls rendering.
+    monkeypatch.setenv("ANTIEK_RESEARCH_POLICY_TAG", "attribution_eligible")
+    block = _render_subgraph_block_for_sub_question(
+        "public domain quantum", top_k=5, policy_tag=policy_tag,
+    )
+
+    assert "public claim --[supported_by]--> SECRET-PERSONAL-READING-HEADLINE" in block
+    assert "- node-priv: SECRET-PERSONAL-READING-HEADLINE (insight)" in block
+    assert "text withheld" not in block
+
+
+def test_non_privileged_subgraph_render_is_unchanged(db, emb, monkeypatch):
+    """Owner configuration cannot widen a default/non-privileged render call."""
+    import processing.embedding.embed as embedding
+    from orchestration.loop_one.orchestrator import (
+        _render_subgraph_block_for_sub_question,
+    )
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setattr(embedding, "default_embedding_provider", lambda: emb)
+    monkeypatch.setenv("ANTIEK_RESEARCH_POLICY_TAG", "private_research")
+    block = _render_subgraph_block_for_sub_question("public domain quantum", top_k=5)
+
+    edges, nodes = block.split("\n\n## Nodes\n")
+    assert edges == (
+        "## Edges (cite the relevant edge_id when a claim rests on a relation)\n"
+        "- edge_id: edge-2 | [node-pub: claim — text withheld (§9.0)] "
+        "--[related_to]--> [node-pub2: claim — text withheld (§9.0)] "
+        "(confidence 0.8, source tier 1)"
+    )
+    # SQL does not promise node ordering; each rendered line stays byte-identical.
+    assert sorted(nodes.splitlines()) == sorted([
+        "- node-pub: [node-pub: claim — text withheld (§9.0)] (claim)",
+        "- node-pub2: [node-pub2: claim — text withheld (§9.0)] (claim)",
+    ])
+
+
 def test_non_privileged_path_serves_public_provenance_node(db, emb) -> None:
     """No over-exclusion: a public-provenance node is served on the non-
     privileged path unchanged (the gate hides only gated content)."""
