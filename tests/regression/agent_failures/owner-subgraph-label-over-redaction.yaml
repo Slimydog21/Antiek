@@ -1,0 +1,24 @@
+id: owner-subgraph-label-over-redaction
+observed_at: 2026-11-08
+source: https://github.com/Slimydog21/Antiek/issues/700
+agent: operator-manual
+phase: evidence_retrieval
+failure_type: owner_label_over_redaction
+context_summary: |
+  The live subgraph renderer withheld the owner's distilled insight labels even
+  when private_research authorized their personal_reading provenance in the DB.
+input:
+  prompt: public domain quantum
+  env:
+    ANTIEK_RESEARCH_POLICY_TAG: private_research
+expected_behavior: |
+  Owner-authorized free-text labels surface in both edge endpoints and nodes.
+  Non-privileged labels remain withheld with the existing framing.
+actual_failure: |
+  The insight label rendered as [node-priv: insight — text withheld (§9.0)].
+harness_check_that_now_catches: |
+  tests/test_graph_edges_rights_gate.py::test_owner_subgraph_renders_personal_reading_insight
+fix_commit: GAP
+notes: |
+  Synthetic DB fixtures use personal_reading metadata provenance and the real
+  graph search and render path. No live LLM or private operator data is needed.
