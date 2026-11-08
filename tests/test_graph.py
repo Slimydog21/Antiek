@@ -619,6 +619,11 @@ def _seed_chain_graph(db_path: str) -> tuple[str, str, str]:
     Returns the node ids."""
     con = connect_write(db_path, purpose="seed_chain")
     try:
+        # Public provenance is required on default (non-privileged) label reads.
+        con.execute(
+            "INSERT INTO documents (document_id, title, source_tier, document_type, content_class) "
+            "VALUES ('chain-public', 'public chain', 1, 'paper', 'public_domain')"
+        )
         a = insert_node(
             con, canonical_label="A", node_type="entity",
             graph_scope="cross_domain", investigation_id="seed",
@@ -634,11 +639,13 @@ def _seed_chain_graph(db_path: str) -> tuple[str, str, str]:
         insert_edge(
             con, source_node_id=a, target_node_id=b,
             relation="r1", source_tier=2, extraction_confidence=0.9,
+            source_document_id="chain-public",
             graph_scope="cross_domain", investigation_id="seed",
         )
         insert_edge(
             con, source_node_id=b, target_node_id=c,
             relation="r2", source_tier=2, extraction_confidence=0.8,
+            source_document_id="chain-public",
             graph_scope="cross_domain", investigation_id="seed",
         )
     finally:

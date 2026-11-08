@@ -17,6 +17,12 @@ Plus shared utilities: ``resolve_node`` (ID or fuzzy label), degree
 normalization helpers, and the ``traverse`` dispatcher that picks the
 right algorithm by name.
 
+Every label projection uses the canonical §9.0 provenance gate. ``policy_tag``
+defaults to ``None`` (non-privileged); only explicitly privileged tags reveal
+personal/restricted labels. Path topology is preserved, with withheld labels
+replaced by their existing node IDs. Label-based endpoint/waypoint resolution
+fails closed. Rights privilege never bypasses the separate node-owner filter.
+
 What's deferred:
 
 - ``as_of`` temporal filter — depends on ``graph_at_time`` which
@@ -37,6 +43,7 @@ try:
         TRAVERSAL_MAX_DEPTH,
         TRAVERSAL_TOP_N_PATHS,
     )
+    from . import retrieval_gate as _retrieval_gate
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -45,6 +52,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         TRAVERSAL_MAX_DEPTH,
         TRAVERSAL_TOP_N_PATHS,
     )
+    from substrate.graph import retrieval_gate as _retrieval_gate
 
 
 TraversalAlgorithm = Literal["shortest_path", "top_n", "dfs", "bfs_semantic_stop"]
@@ -73,7 +81,8 @@ def _nodes_visible(con: Any, node_ids: tuple[str, ...], owner_user_id: str | Non
 
 
 def resolve_node(
-    con: Any, label: str, scope: str | None = None, owner_user_id: str | None = None
+    con: Any, label: str, scope: str | None = None, owner_user_id: str | None = None,
+    *, policy_tag: str | None = None,
 ) -> str:
     """Resolve a node by ID exact match → canonical_label exact match →
     fuzzy ILIKE. Raises ValueError if nothing matches.
@@ -82,22 +91,25 @@ def resolve_node(
     have them; the fuzzy path is for the wrestling UI's "show me the
     PsiQuantum node" affordance."""
     owner_sql, owner_params = _owner_filter("n", owner_user_id)
+    gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n", policy_tag=policy_tag or "attribution_eligible",
+    )
     row = con.execute(
-        f"SELECT node_id FROM nodes n WHERE node_id = ? AND {owner_sql}",
-        [label, *owner_params],
+        f"SELECT node_id FROM nodes n WHERE node_id = ? AND {owner_sql}{gate_sql}",
+        [label, *owner_params, *gate_params],
     ).fetchone()
     if row:
         return str(row[0])
 
     row = con.execute(
-        f"SELECT node_id FROM nodes n WHERE canonical_label = ? AND {owner_sql}",
-        [label, *owner_params],
+        f"SELECT node_id FROM nodes n WHERE canonical_label = ? AND {owner_sql}{gate_sql}",
+        [label, *owner_params, *gate_params],
     ).fetchone()
     if row:
         return str(row[0])
 
-    query = f"SELECT node_id, canonical_label FROM nodes n WHERE canonical_label ILIKE ? AND {owner_sql}"
-    params: list[Any] = [f"%{label}%", *owner_params]
+    query = f"SELECT node_id, canonical_label FROM nodes n WHERE canonical_label ILIKE ? AND {owner_sql}{gate_sql}"
+    params: list[Any] = [f"%{label}%", *owner_params, *gate_params]
     if scope and scope != "all":
         query += " AND graph_scope = ?"
         params.append(scope)
@@ -172,15 +184,20 @@ def _format_path(row: Any) -> dict[str, Any]:
 
 
 def _resolve_labels(
-    con: Any, node_ids: list[str], owner_user_id: str | None = None
+    con: Any, node_ids: list[str], owner_user_id: str | None = None,
+    *, policy_tag: str | None = None,
 ) -> list[str]:
+    """Project labels in path order, retaining IDs for withheld/unknown nodes."""
     if not node_ids:
         return []
     placeholders = ",".join(["?"] * len(node_ids))
     owner_sql, owner_params = _owner_filter("n", owner_user_id)
+    gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n", policy_tag=policy_tag or "attribution_eligible",
+    )
     rows = con.execute(
-        f"SELECT node_id, canonical_label FROM nodes n WHERE node_id IN ({placeholders}) AND {owner_sql}",
-        [*node_ids, *owner_params],
+        f"SELECT node_id, canonical_label FROM nodes n WHERE node_id IN ({placeholders}) AND {owner_sql}{gate_sql}",
+        [*node_ids, *owner_params, *gate_params],
     ).fetchall()
     label_map = {r[0]: r[1] for r in rows}
     return [label_map.get(nid, nid) for nid in node_ids]
@@ -201,6 +218,7 @@ def shortest_path(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
+    policy_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
@@ -247,6 +265,7 @@ def shortest_path(
     if row is None:
         return []
     path = _format_path(row)
+    path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id, policy_tag=policy_tag)
     if normalize_degree:
         path["degree_normalized_score"] = _compute_path_degree_score(con, path)
     return [path]
@@ -268,6 +287,7 @@ def top_n_paths(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
+    policy_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
@@ -311,6 +331,8 @@ def top_n_paths(
         [source_id, min_confidence, *visible_params, max_depth, min_confidence, *visible_params, target_id, int(n)],
     ).fetchall()
     paths = [_format_path(r) for r in rows]
+    for path in paths:
+        path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id, policy_tag=policy_tag)
     if normalize_degree:
         for p in paths:
             p["degree_normalized_score"] = _compute_path_degree_score(con, p)
@@ -332,6 +354,7 @@ def dfs_with_depth(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
+    policy_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     if not _nodes_visible(con, (source_id, target_id), owner_user_id):
         return []
@@ -375,6 +398,8 @@ def dfs_with_depth(
         [source_id, min_confidence, *visible_params, int(depth_limit), min_confidence, *visible_params, target_id],
     ).fetchall()
     paths = [_format_path(r) for r in rows]
+    for path in paths:
+        path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id, policy_tag=policy_tag)
     if normalize_degree:
         for p in paths:
             p["degree_normalized_score"] = _compute_path_degree_score(con, p)
@@ -397,19 +422,20 @@ def bfs_semantic_stop(
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
     owner_user_id: str | None = None,
+    policy_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     """Two-phase BFS through a constraint waypoint. Useful when the
     cross-domain analogy MUST flow through a named intermediate
     concept (e.g. "must touch 'photon coherence' on the way from
     PsiQuantum to error-correction-threshold")."""
-    waypoint_id = resolve_node(con, waypoint_label, scope, owner_user_id)
+    waypoint_id = resolve_node(con, waypoint_label, scope, owner_user_id, policy_tag=policy_tag)
     half = max(1, int(max_depth) // 2)
 
     phase1 = top_n_paths(
         con, source_id, waypoint_id,
         n=3, max_depth=half, scope=scope,
         min_confidence=min_confidence, normalize_degree=False,
-        owner_user_id=owner_user_id,
+        owner_user_id=owner_user_id, policy_tag=policy_tag,
     )
     if not phase1:
         return []
@@ -420,7 +446,7 @@ def bfs_semantic_stop(
             con, waypoint_id, target_id,
             n=3, max_depth=half, scope=scope,
             min_confidence=min_confidence, normalize_degree=False,
-            owner_user_id=owner_user_id,
+            owner_user_id=owner_user_id, policy_tag=policy_tag,
         )
         for p2 in phase2:
             full_nodes = p1["path_nodes"] + p2["path_nodes"][1:]
@@ -428,6 +454,7 @@ def bfs_semantic_stop(
             full_depth = p1["depth"] + p2["depth"]
             full_conf = (p1["avg_confidence"] + p2["avg_confidence"]) / 2.0
             path: dict[str, Any] = {
+                "node_labels": _resolve_labels(con, full_nodes, owner_user_id, policy_tag=policy_tag),
                 "path_nodes": full_nodes,
                 "path_relations": full_rels,
                 "depth": full_depth,
@@ -458,19 +485,17 @@ def traverse(
     min_confidence: float = 0.0,
     normalize_degree: bool = True,
     owner_user_id: str | None = None,
+    policy_tag: str | None = None,
 ) -> dict[str, Any]:
     """Execute one traversal. Resolves ``source`` and ``target`` (by id
     or fuzzy label) before dispatching. Returns a dict shaped to match
     the Researchmaxx convention so downstream consumers don't need
     adapter code."""
-    source_id = resolve_node(con, source, scope, owner_user_id)
-    target_id = resolve_node(con, target, scope, owner_user_id)
-    source_label = con.execute(
-        "SELECT canonical_label FROM nodes WHERE node_id = ?", [source_id]
-    ).fetchone()[0]
-    target_label = con.execute(
-        "SELECT canonical_label FROM nodes WHERE node_id = ?", [target_id]
-    ).fetchone()[0]
+    source_id = resolve_node(con, source, scope, owner_user_id, policy_tag=policy_tag)
+    target_id = resolve_node(con, target, scope, owner_user_id, policy_tag=policy_tag)
+    source_label, target_label = _resolve_labels(
+        con, [source_id, target_id], owner_user_id, policy_tag=policy_tag,
+    )
 
     if algorithm == "shortest_path":
         paths = shortest_path(
@@ -478,7 +503,7 @@ def traverse(
             max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
-            owner_user_id=owner_user_id,
+            owner_user_id=owner_user_id, policy_tag=policy_tag,
         )
     elif algorithm == "top_n":
         paths = top_n_paths(
@@ -486,7 +511,7 @@ def traverse(
             n=n, max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
-            owner_user_id=owner_user_id,
+            owner_user_id=owner_user_id, policy_tag=policy_tag,
         )
     elif algorithm == "dfs":
         paths = dfs_with_depth(
@@ -494,7 +519,7 @@ def traverse(
             depth_limit=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
-            owner_user_id=owner_user_id,
+            owner_user_id=owner_user_id, policy_tag=policy_tag,
         )
     elif algorithm == "bfs_semantic_stop":
         if not waypoint:
@@ -504,14 +529,14 @@ def traverse(
             max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
-            owner_user_id=owner_user_id,
+            owner_user_id=owner_user_id, policy_tag=policy_tag,
         )
     else:  # pragma: no cover — Literal exhausted
         raise ValueError(f"unknown algorithm: {algorithm!r}")
 
     for path in paths:
         if "node_labels" not in path:
-            path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id)
+            path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id, policy_tag=policy_tag)
         if normalize_degree:
             path["hub_concerns"] = _flag_hub_concerns(path)
 
