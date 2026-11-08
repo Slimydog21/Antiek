@@ -98,9 +98,12 @@ describe("the filter (herdr keybind-help semantics)", () => {
     const input = sheet().querySelector<HTMLInputElement>('input[aria-label="Filter shortcuts"]')!;
     fireEvent.change(input, { target: { value: "ctrl+alt" } });
     // Every ctrl+alt chord row: the sidebar's plus the C3 pane twins, the
-    // tab twins, the inbox's and the project picker's. The preset
-    // (prefix+shift+i) and close (prefix+shift+x) have no chord, so a
-    // ctrl+alt filter leaves them out.
+    // tab twins, the inbox's and the project picker's — and, since SPR-01
+    // M6, the ten arrangement jumps and the ten move-and-follow twins
+    // (pending on the flag here, but the sheet shows pending rows). The
+    // preset (prefix+shift+i), close (prefix+shift+x) and the cycle/last
+    // arrangement keys (prefix+tab family) have no chord, so a ctrl+alt
+    // filter leaves them out.
     expect(Array.from(sheet().querySelectorAll("[data-keymap-action]")).map((e) => e.getAttribute("data-keymap-action"))).toEqual([
       // project.select and switcher.open (SPR-02 M5, ctrl+alt+shift+o) sit in
       // "Find and switch", the first group.
@@ -110,6 +113,26 @@ describe("the filter (herdr keybind-help semantics)", () => {
       "pane.focusLeft",
       "pane.focusRight",
       "pane.fullscreen",
+      "pane.arrangement1",
+      "pane.moveToArrangement1",
+      "pane.arrangement2",
+      "pane.moveToArrangement2",
+      "pane.arrangement3",
+      "pane.moveToArrangement3",
+      "pane.arrangement4",
+      "pane.moveToArrangement4",
+      "pane.arrangement5",
+      "pane.moveToArrangement5",
+      "pane.arrangement6",
+      "pane.moveToArrangement6",
+      "pane.arrangement7",
+      "pane.moveToArrangement7",
+      "pane.arrangement8",
+      "pane.moveToArrangement8",
+      "pane.arrangement9",
+      "pane.moveToArrangement9",
+      "pane.arrangement10",
+      "pane.moveToArrangement10",
       "tab.next",
       "tab.prev",
       "tab.new",

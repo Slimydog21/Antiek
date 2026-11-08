@@ -2,7 +2,7 @@ import { createElement, Fragment, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { LemonModal } from "../src/components/lemon/LemonModal";
 import { WriteEditor } from "../src/modes/Write/Editor/Editor";
-import { KEYMAP, ACTIONS, currentPlatform, isActiveOn, readPrefix, validateKeymap, type ActionId } from "../src/components/hotkeys/keymap";
+import { KEYMAP, ACTIONS, ARRANGEMENT_KEY_ACTIONS, currentPlatform, isActiveOn, readPrefix, validateKeymap, type ActionId } from "../src/components/hotkeys/keymap";
 import { createActionHandlers } from "../src/workspace/shortcuts";
 import { readKeyboardOwnership } from "../src/workspace/keyboardOwnership";
 import { useWorkspace, disablePersistence } from "../src/workspace/WorkspaceStore";
@@ -116,6 +116,48 @@ interface Scenario {
   focus?: () => void;
   effect: () => void | Promise<void>;
 }
+
+// ── SPR-01 M6 (R11): the numbered arrangements ───────────────────────────
+// Same standing as the reorder scenarios: with antiek.flag.pane.flow off
+// the rows are pending and the runner checks the keys do nothing; with it
+// on, the baseline is absolute (slots 1–3 exist, current 1, last 3) so no
+// scenario depends on another's leftovers.
+function arrangementCurrentSlot(): string {
+  return useWorkspace.getState().paneSlots["default"]?.current ?? "1";
+}
+function arrangementsBaseline() {
+  const s = useWorkspace.getState();
+  if (s.paneArrangement === "legacy") s.setPaneArrangement("horizontal");
+  s.jumpPaneArrangement("2");
+  s.jumpPaneArrangement("3");
+  s.jumpPaneArrangement("1");
+}
+function jumpScenario(slot: string): Scenario {
+  return {
+    prepare: () => arrangementsBaseline(),
+    effect: () => until(() => arrangementCurrentSlot() === slot, `arrangement ${slot}: the jump did not land`),
+  };
+}
+function moveScenario(slot: string): Scenario {
+  return {
+    prepare: () => {
+      arrangementsBaseline();
+      useWorkspace.getState().setPaneFocus({ kind: "companion" });
+    },
+    effect: () => until(() => {
+      const presets = useWorkspace.getState().paneSlots["default"]?.presets ?? {};
+      const preset = presets[slot as keyof typeof presets];
+      return arrangementCurrentSlot() === slot
+        && !!preset?.order.some((t) => t.kind === "companion");
+    }, `move to arrangement ${slot}: the focused pane did not follow`),
+  };
+}
+const arrangementScenarios: Record<string, Scenario> = Object.fromEntries(
+  ARRANGEMENT_KEY_ACTIONS.flatMap(({ key, jump, move }) => [
+    [jump, jumpScenario(key)],
+    [move, moveScenario(key)],
+  ]),
+);
 function launcherVisible(): boolean {
   return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.getClientRects().length > 0 && dialog.querySelector("h2")?.textContent === "More");
 }
@@ -142,6 +184,11 @@ export const SCENARIOS = {
   // they do nothing); with it on, a reorder changes the logical pane order.
   "pane.reorderLeft": { prepare: reorderPrepare, focus: () => reorderFocus(-1), effect: () => reorderEffect("pane.reorderLeft") },
   "pane.reorderRight": { prepare: reorderPrepare, focus: () => reorderFocus(1), effect: () => reorderEffect("pane.reorderRight") },
+  // SPR-01 M6: the 20 digit scenarios derive from the keymap's own table.
+  ...arrangementScenarios,
+  "pane.nextArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "2", "pane.nextArrangement: did not land on slot 2") },
+  "pane.prevArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "3", "pane.prevArrangement: did not wrap to slot 3") },
+  "pane.lastArrangement": { prepare: () => arrangementsBaseline(), effect: () => until(() => arrangementCurrentSlot() === "3", "pane.lastArrangement: did not return to slot 3") },
   "panel.focusPrev": { prepare: openPanels, effect: focusedPanelB },
   "panel.focusNext": { prepare: openPanels, effect: focusedPanelB },
   "panel.closeFloating": {

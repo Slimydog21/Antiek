@@ -56,6 +56,7 @@ import { READER_TOC_TOGGLE_EVENT } from "./readerEvents";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
   ACTIONS,
+  ARRANGEMENT_KEY_ACTIONS,
   KEYMAP,
   chordTypesText,
   currentPlatform,
@@ -467,6 +468,21 @@ export function toggleProjectPicker(): void {
 
 let executingPrefixEvent: KeyboardEvent | null = null;
 
+/** SPR-01 M6: one handler per arrangement action, built from the keymap's
+ *  ARRANGEMENT_KEY_ACTIONS table (23 actions — handwritten would drift). */
+function arrangementHandlers(): Partial<Record<ActionId, KeyHandler>> {
+  const handlers: Partial<Record<ActionId, KeyHandler>> = {
+    "pane.nextArrangement": () => useWorkspace.getState().cyclePaneArrangement(1),
+    "pane.prevArrangement": () => useWorkspace.getState().cyclePaneArrangement(-1),
+    "pane.lastArrangement": () => useWorkspace.getState().jumpToLastPaneArrangement(),
+  };
+  for (const { key, jump, move } of ARRANGEMENT_KEY_ACTIONS) {
+    handlers[jump] = () => useWorkspace.getState().jumpPaneArrangement(key);
+    handlers[move] = () => useWorkspace.getState().moveFocusedPaneToArrangement(key);
+  }
+  return handlers;
+}
+
 function modernPaneAt(event: KeyboardEvent): boolean {
   const root = event.target instanceof Element ? event.target.closest("[data-pane-flow-root]") : null;
   return Boolean(root && root.getAttribute("data-pane-arrangement") !== "legacy");
@@ -556,6 +572,11 @@ export function createActionHandlers(navigate: NavigateFunction) {
     ...(PANE_FLOW_ON ? {
       "pane.reorderLeft": (event: KeyboardEvent) => reorderActivePane(event, -1, executingPrefixEvent === event),
       "pane.reorderRight": (event: KeyboardEvent) => reorderActivePane(event, 1, executingPrefixEvent === event),
+      // SPR-01 M6 (R11): the numbered arrangements, handlers derived from the
+      // keymap's own key table so a row and its handler never drift. The
+      // arrangements are desktop-level (Omarchy workspace keys) — the row
+      // scopes carry the text refusal; no host admission here.
+      ...arrangementHandlers(),
     } : {}),
     "pane.fullscreen": (event) => paneFullscreenKey(event),
     "layout.togglePreset": (event) => {

@@ -124,8 +124,10 @@ describe("the guard fails when the table is wrong (negative controls)", () => {
   });
 
   it("fails on a key the D2 table reserves for a later sprint", () => {
+    // The probe key must be one still reserved: SPR-01 M6 took the digits
+    // for the arrangements, so "m" (a later mothership key) stands in.
     const problems = validateKeymap(
-      [...KEYMAP, row({ prefixKey: "1", origin: "herdr-default", decision: KEYMAP_DECISION })],
+      [...KEYMAP, row({ prefixKey: "m", origin: "herdr-default", decision: KEYMAP_DECISION })],
       handlerIds,
     );
     expect(problems).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
@@ -237,8 +239,9 @@ describe("the cockpit pane rows (C3) and tab rows (D6, lane-A cockpit decision):
       expect(RESERVED_FOR_LATER.chords).not.toContain(c);
     }
     // And every remaining reserved key is still refused to a probing row.
+    // ("m" is the probe: SPR-01 M6 took the digits for the arrangements.)
     const probe = validateKeymap(
-      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "1", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
+      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "m", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
       handlerIds,
     );
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
