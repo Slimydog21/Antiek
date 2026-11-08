@@ -383,9 +383,9 @@ describe("the table after the decision", () => {
 
   it("the reserved list still refuses the later sprints' keys", () => {
     // SPR-01 M6 took the digits (the numbered arrangements own them now);
-    // the rest stay reserved.
-    for (const k of ["w", "m", "r", "a"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
-    for (const k of ["1", "9"]) expect(RESERVED_FOR_LATER.prefixKeys).not.toContain(k);
+    // SPR-01 M4 took prefix+r for the RESIZE mode; the rest stay reserved.
+    for (const k of ["w", "m", "a"]) expect(RESERVED_FOR_LATER.prefixKeys).toContain(k);
+    for (const k of ["1", "9", "r"]) expect(RESERVED_FOR_LATER.prefixKeys).not.toContain(k);
     expect(RESERVED_FOR_LATER.chords).not.toContain("ctrl+alt+1");
     expect(RESERVED_FOR_LATER.chords).not.toContain("ctrl+alt+9");
     const probe = validateKeymap(

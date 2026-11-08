@@ -12,6 +12,7 @@ import { PaneFlowLayout, usePaneFlowFrame } from "./PaneFlowLayout";
 import { COMPANION_PANE, CORE_PANE, paneKey } from "./paneFlowGeometry";
 import type { PaneTarget } from "./panel.types";
 import { installShortcuts } from "./shortcuts";
+import { useCompanion } from "./companionStore";
 import { disablePersistence, useWorkspace } from "./WorkspaceStore";
 import { useWindows } from "./windowsStore";
 
@@ -84,6 +85,7 @@ afterEach(() => {
   cleanup();
   useWindows.getState().reset();
   useWorkspace.getState().reset();
+  useCompanion.getState().reset();
   prefixState.disarm();
   // Landing: a spy placed on the store's state object is copied into every
   // later state by zustand's set(), and main's Vitest 4 restoreAllMocks no
@@ -361,5 +363,164 @@ describe("actual dispatcher and connected host admission", () => {
     act(() => { useWindows.getState().close("control:a"); });
     expect(press(a, "f", "KeyF").defaultPrevented).toBe(false);
     expect(useWorkspace.getState().paneZoom).toBeNull();
+  });
+});
+
+describe("SPR-01 M5: maximize level 2 and pane.close (R12/R13)", () => {
+  it("maximize fills the work area edge to edge, keeps the strip, and toggles off on the same key", () => {
+    const a = node('[data-workspace-window="control:a"]');
+    const strip = document.createElement("div");
+    strip.setAttribute("data-rail-strip", "");
+    document.body.append(strip);
+    act(() => { a.focus(); });
+    expect(press(a, "f", "KeyF", { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(useWorkspace.getState().paneMaximize).toEqual({ kind: "window", id: "control:a" });
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    // Level 2 covers the root edge to edge (level 1 keeps the 10 px inset)…
+    expect(a.style.left).toBe("0px");
+    expect(a.style.top).toBe("0px");
+    // …hides the pane siblings…
+    expect(node('[data-pane-host="core"]').hidden).toBe(true);
+    // …and keeps the chrome OUTSIDE the flow root: the strip stays in the
+    // DOM, visible and untouched (R12 level 2 keeps the bar).
+    expect(strip.isConnected).toBe(true);
+    expect(strip.hidden).toBe(false);
+    expect(press(a, "f", "KeyF", { shiftKey: true, repeat: true }).defaultPrevented).toBe(false);
+    press(a, "f", "KeyF", { shiftKey: true });
+    expect(useWorkspace.getState().paneMaximize).toBeNull();
+    expect(node('[data-pane-host="core"]').hidden).toBe(false);
+    strip.remove();
+  });
+
+  it("zoom and maximize never stack, and both clear on split, close and arrangement change (R12)", () => {
+    const a = node('[data-workspace-window="control:a"]');
+    act(() => { a.focus(); });
+    press(a, "f", "KeyF");
+    expect(useWorkspace.getState().paneZoom).toEqual({ kind: "window", id: "control:a" });
+    press(a, "f", "KeyF", { shiftKey: true });
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    expect(useWorkspace.getState().paneMaximize).toEqual({ kind: "window", id: "control:a" });
+    // Arrangement change clears (R12) — the layout toggle is the live path.
+    press(a, "l", "KeyL");
+    expect(useWorkspace.getState().paneMaximize).toBeNull();
+    // A new window is a split: both levels clear on it.
+    act(() => { a.focus(); });
+    press(a, "f", "KeyF");
+    act(() => { useWindows.getState().open("u1:non-book-control", {}, { id: "control:c" }); });
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+    // Closing the zoomed pane clears its own level.
+    press(node('[data-workspace-window="control:c"]'), "f", "KeyF");
+    expect(useWorkspace.getState().paneZoom).not.toBeNull();
+    act(() => { useWindows.getState().close("control:c"); });
+    expect(useWorkspace.getState().paneZoom).toBeNull();
+  });
+
+  it("prefix+x closes the focused window and focus returns to the connected opener (the shipped rule, unified)", () => {
+    const core = node('[data-pane-host="core"]');
+    act(() => { core.focus(); useWindows.getState().open("u1:non-book-control", {}, { id: "control:opened" }); });
+    act(() => { vi.runOnlyPendingTimers(); });
+    const opened = node('[data-workspace-window="control:opened"]');
+    expect(document.activeElement).toBe(opened);
+    press(opened, "b", "KeyB", { altKey: false });
+    press(opened, "x", "KeyX", { ctrlKey: false, altKey: false });
+    expect(Object.hasOwn(useWindows.getState().windows, "control:opened")).toBe(false);
+    expect(document.activeElement).toBe(core);
+  });
+
+  it("ctrl+alt+x closes the companion's active view (close-as-view) and keeps the pane", () => {
+    useCompanion.getState().openAgentTab({ kind: "dialogue", title: "The thread" });
+    const companion = node('[data-pane-host="companion"]');
+    act(() => { companion.focus(); });
+    expect(press(companion, "x", "KeyX").defaultPrevented).toBe(true);
+    expect(useCompanion.getState().tabs).toHaveLength(0);
+    expect(companion.isConnected).toBe(true);
+    // Nothing left to close: the key refuses rather than inventing a target.
+    expect(press(companion, "x", "KeyX").defaultPrevented).toBe(false);
+  });
+
+  it("on the core host a focused floating panel is the panel close; focus returns to the previously focused pane (R13, both branches)", () => {
+    const core = node('[data-pane-host="core"]');
+    const companion = node('[data-pane-host="companion"]');
+    // No floating panel: the core material has no close.
+    act(() => { core.focus(); });
+    expect(press(core, "x", "KeyX").defaultPrevented).toBe(false);
+    // Branch 1: the previously focused pane still exists.
+    act(() => { companion.focus(); });
+    act(() => { core.focus(); });
+    act(() => {
+      useWorkspace.getState().open("ProjectTree", {}, { id: "float:one", mode: "floating", title: "Guard float" });
+      useWorkspace.getState().focus("float:one");
+    });
+    expect(press(core, "x", "KeyX").defaultPrevented).toBe(true);
+    expect(Object.hasOwn(useWorkspace.getState().panels, "float:one")).toBe(false);
+    expect(document.activeElement).toBe(companion);
+    // Branch 2: the previous pane is gone — the next in tree order takes it.
+    const b = node('[data-workspace-window="control:b"]');
+    act(() => { b.focus(); });
+    act(() => { core.focus(); });
+    act(() => { useWindows.getState().close("control:b"); });
+    act(() => {
+      useWorkspace.getState().open("ProjectTree", {}, { id: "float:two", mode: "floating", title: "Guard float 2" });
+      useWorkspace.getState().focus("float:two");
+    });
+    press(core, "x", "KeyX");
+    expect(Object.hasOwn(useWorkspace.getState().panels, "float:two")).toBe(false);
+    expect(document.activeElement).toBe(companion);
+  });
+
+  it("close never opens or evicts (S01)", () => {
+    const a = node('[data-workspace-window="control:a"]');
+    const openSpy = vi.spyOn(useWindows.getState(), "open");
+    act(() => { a.focus(); });
+    press(a, "x", "KeyX");
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(Object.hasOwn(useWindows.getState().windows, "control:b")).toBe(true);
+    expect(Object.hasOwn(useWorkspace.getState().panels, "control:a")).toBe(false);
+  });
+});
+
+describe("SPR-01 M4: the direct resize chords through the dispatcher (R8)", () => {
+  it("ctrl+alt+= widens the focused pane by 100 px of the measured parent; shift is height; horizontal refuses", () => {
+    const core = node('[data-pane-host="core"]');
+    const companion = node('[data-pane-host="companion"]');
+    // A deterministic two-pane tiled split: close the windows first.
+    act(() => { useWindows.getState().close("control:a"); useWindows.getState().close("control:b"); });
+    act(() => { useWorkspace.getState().setPaneArrangement("tiled"); });
+    const tilesBefore = useWorkspace.getState().paneTiles;
+    expect(tilesBefore?.kind).toBe("split");
+    // Working area 980 wide: ctrl+alt+= grows the core by 100 px → ratio 0.5 + 100/980.
+    act(() => { core.focus(); });
+    expect(press(core, "=", "Equal").defaultPrevented).toBe(true);
+    const tiles = useWorkspace.getState().paneTiles;
+    expect(tiles?.kind === "split" && tiles.ratio).toBeCloseTo(0.5 + 100 / 980, 6);
+    // shift+= is height: no y ancestor in a flat x split — refused, unchanged.
+    expect(press(core, "=", "Equal", { shiftKey: true }).defaultPrevented).toBe(false);
+    expect(useWorkspace.getState().paneTiles).toBe(tiles);
+    // Horizontal columns are measured, not ratios: the chords refuse (M4 note).
+    press(core, "l", "KeyL");
+    expect(useWorkspace.getState().paneArrangement).toBe("horizontal");
+    expect(press(companion, "=", "Equal").defaultPrevented).toBe(false);
+  });
+
+  it("prefix+r enters RESIZE through the armed prefix; Enter commits and the prefix binding again exits", () => {
+    const companion = node('[data-pane-host="companion"]');
+    act(() => { useWindows.getState().close("control:a"); useWindows.getState().close("control:b"); });
+    act(() => { useWorkspace.getState().setPaneArrangement("tiled"); });
+    act(() => { companion.focus(); });
+    press(companion, "b", "KeyB", { altKey: false });
+    press(companion, "r", "KeyR", { ctrlKey: false, altKey: false });
+    const resized = useWorkspace.getState().paneTiles;
+    press(companion, "h", "KeyH", { ctrlKey: false, altKey: false });
+    const after = useWorkspace.getState().paneTiles;
+    expect(after).not.toEqual(resized);
+    // Enter commits…
+    press(companion, "Enter", "Enter", { ctrlKey: false, altKey: false });
+    expect(useWorkspace.getState().paneTiles).toEqual(after);
+    // …and prefix+r again exits through the row (herdr's binding toggle).
+    press(companion, "b", "KeyB", { altKey: false });
+    press(companion, "r", "KeyR", { ctrlKey: false, altKey: false });
+    press(companion, "b", "KeyB", { altKey: false });
+    press(companion, "r", "KeyR", { ctrlKey: false, altKey: false });
+    expect(useWorkspace.getState().paneTiles).toEqual(after);
   });
 });

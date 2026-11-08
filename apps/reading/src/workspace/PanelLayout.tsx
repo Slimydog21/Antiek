@@ -118,6 +118,8 @@ export function PanelLayout({ mainSlot }: Props) {
   const coreFlow = usePaneFlowFrame(CORE_PANE);
   const companionFlow = usePaneFlowFrame(COMPANION_PANE);
   const paneZoom = useWorkspace((s) => s.paneZoom);
+  const paneMaximize = useWorkspace((s) => s.paneMaximize);
+  const restorePaneMaximize = useWorkspace((s) => s.restorePaneMaximize);
 
   // S11 (the docked preset) — at tier "lg" the two side docks can't both be
   // visible; if both have panels we collapse the right one (operator can
@@ -200,7 +202,7 @@ export function PanelLayout({ mainSlot }: Props) {
   // escapeOverlay.ts) stays theirs; that Esc closes the overlay and the
   // next one restores the panes.
   useEffect(() => {
-    if (!fullscreenPane && !paneZoom) return;
+    if (!fullscreenPane && !paneZoom && !paneMaximize) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       const target = e.target instanceof Element ? e.target : null;
@@ -210,6 +212,9 @@ export function PanelLayout({ mainSlot }: Props) {
       if (paneZoom) {
         if (!e.repeat) coreFlow.restoreZoom(e);
       }
+      else if (paneMaximize) {
+        if (!e.repeat) restorePaneMaximize();
+      }
       else setFullscreenPane(null);
     };
     const removeKeyboardOwner = registerKeyboardOwner(document, {
@@ -217,7 +222,7 @@ export function PanelLayout({ mainSlot }: Props) {
       eligible: (e) => e.key === "Escape" && !e.defaultPrevented && !(e.target instanceof Element && (isTextEditing(e.target) || e.target.closest("[role=dialog], [role=alertdialog]"))) && !escOverlayOpen(),
     }, onKeyDown);
     return () => removeKeyboardOwner();
-  }, [fullscreenPane, setFullscreenPane, paneZoom, coreFlow.restoreZoom]);
+  }, [fullscreenPane, setFullscreenPane, paneZoom, paneMaximize, restorePaneMaximize, coreFlow.restoreZoom]);
 
   // Tier `sm` (< 768px) is the phone layout: one column, the route view
   // alone and scrollable. The docks and floating panels stay out of it (a
@@ -427,17 +432,19 @@ export function PanelLayout({ mainSlot }: Props) {
       {projectTreeOverlay && <ProjectTreeOverlay />}
 
       {/* Fullscreen is never invisible state: a chip says it is on and is
-          the pointer path back (Esc restores from any focus too). */}
-      {fullscreenPane || paneZoom ? (
+          the pointer path back (Esc restores from any focus too). Maximize
+          (R12 level 2) names itself apart — it fills the work area edge to
+          edge where zoom keeps the gap. */}
+      {fullscreenPane || paneZoom || paneMaximize ? (
         <button
           type="button"
           data-fullscreen-chip
-          onClick={() => paneZoom ? coreFlow.restoreZoom() : setFullscreenPane(null)}
-          aria-label="Exit fullscreen (Esc)"
-          title="Exit fullscreen (Esc)"
+          onClick={() => paneZoom ? coreFlow.restoreZoom() : paneMaximize ? restorePaneMaximize() : setFullscreenPane(null)}
+          aria-label={paneMaximize ? "Exit maximize (Esc)" : "Exit fullscreen (Esc)"}
+          title={paneMaximize ? "Exit maximize (Esc)" : "Exit fullscreen (Esc)"}
           className="absolute right-4 top-3 z-30 rounded-full border border-hairline bg-ice-0 dark:bg-charcoal-2 px-2.5 py-0.5 text-xxs text-ink-soft dark:text-moonlight shadow-z1 dark:shadow-z1-night hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
         >
-          Fullscreen · Esc
+          {paneMaximize ? "Maximized · Esc" : "Fullscreen · Esc"}
         </button>
       ) : null}
     </div>

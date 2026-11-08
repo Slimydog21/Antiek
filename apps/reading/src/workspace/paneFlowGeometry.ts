@@ -125,6 +125,92 @@ export function swapPaneTiles(tree: PaneTile | null, a: PaneTarget, b: PaneTarge
     second: swapPaneTiles(tree.second, a, b) ?? tree.second };
 }
 
+/**
+ * SPR-01 M4 (R8): resize by ratio. Adjusts the NEAREST ancestor split of
+ * `target` on `axis`, growing the side that holds the target (a split's
+ * ratio is its FIRST child's share, so a second-side target takes the
+ * negated delta), clamped 0.1–0.9 — the packet's render clamp, applied at
+ * write time. No axis-matching ancestor (or no target) returns the SAME
+ * tree reference, so callers can no-op on identity.
+ */
+export function resizePaneTile(
+  tree: PaneTile | null,
+  target: PaneTarget,
+  axis: "x" | "y",
+  delta: number,
+): PaneTile | null {
+  if (!tree || !Number.isFinite(delta) || delta === 0) return tree;
+  // The sign comes from whether the target sits under this node's FIRST
+  // child (growing it grows the ratio, the first child's share).
+  function visit(node: PaneTile): { node: PaneTile; done: boolean } | null {
+    if (node.kind === "leaf") return samePane(node.target, target) ? { node, done: false } : null;
+    const first = visit(node.first);
+    const side = first ?? visit(node.second);
+    if (!side) return null;
+    const adjust = !side.done && node.axis === axis;
+    const base = Number.isFinite(node.ratio) ? node.ratio : 0.5;
+    const ratio = adjust ? Math.max(0.1, Math.min(0.9, base + (first ? delta : -delta))) : node.ratio;
+    const next = first ? { ...node, ratio, first: side.node } : { ...node, ratio, second: side.node };
+    return { node: next, done: side.done || adjust };
+  }
+  const result = visit(tree);
+  return result && result.done ? result.node : tree;
+}
+
+function containsTarget(node: PaneTile, target: PaneTarget): boolean {
+  if (node.kind === "leaf") return samePane(node.target, target);
+  return containsTarget(node.first, target) || containsTarget(node.second, target);
+}
+
+/**
+ * SPR-01 M4 (R8) direct chords: resize by PIXELS of the measured parent —
+ * the px delta becomes a ratio delta against the nearest axis-matching
+ * ancestor split's measured extent (the union of its leaves' placements),
+ * then the ratio path applies. Null when the split or its measurement is
+ * missing; the same tree reference when nothing moved.
+ */
+export function resizePaneTileByPixels(
+  tree: PaneTile | null,
+  placements: readonly PanePlacement[],
+  target: PaneTarget,
+  axis: "x" | "y",
+  px: number,
+): PaneTile | null {
+  if (!tree || !Number.isFinite(px) || px === 0) return tree ?? null;
+  const extent = splitExtentPx(tree, placements, target, axis);
+  if (extent === null || extent <= 0) return null;
+  return resizePaneTile(tree, target, axis, px / extent);
+}
+
+/** The measured extent (px) of the nearest axis-matching ancestor split. */
+function splitExtentPx(
+  tree: PaneTile,
+  placements: readonly PanePlacement[],
+  target: PaneTarget,
+  axis: "x" | "y",
+): number | null {
+  if (!containsTarget(tree, target)) return null;
+  if (tree.kind === "leaf") return null;
+  const here = tree.axis === axis ? extentOf(tree, placements, axis) : null;
+  return (containsTarget(tree.first, target) ? splitExtentPx(tree.first, placements, target, axis) : splitExtentPx(tree.second, placements, target, axis)) ?? here;
+}
+
+function extentOf(node: PaneTile, placements: readonly PanePlacement[], axis: "x" | "y"): number | null {
+  let start = Infinity;
+  let end = -Infinity;
+  const walk = (n: PaneTile): void => {
+    if (n.kind !== "leaf") { walk(n.first); walk(n.second); return; }
+    const placement = placements.find((p) => samePane(p.target, n.target));
+    if (!placement) return;
+    const s = axis === "x" ? placement.rect.x : placement.rect.y;
+    const e = axis === "x" ? placement.rect.x + placement.rect.width : placement.rect.y + placement.rect.height;
+    start = Math.min(start, s);
+    end = Math.max(end, e);
+  };
+  walk(node);
+  return start <= end && Number.isFinite(start) && Number.isFinite(end) ? end - start : null;
+}
+
 function validRect(rect: PaneRect): boolean {
   return Object.values(rect).every(Number.isFinite) && rect.width > 0 && rect.height > 0;
 }
@@ -132,12 +218,21 @@ function validRect(rect: PaneRect): boolean {
 export function paneGeometry(input: {
   width: number; height: number; arrangement: "horizontal" | "tiled";
   order: readonly PaneTarget[]; tiles: PaneTile | null; zoom: PaneTarget | null;
+  /** SPR-01 M5 (R12 level 2, Omarchy SUPER+ALT+F "full width"): the
+   *  maximized pane fills the work area edge to edge — zoom (level 1) keeps
+   *  the gap inset, maximize does not. Siblings hide either way; the rail
+   *  and strip live outside this root, so both levels keep them. */
+  maximize?: PaneTarget | null;
 }): PaneGeometry {
-  const { width, height, order, tiles, zoom, arrangement } = input;
+  const { width, height, order, tiles, zoom, arrangement, maximize = null } = input;
   const working = { x: PANE_GAP, y: PANE_GAP, width: width - 2 * PANE_GAP, height: height - 2 * PANE_GAP };
   if (!validRect(working)) return { kind: "unmeasured" };
   if (zoom && order.some((target) => samePane(target, zoom))) {
     return { kind: "measured", width, height, placements: [{ target: zoom, rect: working }] };
+  }
+  if (maximize && order.some((target) => samePane(target, maximize))) {
+    return { kind: "measured", width, height,
+      placements: [{ target: maximize, rect: { x: 0, y: 0, width, height } }] };
   }
   if (arrangement === "horizontal") {
     const columnWidth = Math.max(PANE_MIN_WIDTH, width * 0.49);
