@@ -17,8 +17,9 @@ expected_behavior: |
 actual_failure: |
   The insight label rendered as [node-priv: insight — text withheld (§9.0)].
 harness_check_that_now_catches: |
-  tests/test_graph_edges_rights_gate.py::test_owner_subgraph_renders_personal_reading_insight
-fix_commit: GAP
+  tests/test_graph_edges_rights_gate.py
+  test_owner_subgraph_renders_personal_reading_insight
+fix_commit: 4441e5fec59a5c9fe9a9873fdf330c65d84d5358
 notes: |
   Synthetic DB fixtures use personal_reading metadata provenance and the real
   graph search and render path. No live LLM or private operator data is needed.
