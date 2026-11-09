@@ -230,7 +230,7 @@ wallet it can spend is the decision record's open sign-off 2.
 | Active at once | 20 (the runner's cap) | 4 | 2 research boxes; 74 of 100 unused |
 | Smoke spend ceiling | Part A USD 0.10; Part B USD 0.05 for its three attempts with both keys; G3.3 USD 0.10 | Part B inside that USD 0.05; Part C USD 0.10 | |
 | Smoke TTL | Part A 1,200 s; Part B 900 s; G3.3 900 s (the `ResourceLimits()` default) | Part B 900 s; Part C 1,800 s | |
-| Steady spend ceiling (VM time at list price) | USD 1 a day, USD 15 a billing period; a daily check ("Watching spend") | USD 5 a day, USD 50 a billing period; a daily check | |
+| Steady spend ceiling (VM time at list price) | USD 1 a day, USD 15 a billing period; refused in code before a create (v6) and a daily check ("Watching spend") | USD 5 a day, USD 50 a billing period; a daily check | |
 | Size | `small` | `default` | |
 | Auto-stop | `wall_clock_s` (900 s default), at most 3,600 s; never off | at most 7,200 s, extended only while a lane runs; never off without the owner | |
 | Snapshots | off (`snapshots: false` on every create; the code has no override and reads the record back) | only on boxes that stop to resume a lane | |
@@ -242,7 +242,9 @@ billing_required` and starts beyond the windows fail with `429` rather than
 bill [M, `limits.md`]. While the wallet holds money, extra starts are paid
 from it at USD 0.03 to 0.07 each [M, `limits.md`]; a 20-leaf launch inside one
 minute buys 8 of them for USD 0.28 [I], which is why the product share caps a
-launch at 8 sub-questions until creates are paced in code. What happens to
+launch at 8 sub-questions; since v6 the backend paces product creates at that
+share in code, so a ninth create in a minute is refused, not bought. What
+happens to
 running sandboxes when included time and wallet run out is on
 `billing.md#running-out`, not saved; read it before relying on the wallet as
 the only stop.
@@ -251,10 +253,13 @@ the only stop.
 
 **What Antiek's budget does not see.** The cascade charges a notional USD 0.01
 a step (`cascade_routes.py:399`) to `TOTAL_ACQUISITION_BUDGET_USD` (USD 10,
-`substrate/constants.py:141`) and never Boat's real dollars. Neither plane
-has a code-side file ledger or cost cap yet (decision record §5 items 5 and
-7), so the steady-state ceilings are a daily check by the owner, or by the
-cloud CEO at the owner's direction, never by the swarm. The check gives a
+`substrate/constants.py:141`) and never Boat's real dollars. The build plane
+has no code-side file ledger or cost cap yet (decision record §5 items 5 and
+7); since v6 the product plane has both, and its backend refuses a create
+that would pass the product's VM-time ceilings ("Enable and activation").
+The steady-state ceilings of both planes stay a daily check by the owner,
+or by the cloud CEO at the owner's direction, never by the swarm, because
+the product ledger counts committed list-price VM time, not Boat's bill. The check gives a
 list-price figure per plane, always labelled incomplete; it enforces
 nothing.
 
@@ -275,7 +280,7 @@ ttlSeconds=<n> createdAt=<time> via=<create|repost|sweep>` line per sandbox
 Boat accepted, the moment its id is known, and one `BoatBackend sandbox
 deleted: sandbox=<bx id> workspace=<id> via=<destroy|orphan>
 result=<deleted|not-found>` line per confirmed delete [M, the module at
-`8ba8c1e7`, "Spend ledger lines"]. A sandbox that failed provisioning after
+`91d74305`, "Spend ledger lines"]. A sandbox that failed provisioning after
 Boat billed it, and a lost create that the same-key re-`POST` or the label
 sweep recovered, each have an accepted line, so the check counts them. Each
 accepted sandbox counts at its full `ttlSeconds` (an `unknown` TTL at the
@@ -875,9 +880,11 @@ its dispatch targets for that plane, and nothing selects Boat by default.
 Of the activation gates the decision record's §5 keeps open, the mandatory
 org pin, exact-environment enforcement, code-side per-plane cost and pacing
 limits and the policy-versus-code TTL gap are closed, or accepted by the
-owner in writing, before the plane they concern is activated; env-scoped
+owner in writing, before the plane they concern is activated (for the
+product plane all four are closed in code since v6); env-scoped
 live acceptance requires G3.2 Part A rerun with the product key and Part B
-passed before product activation; a missing, incomplete or failed
+passed before product activation (both passed on 2026-11-09 with temporary
+env-scoped keys, decision record "Live evidence" run 7); a missing, incomplete or failed
 product-key Part A blocks activation even if personal-key Part A and Part B
 passed. Personal-key Part A was the separately authorized source-ratification
 condition, not scoped-key acceptance. Live acceptance is never accepted in
@@ -901,6 +908,26 @@ chown root:antiek /etc/antiek/secrets.env
 chmod 0640 /etc/antiek/secrets.env
 systemctl restart antiek; sleep 2; systemctl is-active antiek
 ```
+
+`ANTIEK_BOAT_ORG` is required: without it the backend refuses at `probe` and
+every create. The create ledger behind the pacing and spend gates is
+`$ANTIEK_HOME/boat_ledger.jsonl` (`~/.antiek/boat_ledger.jsonl` for the
+service user when `ANTIEK_HOME` is unset), locked through
+`boat_ledger.jsonl.lock` beside it (a symlinked path is resolved to the
+real file first); keep both on the host's local disk
+(`flock` is not reliable on network file systems) and back the ledger up
+with the state dir. `probe` fails, and every create is refused, while the
+ledger cannot be opened or locked, holds a malformed line, or holds a row
+stamped more than 5 minutes ahead of the clock (the clock moved back).
+To repair: stop the service, move the ledger aside, copy back only the
+well-formed rows of the last 31 days (dropping one under-counts), and
+start it again. Leave `ANTIEK_BOAT_MAX_TTL_S`,
+`ANTIEK_BOAT_CREATES_PER_MINUTE` / `_HOUR` / `_DAY`, `ANTIEK_BOAT_DAILY_USD`
+and `ANTIEK_BOAT_PERIOD_USD` unset to keep the decision record's §7
+defaults; a value that is not a positive number, or a TTL cap under
+Boat's 60 s minimum, refuses the backend. The
+module parses as Python 3.12, the production interpreter
+(`infrastructure/ansible/group_vars/all.yml`), and a test keeps it so.
 
 Never `BOAT_BUILD_API_KEY` on a production host. Leave
 `ANTIEK_BOAT_ENVIRONMENT` unset (the code's default is `antiek-product`; it

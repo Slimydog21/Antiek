@@ -43,9 +43,12 @@ Hermetic: no network, no real key, no Boat sandbox. Three layers:
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import base64
 import contextlib
+import errno
+import fcntl
 import inspect
 import json
 import logging
@@ -58,6 +61,8 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
+import time
 import uuid
 from collections.abc import Callable, Coroutine, Iterator
 from dataclasses import dataclass, field
@@ -306,6 +311,11 @@ esac
 #: Boat's own ufw rules sit in OUTPUT before ours is inserted at the top.
 _SEED_RULES = "-A OUTPUT -j ufw-before-logging-output\n-A OUTPUT -j ufw-before-output\n"
 
+#: Named tuples, not ``except A, B:``: the module and its tests parse as 3.12.
+_TOOL_PROBE_ERRORS = (OSError, subprocess.SubprocessError)
+_BASE64_ERRORS = (KeyError, ValueError)
+_NOT_YET_ERRORS = (ValueError, FileNotFoundError)
+
 _STUBBED_TOOLS = ("sudo", "id", "useradd", "chown", "pkill", "sysctl", "iptables", "ip6tables")
 
 
@@ -328,7 +338,7 @@ def _vm_tools_ok() -> bool:
     try:
         for argv in probes:
             subprocess.run(argv, check=True, capture_output=True, timeout=10)
-    except OSError, subprocess.SubprocessError:
+    except _TOOL_PROBE_ERRORS:
         return False
     return True
 
@@ -1199,7 +1209,7 @@ class FakeBoat:
                 if encoding == "base64"
                 else str(body["content"]).encode()
             )
-        except KeyError, ValueError:
+        except _BASE64_ERRORS:
             self.violation("FileWriteRequest content is not valid base64")
             return _err(400, "invalid_json", "bad content")
         target = self._vm_path(str(body.get("path", "")))
@@ -1251,10 +1261,18 @@ class FakeBoat:
 
 
 @pytest.fixture(autouse=True)
-def _boat_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _boat_env(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setenv("BOAT_API_KEY", FAKE_KEY)
     monkeypatch.setenv("ANTIEK_BOAT_ORG", FAKE_ORG)
+    # The pacing and spend ledger, never the real ~/.antiek one.
+    monkeypatch.setenv("ANTIEK_BOAT_LEDGER", str(tmp_path / "boat_ledger.jsonl"))
     for name in (
+        "ANTIEK_BOAT_MAX_TTL_S",
+        "ANTIEK_BOAT_CREATES_PER_MINUTE",
+        "ANTIEK_BOAT_CREATES_PER_HOUR",
+        "ANTIEK_BOAT_CREATES_PER_DAY",
+        "ANTIEK_BOAT_DAILY_USD",
+        "ANTIEK_BOAT_PERIOD_USD",
         "ANTIEK_BOAT_ENVIRONMENT",
         "BOAT_API_URL",
         "BOAT_BUILD_API_KEY",
@@ -1931,16 +1949,9 @@ class TestProbe:
         text = str(info.value)
         assert "shape drifted" in text and "dashboard" not in text
 
-    @pytest.mark.parametrize("pinned", [True, False], ids=["pinned", "unpinned"])
     def test_probe_degrades_when_the_scope_cannot_read_limits(
-        self,
-        fake: FakeBoat,
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
-        pinned: bool,
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
     ) -> None:
-        if not pinned:
-            monkeypatch.delenv("ANTIEK_BOAT_ORG")
         fake.injected.append(
             Injected("GET", "/limits", 403, "api_key_action_forbidden", "no account.read")
         )
@@ -1950,10 +1961,7 @@ class TestProbe:
         # No client-side canStart check either way (review finding 2D).
         assert "no client-side canStart check" in caplog.text
         assert "relies on Boat admitting the" in caplog.text
-        if pinned:
-            assert "the org pin on the X-Boat-Org header" in caplog.text
-        else:
-            assert "nothing on this host verifies the organization" in caplog.text
+        assert "the org pin on the X-Boat-Org header" in caplog.text
         assert len(fake.calls_to("GET", "/environments")) == 1
 
     @pytest.mark.parametrize("code", ["api_key_action_forbidden", "api_key_sandbox_forbidden"])
@@ -2051,19 +2059,12 @@ class TestProbe:
             asyncio.run(new_ws(fake))
         assert fake.calls_to("POST", "/sandboxes") == []
 
-    @pytest.mark.parametrize("team_id", [FAKE_KEY, "acme-org"], ids=["key-echo", "not-an-id"])
     def test_probe_ready_line_logs_no_string_boat_returned(
-        self,
-        fake: FakeBoat,
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
-        team_id: str,
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # Unpinned, so nothing compares teamId; a server echoing a value in a
-        # success answer must not get it into the INFO line.
-        monkeypatch.delenv("ANTIEK_BOAT_ORG")
+        # A server echoing a value in a success answer must not get it into
+        # the INFO line (a teamId echo is the limits refusal tests' case).
         fake.limits_override = {
-            "teamId": team_id,
             "activeSandboxes": FAKE_KEY,
             "maxActiveSandboxes": 100,
             "machineTypes": [
@@ -2075,10 +2076,9 @@ class TestProbe:
         caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
         make_backend(fake).probe()
         (line,) = [r.getMessage() for r in caplog.records if "BoatBackend ready" in r.getMessage()]
-        assert "wallet=unknown;" in line
+        assert f"wallet={FAKE_ORG};" in line
         assert "sandboxes None/100;" in line
         assert "available=['unknown', 'small'];" in line
-        assert team_id not in caplog.text
         assert_keyless(caplog.text)
 
     @pytest.mark.parametrize(
@@ -2125,13 +2125,10 @@ class TestProbe:
             asyncio.run(new_ws(fake))
         assert fake.calls == []
 
-    def test_probe_without_pin_sends_no_org(
-        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ANTIEK_BOAT_ORG")
+    def test_probe_names_the_pinned_org(self, fake: FakeBoat) -> None:
         make_backend(fake).probe()
-        assert "x-boat-org" not in fake.calls_to("GET", "/limits")[0].headers
-        assert fake.calls_to("GET", "/environments")[0].query == {}
+        assert fake.calls_to("GET", "/limits")[0].headers["x-boat-org"] == FAKE_ORG
+        assert fake.calls_to("GET", "/environments")[0].query == {"org": [FAKE_ORG]}
 
 
 # --- create ----------------------------------------------------------------------
@@ -2477,7 +2474,9 @@ class TestCreate:
 
     async def test_cancel_during_readiness_deletes_the_sandbox(self, fake: FakeBoat) -> None:
         fake.ready_after = 10**9
-        task = asyncio.create_task(new_ws(fake))
+        # The cancel ends readiness, never the deadline: a slow host's fake
+        # clock could otherwise reach 180 s before the cancel lands.
+        task = asyncio.create_task(new_ws(fake, ready_timeout_s=10**9))
         assert await _until(lambda: bool(fake.polls))
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -2490,7 +2489,9 @@ class TestCreate:
     ) -> None:
         fake.ready_after = 10**9
         fake.delete_delay_s = 0.2
-        task = asyncio.create_task(new_ws(fake))
+        # The cancel ends readiness, never the deadline: a slow host's fake
+        # clock could otherwise reach 180 s before the cancel lands.
+        task = asyncio.create_task(new_ws(fake, ready_timeout_s=10**9))
         assert await _until(lambda: bool(fake.polls))
         task.cancel()
         assert await _until(lambda: bool(fake.calls_to("DELETE", r"/sandboxes/[^/]+")))
@@ -2567,12 +2568,9 @@ class TestCreate:
         assert fake.sandboxes[ws.sandbox_id]["snapshots"] is False
         await ws.destroy()
 
-    @pytest.mark.parametrize("pinned", [True, False], ids=["pinned", "unpinned"])
     async def test_a_sandbox_no_answer_reports_snapshots_for_is_refused(
-        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, pinned: bool
+        self, fake: FakeBoat
     ) -> None:
-        if not pinned:
-            monkeypatch.delenv("ANTIEK_BOAT_ORG")
         # Not required by the OpenAPI, but carried by the live shapes: when
         # neither the create nor the readiness answer says snapshots are off,
         # that cannot be verified.
@@ -2593,13 +2591,9 @@ class TestCreate:
         await ws.destroy()
         assert set(fake.sandboxes) == fake.deleted
 
-    async def test_unpinned_create_needs_no_team(
-        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("ANTIEK_BOAT_ORG")
-        fake.omit_team = True
+    async def test_create_names_the_pinned_org(self, fake: FakeBoat) -> None:
         ws = await new_ws(fake)
-        assert "x-boat-org" not in fake.calls_to("POST", "/sandboxes")[0].headers
+        assert fake.calls_to("POST", "/sandboxes")[0].headers["x-boat-org"] == FAKE_ORG
         await ws.destroy()
 
     @pytest.mark.parametrize(
@@ -2675,10 +2669,17 @@ class TestCreate:
     ) -> None:
         config = fake.home / ".config/ascii/boat/config.json"
         if kind == "unreadable":
-            if os.geteuid() == 0:
-                pytest.skip("root reads a mode-000 file")
             config.write_text('{"api_key": "SECRETVALUE-do-not-echo"}')
             config.chmod(0)
+            # Root, or a user holding CAP_DAC_READ_SEARCH (the Boat image's
+            # uid 1000 does), reads a mode-000 file: probe, do not assume.
+            try:
+                config.open("rb").close()
+            except PermissionError:
+                pass
+            else:
+                config.chmod(0o600)
+                pytest.skip("this process reads a mode-000 file (root or CAP_DAC_READ_SEARCH)")
         else:
             config.unlink()
             if kind == "directory":
@@ -3032,7 +3033,7 @@ class TestExec:
             for _ in range(10):
                 try:
                     data = await ws.get_file("out/r.txt")
-                except ValueError, FileNotFoundError:
+                except _NOT_YET_ERRORS:
                     continue
                 assert b"user-only-secret" not in data
         finally:
@@ -3381,7 +3382,9 @@ class TestSpendLedger:
     ) -> None:
         caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
         fake.ready_after = 10**9
-        task = asyncio.create_task(new_ws(fake))
+        # The cancel ends readiness, never the deadline: a slow host's fake
+        # clock could otherwise reach 180 s before the cancel lands.
+        task = asyncio.create_task(new_ws(fake, ready_timeout_s=10**9))
         assert await _until(lambda: bool(fake.polls))
         accepted, _ = _ledger(caplog)
         (sid,) = fake.sandboxes
@@ -4268,3 +4271,851 @@ class TestAnswerEchoes:
         finally:
             with contextlib.suppress(ProcessLookupError):
                 os.kill(child, signal.SIGKILL)
+
+
+class TestActivationGates:
+    """Decision record §5 items 3, 4, 5, 7 and 9, enforced in code (v6)."""
+
+    #: One second before a minute, hour and day boundary: a fixed-bucket window
+    #: would reset a second later, a rolling one only a full window later.
+    T0 = 1_800_057_599.0
+
+    @staticmethod
+    async def _create(backend: BoatBackend) -> Any:
+        return await backend.create(
+            WorkspaceProfile(name="gate"), limits=ResourceLimits(), net_policy=DENY_ALL
+        )
+
+    @staticmethod
+    def _rows(path: pathlib.Path | None = None) -> list[dict[str, Any]]:
+        path = path or pathlib.Path(os.environ["ANTIEK_BOAT_LEDGER"])
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
+    def test_defaults_are_the_decision_7_envelope(self) -> None:
+        assert bb.DEFAULT_MAX_TTL_S == 3_600
+        assert bb.PACING_GATES == (
+            ("ANTIEK_BOAT_CREATES_PER_MINUTE", 60, 8),
+            ("ANTIEK_BOAT_CREATES_PER_HOUR", 3_600, 36),
+            ("ANTIEK_BOAT_CREATES_PER_DAY", 86_400, 120),
+        )
+        # 31 days: no billing period can pass the period cap.
+        assert bb.SPEND_GATES == (
+            ("ANTIEK_BOAT_DAILY_USD", 86_400, 1.00),
+            ("ANTIEK_BOAT_PERIOD_USD", 31 * 86_400, 15.00),
+        )
+        assert bb.LIST_PRICE_USD_PER_H == {
+            "small": 0.018,
+            "default": 0.036,
+            "large": 0.072,
+            "xlarge": 0.20,
+        }
+        assert set(bb.LIST_PRICE_USD_PER_H) == {name for name, *_ in bb.MACHINE_TYPES}
+        assert {400, 401, 402, 403, 404, 429} == bb._PRE_START_REFUSALS
+        assert (bb._LEDGER_LOCK_WAIT_S, bb._LEDGER_SKEW_S, bb._LEDGER_PRUNE_ROWS) == (
+            10.0,
+            300.0,
+            1_000,
+        )
+        # The 3.12 spelling of the three ``except BackendUnavailable, WorkspaceLost:``.
+        assert (BackendUnavailable, WorkspaceLost) == bb._UNAVAILABLE_OR_LOST
+
+    def test_module_and_tests_parse_as_python_3_12(self) -> None:
+        # Production runs Python 3.12 (infrastructure/ansible/group_vars/all.yml);
+        # ``except A, B:`` (3.14) would make the factory's import a SyntaxError.
+        for path in (pathlib.Path(bb.__file__), pathlib.Path(__file__)):
+            ast.parse(path.read_text(encoding="utf-8"), feature_version=(3, 12))
+
+    def test_the_pin_is_required(self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANTIEK_BOAT_ORG")
+        with pytest.raises(BackendUnavailable, match="ANTIEK_BOAT_ORG is required"):
+            make_backend(fake).probe()
+        with pytest.raises(BackendUnavailable, match="ANTIEK_BOAT_ORG is required"):
+            asyncio.run(new_ws(fake))
+        assert fake.calls == []
+
+    def test_a_key_pasted_as_the_pin_is_not_echoed(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_ORG", FAKE_KEY)
+        with pytest.raises(BackendUnavailable, match="must be an organization id") as info:
+            make_backend(fake).probe()
+        assert_keyless(all_exception_texts(info.value))
+        assert fake.calls == []
+
+    async def test_ttl_cap(self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch) -> None:
+        backend = make_backend(fake)
+        ws = await backend.create(
+            WorkspaceProfile(name="cap"),
+            limits=ResourceLimits(wall_clock_s=3600),
+            net_policy=DENY_ALL,
+        )
+        assert fake.calls_to("POST", "/sandboxes")[0].body["ttlSeconds"] == 3600
+        await ws.destroy()
+        sent = len(fake.calls)
+        with pytest.raises(WorkspaceProvisionError, match="above the product TTL cap of 3600 s"):
+            await backend.create(
+                WorkspaceProfile(name="cap"),
+                limits=ResourceLimits(wall_clock_s=3601),
+                net_policy=DENY_ALL,
+            )
+        assert len(fake.calls) == sent, "a refused TTL must cost no request"
+        # A cap at Boat's 60 s floor is allowed; under it, it could never be kept.
+        monkeypatch.setenv("ANTIEK_BOAT_MAX_TTL_S", "60")
+        bb._check_gates()
+        monkeypatch.setenv("ANTIEK_BOAT_MAX_TTL_S", "59")
+        with pytest.raises(BackendUnavailable, match="below Boat's 60 s minimum"):
+            await backend.create(
+                WorkspaceProfile(name="cap"),
+                limits=ResourceLimits(wall_clock_s=30),
+                net_policy=DENY_ALL,
+            )
+        assert len(fake.calls) == sent
+        monkeypatch.setenv("ANTIEK_BOAT_MAX_TTL_S", "7200")
+        ws = await backend.create(
+            WorkspaceProfile(name="cap"),
+            limits=ResourceLimits(wall_clock_s=7200),
+            net_policy=DENY_ALL,
+        )
+        assert fake.calls_to("POST", "/sandboxes")[-1].body["ttlSeconds"] == 7200
+        await ws.destroy()
+
+    @pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf", "eight", " "])
+    def test_a_gate_cannot_be_switched_off(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        for name in (
+            "ANTIEK_BOAT_MAX_TTL_S",
+            *(gate for gate, *_ in bb.PACING_GATES),
+            *(gate for gate, *_ in bb.SPEND_GATES),
+        ):
+            monkeypatch.setenv(name, raw)
+            if raw.strip():
+                with pytest.raises(BackendUnavailable, match=f"{name} must be a positive number"):
+                    make_backend(fake).probe()
+                with pytest.raises(BackendUnavailable, match=f"{name} must be a positive number"):
+                    asyncio.run(new_ws(fake))
+            else:
+                make_backend(fake).probe()  # blank: the default applies
+            monkeypatch.delenv(name)
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    @pytest.mark.parametrize(
+        ("env", "window_s"),
+        [
+            ("ANTIEK_BOAT_CREATES_PER_MINUTE", 60),
+            ("ANTIEK_BOAT_CREATES_PER_HOUR", 3_600),
+            ("ANTIEK_BOAT_CREATES_PER_DAY", 86_400),
+        ],
+    )
+    async def test_pacing_windows_roll(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, env: str, window_s: int
+    ) -> None:
+        monkeypatch.setenv(env, "2")
+        now = [self.T0]
+        backend = make_backend(fake, wall_clock=lambda: now[0])
+        for _ in range(2):
+            await (await self._create(backend)).destroy()
+        for at in (self.T0, self.T0 + 1, self.T0 + window_s - 1):
+            now[0] = at
+            with pytest.raises(
+                WorkspaceProvisionError,
+                match=f"Boat create pacing: 2 creates in the last {window_s} s",
+            ):
+                await self._create(backend)
+        assert len(fake.calls_to("POST", "/sandboxes")) == 2
+        now[0] = self.T0 + window_s  # the window has rolled past both
+        await (await self._create(backend)).destroy()
+        assert len(fake.calls_to("POST", "/sandboxes")) == 3
+
+    @pytest.mark.parametrize(
+        ("env", "window_s"),
+        [("ANTIEK_BOAT_DAILY_USD", 86_400), ("ANTIEK_BOAT_PERIOD_USD", 31 * 86_400)],
+    )
+    async def test_spend_caps_roll(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, env: str, window_s: int
+    ) -> None:
+        # Two small workspaces at 900 s commit 2 x USD 0.0045.
+        monkeypatch.setenv(env, "0.009")
+        now = [self.T0]
+        backend = make_backend(fake, wall_clock=lambda: now[0])
+        for _ in range(2):
+            await (await self._create(backend)).destroy()
+        for at in (self.T0, self.T0 + window_s - 1):
+            now[0] = at
+            with pytest.raises(
+                WorkspaceProvisionError,
+                match=f"Boat spend cap: USD 0.0090 committed in the last {window_s} s",
+            ):
+                await self._create(backend)
+        assert len(fake.calls_to("POST", "/sandboxes")) == 2
+        now[0] = self.T0 + window_s
+        await (await self._create(backend)).destroy()
+
+    def test_the_spend_cap_admits_its_exact_amount(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        # Three xlarge 900 s creates commit 3 x USD 0.05: exactly the cap, which
+        # binary floating point sums a hair above USD 0.15.
+        monkeypatch.setenv("ANTIEK_BOAT_DAILY_USD", "0.15")
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: self.T0)
+        for _ in range(3):
+            ledger.reserve("xlarge", 900)
+        with pytest.raises(WorkspaceProvisionError, match="Boat spend cap: USD 0.1500 committed"):
+            ledger.reserve("xlarge", 900)
+
+    async def test_the_ledger_holds_across_backends(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The factory builds a backend per cascade launch; the windows must not reset.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        await (await self._create(make_backend(fake, wall_clock=lambda: self.T0))).destroy()
+        with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+
+    def test_the_lock_holds_across_processes(self, tmp_path: pathlib.Path) -> None:
+        # 24 processes race for the default 8 creates a minute: exactly 8 win.
+        # Each child imports, says it is ready and waits, so all 24 race at once;
+        # a lock timeout (4) is told apart from a pacing refusal (3).
+        child = (
+            "import sys, time\n"
+            "from runtime.exec_backend import boat_backend as bb\n"
+            "sys.stdout.write('r'); sys.stdout.flush(); sys.stdin.read(1)\n"
+            "try:\n"
+            "    bb._CreateLedger(sys.argv[1], time.time).reserve('small', 900)\n"
+            "except bb.WorkspaceProvisionError as exc:\n"
+            "    sys.exit(4 if 'stayed locked' in str(exc) else 3)\n"
+        )
+        path = tmp_path / "l.jsonl"
+        root = pathlib.Path(bb.__file__).resolve().parents[2]
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", child, str(path)],
+                cwd=root,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
+            for _ in range(24)
+        ]
+        try:
+            for proc in procs:
+                assert proc.stdout is not None and proc.stdout.read(1) == b"r"
+            for proc in procs:
+                assert proc.stdin is not None
+                proc.stdin.write(b"x")
+                proc.stdin.close()
+            codes = sorted(proc.wait(timeout=120) for proc in procs)
+        finally:
+            for proc in procs:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+        assert codes == [0] * 8 + [3] * 16
+        assert len([row for row in self._rows(path) if "id" in row]) == 8
+
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [
+            (400, "unknown_environment"),
+            (401, "unauthorized"),
+            (402, "billing_required"),
+            (403, "environment_forbidden"),
+            (404, "not_found"),
+            (429, "limit_reached"),
+        ],
+    )
+    async def test_a_create_refused_before_any_start_stops_counting(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, status: int, code: str
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        fake.injected.append(Injected("POST", "/sandboxes", status, code, "no"))
+        with pytest.raises(ExecutionBackendError, match=code):
+            await self._create(backend)
+        assert fake.sandboxes == {}
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        assert {"void": attempt["id"]} in self._rows()
+        await (await self._create(backend)).destroy()  # the one slot is free again
+
+    async def test_a_create_that_never_left_this_host_stops_counting(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        fake.injected.append(Injected("POST", "/sandboxes", 0, "", "connection refused"))
+        with pytest.raises(WorkspaceProvisionError, match="ConnectError"):
+            await self._create(backend)
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        assert {"void": attempt["id"]} in self._rows()
+        await (await self._create(backend)).destroy()
+
+    @pytest.mark.parametrize(
+        "answer", ["500", "503", "409", "408", "425", "499", "read-error", "cancelled"]
+    )
+    async def test_a_create_that_may_have_started_keeps_counting(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, answer: str
+    ) -> None:
+        # Boat started the sandbox, then the answer was an error or never came:
+        # the attempt keeps counting, and the sandbox is found and deleted.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        if answer == "cancelled":
+            fake.injected.append(
+                Injected("POST", "/sandboxes", 0, "", "never", after_effect=True, hang=True)
+            )
+            task = asyncio.create_task(self._create(backend))
+            assert await _until(lambda: bool(fake.sandboxes))
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        elif answer == "read-error":
+            fake.injected.append(
+                Injected(
+                    "POST", "/sandboxes", 0, "", "reset", after_effect=True, exc=httpx.ReadError
+                )
+            )
+            with pytest.raises(WorkspaceProvisionError, match="ReadError"):
+                await self._create(backend)
+        else:
+            status = int(answer)
+            code = "idempotency_in_progress" if status == 409 else f"http_{status}"
+            fake.injected.append(
+                Injected("POST", "/sandboxes", status, code, "lost", after_effect=True)
+            )
+            with pytest.raises(ExecutionBackendError, match=code):
+                await self._create(backend)
+        assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        assert {"void": attempt["id"]} not in self._rows()
+        with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+            await self._create(backend)
+
+    @pytest.mark.parametrize("which", ["bind", "void-refused", "void-unsent"])
+    async def test_a_cancel_while_a_row_is_written_leaks_nothing(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, which: str
+    ) -> None:
+        # The caller gives up while the bind or void row waits for the lock: the
+        # row still lands, an accepted sandbox is deleted, a possible one swept.
+        entered, release = threading.Event(), threading.Event()
+        real_mark = bb._CreateLedger.mark
+
+        def slow_mark(ledger: Any, row: dict[str, Any]) -> None:
+            if which.split("-")[0] in row:
+                entered.set()
+                if not release.wait(5):
+                    raise AssertionError("the mark blocked the event loop")
+            real_mark(ledger, row)
+
+        monkeypatch.setattr(bb._CreateLedger, "mark", slow_mark)
+        if which == "void-refused":
+            fake.injected.append(Injected("POST", "/sandboxes", 403, "environment_forbidden", "no"))
+        elif which == "void-unsent":
+            fake.injected.append(Injected("POST", "/sandboxes", 0, "", "connection refused"))
+        task = asyncio.create_task(self._create(make_backend(fake, wall_clock=lambda: self.T0)))
+        try:
+            assert await _until(entered.is_set)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            release.set()
+        assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        if which == "bind":
+            assert await _until(lambda: any("bind" in row for row in self._rows()))
+            assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+        else:
+            assert {"void": attempt["id"]} in self._rows()
+            assert fake.sandboxes == {}
+        if which == "void-unsent":
+            assert len(fake.calls_to("GET", "/sandboxes")) == 1, "the label sweep still ran"
+
+    async def test_a_paced_or_capped_refusal_writes_nothing(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A caller that retries while refused must not extend its own lockout.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        await (await self._create(backend)).destroy()
+        before = self._rows()
+        for _ in range(3):
+            with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+                await self._create(backend)
+        monkeypatch.delenv("ANTIEK_BOAT_CREATES_PER_HOUR")
+        monkeypatch.setenv("ANTIEK_BOAT_DAILY_USD", "0.0045")
+        for _ in range(3):
+            with pytest.raises(WorkspaceProvisionError, match="Boat spend cap"):
+                await self._create(backend)
+        assert self._rows() == before
+        assert len(fake.calls_to("POST", "/sandboxes")) == 1
+
+    async def test_ledger_rows_and_modes(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        state = tmp_path / "state"
+        path = state / "boat_ledger.jsonl"
+        monkeypatch.setenv("ANTIEK_BOAT_LEDGER", str(path))
+        ws = await new_ws(fake)
+        await ws.destroy()
+        assert stat.S_IMODE(state.stat().st_mode) == 0o700
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(pathlib.Path(f"{path}.lock").stat().st_mode) == 0o600
+        rows = self._rows(path)
+        (attempt,) = [r for r in rows if "id" in r]
+        assert attempt["type"] == "small" and attempt["ttl"] == 900 and attempt["usd"] == 0.0045
+        assert {"bind": attempt["id"], "sandbox": ws.sandbox_id} in rows
+        assert_keyless(path.read_text())
+        path.chmod(0o644)  # a widened ledger is narrowed again on the next read
+        await (await new_ws(fake)).destroy()
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "{not json",
+            "[1, 2]",
+            "{}",
+            '{"id": "x", "at": "soon", "usd": 0.1}',
+            '{"id": "x", "at": 1, "usd": true}',
+            '{"id": 7, "at": 1, "usd": 0.1}',
+            '{"id": "x", "at": NaN, "usd": 0.1}',
+            '{"id": "x", "at": -Infinity, "usd": 0.1}',
+            '{"id": "x", "at": -1, "usd": 0.1}',
+            '{"id": "x", "at": 1, "usd": Infinity}',
+            '{"id": "x", "at": 1, "usd": -100}',
+            '{"id": "x", "at": 1, "usd": -0.5}',
+            '{"id": "x", "at": -1.5, "usd": 0.1}',
+            '{"id": "x", "at": 1e999, "usd": 0.1}',
+            '{"id": "x", "at": 1, "usd": 1e999}',
+            '{"void": ["x"]}',
+            '{"bind": "x"}',
+            '{"id": "x", "at": 1' + "0" * 400 + ', "usd": 0.1}',
+            '{"id": "x", "at": 9007199254740993, "usd": 0.1}',
+            '{"id": "x", "at": 1, "usd": 0.1, "void": ["y"]}',
+            '{"id": "x", "at": 1, "usd": 0.1, "void": "x"}',
+            '{"void": "x", "bind": "x", "sandbox": "bx_xxxxxxxx"}',
+            '{"id": "x", "at": true, "usd": 0.1}',
+            '{"bind": 7, "sandbox": "bx_xxxxxxxx"}',
+            '{"id": "x", "at": 1, "usd": 0.1, "ttl": NaN}',
+        ],
+    )
+    async def test_an_unreadable_ledger_refuses_every_create(
+        self, fake: FakeBoat, line: str
+    ) -> None:
+        pathlib.Path(os.environ["ANTIEK_BOAT_LEDGER"]).write_text(line + "\n")
+        with pytest.raises(BackendUnavailable, match="unreadable line 1"):
+            await new_ws(fake)
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    async def test_an_unopenable_ledger_refuses_every_create(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("")
+        monkeypatch.setenv("ANTIEK_BOAT_LEDGER", str(blocker / "ledger.jsonl"))
+        with pytest.raises(BackendUnavailable, match="cannot be opened"):
+            await new_ws(fake)
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    def test_probe_checks_the_ledger(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        for line in (
+            "{oops",
+            '{"id": "x", "at": 1' + "0" * 400 + ', "usd": 0.1}',
+            '{"id": "x", "at": 1, "usd": 0.1, "void": ["y"]}',
+        ):
+            pathlib.Path(os.environ["ANTIEK_BOAT_LEDGER"]).write_text(line + "\n")
+            with pytest.raises(BackendUnavailable, match="unreadable line 1"):
+                make_backend(fake).probe()
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("")
+        monkeypatch.setenv("ANTIEK_BOAT_LEDGER", str(blocker / "ledger.jsonl"))
+        with pytest.raises(BackendUnavailable, match="cannot be opened"):
+            make_backend(fake).probe()
+        assert fake.calls == []
+
+    async def test_rows_from_the_future_say_the_clock_moved(self, fake: FakeBoat) -> None:
+        path = pathlib.Path(os.environ["ANTIEK_BOAT_LEDGER"])
+        row = {"id": "a" * 32, "at": self.T0 + 3_600, "type": "small", "ttl": 900, "usd": 0.0045}
+        path.write_text(json.dumps(row) + "\n")
+        with pytest.raises(BackendUnavailable, match="the clock moved back"):
+            await new_ws(fake, wall_clock=lambda: self.T0)
+        assert fake.calls_to("POST", "/sandboxes") == []
+        # Inside the tolerance, a row is simply recent.
+        path.write_text(json.dumps({**row, "at": self.T0 + 60}) + "\n")
+        await (await new_ws(fake, wall_clock=lambda: self.T0)).destroy()
+
+    def test_a_held_lock_is_waited_for_then_refused(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_LOCK_WAIT_S", 0.3)
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        ledger.check()
+        for mode in (fcntl.LOCK_EX, fcntl.LOCK_SH):  # even a reader excludes a writer
+            holder = os.open(f"{path}.lock", os.O_RDWR)
+            try:
+                fcntl.flock(holder, mode)
+                started = time.monotonic()
+                with pytest.raises(WorkspaceProvisionError, match="stayed locked for 0.3 s"):
+                    ledger.reserve("small", 900)
+                assert 0.25 <= time.monotonic() - started < 5
+                ledger.mark({"void": "x"})  # never raises; a lost mark only over-counts
+            finally:
+                os.close(holder)
+        assert path.read_text() == ""
+        ledger.reserve("small", 900)
+
+    def test_probe_under_a_held_lock_is_backend_unavailable(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_LOCK_WAIT_S", 0.2)
+        path = os.path.realpath(os.environ["ANTIEK_BOAT_LEDGER"])
+        holder = os.open(f"{path}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+            with pytest.raises(BackendUnavailable, match="stayed locked for 0.2 s"):
+                make_backend(fake).probe()
+        finally:
+            os.close(holder)
+        assert fake.calls == []
+
+    async def test_a_cancel_while_reserve_waits_voids_the_unsent_attempt(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The caller gives up while the reservation waits for the lock: its
+        # thread still records the attempt, which no POST follows, so it is voided.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        path = os.path.realpath(os.environ["ANTIEK_BOAT_LEDGER"])
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        holder = os.open(f"{path}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+            task = asyncio.create_task(self._create(backend))
+            assert await _until(lambda: bool(fake.calls_to("GET", "/environments")))
+            await asyncio.sleep(0.2)  # the reservation's thread is polling the lock
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            os.close(holder)
+        assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        assert {"void": attempt["id"]} in self._rows()
+        assert fake.calls_to("POST", "/sandboxes") == []
+        await (await self._create(backend)).destroy()  # the one slot is free again
+
+    def test_a_clock_jump_cannot_prune_what_a_corrected_clock_counts(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "jump" / "l.jsonl"
+        path.parent.mkdir()
+        rows = [
+            {
+                "id": f"old{i}",
+                "at": self.T0 - 40 * 86_400,
+                "type": "small",
+                "ttl": 900,
+                "usd": 0.0045,
+            }
+            for i in range(900)
+        ] + [
+            {"id": f"day{i}", "at": self.T0 - 3_600, "type": "small", "ttl": 900, "usd": 0.0045}
+            for i in range(120)
+        ]
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(path), lambda: now[0])
+        with pytest.raises(WorkspaceProvisionError, match="120 creates in the last 86400 s"):
+            ledger.reserve("small", 900)
+        now[0] = self.T0 + 40 * 86_400  # the clock jumps 40 days forward
+        ledger.mark({"void": ledger.reserve("small", 900)})  # and Boat refuses it
+        assert len([row for row in self._rows(path) if "id" in row]) == 1_021, "nothing pruned"
+        now[0] = self.T0  # the clock is repaired: the voided row still names the jump
+        with pytest.raises(BackendUnavailable, match="the clock moved back"):
+            ledger.reserve("small", 900)
+
+    def test_a_symlinked_ledger_is_one_ledger(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "1")
+        (tmp_path / "link").mkdir()
+        target = tmp_path / "link" / "shared.jsonl"
+        link = tmp_path / "link" / "via.jsonl"
+        rows = [
+            {
+                "id": f"old{i}",
+                "at": self.T0 - 40 * 86_400,
+                "type": "small",
+                "ttl": 900,
+                "usd": 0.0045,
+            }
+            for i in range(3)
+        ] + [{"id": "recent", "at": self.T0 - 7_200, "type": "small", "ttl": 900, "usd": 0.0045}]
+        target.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        link.symlink_to(target)
+        entry = bb._CreateLedger(str(link), lambda: self.T0).reserve("small", 900)  # prunes
+        assert link.is_symlink()
+        assert [row.get("id") for row in self._rows(target)] == ["recent", entry]
+        with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+            bb._CreateLedger(str(target), lambda: self.T0).reserve("small", 900)
+
+    def test_a_failing_lock_refuses_reserve_and_never_breaks_mark(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        def no_locks(fd: int, operation: int) -> None:
+            raise OSError(errno.ENOLCK, "No locks available")
+
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: self.T0)
+        monkeypatch.setattr(fcntl, "flock", no_locks)
+        with pytest.raises(BackendUnavailable, match="cannot be locked"):
+            ledger.reserve("small", 900)
+        ledger.mark({"bind": "x", "sandbox": "bx_xxxxxxxx"})
+
+    async def test_a_lost_bind_row_keeps_the_workspace(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = fcntl.flock
+        taken: list[int] = []
+
+        def first_only(fd: int, operation: int) -> None:
+            taken.append(operation)
+            if len(taken) > 1:
+                raise OSError(errno.ENOLCK, "No locks available")
+            real(fd, operation)
+
+        monkeypatch.setattr(fcntl, "flock", first_only)
+        ws = await new_ws(fake)
+        monkeypatch.setattr(fcntl, "flock", real)
+        assert ws.sandbox_id in fake.sandboxes and not fake.deleted
+        await ws.destroy()
+        rows = self._rows()
+        assert [r for r in rows if "id" in r] and not [r for r in rows if "bind" in r]
+
+    def test_rows_no_window_can_see_are_pruned(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        (tmp_path / "prune").mkdir()
+        path = tmp_path / "prune" / "l.jsonl"
+        old = self.T0 - 32 * 86_400
+        rows: list[dict[str, Any]] = []
+        for i in range(3):
+            rows.append({"id": f"old{i}", "at": old, "type": "small", "ttl": 900, "usd": 0.0045})
+            rows.append({"bind": f"old{i}", "sandbox": f"bx_old0000{i}"})
+        rows.append(
+            {"id": "recent", "at": self.T0 - 60, "type": "small", "ttl": 900, "usd": 0.0045}
+        )
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows[:4] + rows[6:]))
+        ledger.reserve("small", 900)
+        assert len(self._rows(path)) == 6, "under the threshold nothing is rewritten"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        entry = ledger.reserve("small", 900)
+        assert [row.get("id") for row in self._rows(path)] == ["recent", entry]
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert sorted(p.name for p in path.parent.iterdir()) == ["l.jsonl", "l.jsonl.lock"]
+
+    @staticmethod
+    def _attempt(rid: str, at: float, usd: float = 0.0045) -> dict[str, Any]:
+        return {"id": rid, "at": at, "type": "small", "ttl": 900, "usd": usd}
+
+    @staticmethod
+    def _write(path: pathlib.Path, rows: list[dict[str, Any]]) -> None:
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    def test_a_prune_keeps_what_the_period_window_still_sees(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        path = tmp_path / "l.jsonl"
+        rows = [self._attempt(f"old{i}", self.T0 - 32 * 86_400) for i in range(3)]
+        rows += [
+            self._attempt("d30", self.T0 - 30 * 86_400, usd=14.99),
+            self._attempt("recent", self.T0 - 60, usd=0.0),
+        ]
+        self._write(path, rows)
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        first = ledger.reserve("small", 900)  # USD 14.9945: admitted, then pruned
+        assert [row["id"] for row in self._rows(path)] == ["d30", "recent", first]
+        ledger.reserve("small", 900)  # USD 14.999
+        with pytest.raises(WorkspaceProvisionError, match="ANTIEK_BOAT_PERIOD_USD"):
+            ledger.reserve("small", 900)  # the 30-day row still counts
+
+    def test_a_prune_keeps_the_void_of_a_recent_attempt(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_HOUR", "2")
+        path = tmp_path / "l.jsonl"
+        rows = [self._attempt(f"old{i}", self.T0 - 32 * 86_400) for i in range(3)]
+        rows += [self._attempt("refused", self.T0 - 60), {"void": "refused"}]
+        self._write(path, rows)
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        ledger.reserve("small", 900)  # prunes the three old rows
+        assert {"void": "refused"} in self._rows(path)
+        ledger.reserve("small", 900)  # the refused attempt still does not count
+
+    def test_an_append_completes_a_short_write(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        real_write = os.write
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "write", lambda fd, data: real_write(fd, bytes(data[:5])))
+            entry = ledger.reserve("small", 900)
+        (row,) = self._rows(path)
+        assert row["id"] == entry
+
+    def test_appends_and_prunes_are_fsynced_and_a_prune_renames(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        path = tmp_path / "l.jsonl"
+        rows = [self._attempt(f"old{i}", self.T0 - 32 * 86_400) for i in range(3)]
+        self._write(path, [*rows, self._attempt("recent", self.T0 - 60)])
+        synced: list[str] = []
+        renamed: list[tuple[str, str]] = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd: int) -> None:
+            synced.append(os.readlink(f"/proc/self/fd/{fd}"))
+            real_fsync(fd)
+
+        def replace(src: Any, dst: Any) -> None:
+            renamed.append((str(src), str(dst)))
+            real_replace(src, dst)
+
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "fsync", fsync)
+            patched.setattr(os, "replace", replace)
+            ledger.reserve("small", 900)
+        real = os.path.realpath(path)
+        assert real in synced, "the attempt row is fsynced before the POST"
+        ((src, dst),) = renamed
+        assert dst == real and src != real and src in synced
+
+    def test_a_failed_prune_keeps_the_ledger_and_leaves_no_temp_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        (tmp_path / "d").mkdir()
+        path = tmp_path / "d" / "l.jsonl"
+        rows = [self._attempt(f"old{i}", self.T0 - 32 * 86_400) for i in range(3)]
+        rows.append(self._attempt("recent", self.T0 - 60))
+        self._write(path, rows)
+
+        def no_space(src: Any, dst: Any) -> None:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "replace", no_space)
+            entry = ledger.reserve("small", 900)  # on disk already; the prune is best effort
+        assert [row["id"] for row in self._rows(path)] == [r["id"] for r in rows] + [entry]
+        assert sorted(p.name for p in path.parent.iterdir()) == ["l.jsonl", "l.jsonl.lock"]
+
+    def test_a_ledger_that_is_a_directory_is_unavailable(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        path.mkdir()
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        with pytest.raises(BackendUnavailable, match="cannot be opened"):
+            ledger.check()
+        with pytest.raises(BackendUnavailable, match="cannot be opened"):
+            ledger.reserve("small", 900)
+
+    def test_a_full_disk_refuses_the_create_and_writes_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        ledger.check()
+
+        def full(fd: int, data: Any) -> int:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "write", full)
+            with pytest.raises(BackendUnavailable, match="cannot be written"):
+                ledger.reserve("small", 900)
+        assert path.read_text() == ""
+
+    def test_the_skew_tolerance_is_five_minutes(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        self._write(path, [self._attempt("a", self.T0 + 299)])
+        bb._CreateLedger(str(path), lambda: self.T0).reserve("small", 900)
+        self._write(path, [self._attempt("a", self.T0 + 301)])
+        with pytest.raises(BackendUnavailable, match="the clock moved back"):
+            bb._CreateLedger(str(path), lambda: self.T0).reserve("small", 900)
+
+    async def test_the_ledger_is_read_and_written_off_the_event_loop(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loop_thread = threading.get_ident()
+        seen: dict[str, int] = {}
+        real_reserve, real_mark = bb._CreateLedger.reserve, bb._CreateLedger.mark
+
+        def reserve(ledger: Any, machine_type: str, ttl: int) -> str:
+            seen["reserve"] = threading.get_ident()
+            return real_reserve(ledger, machine_type, ttl)
+
+        def mark(ledger: Any, row: dict[str, Any]) -> None:
+            seen[next(iter(row))] = threading.get_ident()
+            real_mark(ledger, row)
+
+        monkeypatch.setattr(bb._CreateLedger, "reserve", reserve)
+        monkeypatch.setattr(bb._CreateLedger, "mark", mark)
+        backend = make_backend(fake, wall_clock=lambda: self.T0)
+        await (await self._create(backend)).destroy()
+        fake.injected.append(Injected("POST", "/sandboxes", 403, "environment_forbidden", "no"))
+        with pytest.raises(ExecutionBackendError, match="environment_forbidden"):
+            await self._create(backend)
+        assert set(seen) == {"reserve", "bind", "void"}
+        assert loop_thread not in seen.values(), seen
+
+    async def test_a_refused_create_closes_its_client(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        opened: list[Any] = []
+        closed: list[Any] = []
+        real_init, real_close = bb._BoatApi.__init__, bb._BoatApi.aclose
+
+        def init(api: Any, **kwargs: Any) -> None:
+            opened.append(api)
+            real_init(api, **kwargs)
+
+        async def aclose(api: Any) -> None:
+            closed.append(api)
+            await real_close(api)
+
+        monkeypatch.setattr(bb._BoatApi, "__init__", init)
+        monkeypatch.setattr(bb._BoatApi, "aclose", aclose)
+        fake.injected.append(Injected("POST", "/sandboxes", 403, "environment_forbidden", "no"))
+        with pytest.raises(ExecutionBackendError, match="environment_forbidden"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert opened and set(map(id, opened)) <= set(map(id, closed))
+
+    async def test_a_409_is_recovered_by_key_like_a_5xx(self, fake: FakeBoat) -> None:
+        fake.injected.append(
+            Injected(
+                "POST", "/sandboxes", 409, "idempotency_in_progress", "minting", after_effect=True
+            )
+        )
+        with pytest.raises(ExecutionBackendError, match="idempotency_in_progress"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        first, again = fake.calls_to("POST", "/sandboxes")
+        assert again.headers["idempotency-key"] == first.headers["idempotency-key"]
+        assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+
+    def test_ledger_path_follows_the_state_dir_convention(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ANTIEK_BOAT_LEDGER")
+        monkeypatch.setenv("ANTIEK_HOME", "/srv/antiek-state")
+        assert bb._ledger_path() == "/srv/antiek-state/boat_ledger.jsonl"
+        monkeypatch.setenv("ANTIEK_HOME", " ")
+        assert bb._ledger_path() == os.path.expanduser("~/.antiek/boat_ledger.jsonl")

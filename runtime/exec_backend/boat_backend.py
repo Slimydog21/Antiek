@@ -96,7 +96,9 @@ call it from a sync context.
 
 Org pin
 -------
-``ANTIEK_BOAT_ORG`` (or ``org=``) optionally pins the billing organization. It
+``ANTIEK_BOAT_ORG`` (or ``org=``) pins the billing organization and is required
+(decision record §5 item 3; unset, the backend refuses at ``probe`` and every
+create). It
 must be an organization **id** (``team_...``): Boat reports the wallet it read
 as ``teamId`` (``GET /limits``) and the wallet a sandbox bills as ``team.id``
 (``Sandbox``), both ids, so only an id pin can be compared; a name pin is
@@ -109,6 +111,52 @@ bills the named organization. It is then verified twice: ``probe`` compares
 /limits``), and ``create`` compares the new
 sandbox's ``team.id`` with the pin (deleting the sandbox on a mismatch, or
 when no read of it carried ``team``).
+
+Activation gates in code
+------------------------
+Four of the product plane's activation gates (decision record §5 items 3, 4,
+5 and 9) are enforced here, each defaulting to its Decision §7 envelope. An
+operator may change one through its env var, which must hold a positive
+number; none can be switched off, and a value that does not parse refuses
+the backend (``BackendUnavailable``) rather than leave a gate open.
+
+* **Org pin** (item 3): ``ANTIEK_BOAT_ORG`` is required ("Org pin" above).
+* **TTL cap** (item 9): a ``wall_clock_s`` above ``ANTIEK_BOAT_MAX_TTL_S``
+  (default 3,600 s) is refused before anything is created or billed; a cap
+  below Boat's 60 s minimum auto-stop could never be kept and is refused too.
+* **Pacing** (item 4): at most ``ANTIEK_BOAT_CREATES_PER_MINUTE`` /
+  ``_PER_HOUR`` / ``_PER_DAY`` creates (default 8 / 36 / 120, the product's
+  share of the organization's start windows) in any rolling minute, hour
+  and day.
+* **Spend** (item 5): the list-price VM time committed in the last 24 hours
+  and the last 31 days (so no billing period can pass it), each create
+  counted at its full ``ttlSeconds`` (the auto-stop bounds it), may not pass
+  ``ANTIEK_BOAT_DAILY_USD`` (default USD 1.00) or ``ANTIEK_BOAT_PERIOD_USD``
+  (default USD 15.00). This bounds VM time only: Boat's wallet fee for a
+  start beyond the organization's included windows is not counted; pacing
+  keeps the product inside its share of those windows.
+
+Pacing and spend read a durable ledger, ``$ANTIEK_BOAT_LEDGER``, else
+``boat_ledger.jsonl`` in ``$ANTIEK_HOME`` or ``~/.antiek`` (item 7): one JSON
+line per create attempt, written before the ``POST`` under an exclusive
+``flock`` on ``<ledger>.lock`` (waited for at most 10 s, then the create is
+refused), off the event loop. A symlinked ledger path is resolved to the
+one real file. An attempt stops counting only when nothing can have
+started: Boat refused it with a status it documents as a refusal before any
+start (``400``, ``401``, ``402``, ``403``, ``404``, ``429``), the request
+never left this host, or the create ended before its ``POST``. A ``409``,
+any other ``4xx``, a ``5xx`` or a lost answer keeps counting, the safe side,
+and is recovered like a lost create. Times are wall-clock, so the windows
+hold across restarts and across the per-launch backends the factory builds;
+a row, voided or not, stamped more than 5 minutes ahead of the clock means
+the clock moved back, and creates are refused until it or the ledger is
+repaired. Rows older than the longest window, counted back from the newest
+earlier attempt rather than from the clock (which may have jumped), are
+pruned once 1,000 accumulate. A refused create raises
+``WorkspaceProvisionError`` (try later) and writes nothing; a ledger that
+cannot be opened or locked, or holds a line that is not a well-formed row
+(finite, non-negative times and amounts), refuses every create and fails
+``probe`` (``BackendUnavailable``) until it is repaired.
 
 Provisioning (``create``)
 -------------------------
@@ -531,6 +579,8 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import fcntl
+import json
 import logging
 import math
 import os
@@ -539,7 +589,7 @@ import re
 import shlex
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
@@ -679,6 +729,34 @@ _DATE_TIME_RE = re.compile(
 _MIN_TTL_S: int = 60
 _MAX_TTL_S: int = 2_592_000
 
+#: Activation gates in code (see the docstring section of that name). Each
+#: default is the product plane's Decision §7 envelope.
+MAX_TTL_ENV: str = "ANTIEK_BOAT_MAX_TTL_S"
+DEFAULT_MAX_TTL_S: int = 3_600
+#: (env var, rolling window in seconds, default cap): creates that may have started.
+PACING_GATES: tuple[tuple[str, int, int], ...] = (
+    ("ANTIEK_BOAT_CREATES_PER_MINUTE", 60, 8),
+    ("ANTIEK_BOAT_CREATES_PER_HOUR", 3_600, 36),
+    ("ANTIEK_BOAT_CREATES_PER_DAY", 86_400, 120),
+)
+#: (env var, rolling window in seconds, default cap in USD): committed
+#: list-price VM time, each create at its full ``ttlSeconds``. The period window
+#: is 31 days, so no billing period (at most 31 days) can pass its cap. Boat's
+#: fee for a start beyond the included windows is not VM time and is not
+#: counted; pacing keeps the product inside its share of those windows.
+SPEND_GATES: tuple[tuple[str, int, float], ...] = (
+    ("ANTIEK_BOAT_DAILY_USD", 86_400, 1.00),
+    ("ANTIEK_BOAT_PERIOD_USD", 31 * 86_400, 15.00),
+)
+#: USD per hour at list price (pricing.md), by machine type.
+LIST_PRICE_USD_PER_H: Mapping[str, float] = {
+    "small": 0.018,
+    "default": 0.036,
+    "large": 0.072,
+    "xlarge": 0.20,
+}
+LEDGER_ENV: str = "ANTIEK_BOAT_LEDGER"
+
 #: The workload's whole inherited environment besides ``HOME`` and the
 #: profile/exec variables.
 _WORKLOAD_PATH: str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -756,6 +834,14 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SANDBOX_ID_RE = re.compile(r"^bx_[23456789abcdefghjkmnpqrstuvwxyz]{8}$")
 #: An organization id as ``Org.id`` spells it for an organization.
 _ORG_ID_RE = re.compile(r"^team_[A-Za-z0-9-]{1,100}$")
+
+#: Raised through unchanged where a cleanup step catches everything else.
+#: A named tuple, not ``except A, B:``: production runs Python 3.12
+#: (``infrastructure/ansible/group_vars/all.yml``), which cannot parse that.
+_UNAVAILABLE_OR_LOST: tuple[type[ExecutionBackendError], ...] = (
+    BackendUnavailable,
+    WorkspaceLost,
+)
 #: ``CreateSandboxEnvironmentRequest.name``: letters, digits, dot, dash, underscore; max 64.
 _ENVIRONMENT_NAME_RE = re.compile(r"^[a-zA-Z0-9._-]{1,64}$")
 _REJECT_RULE_RE = re.compile(r"^-A OUTPUT -m owner --uid-owner (\d+) -j REJECT(?:\s|$)")
@@ -790,6 +876,274 @@ def select_machine_type(limits: ResourceLimits) -> str:
 
 def _ttl_seconds(wall_clock_s: float) -> int:
     return max(_MIN_TTL_S, min(_MAX_TTL_S, math.ceil(wall_clock_s)))
+
+
+def _gate(name: str, default: float) -> float:
+    """An activation gate's value: its env var when set, else the default.
+    Only a positive finite number is accepted; anything else refuses the
+    backend rather than leave the gate open."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value <= 0:
+        raise BackendUnavailable(
+            f"{name} must be a positive number when set, not {_shown(raw, 40)}: an "
+            "activation gate can be changed, never switched off"
+        )
+    return value
+
+
+def _check_gates() -> None:
+    """Parse every gate now, so a misconfigured one fails at ``probe``."""
+    if _gate(MAX_TTL_ENV, DEFAULT_MAX_TTL_S) < _MIN_TTL_S:
+        raise BackendUnavailable(
+            f"{MAX_TTL_ENV} is below Boat's {_MIN_TTL_S} s minimum auto-stop, so no "
+            "workspace could keep under it"
+        )
+    for name, _window, default in (*PACING_GATES, *SPEND_GATES):
+        _gate(name, default)
+
+
+def _ledger_path() -> str:
+    """``$ANTIEK_BOAT_LEDGER``, else ``boat_ledger.jsonl`` in ``$ANTIEK_HOME``
+    (when non-empty) or ``~/.antiek``, the repository's state-dir convention."""
+    explicit = os.environ.get(LEDGER_ENV, "").strip()
+    if explicit:
+        return explicit
+    home = os.environ.get("ANTIEK_HOME", "").strip()
+    return os.path.join(home or os.path.expanduser("~/.antiek"), "boat_ledger.jsonl")
+
+
+#: Statuses Boat documents as refusals before any start (validation, auth,
+#: billing, scope, not found, a start window full): the attempt stops counting.
+#: A ``409`` (the same key's sandbox still being minted) or any other ``4xx``
+#: keeps counting and is recovered like a ``5xx``.
+_PRE_START_REFUSALS: frozenset[int] = frozenset({400, 401, 402, 403, 404, 429})
+#: Rows older than the longest window are dropped once this many accumulate.
+_LEDGER_PRUNE_ROWS: int = 1_000
+#: How long a create waits for another holder of the ledger lock.
+_LEDGER_LOCK_WAIT_S: float = 10.0
+#: A row stamped this far ahead of the clock means the clock moved back.
+_LEDGER_SKEW_S: float = 300.0
+
+
+def _no_constant(name: str) -> float:
+    raise ValueError(f"{name} is not a ledger value")
+
+
+class _CreateLedger:
+    """The durable record behind the pacing and spend gates (see "Activation
+    gates in code"). One JSON object per line: an attempt row ``{id, at, type,
+    ttl, usd}`` written before the ``POST``, then ``{void: id}`` when Boat
+    refused the create or it never left this host, or ``{bind: id, sandbox:
+    bx_...}`` once its id is known. An attempt counts until voided. Every read
+    and write holds an exclusive ``flock`` on the sidecar ``<ledger>.lock``,
+    taken with a bounded wait, so a pruning rewrite (temporary file, ``fsync``,
+    rename) is safe for other processes too."""
+
+    def __init__(self, path: str, now: Callable[[], float]) -> None:
+        # The real file: a symlinked path must not lock or replace another one.
+        self._path = os.path.realpath(path)
+        self._now = now
+
+    @contextlib.contextmanager
+    def _locked(self) -> Iterator[None]:
+        try:
+            os.makedirs(os.path.dirname(self._path) or ".", mode=0o700, exist_ok=True)
+            lock_fd = os.open(f"{self._path}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError as exc:
+            raise BackendUnavailable(
+                f"the Boat create ledger {self._path!r} cannot be opened "
+                f"({exc.strerror}), so the pacing and spend gates cannot be checked"
+            ) from exc
+        try:
+            deadline = time.monotonic() + _LEDGER_LOCK_WAIT_S
+            while True:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise WorkspaceProvisionError(
+                            f"the Boat create ledger {self._path!r} stayed locked for "
+                            f"{_LEDGER_LOCK_WAIT_S:g} s; try again later"
+                        ) from None
+                    time.sleep(0.05)
+                except OSError as exc:
+                    raise BackendUnavailable(
+                        f"the Boat create ledger {self._path!r} cannot be locked ({exc.strerror})"
+                    ) from exc
+            yield
+        finally:
+            os.close(lock_fd)  # closing the descriptor releases the lock
+
+    def _read(self) -> list[dict[str, Any]]:
+        try:
+            fd = os.open(self._path, os.O_RDONLY | os.O_CREAT, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+                with os.fdopen(os.dup(fd), "rb") as fh:
+                    raw = fh.read()
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            raise BackendUnavailable(
+                f"the Boat create ledger {self._path!r} cannot be opened "
+                f"({exc.strerror}), so the pacing and spend gates cannot be checked"
+            ) from exc
+        rows: list[dict[str, Any]] = []
+        for number, line in enumerate(raw.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line, parse_constant=_no_constant)
+            except ValueError:
+                row = None
+            if not _valid_row(row):
+                raise BackendUnavailable(
+                    f"the Boat create ledger {self._path!r} has an unreadable line "
+                    f"{number}; every create is refused until it is repaired"
+                )
+            rows.append(row)
+        return rows
+
+    def _append(self, row: Mapping[str, Any]) -> None:
+        data = (json.dumps(row, sort_keys=True) + "\n").encode()
+        fd = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view) :]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def _prune(self, rows: list[dict[str, Any]], latest: float) -> None:
+        """Rewrite without the rows no window can see, once enough accumulate.
+        ``latest`` is the newest attempt before this one, never the clock: a
+        clock that jumped forward must not drop rows a corrected one still
+        counts."""
+        horizon = latest - max(window for _, window, _ in (*PACING_GATES, *SPEND_GATES))
+        old = {row["id"] for row in rows if "id" in row and row["at"] < horizon}
+        if len(old) < _LEDGER_PRUNE_ROWS:
+            return
+        keep = [row for row in rows if row.get("id", row.get("void", row.get("bind"))) not in old]
+        tmp = f"{self._path}.{uuid.uuid4().hex}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(b"".join((json.dumps(r, sort_keys=True) + "\n").encode() for r in keep))
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, self._path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+
+    def check(self) -> None:
+        """Open, lock and parse the ledger without writing (``probe``): every
+        failure is ``BackendUnavailable``, a lock held too long included."""
+        try:
+            with self._locked():
+                self._read()
+        except WorkspaceProvisionError as exc:
+            raise BackendUnavailable(str(exc)) from exc
+
+    def reserve(self, machine_type: str, ttl: int) -> str:
+        """Refuse a create that a pacing window or a spend cap would not
+        allow (``WorkspaceProvisionError``: try later); else record the
+        attempt and return its id. Blocking file work: run it off the loop."""
+        pacing = [(name, window, _gate(name, cap)) for name, window, cap in PACING_GATES]
+        spend = [(name, window, _gate(name, cap)) for name, window, cap in SPEND_GATES]
+        rate = LIST_PRICE_USD_PER_H.get(machine_type, max(LIST_PRICE_USD_PER_H.values()))
+        usd = rate * ttl / 3600
+        with self._locked():
+            rows = self._read()
+            now = self._now()
+            voided = {row["void"] for row in rows if "void" in row}
+            live = [row for row in rows if "id" in row and row["id"] not in voided]
+            attempts = [row for row in rows if "id" in row]
+            ahead = [row["at"] for row in attempts if row["at"] > now + _LEDGER_SKEW_S]
+            if ahead:
+                raise BackendUnavailable(
+                    f"the Boat create ledger {self._path!r} has {len(ahead)} rows stamped "
+                    f"after now ({now:.0f} s, latest {max(ahead):.0f} s): the clock moved "
+                    "back; creates are refused until the clock or the ledger is repaired"
+                )
+            for name, window, cap in pacing:
+                used = sum(1 for row in live if now - row["at"] < window)
+                if used + 1 > cap:
+                    raise WorkspaceProvisionError(
+                        f"Boat create pacing: {used} creates in the last {window} s, "
+                        f"at the cap of {cap:g} ({name}); try again later"
+                    )
+            for name, window, cap in spend:
+                committed = sum(row["usd"] for row in live if now - row["at"] < window)
+                if committed + usd > cap + 1e-9:
+                    raise WorkspaceProvisionError(
+                        f"Boat spend cap: USD {committed:.4f} committed in the last "
+                        f"{window} s plus USD {usd:.4f} for this create would pass "
+                        f"USD {cap:g} ({name}); try again later"
+                    )
+            entry = uuid.uuid4().hex
+            row = {
+                "id": entry,
+                "at": round(now, 3),
+                "type": machine_type,
+                "ttl": ttl,
+                "usd": round(usd, 6),
+            }
+            try:
+                self._append(row)
+            except OSError as exc:
+                raise BackendUnavailable(
+                    f"the Boat create ledger {self._path!r} cannot be written "
+                    f"({exc.strerror}), so the create is not sent"
+                ) from exc
+            with contextlib.suppress(OSError):  # the attempt is on disk already
+                self._prune([*rows, row], min(now, max((r["at"] for r in attempts), default=now)))
+            return entry
+
+    def mark(self, row: Mapping[str, Any]) -> None:
+        """Append a ``void`` or ``bind`` row. Never raises: a lost mark only
+        over-counts, which is the safe side."""
+        try:
+            with self._locked():
+                self._append(row)
+        except Exception:  # a mark must never break the create it records
+            return
+
+
+def _valid_row(row: Any) -> bool:
+    """One ledger line's shape; anything else refuses every create."""
+    if not isinstance(row, dict):
+        return False
+    kinds = [kind for kind in ("id", "void", "bind") if kind in row]
+    if kinds == ["id"]:
+        return (
+            isinstance(row["id"], str)
+            and _ledger_number(row.get("at"))
+            and _ledger_number(row.get("usd"))
+        )
+    if kinds == ["void"]:
+        return isinstance(row["void"], str)
+    if kinds == ["bind"]:
+        return isinstance(row["bind"], str) and isinstance(row.get("sandbox"), str)
+    return False
+
+
+def _ledger_number(value: Any) -> bool:
+    """A finite, non-negative JSON number; an int past 2**53 is no time or amount."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    if isinstance(value, int):
+        return 0 <= value <= 2**53
+    return math.isfinite(value) and value >= 0
 
 
 def _slug(name: str) -> str:
@@ -1497,6 +1851,18 @@ def _start_cleanup(cleanup: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
     return task
 
 
+async def _void_unsent(
+    reserving: asyncio.Future[str], ledger: _CreateLedger, api: _BoatApi
+) -> None:
+    """Never raises. A create that ended before its ``POST``: wait for the
+    reservation's thread, void the attempt it recorded, close the client."""
+    with contextlib.suppress(Exception):
+        entry = await reserving
+        await asyncio.to_thread(ledger.mark, {"void": entry})
+    with contextlib.suppress(Exception):
+        await api.aclose()
+
+
 async def _run_shielded(cleanup: Coroutine[Any, Any, None]) -> None:
     """Run ``cleanup`` to completion even if the caller is cancelled while
     waiting for it: the task keeps running on its own and the caller's
@@ -1951,7 +2317,7 @@ class _BoatWorkspace:
                 timeout_s=_PROVISION_TIMEOUT_S,
                 what="provision",
             )
-        except BackendUnavailable, WorkspaceLost:
+        except _UNAVAILABLE_OR_LOST:
             raise
         except ExecutionBackendError as exc:
             raise WorkspaceProvisionError(
@@ -1997,7 +2363,7 @@ class _BoatWorkspace:
             applied = await self._command(
                 _build_deny_all_apply_script(), timeout_s=_HELPER_TIMEOUT_S, what="deny_all apply"
             )
-        except BackendUnavailable, WorkspaceLost:
+        except _UNAVAILABLE_OR_LOST:
             raise
         except ExecutionBackendError as exc:
             raise WorkspaceProvisionError(f"applying DENY_ALL on sandbox {sid}: {exc}") from exc
@@ -2014,7 +2380,7 @@ class _BoatWorkspace:
                 timeout_s=_HELPER_TIMEOUT_S,
                 what="deny_all verify",
             )
-        except BackendUnavailable, WorkspaceLost:
+        except _UNAVAILABLE_OR_LOST:
             raise
         except ExecutionBackendError as exc:
             raise WorkspaceProvisionError(f"verifying DENY_ALL on sandbox {sid}: {exc}") from exc
@@ -2397,6 +2763,7 @@ class BoatBackend:
         poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         clock: Callable[[], float] | None = None,
+        wall_clock: Callable[[], float] | None = None,
         log: logging.Logger | None = None,
     ) -> None:
         self._transport = transport
@@ -2410,6 +2777,7 @@ class BoatBackend:
         self._poll_interval_s = float(poll_interval_s)
         self._sleep: Callable[[float], Awaitable[None]] = sleep or _default_sleep
         self._clock: Callable[[], float] = clock or time.monotonic
+        self._wall_clock: Callable[[], float] = wall_clock or time.time
         self._log = log or logging.getLogger("antiek.exec_backend.boat")
 
     @property
@@ -2419,16 +2787,21 @@ class BoatBackend:
     def _new_api(self) -> _BoatApi:
         return _BoatApi(base_url=self._api_url, transport=self._transport)
 
-    def _org_pin(self) -> str | None:
-        """The validated org pin, or ``None`` when unpinned."""
+    def _org_pin(self) -> str:
+        """The validated org pin. Required: decision record §5 item 3."""
         raw = self._org_override if self._org_override is not None else os.environ.get(BOAT_ORG_ENV)
         pin = (raw or "").strip()
         if not pin:
-            return None
+            raise BackendUnavailable(
+                f"{BOAT_ORG_ENV} is required: set it to the Antiek organization id "
+                "(team_...), which every request names and the backend verifies against "
+                "Boat's answers"
+            )
         if not _ORG_ID_RE.match(pin):
             raise BackendUnavailable(
                 f"{BOAT_ORG_ENV} must be an organization id (team_...), as GET /orgs lists "
-                f"it: Boat reports wallets by id, so a name cannot be verified: {pin!r}"
+                f"it: Boat reports wallets by id, so a name cannot be verified: "
+                f"{_shown(pin, 60)}"
             )
         return pin
 
@@ -2472,6 +2845,8 @@ class BoatBackend:
         _read_api_key()
         pin = self._org_pin()
         environment = self._environment()
+        _check_gates()
+        _CreateLedger(_ledger_path(), self._wall_clock).check()
         asyncio.run(self._probe(pin, environment))
 
     async def _probe(self, pin: str | None, environment: str) -> None:
@@ -2529,22 +2904,13 @@ class BoatBackend:
             limits = await api.request("GET", "/limits", headers=self._org_headers(pin))
         except _BoatHTTPError as exc:
             if exc.status == 403 and exc.code in _SCOPE_FORBIDDEN_CODES:
-                if pin is not None:
-                    self._log.warning(
-                        "BoatBackend probe: this key may not read GET /limits (%s); there is "
-                        "no client-side canStart check: a create relies on Boat admitting the "
-                        "POST, and the org pin on the X-Boat-Org header and the sandbox team "
-                        "read-back",
-                        exc.detail,
-                    )
-                else:
-                    self._log.warning(
-                        "BoatBackend probe: this key may not read GET /limits (%s); there is "
-                        "no client-side canStart check and no %s pin, so nothing on this host "
-                        "verifies the organization: a create relies on Boat admitting the POST",
-                        exc.detail,
-                        BOAT_ORG_ENV,
-                    )
+                self._log.warning(
+                    "BoatBackend probe: this key may not read GET /limits (%s); there is "
+                    "no client-side canStart check: a create relies on Boat admitting the "
+                    "POST, and the org pin on the X-Boat-Org header and the sandbox team "
+                    "read-back",
+                    exc.detail,
+                )
                 return None
             raise BackendUnavailable(f"Boat refused the limits read: {exc.detail}") from exc
         except _BoatTransportError as exc:
@@ -2660,6 +3026,13 @@ class BoatBackend:
                 "ALLOW_ALL or DENY_ALL."
             )
         machine_type = select_machine_type(limits)
+        _check_gates()
+        max_ttl = _gate(MAX_TTL_ENV, DEFAULT_MAX_TTL_S)
+        if limits.wall_clock_s > max_ttl:
+            raise WorkspaceProvisionError(
+                f"wall_clock_s={limits.wall_clock_s:g} is above the product TTL cap of "
+                f"{max_ttl:g} s ({MAX_TTL_ENV}; decision record §7)"
+            )
         ttl = _ttl_seconds(limits.wall_clock_s)
         _env_items(profile.env, "profile env")  # validate before anything bills
         _read_api_key()
@@ -2691,6 +3064,18 @@ class BoatBackend:
         except BaseException:
             await api.aclose()
             raise
+        ledger = _CreateLedger(_ledger_path(), self._wall_clock)
+        reserving = asyncio.ensure_future(asyncio.to_thread(ledger.reserve, machine_type, ttl))
+        try:
+            entry = await asyncio.shield(reserving)
+        except BaseException:
+            # No POST follows: void the attempt if its thread still records
+            # one, then close the client. A caller who gave up while the
+            # reservation waits for the lock does not wait for it.
+            settling = _start_cleanup(_void_unsent(reserving, ledger, api))
+            if reserving.done():
+                await asyncio.shield(settling)
+            raise
         headers = {"Idempotency-Key": f"{SANDBOX_NAME_PREFIX}{wid}"}
         headers.update(self._org_headers(pin) or {})
         body: dict[str, Any] = {
@@ -2705,11 +3090,18 @@ class BoatBackend:
         }
         lost = _LostCreate(api=api, wid=wid, pin=pin, body=body, headers=headers)
         failure: ExecutionBackendError | None = None
+        void = False  # nothing can have started: the attempt stops counting
         created: dict[str, Any] = {}
         try:
             created = await api.request("POST", "/sandboxes", body=body, headers=headers)
         except _BoatHTTPError as exc:
             failure = _create_error(exc)
+            if exc.status in _PRE_START_REFUSALS:
+                void = True  # refused before any start
+            elif exc.status < 500:
+                # A 409 (the key's sandbox still being minted) or an unknown
+                # 4xx: a sandbox may exist; count it and recover it as a 5xx.
+                lost.rediscover = lost.sweep = True
             if exc.status >= 500:
                 # "timeouts and 5xx are safe to retry with the same key": the
                 # sandbox may exist; find it with the key, then sweep.
@@ -2718,6 +3110,7 @@ class BoatBackend:
             failure = WorkspaceProvisionError(f"Boat sandbox create failed: {exc}")
             lost.sweep = True
             lost.rediscover = exc.maybe_sent
+            void = not exc.maybe_sent  # never left this host
         except BaseException:
             # Cancelled (or interrupted) while Boat may already have accepted
             # the create: recover and delete it, shielded, then re-raise.
@@ -2736,10 +3129,9 @@ class BoatBackend:
             # Accepted and billed from here, whatever happens next.
             _log_accepted(self._log, record, lost, via="create")
         if failure is not None:
-            if lost.sweep:
-                await _run_shielded(self._discard_lost_create(lost))
-            else:
-                await api.aclose()
+            # Shielded: a cancellation now cannot skip the void row, the
+            # sweep or the client's close.
+            await _run_shielded(self._settle_failed_create(lost, ledger, entry if void else None))
             raise failure
 
         workspace = _BoatWorkspace(
@@ -2758,6 +3150,9 @@ class BoatBackend:
             log=self._log,
         )
         try:
+            # Inside the try: a cancellation while the row is written still
+            # deletes the sandbox.
+            await asyncio.to_thread(ledger.mark, {"bind": entry, "sandbox": sandbox_id})
             seen = _check_sandbox_record(
                 record, sandbox_id=sandbox_id, pin=pin, environment=environment, started=False
             )
@@ -2841,6 +3236,21 @@ class BoatBackend:
                     f"(last state {_shown(last)}); it was deleted"
                 )
             await self._sleep(self._poll_interval_s)
+
+    async def _settle_failed_create(
+        self, lost: _LostCreate, ledger: _CreateLedger, void: str | None
+    ) -> None:
+        """Never raises. Void the attempt ``void`` when nothing can have
+        started, then sweep what may exist (closing ``lost.api``) or just
+        close the client."""
+        if void is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(ledger.mark, {"void": void})
+        if lost.sweep:
+            await self._discard_lost_create(lost)
+        else:
+            with contextlib.suppress(Exception):
+                await lost.api.aclose()
 
     async def _discard_lost_create(self, lost: _LostCreate) -> None:
         """Best effort, never raises; closes ``lost.api`` at the end. Find
