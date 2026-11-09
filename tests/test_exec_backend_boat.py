@@ -520,6 +520,10 @@ class FakeBoat:
         self.answer_rewrite: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
         # Merged into GET /sandboxes/{id} answers only, not the create answer.
         self.poll_extras: dict[str, Any] = {}
+        # One scripted GET /commands/{id} answer (a 200 without a trailer),
+        # given once ``status_answer_after`` exists (the workload started).
+        self.status_answer: dict[str, Any] | None = None
+        self.status_answer_after: pathlib.Path | None = None
         self.key_org: str | None = FAKE_ORG
         self.limits_override: dict[str, Any] = {}
         self.environments = [
@@ -939,6 +943,8 @@ class FakeBoat:
             "access": "owner",
             **self.record_extras,
         }
+        # ``_DROP`` in ``record_extras`` removes a field from every answer.
+        record = {key: value for key, value in record.items() if value is not _DROP}
         if self.omit_team:
             record.pop("team")
         self.sandboxes[sid] = record
@@ -987,7 +993,8 @@ class FakeBoat:
             record["state"] = self.state_script.pop(0)
         elif self.polls[sid] >= self.ready_after:
             record["state"] = "ready"
-        return _ok("sandbox.info", sandbox={**record, **self.poll_extras})
+        polled = {**record, **self.poll_extras}
+        return _ok("sandbox.info", sandbox={k: v for k, v in polled.items() if v is not _DROP})
 
     async def _delete(self, call: Call, sid: str) -> httpx.Response:
         if call.headers.get("x-ascii-confirm-delete") != sid:
@@ -1108,6 +1115,11 @@ class FakeBoat:
         proc = self.processes.get(int(pid))
         if self._sandbox(sid) is None or proc is None:
             return _err(404, "not_found", "Process not found.")
+        if self.status_answer is not None and (
+            self.status_answer_after is None or self.status_answer_after.exists()
+        ):
+            scripted, self.status_answer = self.status_answer, None
+            return _ok("command.status", success=True, processId=int(pid), **scripted)
         task = proc.get("task")
         if task is not None and task.done():
             proc.update(task.result())
@@ -1876,15 +1888,29 @@ class TestProbe:
         text = str(info.value)
         assert "shape drifted" in text and "dashboard" not in text
 
+    @pytest.mark.parametrize("pinned", [True, False], ids=["pinned", "unpinned"])
     def test_probe_degrades_when_the_scope_cannot_read_limits(
-        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+        self,
+        fake: FakeBoat,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        pinned: bool,
     ) -> None:
+        if not pinned:
+            monkeypatch.delenv("ANTIEK_BOAT_ORG")
         fake.injected.append(
             Injected("GET", "/limits", 403, "api_key_action_forbidden", "no account.read")
         )
         with caplog.at_level(logging.WARNING):
             make_backend(fake).probe()
         assert "may not read GET /limits" in caplog.text
+        # No client-side canStart check either way (review finding 2D).
+        assert "no client-side canStart check" in caplog.text
+        assert "relies on Boat admitting the" in caplog.text
+        if pinned:
+            assert "the org pin on the X-Boat-Org header" in caplog.text
+        else:
+            assert "nothing on this host verifies the organization" in caplog.text
         assert len(fake.calls_to("GET", "/environments")) == 1
 
     @pytest.mark.parametrize("code", ["api_key_action_forbidden", "api_key_sandbox_forbidden"])
@@ -2460,6 +2486,32 @@ class TestCreate:
         assert [c.body["snapshots"] for c in fake.calls_to("POST", "/sandboxes")] == [False]
         assert fake.sandboxes[ws.sandbox_id]["snapshots"] is False
         await ws.destroy()
+
+    @pytest.mark.parametrize("pinned", [True, False], ids=["pinned", "unpinned"])
+    async def test_a_sandbox_no_answer_reports_snapshots_for_is_refused(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, pinned: bool
+    ) -> None:
+        if not pinned:
+            monkeypatch.delenv("ANTIEK_BOAT_ORG")
+        # Not required by the OpenAPI, but carried by the live shapes: when
+        # neither the create nor the readiness answer says snapshots are off,
+        # that cannot be verified.
+        fake.record_extras = {"snapshots": _DROP}
+        with pytest.raises(BackendUnavailable, match="no 'snapshots' field"):
+            await new_ws(fake)
+        assert fake.commands() == []
+        assert set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize("answer", ["create", "readiness"])
+    async def test_snapshots_off_in_one_answer_is_enough(self, fake: FakeBoat, answer: str) -> None:
+        if answer == "create":
+            fake.poll_extras = {"snapshots": _DROP}
+        else:
+            fake.record_extras = {"snapshots": _DROP}
+            fake.poll_extras = {"snapshots": False}
+        ws = await new_ws(fake)
+        await ws.destroy()
+        assert set(fake.sandboxes) == fake.deleted
 
     async def test_unpinned_create_needs_no_team(
         self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
@@ -3524,6 +3576,28 @@ class TestReap:
 _LONG = ["sh", "-c", "echo $$ > pid; exec sleep 30"]
 
 
+def _trailerless(pid_file: pathlib.Path) -> Injected:
+    """A sync exec answered 200 without the wrapper's trailer, once the
+    workload has started (the real command keeps running)."""
+    return Injected(
+        "POST",
+        r"/sandboxes/[^/]+/commands",
+        200,
+        "odd",
+        "no streams",
+        detach_effect=True,
+        wait_for=pid_file,
+    )
+
+
+def _first_cleanup_index(fake: FakeBoat) -> int:
+    return next(
+        i
+        for i, c in enumerate(fake.calls)
+        if isinstance(c.body, dict) and _is_cleanup(str(c.body.get("command", "")))
+    )
+
+
 def _pid_file(fake: FakeBoat, ws: Any) -> pathlib.Path:
     return fake.host(ws.root) / "work" / "pid"
 
@@ -3796,34 +3870,107 @@ class TestInterruptedExec:
             _stop_holder(holder)
         await ws.destroy()
 
-    async def test_an_answer_without_a_trailer_leaves_the_workspace_unclean(
-        self, fake: FakeBoat
+    @pytest.mark.parametrize(
+        ("dispatch", "status"),
+        [
+            ("sync", None),
+            ("detached", {"status": "lost", "running": False, "stdout": "", "stderr": ""}),
+            ("detached", {"status": "lost", "running": True, "stdout": "", "stderr": ""}),
+            ("detached", {"status": "weird", "running": False, "stdout": "", "stderr": ""}),
+            ("detached", {"running": None}),
+        ],
+        ids=["sync", "detached-lost", "detached-lost-running", "detached-weird", "detached-bare"],
+    )
+    async def test_an_answer_without_a_trailer_is_settled_before_the_exec_returns(
+        self, fake: FakeBoat, dispatch: str, status: dict[str, Any] | None
     ) -> None:
         # Boat answers 200 without the wrapper's trailer while the wrapper
-        # still runs: nothing confirmed the reap, so the next call cleans up
-        # (fencing that wrapper and waiting for its lock) before its own.
-        ws = await new_ws(fake)
+        # still runs: like a lost answer, the exec stops a known detached
+        # command, then fences that wrapper, reaps and restores under the VM
+        # lock, all before it raises.
+        detached = dispatch == "detached"
+        ws = await new_ws(fake, clock=PacedClock() if detached else None)
+        fake.detached_background = detached
         pid_file = _pid_file(fake, ws)
-        fake.injected.append(
-            Injected(
-                "POST",
-                r"/sandboxes/[^/]+/commands",
-                200,
-                "odd",
-                "no streams",
-                detach_effect=True,
-                wait_for=pid_file,
-            )
-        )
+        if detached:
+            fake.status_answer, fake.status_answer_after = status, pid_file
+        else:
+            fake.injected.append(_trailerless(pid_file))
         with pytest.raises(ExecutionBackendError, match="no wrapper result"):
-            await ws.exec(_LONG, timeout_s=60)
-        assert ws._dirty is True and len(ws._fence) == 1
-        assert fake.cleanups() == []
-        result = await ws.exec(["echo", "next"], timeout_s=10)
-        assert result.stdout == "next\n"
-        assert len(fake.cleanups()) == 1, "the next exec ran without a cleanup first"
+            await ws.exec(_LONG, timeout_s=700 if detached else 60)
+        assert len(fake.cleanups()) == 1, "the exec returned before its cleanup"
         assert not _proc_alive(int(pid_file.read_text()))
         assert ws._dirty is False and ws._fence == set()
+        if detached:
+            (stop,) = fake.calls_to("DELETE", r"/sandboxes/[^/]+/commands/[0-9]+")
+            assert stop.route.endswith("/commands/1")
+            assert fake.calls.index(stop) < _first_cleanup_index(fake)
+        await fake.drain()
+        fake.detached_background = False
+        result = await ws.exec(["echo", "next"], timeout_s=10)
+        assert result.stdout == "next\n"
+        assert len(fake.cleanups()) == 1, "the next exec needed another cleanup"
+        await ws.destroy()
+
+    @pytest.mark.parametrize("dispatch", ["sync", "detached"])
+    async def test_an_unconfirmed_settle_after_a_trailerless_answer_keeps_it_unclean(
+        self, fake: FakeBoat, dispatch: str
+    ) -> None:
+        detached = dispatch == "detached"
+        ws = await new_ws(fake, clock=PacedClock() if detached else None)
+        fake.detached_background = detached
+        pid_file = _pid_file(fake, ws)
+        failing_cleanups = Injected(
+            "POST", r"/sandboxes/[^/]+/commands", 500, "http_500", "boom", times=2
+        )
+        if detached:
+            fake.status_answer = {"status": "lost", "running": False, "stdout": "", "stderr": ""}
+            fake.status_answer_after = pid_file
+            failing_cleanups.skip = 1  # the detached start itself goes through
+            fake.injected += [
+                Injected("DELETE", r"/sandboxes/[^/]+/commands/[0-9]+", 500, "http_500", "no"),
+                failing_cleanups,
+            ]
+        else:
+            fake.injected += [_trailerless(pid_file), failing_cleanups]
+        with pytest.raises(ExecutionBackendError, match="no wrapper result"):
+            await ws.exec(_LONG, timeout_s=700 if detached else 60)
+        assert ws._dirty is True and len(ws._fence) == 1
+        assert len(fake.cleanups()) == 1
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.exec(["echo", "y"], timeout_s=10)
+        assert len(fake.exec_scripts()) == 1, "a wrapper ran on an unclean workspace"
+        assert _proc_alive(int(pid_file.read_text()))
+        fake.detached_background = False
+        result = await ws.exec(["echo", "z"], timeout_s=10)
+        assert result.stdout == "z\n" and ws._fence == set() and ws._dirty is False
+        assert not _proc_alive(int(pid_file.read_text()))
+        await fake.drain()
+        await ws.destroy()
+
+    async def test_a_cancel_during_a_trailerless_settle_leaves_the_cleanup_running(
+        self, fake: FakeBoat
+    ) -> None:
+        ws = await new_ws(fake)
+        pid_file = _pid_file(fake, ws)
+        fake.cleanup_delay_s = 0.4
+        fake.injected.append(_trailerless(pid_file))
+        task = asyncio.create_task(ws.exec(_LONG, timeout_s=60))
+        assert await _until(lambda: bool(fake.cleanups()))
+        assert task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        settling = ws._settling
+        assert settling is not None and not settling.done(), "the cleanup was cut short"
+        pid = int(pid_file.read_text())
+        # The cleanup goes on; the next call waits for it before anything else.
+        probe = await ws.exec(
+            ["sh", "-c", f"if kill -0 {pid} 2>/dev/null; then echo alive; else echo dead; fi"],
+            timeout_s=10,
+        )
+        assert probe.stdout == "dead\n"
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
         await fake.drain()
         await ws.destroy()
 

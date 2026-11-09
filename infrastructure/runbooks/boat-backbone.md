@@ -29,8 +29,9 @@ promotion funnel through `runtime/db_lock` stays the only graph writer and
 subscription credential or owner login is copied into Boat. Omarchy
 execution and host-owned credentials are permitted under current owner
 policy, as the cloud CEO's review in PR #3826 (Spec/doctrine finding 1)
-states it, pending the owner's confirmation (decision record, Context and
-open sign-off 5). No
+states it and the cloud CEO's SOUL's current instructions say too (decision
+record, Context); where the plane keys may be stored stays the owner's
+decision (open sign-off 5 and the table below). No
 inference or dispatch moves to Boat: dispatch stays Hermes-primary, with no
 Boat integrated agent and no AI-credentials proxy. The 2026-10-07 AWS
 decision, its lane hosts and the peer tenants' arrangement are unchanged, and
@@ -139,7 +140,7 @@ a shell holding a key. Check a key's presence by name only:
 | `BOAT_BUILD_API_KEY` | build | organization key, `ci` preset, `--env antiek-build` | the cloud CEO's environment only | a production host, argv, a log, a receipt, the product process, a host this table does not name |
 | `ANTIEK_BOAT_ORG` | both | the team id; not a secret | the cloud CEO's environment (G3.3 included); the production host at enable | |
 | The unscoped organization admin key, the personal account key | the owner's | admin-scoped | with the owner | any agent's environment (the personal key is the decision record's open sign-off 2) |
-| Omarchy's stored Boat CLI login | the Boat Research session's | account-wide login | Omarchy, as a host-owned credential that current owner policy permits there (decision record, open sign-off 5) | a Boat sandbox, environment or key; any plane's work. The wallet it can spend is open sign-off 2 |
+| Omarchy's stored Boat CLI login | the Boat Research session's | account-wide login | Omarchy, as a host-owned credential that current owner policy permits there (decision record, Context) | a Boat sandbox, environment or key; any plane's work. The wallet it can spend is open sign-off 2 |
 
 The `ci` preset can create, resume and fork sandboxes, operate them, and
 delete only the sandboxes that key created; it has no account admin [M,
@@ -254,8 +255,8 @@ a step (`cascade_routes.py:399`) to `TOTAL_ACQUISITION_BUDGET_USD` (USD 10,
 has a code-side file ledger or cost cap yet (decision record §5 items 5 and
 7), so the steady-state ceilings are a daily check by the owner, or by the
 cloud CEO at the owner's direction, never by the swarm. The check gives a
-list-price figure per plane and says whether it is an upper bound or
-incomplete; it enforces nothing.
+list-price figure per plane, always labelled incomplete; it enforces
+nothing.
 
 The account as a whole, read with either key:
 
@@ -274,7 +275,7 @@ ttlSeconds=<n> createdAt=<time> via=<create|repost|sweep>` line per sandbox
 Boat accepted, the moment its id is known, and one `BoatBackend sandbox
 deleted: sandbox=<bx id> workspace=<id> via=<destroy|orphan>
 result=<deleted|not-found>` line per confirmed delete [M, the module at
-`ac778a27`, "Spend ledger lines"]. A sandbox that failed provisioning after
+`f05833d1`, "Spend ledger lines"]. A sandbox that failed provisioning after
 Boat billed it, and a lost create that the same-key re-`POST` or the label
 sweep recovered, each have an accepted line, so the check counts them. Each
 accepted sandbox counts at its full `ttlSeconds` (an `unknown` TTL at the
@@ -367,18 +368,25 @@ usd = sum(max(0.0, min(gone.get(b, now), now) - max(t, lo)) / 3600 * RATE.get(k,
 unmatched = max(0, intents - sum(1 for t, _ in made.values() if t >= lo))
 print(json.dumps({"plane": "build", "window_s": round(now - lo), "boxes": len(made),
                   "open": len(set(made) - set(gone)), "unmatched_intents": unmatched,
-                  "list_price_usd": round(usd, 4), "label": "incomplete" if unmatched else "upper bound"}))
+                  "list_price_usd": round(usd, 4), "label": "incomplete"}))
 LEDGER
 ```
 
 The second argument is the window in seconds: 86400 for the daily ceiling of
 USD 5.00, or the seconds since the period's start for the USD 50 ceiling.
-The figure is an upper bound only when `unmatched_intents` is 0: an intent
-row without its id row is a create whose outcome is unknown (Part C's
-"returned no sandbox id" stop), so the label turns to `incomplete`, and
-`B list --all --json` against the ledger finds the box if it exists. If the
-figure is above either ceiling, or incomplete, stop issuing `B` creates
-until the owner rules. Either plane's figure covers only creates made
+The figure is always labelled `incomplete`: it is the list-price VM time of
+the boxes the ledger knows. `unmatched_intents` (intent rows in the window
+beyond the id rows in it) is a warning heuristic, not a completeness proof:
+an unrelated id row can offset an unresolved intent, and an intent older
+than the window drops out. An intent row without its id row is a create
+whose outcome is unknown (Part C's "returned no sandbox id" stop), and
+`B list --all --json` against the ledger finds the box if it exists. Before
+any further `B` create, whatever the count says, reconcile: every intent
+row in the whole ledger (not only the window) has its own id row or a
+recorded refusal, and `B list --all --json` matches the ledger's open
+boxes. If the figure is above either ceiling, `unmatched_intents` is above
+0, or the reconciliation leaves an intent unexplained, stop issuing `B`
+creates until the owner rules. Either plane's figure covers only creates made
 through `BoatBackend` or `B` and logged or ledgered. That is why nothing
 else may create with a plane key.
 
@@ -441,7 +449,7 @@ answers (`GET /limits`, `GET /sandboxes`, `GET /api-keys`, `GET
 | 0 | `g31-0-nokey.txt`: an authentication refusal (not signed in, or a 401) and a non-zero `rc`; then, for `P` and `B`, either a `teamId` or a 403 scope code such as `api_key_action_forbidden`, never an authentication error | the key-less call succeeds: a stored login exists in this environment and the wrappers' no-fallback rule is void; stop until the owner removes it. `P` or `B` gets an authentication error: the CLI does not read `BOAT_API_KEY` from its environment, and the wrappers cannot work; stop. The owner then decides between per-plane stored logins in separate configuration directories in the CEO's environment and driving the build plane through the REST API; this record makes neither change |
 | 1 | three `=set` lines and `keys=distinct` | stop: G4 is not done, or one key is installed under both names |
 | 2 | `code: "api_key_org_mismatch"`, `status: 403`, for both keys [M, `api-keys.md`] | stop: a key that can name Personal is an account key; it must not be a plane key |
-| 3, product | `teamId` equal to `ANTIEK_BOAT_ORG`, `canStart: true`, `billingStatus: "active"`, `accessTier: "standard"`, `maxActiveSandboxes: 100`, `small` in `types`; `present` true for `activeSandboxes` and `starts` (the OpenAPI documents both; the saved live shape of a personal read lacks them) | `code: "api_key_action_forbidden"` means the `ci` preset lacks `account.read`: record it; `BoatBackend.probe()` then logs a WARNING and checks `canStart` and the pin per create only (decision record §5 item 2), and the owner accepts that or re-mints the key. `canStart: false`, no `canStart` at all (`BoatBackend` refuses such an answer as shape drift), or a `teamId` other than Antiek's: stop |
+| 3, product | `teamId` equal to `ANTIEK_BOAT_ORG`, `canStart: true`, `billingStatus: "active"`, `accessTier: "standard"`, `maxActiveSandboxes: 100`, `small` in `types`; `present` true for `activeSandboxes` and `starts` (the OpenAPI documents both; the saved live shape of a personal read lacks them) | `code: "api_key_action_forbidden"` means the `ci` preset lacks `account.read`: record it; `BoatBackend.probe()` then logs a WARNING and there is no client-side `canStart` check (a create relies on Boat admitting the `POST`, the org pin on the `X-Boat-Org` header and the sandbox `team` read-back; decision record §5 item 2), and the owner accepts that in writing, before G3.2, or re-mints the key. `canStart: false`, no `canStart` at all (`BoatBackend` refuses such an answer as shape drift), or a `teamId` other than Antiek's: stop |
 | 3, build | the same fields | a refusal is recorded, not a stop (build tooling does not call `probe()`); a wrong `teamId` is a stop |
 | 4 | for each key, a 403 (`api_key_org_forbidden` or `api_key_action_forbidden`) or `n: 0` (a restricted caller "receives `apiKeys: []`" [M, OpenAPI]) | `n` above 0: an unrestricted key; stop |
 | 5 | for each key, `rows: []`; above all, neither `bx_235rmpn3` nor `bx_35hs5p53` | either research box listed: the key reaches `base`; record it, act on no listed id, stop for the owner |
@@ -454,7 +462,10 @@ unavailable, never passed, and teardown rests on the per-id checks alone. Do
 not substitute `currentLimits.activeSandboxes`, which sits beside
 `standardLimits` and `trialLimits` and reads as a cap, not a count [I,
 OpenAPI `LimitsFields`]. The owner reads this receipt and rules on open
-sign-off 3 (the pasted keys) before authorizing G3.2.
+sign-off 3 (the pasted keys) before authorizing G3.2, and the "Before G3.2"
+row of the decision record's §5 "Prerequisites by gate" must hold: step 3's
+missing `account.read`, if any, accepted in writing or the key re-minted,
+and the owner's dashboard record of `antiek-product`'s flags (item 1).
 
 ---
 
@@ -619,7 +630,7 @@ env -u BOAT_BUILD_API_KEY BOAT="$BOAT" PYTHONPATH="$PWD" .venv/bin/python "$R/bo
 
 `env -u BOAT_BUILD_API_KEY` keeps the build key out of the product process
 altogether. `g32a-backend.log` keeps the backend's own lines, among them one
-`BoatBackend sandbox accepted` line per sandbox Boat accepted and one
+`BoatBackend sandbox accepted` line per sandbox id the backend learns and one
 `BoatBackend sandbox deleted` line per confirmed delete; they carry ids and
 shape-checked tokens, never the key. `boat info --json` answers with a `sandbox` object [M,
 `pricing.md`]; `boat exec <id> '<command>'` is the documented check form [M,
@@ -628,7 +639,7 @@ shape-checked tokens, never the key. `boat info --json` answers with a `sandbox`
 | Step | Expected | Fails the smoke if |
 |---|---|---|
 | `probe` | `backend: "boat"`, and on stderr `BoatBackend ready; wallet=team_50b5...; environment=antiek-product (passes nothing)` | it raises: read the message. A missing or refused key is G4's. An environment that passes credentials (`proxyAiCredentials` present and not `false` included, whatever `safeForThirdParties` says), a refused or incomplete `GET /environments` read, the environment's name listed twice, a `GET /limits` answer without `canStart`, or a pin mismatch is a stop. A WARNING that `GET /limits` is forbidden is decision §5 item 2: record it. `probe()` logs nothing about whether its environments read carried `proxyAiCredentials`; that live shape is G3.1 step 6's `proxyAiPresent` record (decision record §5 item 11) |
-| `create` (allow) | a `bx_` sandbox id, a hex workspace id; `ready_s` is the first measured create-to-ready time | `BackendUnavailable` from the environments read before the create: the environment passes something and nothing was created (decision §5 item 1). `BackendUnavailable` naming a credential found inside the VM, a record that reports snapshots on, or a VM without `fs.protected_hardlinks = 1`: the backend deleted the sandbox, and `g32a-backend.log` has its accepted and deleted lines; record the message. `unknown_environment`: G4 is incomplete. A 403 such as `api_key_sandbox_forbidden`: the key cannot create even in its own environment. Each is a stop |
+| `create` (allow) | a `bx_` sandbox id, a hex workspace id; `ready_s` is the first measured create-to-ready time | `BackendUnavailable` from the environments read before the create: the environment passes something and nothing was created (decision §5 item 1). `BackendUnavailable` naming a credential found inside the VM, a record that reports snapshots on, no `snapshots` field (or, under the org pin, no `team` field) in any answer for the sandbox, which is live shape drift for the code lane, or a VM without `fs.protected_hardlinks = 1`: the backend deleted the sandbox, and `g32a-backend.log` has its accepted and deleted lines; record the message. `unknown_environment`: G4 is incomplete. A 403 such as `api_key_sandbox_forbidden`: the key cannot create even in its own environment. Each is a stop |
 | `info` | `name` starts `antiek-ws-g3-allow-`; `type: "small"`; `ttlSeconds: 1200`; `snapshots: false`; `team` equal to `ANTIEK_BOAT_ORG`; `health: "ok"`; `environment: "antiek-product"` where the record carries it (the OpenAPI documents the field; the saved live shapes do not show it) | no TTL, `snapshots: true`, another team or another environment |
 | `owner_credentials` | `[]`, then `No such file or directory` for each of the four files: the check Boat documents for a protected sandbox [M, `security.md`]; then `boat-config-fields: api_url channel` and `"status":401`, the keyless CLI config and the refused in-box CLI measured in a `noEnv` VM [M, ADR "Live evidence"; I for a safe environment] | any name inside the brackets, any of the four files present, any other config field, or an in-box `boat info` that is not 401: `antiek-product` passes something and the backend's own in-VM check missed it; the `finally` deletes; the smoke fails |
 | `user_uid`, `runner_uid` | two different numbers, neither `0` | equal, or `0` |
@@ -637,7 +648,7 @@ shape-checked tokens, never the key. `boat info --json` answers with a `sandbox`
 | `bashrc` | recorded as `readable` or `unreadable` | not a failure; it answers checklist line 2 (whether the runner can read `ASCII_TOKEN`) |
 | `egress` (allow) | exit 0, `200` | |
 | `timeout` | `timed_out: true`, `exit: -1`, `s` far below 30 | it waited 30 s: I1 is broken |
-| any `exec` step | no exception | `ExecutionBackendError` naming `reap_failed`, `busy`, `no_lock` or "could not be taken back": the reap or an interrupted exec's cleanup was not confirmed and the workspace is unclean (decision record, "What `BoatBackend` does today"); the `finally` destroys it; record the message and stop |
+| any `exec` step | no exception | `ExecutionBackendError` naming `reap_failed`, `busy`, `no_lock` or "could not be taken back": the reap or an interrupted exec's cleanup was not confirmed and the workspace is unclean (decision record, "What `BoatBackend` does today"); "returned no wrapper result": Boat answered without the wrapper's trailer and the exec settled it before raising; the `finally` destroys it; record the message and stop |
 | `collect` | `exit: 0`, `roundtrip: true` | false |
 | `usage` | a bill for the sandbox (format not documented) | non-zero `rc`: record; the list-price bound stands |
 | `destroy` | printed once after two calls; `lived_s` and `list_price_bound_usd` | an exception: I6 is broken |
@@ -652,7 +663,9 @@ sandbox accepted` line in `g32a-backend.log` must also have a `BoatBackend
 sandbox deleted` line; an accepted id with no `destroy` step in `g32a.jsonl`
 (a create that failed after Boat billed it) counts at its 1,200 s TTL in the
 cost, and an accepted id with no deleted line fails the smoke until `P
-delete <id> --yes --json` confirms it.
+delete <id> --yes --json` confirms it. `P list --all --json` must also show
+no `antiek-ws-` sandbox that no accepted line names: a create answered
+without a usable id is otherwise invisible to this check.
 
 If every create fails with `BackendUnavailable` naming
 `~/.config/ascii/boat/config.json (holds more than api_url and channel)`, a
@@ -859,13 +872,16 @@ Activation is the owner's written go, dated and appended to the decision
 record, never the presence of the CLI, of `ANTIEK_BOAT_ORG` or of a key.
 Until a go names a plane, the swarm (cron `b413595fcdd5`) keeps Boat out of
 its dispatch targets for that plane, and nothing selects Boat by default.
-The activation gates the decision record's §5 keeps open (the mandatory org
-pin, exact-environment enforcement, code-side per-plane cost and pacing
-limits, the policy-versus-code TTL gap, env-scoped live acceptance) are
-closed, or accepted by the owner in writing, before the plane they concern
-is activated. The module's own sixth, the live `proxyAiCredentials` shape
+Of the activation gates the decision record's §5 keeps open, the mandatory
+org pin, exact-environment enforcement, code-side per-plane cost and pacing
+limits and the policy-versus-code TTL gap are closed, or accepted by the
+owner in writing, before the plane they concern is activated; env-scoped
+live acceptance closes only by passing G3.2 before G2, and is never
+accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
 (§5 item 11), closes earlier, before G2's registration, from G3.1 step 6's
-record.
+record. Each item closes where the decision record's §5 "Prerequisites by
+gate" puts it; a failed or incomplete G3.2 blocks G2 and cannot be waived
+there.
 
 **Product plane**, after G3.3 and the owner's go, on whatever host is
 production at the time (this runbook moves no host), mirroring
@@ -888,11 +904,12 @@ so launch one small cascade and read
 `journalctl -u antiek -n 200 --no-pager | grep "ExecutionBackend selected"`:
 expected `ExecutionBackend selected: boat (via $ANTIEK_EXEC_BACKEND='boat')`.
 
-**Build plane**, only after all four of: Part C; the owner's explicit
+**Build plane**, only after all four of: Parts B and C of G3.2 passed; the owner's explicit
 ruling on the build plane under §16 (decision record, open sign-off 4: build
 use as operator tooling outside §16, or §16 cover), recorded, with any
 amendment that ruling requires (a build-plane carve-out, or a change to the
-decision record's §6 block) ratified; the decision record's §5 activation
+decision record's §6 block) ratified with the other doctrine rulings of G2
+(decision record §5, "Prerequisites by gate"); the decision record's §5 activation
 gates that concern the build plane (at least code-side cost and pacing
 limits) closed or accepted by the owner in writing; and the owner's written
 approval of the build envelope. Until all four, the build key creates
@@ -912,8 +929,10 @@ the source's `antiek-build` [M, OpenAPI fork]. No `boat prompt`, no AI-credentia
 
 **Product.** The code writes no file ledger. Its record is the journal on
 logger `antiek.exec_backend.boat`: `BoatBackend sandbox accepted:
-sandbox=<bx id> ...` for every sandbox Boat accepted (provisioning failures
-and recovered lost creates included), `BoatBackend sandbox deleted:
+sandbox=<bx id> ...` for each sandbox id the process learns through the
+create or a recovery (provisioning failures and recovered lost creates
+included; a process or log-delivery failure can still leave a create
+unidentified or unlogged, so the accounting stays incomplete), `BoatBackend sandbox deleted:
 sandbox=<bx id> ...` for every confirmed delete, and the unchanged
 `BoatBackend created workspace <workspace> (sandbox <bx id> ...)` and
 `BoatBackend deleted sandbox <bx id> (workspace <workspace>)`; plus each

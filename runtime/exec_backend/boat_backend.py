@@ -57,9 +57,10 @@ this diff to ``runtime/exec_backend/factory.py``::
     +    if effective == "boat":
     +        # Local import, the docker branch's idiom: the default path never
     +        # loads the Boat adapter. probe() is the loud gate: a missing
-    +        # BOAT_API_KEY, a wallet that cannot start sandboxes, an org-pin
-    +        # mismatch or an environment that passes account credentials raises
-    +        # BackendUnavailable here, never a local backend wearing boat's name.
+    +        # BOAT_API_KEY, a wallet that cannot start sandboxes or an org-pin
+    +        # mismatch (both when GET /limits is readable), or an environment
+    +        # that passes account credentials raises BackendUnavailable here,
+    +        # never a local backend wearing boat's name.
     +        from .boat_backend import BoatBackend
     +
     +        backend = BoatBackend()
@@ -102,7 +103,8 @@ three operations that take it (``GET /limits``, ``GET /sandboxes``,
 ``POST /sandboxes``); per Boat's key docs an organization key asked for
 another organization answers ``403 api_key_org_mismatch``, and an account key
 bills the named organization. It is then verified twice: ``probe`` compares
-``GET /limits`` ``teamId`` with the pin, and ``create`` compares the new
+``GET /limits`` ``teamId`` with the pin (when the key may read ``GET
+/limits``), and ``create`` compares the new
 sandbox's ``team.id`` with the pin (deleting the sandbox on a mismatch, or
 when no read of it carried ``team``).
 
@@ -122,8 +124,11 @@ Provisioning (``create``)
   makes a stop erase the disk "the way zero data retention does": an
   abandoned workspace leaves no snapshot behind (I6). The ``Sandbox``
   record's ``snapshots`` ("False when the sandbox was created with snapshots
-  off") is read back like ``environment``: a record that carries it with any
-  value but ``false`` is refused and the sandbox deleted.
+  off") is read back: a record that carries it with any value but ``false``
+  is refused and the sandbox deleted, and so is a sandbox whose create and
+  readiness answers both leave it out, since snapshots off could then not be
+  verified. The OpenAPI does not list the field as required, but both
+  2026-11-09 live ``Sandbox`` shapes (``LIVE_SHAPES.md``) carry it.
 * ``environment: <ANTIEK_BOAT_ENVIRONMENT>`` (default ``antiek-product``).
   ``noEnv`` is deliberately **not** sent: per the OpenAPI a ``noEnv`` sandbox
   is attached to no environment (``Sandbox.environment`` is null), which would
@@ -236,9 +241,10 @@ that
 4. spools stdout/stderr to files in the control dir, then, whether the
    workload exited or timed out, kills every remaining ``antiek-runner``
    process (real or effective uid, repeated until ``pkill`` reports that
-   nothing matched; the account exists only for this workspace). Nothing a
-   workload starts outlives its ``exec``: one process tree per ``exec``, no
-   reuse (I7);
+   nothing matched; the account exists only for this workspace). A confirmed
+   reap establishes that nothing the workload started outlives its ``exec``;
+   an unconfirmed one claims nothing and leaves the workspace unclean
+   ("Unclean workspace"). One process tree per ``exec``, no reuse (I7);
 5. gives the tree back to ``user`` (``chown -hR``) and strips group/other
    write and set-id bits (``chmod -R go-w,ug-s``; the group bits are the ACL
    mask, so a named-user ACL entry loses write too), so no path in the tree
@@ -270,7 +276,8 @@ whole account and the whole tree. ``destroy`` does not queue.
 
 Interrupted exec. When an ``exec``'s wrapper may still run, or may still
 start, while this host no longer waits for it (a lost answer: a 5xx, or a
-transport failure after the request may have left; a cancellation of the
+transport failure after the request may have left; a success answer without
+the wrapper's trailer, on either dispatch path; a cancellation of the
 caller; anything else raised once the request was sent), the ``exec`` runs a
 cleanup before it releases the lock. For a detached command whose
 ``processId`` is known it first stops it (``DELETE /commands/{processId}``).
@@ -279,16 +286,16 @@ every interrupted exec (a wrapper that has not taken the exec lock yet finds
 it there and runs nothing), waits for the exec lock while reaping (a wrapper
 that holds it sees its workload killed and finishes), and, holding the
 lock, reaps and restores. Only a cleanup that got the lock and confirmed the
-reap and restore counts. It runs shielded: a second cancellation returns at
-once, but the cleanup keeps running and the next call on the workspace waits
-for it before anything else. A command Boat refused (4xx) or one that never
+reap and restore counts. It runs shielded: a cancellation that lands while it
+runs returns at once, but the cleanup keeps running and the next call on the
+workspace waits for it before anything else. A command Boat refused (4xx) or one that never
 left this host (no connection was made) needs none. The API-level timeouts
 (a synchronous ``timedOut: true``, the detached backstop) run the same
 cleanup.
 
-Unclean workspace. If an ``exec`` ends without confirming steps 4-5 (no
-trailer, a trailer whose clean flag is 0, a refused start, a cleanup that
-could not be confirmed), the workspace is marked unclean: every later
+Unclean workspace. If an ``exec`` ends without confirming steps 4-5 (a
+trailer whose clean flag is 0, a refused start, a lost or trailerless
+answer whose immediate cleanup could not be confirmed), the workspace is marked unclean: every later
 ``exec``, ``put_file`` or ``get_file`` first re-runs the cleanup and is
 refused (``ExecutionBackendError``, "could not be taken back") until one is
 confirmed. This module does not destroy the workspace on its own (I6: the
@@ -363,8 +370,9 @@ and ``requestId`` are carried into every message.
   ``blockedReason`` is in the message), a ``GET /limits`` answer without the
   required ``canStart`` (shape drift), an org-pin mismatch, an environment
   that passes account credentials, whose flags cannot be read or whose name
-  is listed more than once, a sandbox record that reports snapshots on, a VM
-  that does not protect hardlinks.
+  is listed more than once, a sandbox record that reports snapshots on, a
+  sandbox none of whose records carries ``snapshots`` (or, under an org pin,
+  ``team``), a VM that does not protect hardlinks.
 * ``WorkspaceProvisionError``: oversize limits, 429 start/concurrency limits,
   503 capacity, 5xx and transport failures on create (and on its environment
   read), machine-class refusals (``trial_machine_class_not_allowed``,
@@ -386,8 +394,10 @@ call is a no-op) and never raises, logging loudly instead, like
 
 Spend ledger lines
 ------------------
-Every sandbox Boat accepted is logged once at INFO on logger
-``antiek.exec_backend.boat``, the moment its id is known: when the create
+Each sandbox id this process learns is logged once at INFO on logger
+``antiek.exec_backend.boat``, the moment it learns it, subject to the
+process or its log delivery failing (a create answered without a usable
+id, or lost while the process died, stays unlogged): when the create
 answered (``via=create``), when the documented same-key re-``POST`` found it
 after a lost answer (``via=repost``), or when the label sweep found it
 (``via=sweep``)::
@@ -1859,8 +1869,8 @@ class _BoatWorkspace:
     async def _settle_interrupted(self, flight: _InFlight) -> None:
         """An exec whose wrapper may still run was interrupted: clean up
         before the lock is released. Shielded and recorded in ``_settling``:
-        a second cancellation returns at once while the cleanup goes on, and
-        every later call waits for it first (``_ensure_restored``)."""
+        a cancellation that lands during it returns at once while the cleanup
+        goes on, and every later call waits for it first (``_ensure_restored``)."""
         task = _start_cleanup(self._settle(flight))
         self._settling = task
         await asyncio.shield(task)
@@ -2113,6 +2123,11 @@ class _BoatWorkspace:
             self._dirty = not raw.cleaned
         elif parsed is not None:
             self._dirty = not parsed.clean
+        else:
+            # A success answer without the wrapper's trailer, and no cleanup
+            # yet: the wrapper may still run or start. Settle it before the
+            # lock goes, as for a lost answer (review finding S3).
+            await self._settle_interrupted(flight)
         if self._dirty:
             self._log.warning(
                 "exec in sandbox %s ended without confirming that every %s process is gone "
@@ -2496,12 +2511,22 @@ class BoatBackend:
             limits = await api.request("GET", "/limits", headers=self._org_headers(pin))
         except _BoatHTTPError as exc:
             if exc.status == 403 and exc.code in _SCOPE_FORBIDDEN_CODES:
-                self._log.warning(
-                    "BoatBackend probe: this key may not read GET /limits (%s); canStart "
-                    "and the org pin are checked per create instead (X-Boat-Org header, "
-                    "sandbox team read-back)",
-                    exc.detail,
-                )
+                if pin is not None:
+                    self._log.warning(
+                        "BoatBackend probe: this key may not read GET /limits (%s); there is "
+                        "no client-side canStart check: a create relies on Boat admitting the "
+                        "POST, and the org pin on the X-Boat-Org header and the sandbox team "
+                        "read-back",
+                        exc.detail,
+                    )
+                else:
+                    self._log.warning(
+                        "BoatBackend probe: this key may not read GET /limits (%s); there is "
+                        "no client-side canStart check and no %s pin, so nothing on this host "
+                        "verifies the organization: a create relies on Boat admitting the POST",
+                        exc.detail,
+                        BOAT_ORG_ENV,
+                    )
                 return None
             raise BackendUnavailable(f"Boat refused the limits read: {exc.detail}") from exc
         except _BoatTransportError as exc:
@@ -2715,21 +2740,24 @@ class BoatBackend:
             log=self._log,
         )
         try:
-            team_seen = _check_sandbox_record(
+            seen = _check_sandbox_record(
                 record, sandbox_id=sandbox_id, pin=pin, environment=environment
             )
             ready = await self._wait_ready(api, sandbox_id)
-            team_seen = (
-                _check_sandbox_record(
-                    ready, sandbox_id=sandbox_id, pin=pin, environment=environment
-                )
-                or team_seen
+            seen |= _check_sandbox_record(
+                ready, sandbox_id=sandbox_id, pin=pin, environment=environment
             )
-            if pin is not None and not team_seen:
+            if pin is not None and "team" not in seen:
                 raise BackendUnavailable(
                     f"Boat never reported which organization sandbox {sandbox_id} bills "
                     f"(no 'team' field), so the {BOAT_ORG_ENV} pin {pin!r} cannot be "
                     "verified; the sandbox was deleted"
+                )
+            if "snapshots" not in seen:
+                raise BackendUnavailable(
+                    f"Boat never reported whether sandbox {sandbox_id} has snapshots off "
+                    "(no 'snapshots' field), so product doctrine's snapshots-off rule "
+                    "cannot be verified; the sandbox was deleted"
                 )
             await workspace._provision()
             if net_policy.kind is NetPolicyKind.DENY_ALL:
@@ -2978,15 +3006,16 @@ def _log_accepted(
 
 def _check_sandbox_record(
     record: Mapping[str, Any], *, sandbox_id: str, pin: str | None, environment: str
-) -> bool:
+) -> frozenset[str]:
     """Refuse a ``Sandbox`` record that bills another organization, sits in
     another environment, holds the creator's logins or has snapshots on.
-    Each field is checked when the record carries it; returns whether it
-    carried ``team``. Messages name ``sandbox_id``, the id the create answer
-    gave and that was checked, never the record's own ``id``."""
+    Each field is checked when the record carries it; returns which of
+    ``team`` and ``snapshots`` it carried, for the caller to require.
+    Messages name ``sandbox_id``, the id the create answer gave and that was
+    checked, never the record's own ``id``."""
     sid = sandbox_id
-    team_seen = "team" in record
-    if pin is not None and team_seen:
+    seen = frozenset(field for field in ("team", "snapshots") if field in record)
+    if pin is not None and "team" in seen:
         team = record.get("team")
         team_id = _str(team.get("id")) if isinstance(team, dict) else ""
         if team_id != pin:
@@ -3014,7 +3043,7 @@ def _check_sandbox_record(
             "created with snapshots off (product doctrine keeps snapshots off); the "
             "sandbox was deleted"
         )
-    return team_seen
+    return seen
 
 
 def _create_error(exc: _BoatHTTPError) -> ExecutionBackendError:
