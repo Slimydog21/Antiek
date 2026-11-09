@@ -876,9 +876,12 @@ Of the activation gates the decision record's §5 keeps open, the mandatory
 org pin, exact-environment enforcement, code-side per-plane cost and pacing
 limits and the policy-versus-code TTL gap are closed, or accepted by the
 owner in writing, before the plane they concern is activated; env-scoped
-live acceptance closes only by passing G3.2 Parts A and B (Part A before G2,
-passed on 2026-11-09 with the owner's personal key; Part B, with the plane
-keys, before product activation), and is never accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
+live acceptance requires G3.2 Part A rerun with the product key and Part B
+passed before product activation; a missing, incomplete or failed
+product-key Part A blocks activation even if personal-key Part A and Part B
+passed. Personal-key Part A was the separately authorized source-ratification
+condition, not scoped-key acceptance. Live acceptance is never accepted in
+writing. The module's own sixth, the live `proxyAiCredentials` shape
 (§5 item 11), closes earlier, before G2's registration, from G3.1 step 6's
 record. Each item closes where the decision record's §5 "Prerequisites by
 gate" puts it; a failed or incomplete G3.2 Part A blocks G2 and Part B

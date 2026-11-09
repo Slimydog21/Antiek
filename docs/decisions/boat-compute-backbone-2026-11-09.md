@@ -223,12 +223,14 @@ appears in argv, a log or a receipt.
 
 ### What `BoatBackend` does today
 
-`runtime/exec_backend/boat_backend.py` is **dark**: `_VALID_KINDS` in
-`factory.py:35` is `{"local", "docker"}`, so `ANTIEK_EXEC_BACKEND=boat` raises
-`BackendUnavailable` ("unknown ExecutionBackend kind 'boat'"), the package
-`__init__` does not re-export it, and no other module imports it [M, checked
-hermetically on 2026-11-09]. What it does once constructed [M, read from the
-module at `8ba8c1e7`]:
+`runtime/exec_backend/boat_backend.py` is registered opt-in in this PR,
+not operationally activated. `_VALID_KINDS` contains `local`, `docker` and
+`boat`; the lazy Boat branch constructs and probes the adapter only when
+explicitly selected. The default stays `local`; the package does not
+re-export Boat. Before the ratifying change the handoff was dark and the
+factory refused Boat. The behavior below describes the v5 runtime logic at
+`8ba8c1e7`; the ratifying change alters its module-status prose, not that
+runtime logic.
 
 - **Credentials.** It reads exactly one key, `BOAT_API_KEY`, at use time on
   every request, and sends it only in the `Authorization: Bearer` header; a
@@ -829,8 +831,9 @@ aggregate test count certifies: the mandatory org pin (item 3),
 exact-environment enforcement (item 8), code-side per-plane cost and pacing
 limits (items 4 and 5, and the build plane's, which has none in code
 either), the policy-versus-code TTL gap (item 9) and env-scoped live
-acceptance (item 10). Item 10 closes with G3.2 Parts A and B (Part A before G2, Part B before
-product activation); the other four
+acceptance (item 10). Personal-key Part A is the owner-authorized G2
+registration condition. Full item 10 closes only when Part A is rerun with
+the product key and Part B passes before product activation; the other four
 are closed in code or accepted by the owner in writing before the plane they
 concern is activated.
 The module names a sixth itself, the live `proxyAiCredentials` shape (item
@@ -842,13 +845,15 @@ before product activation.
 
 **Prerequisites by gate.** The single place each item and gate closes; the
 gates table, the review checklist and the runbook's "Enable and activation"
-refer to it. The order stays G1 (met), G4, G3.1, K, G3.2, G2, G3.3,
-activation.
+refer to it. The ordinary plane-key order is G1, G4, G3.1, K, the relevant
+G3.2 parts, G2, G3.3 and activation. The owner's dated personal-key exception
+permits recording source ratification and preparing G2 registration after
+run 6; it does not skip the plane-key and operational gates before activation.
 
 | Before | What must hold |
 |---|---|
 | G3.2, the paid smoke | G4 and K done. G3.1 passed, which closes item 1 (each environment's flags recorded, with the owner's dashboard record) and item 2 (each key's reads recorded, and a missing `account.read` accepted by the owner in writing or the key re-minted), and records item 11's live field (`proxyAiPresent`). The owner's separate written approval of the smoke envelope (Decision §7). |
-| G2, the ratification and the product registration | G3.2 Part A passed, with its receipt (by the owner's ruling of 2026-11-09, run 6 with the owner's personal key counts); a failed or incomplete Part A blocks G2 until it is rerun and passes, and cannot be waived at G2. Part B, with the plane keys, gates product activation, and Part C only build activation. Item 11 closed: if any environment carries `proxyAiCredentials`, an environment without it is refused in code. Items 6 and 7 closed, or accepted by the owner in writing. Item 5 accepted for now: the spend ceilings stay a daily check (Decision §7), with the code-side cap scheduled. The envelopes of Decision §7 ratified. The doctrine rulings: the §16 amendment (Decision §6), the three 2026-10-07 clause amendments (Decision §3), and open sign-off 4's build ruling with any amendment it requires. Open sign-offs 1 and 2 answered (sign-off 3 is K; sign-off 5 needs no answer while the runbook's "Credentials" table stays as it is). |
+| G2, the ratification and the product registration | By the owner's dated ruling, personal-key Part A run 6 is the conditional source-ratification basis, with the receipt qualifications above retained for merge review. The §16 block, three October 7 notes and opt-in factory registration are prepared in this PR; the owner merges. Earlier pre-G2 requirements for full item 10, plane-key acceptance and answers to sign-offs 1 and 2 do not prevent this source preparation under that ruling. They are not deemed satisfied or waived for operation: product-key Part A and Part B remain mandatory before product activation; privacy/retention item 6 remains unresolved, the durable ledger/item 7 remains absent, and sign-offs 1, 2, 3 and 5 retain their restrictions. No GitHub token in build boxes, broader key placement, scheduled work or live operation is authorized by registration. |
 | Activation of the product plane | G2 met. G3.2 Part B passed and Part A rerun with the product key, which close item 10, never by acceptance. G3.3 passed. Items 3, 4, 5, 8 and 9 closed in code, or accepted by the owner in writing. The owner's separate written go. |
 | Activation of the build plane | The doctrine rulings of G2 ratified (the product registration is not needed). G3.2 Parts B and C passed; a failure of Part A alone blocks only the product plane. The build plane's code-side cost and pacing limits closed, or accepted by the owner in writing. The owner's written approval of the build envelope after Part C. |
 
@@ -1051,20 +1056,25 @@ is public [M]; moving `ci.yml` is not part of this decision.
 | Gate | What closes it | Owner | Evidence | State on 2026-11-09 |
 |---|---|---|---|---|
 | **G1** | Org Antiek on a paid plan | the owner | `box_20`, `billingStatus` active, `canStart` true, `maxActiveSandboxes` 100, 555.56 included hours to 2026-12-09T06:25:35Z | **MET** [M, about 06:27Z] |
-| **G4** | Both environments exist as Decision §1 sets them; both keys sit in the cloud CEO's environment as `BOAT_API_KEY` and `BOAT_BUILD_API_KEY`, where the runbook's "Credentials" table places them | the owner | the owner records, from the dashboard, each key's name, id, preset, environment, expiry and last four characters, never the value; the CEO confirms presence by variable name only; the owner attests where each key was placed (runbook "Credentials") | in progress: environments being created, keys being minted [M] |
+| **G4** | Both environments exist as Decision §1 sets them; both keys sit in the cloud CEO's environment as `BOAT_API_KEY` and `BOAT_BUILD_API_KEY`, where the runbook's "Credentials" table places them | the owner | the owner records, from the dashboard, each key's name, id, preset, environment, expiry and last four characters, never the value; the CEO confirms presence by variable name only; the owner attests where each key was placed (runbook "Credentials") | environment half recorded done in run 4; scoped-key half and placement verification pending |
 | **G3.1** | Read-only scope verification of each key, its organization and its environment; no sandbox is created | the cloud CEO at the owner's direction | runbook "G3.1" receipt: the CLI authenticates from `BOAT_API_KEY` alone and finds no stored login; both variables set and distinct; each key refused for Personal with `403 api_key_org_mismatch`; each key's limits read naming `teamId` = `ANTIEK_BOAT_ORG` with `canStart` true (or the `account.read` refusal recorded); each key unable to list account keys; each key's listing free of the research boxes; both environments' effective flags; the baseline of active sandboxes, included hours, wallet and starts, with any of those fields the org read does not carry recorded as absent | not run |
 | **K** | The owner's ruling on the two keys pasted into a chat transcript (open sign-off 3), carried out | the owner | rotation or revocation recorded by key id; G3.1's identity steps re-run for any replacement | open |
-| **G3.2** | A paid create, exec, collect and delete smoke, authorized separately by the owner after reading the G3.1 receipt, inside the Decision §7 envelopes: Part A product (`BoatBackend` directly, still unregistered), Part B cross-plane refusals (the wrappers' pins bypassed on purpose), Part C build box and its systemd packing primitives | the owner authorizes; the cloud CEO runs it | runbook "G3.2" receipt: sandbox ids and workspace ids; create-to-ready and per-step timings; exit codes; cost from `boat usage` where readable and, always, the list-price bound computed from each sandbox's create and delete times; starts used; teardown proof (each id not-found after a found-before; the active count back to baseline where the org read carries it, otherwise recorded as unavailable); no key, no token URL | not run |
-| **G2** | After open sign-off 4 is answered, the owner ratifies: the §16 amendment (Decision §6); the three 2026-10-07 clause amendments of Decision §3 (its Decision §1 heading, its Decision §1 "Why not a sandbox vendor as the backbone" paragraph and its Decision §8 row L18), for Antiek's own planes only; and the envelopes, including that the spend ceilings are a daily check until a code-side ledger and cap land. The registration lands with its tests and with the "Before G2" row of Decision §5's "Prerequisites by gate" met: G3.2 Part A passed (by the owner's ruling of 2026-11-09, run 6 counts; a failed or incomplete Part A blocks it and cannot be waived here), item 11 closed (the live `proxyAiCredentials` shape recorded by G3.1 step 6 and, if the field is present, an environment without it refused in code), and items 6 and 7 closed or accepted in writing | the owner | CLAUDE.md carries the Decision §6 block verbatim between its markers; the 2026-10-07 record carries, under each of the three clauses, a dated one-line note pointing to Decision §3 of this record, with the clause text itself byte-identical (the cloud CEO adds the notes in the ratifying change, since it owns the PR; this lane edits neither file); this Status reads ACCEPTED with the date; the factory diff and the inverted dark-module test in the same change | not ratified |
+| **G3.2** | Paid create, exec, collect and delete smoke, with the dated personal-key Part A exception recorded separately; future scoped-key runs require their own owner-approved envelopes. Part B covers cross-plane refusals and Part C build primitives | the owner authorizes each envelope; the credential-owning worker executes within it | retained receipts and their explicit qualification above; future runs require per-id found/not-found evidence, timings, measured or bounded cost and reconciled baseline, never keys or token URLs | personal-key Part A reported passed in run 6; aggregate teardown qualification open; product-key Part A and Part B pending before product activation; Part C pending before build activation |
+| **G2** | Record the owner's conditional ratification and stage the §16 block, three scoped October 7 notes and opt-in product factory registration under the current prerequisite matrix. Registration does not satisfy remaining operational prerequisites | the owner ratifies and merges; the CEO prepares the source change | dated ACCEPTED header; exact CLAUDE §6 block with date filled; three additive October 7 notes with original text preserved; lazy factory branch and hermetic selection/refusal tests; explicit live-receipt qualifications | ratification recorded from the relayed owner ruling; source registration prepared in PR #3826, awaiting owner merge; not an operational activation |
 | **G3.3** | The cascade through the factory, three leaves at once, in a staging run of the service in the cloud CEO's environment, or on another staging host the owner names and the runbook's "Credentials" table records first | the owner authorizes | runbook "G3.3" receipt: the factory names `boat`; three sandboxes ran together; three notes promoted through the funnel only; teardown proof as G3.2; list-price bounds at the 900 s default TTL | cannot run before G2 |
 | **Activation** | As Decision §5 "Prerequisites by gate" sets it for each plane. Product: the owner's written go after G3.3, with the open activation gates of Decision §5 closed or accepted in writing (item 10 only by passing G3.2 Parts A and B). Build: G3.2 Parts B and C passed, the owner's explicit ruling on the build plane under §16 (open sign-off 4), any amendment that ruling requires ratified with the other doctrine rulings of G2, the Decision §5 activation gates that concern the build plane (at least code-side cost and pacing limits) closed or accepted in writing, then the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
 
-The order is G1 (met), G4, G3.1, K, G3.2, G2, G3.3, activation. The swarm
-runs none of them.
+The ordinary plane-key order is G1, G4, G3.1, K, the relevant G3.2 parts,
+G2, G3.3 and activation. The source-ratification exception is only the
+dated personal-key ruling in the prerequisite matrix. The swarm runs none
+of these gates, and no operational gate is closed by source registration.
 
 ## Review checklist
 
-Each line is answered yes or no, with its evidence, before G2.
+Each line has a dated disposition and evidence. The owner's personal-key
+ruling permits source ratification and registration preparation before the
+remaining operational answers; unanswered lines stay open before the
+affected plane activates and grant no credential, retention or spending authority.
 
 1. **Residency and privacy (EU-only machines).** Boat's machines are in
    Germany, Finland and France; "Snapshot copies can be stored outside the
@@ -1133,8 +1143,10 @@ Each line is answered yes or no, with its evidence, before G2.
 8. **AWS and peer lane hosts.** Nothing in the change touches
    `infrastructure/terraform-aws/`, the cutover, `lane-host.md` or the peer
    tenants' placement.
-9. **Code state.** The rows of Decision §5's "Prerequisites by gate" up to
-   G2 met (items 1, 2, 10 and 11 closed, items 6 and 7 closed or accepted);
+9. **Code state.** The dated personal-key Part A condition is recorded for
+   source ratification, with receipt qualifications. Items 1 and 11 have
+   the stated live-shape/code evidence; scoped-key reads/item 2, full item 10,
+   privacy/retention item 6 and durable ledger item 7 remain operationally open;
    `boat_backend.py` and `tests/test_exec_backend_boat.py` committed by the
    code lane; the module's plane text, `ANTIEK_BOAT_ENVIRONMENT` default and
    key name still match this record's Decision §1.
@@ -1311,9 +1323,13 @@ work. No switch of the account's active wallet. No action of any kind on
 
 ## Not proved by this record
 
-No Boat API was called by this lane; the orchestrator's later live runs are
-under "Live evidence". The following are absent from the saved pages and the
-OpenAPI, or contradicted between them, and are G3 observations, not facts:
+No Boat API was called by this lane or the CEO. The list below preserves the
+pre-run-6 documentation unknowns, not a claim that all remain unobserved.
+Later run 6 records a safe-environment keyless CLI config and one detached
+cancellation/reap sequence on module `252e4b15`; both readiness records meet
+v5's later environment rule. That is narrower historical evidence, not a
+live run of final v5, scoped-key acceptance or universal provider behavior.
+The remaining observations still gate the affected operation:
 
 - `BoatBackend` end to end on a real VM: the orchestrator's run (module
   `bb49ebe3`) stopped before any create, its receipt `all_ok: false`,
@@ -1446,8 +1462,9 @@ neither research box touched:
 5. **G3.2 Part A, first try** (`g32a-live-run1-20261109/`, module
    `5498a137`): Boat accepted the create, and its answer, while the sandbox
    provisioned, named no environment (`environment: null`); the backend
-   refused it as attached to none and deleted it 1.4 s after the create
-   (404 afterwards). The OpenAPI says a sandbox "freezes onto one
+   refused it as attached to none and logged its deletion 1.4 s after the
+   create. The later 404 is collaborator attestation, not a retained row in
+   this run's receipt; see the header qualification. The OpenAPI says a sandbox "freezes onto one
    environment version when it starts", so the module now tolerates a null
    environment only before the start and requires the started record to
    name the configured environment.
@@ -1465,7 +1482,10 @@ neither research box touched:
    the fenced reap) with no runner process and no `setsid` child left. The
    deny box: the same, with egress refused (exit 1) and health ok. Both ids
    404 after two `destroy()` calls, every accepted line has its deleted
-   line, the active count back to 0, USD 0.00019 at list price.
+   line, USD 0.00019 at list price for those two boxes. The retained summary
+   reports active count 1. Eventual zero is collaborator attestation, not
+   shown in that summary; aggregate teardown needs the supplemental
+   baseline/404 evidence described in the header.
 
 ## Review of PR #3826 and round 2
 
