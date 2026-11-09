@@ -441,7 +441,19 @@ def _env_record(name: str, **flags: Any) -> dict[str, Any]:
         "versions": [],
     }
     record.update(flags)
-    # ``_DROP`` removes a field (proxyAiCredentials is optional in the OpenAPI).
+    if "effective" not in flags:
+        # As the live shape of 2026-11-09 has it: the switch overrides the toggles.
+        safe = record.get("safeForThirdParties") is True
+        record["effective"] = {
+            flag: record.get(flag) is True and not safe
+            for flag in (
+                "passGithub",
+                "passSecrets",
+                "passSandboxCredentials",
+                "passAgentsCredentials",
+            )
+        }
+    # ``_DROP`` removes a field.
     return {key: value for key, value in record.items() if value is not _DROP}
 
 
@@ -934,6 +946,7 @@ class FakeBoat:
             "memoryGB": mem,
             "ttlSeconds": ttl,
             "snapshots": body.get("snapshots", True),
+            "environment": body.get("environment", "base"),
             "monitoring": True,
             "desktopAvailable": False,
             "snapshotAvailable": False,
@@ -951,6 +964,9 @@ class FakeBoat:
         if idem is not None:
             self.idem_keys[idem] = (json.loads(json.dumps(body)), sid)
         answer = dict(record)
+        if "environment" in answer and "environment" not in self.record_extras:
+            # As live on 2026-11-09: named only once the sandbox has started.
+            answer["environment"] = None
         if self.create_id_override is not None:
             answer["id"] = self.create_id_override
         return _ok("sandbox.created", 202, status="provisioning", ttlSeconds=ttl, sandbox=answer)
@@ -1571,9 +1587,9 @@ class TestProtocolAndUnits:
                 },
                 False,
             ),
-            # Not required by the OpenAPI: absent is accepted, any present
-            # value but false is refused.
-            ({"safeForThirdParties": True, "proxyAiCredentials": _DROP}, True),
+            # Not required by the OpenAPI, but carried by the live shape:
+            # absent is refused, as is any value but false.
+            ({"safeForThirdParties": True, "proxyAiCredentials": _DROP}, False),
             (
                 {
                     "safeForThirdParties": False,
@@ -1583,7 +1599,7 @@ class TestProtocolAndUnits:
                     "passAgentsCredentials": False,
                     "proxyAiCredentials": _DROP,
                 },
-                True,
+                False,
             ),
             ({"safeForThirdParties": True, "proxyAiCredentials": None}, False),
             ({"safeForThirdParties": True, "proxyAiCredentials": "false"}, False),
@@ -1950,12 +1966,35 @@ class TestProbe:
         ],
         ids=["safe", "unsafe-passing-nothing"],
     )
-    def test_probe_accepts_an_environment_without_the_optional_proxy_flag(
+    def test_probe_refuses_an_environment_without_the_proxy_flag(
         self, fake: FakeBoat, flags: dict[str, Any]
     ) -> None:
+        # The live shape of 2026-11-09 carries the field; its absence is drift.
         fake.environments = [_env_record("antiek-product", **flags)]
         assert "proxyAiCredentials" not in fake.environments[0]
-        make_backend(fake).probe()
+        with pytest.raises(BackendUnavailable, match="carries no proxyAiCredentials"):
+            make_backend(fake).probe()
+
+    @pytest.mark.parametrize(
+        ("effective", "ok"),
+        [
+            ({}, False),
+            (None, False),
+            (dict.fromkeys(bb._ENV_PASS_FLAGS, False), True),
+            (dict(dict.fromkeys(bb._ENV_PASS_FLAGS, False), passSecrets=True), False),
+            (dict(dict.fromkeys(bb._ENV_PASS_FLAGS, False), passGithub=None), False),
+        ],
+        ids=["empty", "null", "all-off", "secrets-on", "github-null"],
+    )
+    def test_effective_flags_must_all_be_off_whatever_the_switch_says(
+        self, effective: Any, ok: bool
+    ) -> None:
+        # A record that says safe for third parties but whose effective flags
+        # still pass something is refused.
+        env = _env_record("e", safeForThirdParties=True, effective=effective)
+        assert (bb._environment_problems(env) == []) is ok
+        if not ok:
+            assert "effective flags" in " ".join(bb._environment_problems(env))
 
     def test_probe_refuses_an_unlisted_environment(self, fake: FakeBoat) -> None:
         fake.environments = [_env_record("base")]
@@ -2149,13 +2188,13 @@ class TestCreate:
             await new_ws(fake)
         assert fake.calls_to("POST", "/sandboxes") == []
 
-    async def test_environment_without_the_proxy_flag_creates(self, fake: FakeBoat) -> None:
+    async def test_environment_without_the_proxy_flag_creates_nothing(self, fake: FakeBoat) -> None:
         fake.environments = [
             _env_record("antiek-product", **dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=_DROP))
         ]
-        ws = await new_ws(fake)
-        assert len(fake.calls_to("POST", "/sandboxes")) == 1
-        await ws.destroy()
+        with pytest.raises(BackendUnavailable, match="carries no proxyAiCredentials"):
+            await new_ws(fake)
+        assert fake.calls_to("POST", "/sandboxes") == []
 
     @pytest.mark.parametrize("code", ["api_key_action_forbidden", "api_key_sandbox_forbidden"])
     async def test_unreadable_environment_flags_refuse_the_create(
@@ -2462,6 +2501,8 @@ class TestCreate:
             ({"omit_team": True}, "cannot be verified"),
             ({"record_extras": {"environment": "base"}}, "attached to environment 'base'"),
             ({"record_extras": {"environment": None}}, "attached to environment None"),
+            ({"poll_extras": {"environment": None}}, "attached to environment None"),
+            ({"poll_extras": {"environment": _DROP}}, "reported no environment once started"),
             ({"record_extras": {"holdsCreatorLogins": True}}, "holdsCreatorLogins"),
             # D5: created with snapshots off, so the record must say so.
             ({"record_extras": {"snapshots": True}}, "reports snapshots True, not false"),
@@ -2480,6 +2521,18 @@ class TestCreate:
         assert len(fake.sandboxes) == 1
         assert set(fake.sandboxes) == fake.deleted
         assert fake.commands() == []
+
+    async def test_an_environment_named_only_once_the_sandbox_started_is_accepted(
+        self, fake: FakeBoat
+    ) -> None:
+        # Live on 2026-11-09: the create answer of a sandbox in antiek-product
+        # carried environment null while it provisioned; Boat freezes the
+        # environment when the sandbox starts.
+        fake.record_extras = {"environment": None}
+        fake.poll_extras = {"environment": "antiek-product"}
+        ws = await new_ws(fake)
+        await ws.destroy()
+        assert set(fake.sandboxes) == fake.deleted
 
     async def test_snapshots_off_on_every_create_and_read_back(self, fake: FakeBoat) -> None:
         ws = await new_ws(fake)

@@ -275,7 +275,7 @@ ttlSeconds=<n> createdAt=<time> via=<create|repost|sweep>` line per sandbox
 Boat accepted, the moment its id is known, and one `BoatBackend sandbox
 deleted: sandbox=<bx id> workspace=<id> via=<destroy|orphan>
 result=<deleted|not-found>` line per confirmed delete [M, the module at
-`f05833d1`, "Spend ledger lines"]. A sandbox that failed provisioning after
+`8ba8c1e7`, "Spend ledger lines"]. A sandbox that failed provisioning after
 Boat billed it, and a lost create that the same-key re-`POST` or the label
 sweep recovered, each have an accepted line, so the check counts them. Each
 accepted sandbox counts at its full `ttlSeconds` (an `unknown` TTL at the
@@ -876,12 +876,14 @@ Of the activation gates the decision record's §5 keeps open, the mandatory
 org pin, exact-environment enforcement, code-side per-plane cost and pacing
 limits and the policy-versus-code TTL gap are closed, or accepted by the
 owner in writing, before the plane they concern is activated; env-scoped
-live acceptance closes only by passing G3.2 Parts A and B before G2, and is
-never accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
+live acceptance closes only by passing G3.2 Parts A and B (Part A before G2,
+passed on 2026-11-09 with the owner's personal key; Part B, with the plane
+keys, before product activation), and is never accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
 (§5 item 11), closes earlier, before G2's registration, from G3.1 step 6's
 record. Each item closes where the decision record's §5 "Prerequisites by
-gate" puts it; a failed or incomplete G3.2 Part A or B blocks G2 and cannot
-be waived there; Part C gates build activation only.
+gate" puts it; a failed or incomplete G3.2 Part A blocks G2 and Part B
+blocks product activation, and neither can be waived; Part C gates build
+activation only.
 
 **Product plane**, after G3.3 and the owner's go, on whatever host is
 production at the time (this runbook moves no host), mirroring

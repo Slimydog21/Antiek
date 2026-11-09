@@ -446,11 +446,13 @@ Where the docs are silent (and what this module does)
   no such field, so the documented rule ("safe for third parties" on means
   nothing passes, whatever the toggles say) is applied to the flags instead.
 * Whether live ``GET /environments`` answers always carry
-  ``proxyAiCredentials``: the OpenAPI does not list it as required and no
-  live environments shape is recorded (``LIVE_SHAPES.md`` has none), so an
-  environment without the field is accepted on it. ACTIVATION GATE: capture
-  a live environments shape first; if it carries the field, refuse an
-  environment that lacks it before this backend is wired in.
+  ``proxyAiCredentials``: the OpenAPI does not list it as required. The
+  live environments shape read on 2026-11-09 with the owner's approval
+  (receipt ``boat-plane-environments-20261109.json``) carries it, so an
+  environment without the field is refused; that closes this module's
+  former activation gate. The same live shape carries ``effective`` (the
+  four ``pass*`` flags as Boat applies them), which the OpenAPI does not
+  document; when present, each must be ``false``.
 * Whether one ``GET /environments`` listing can hold two environments with
   the same name (personal and organization environments both exist, per
   ``ResourceAccess`` and the ``OrgId`` parameter text): not documented. Such
@@ -977,14 +979,22 @@ def _environment_problems(env: Mapping[str, Any]) -> list[str]:
     """Why a ``SandboxEnvironment`` would pass something of the account into
     a sandbox; empty means it passes nothing. Reads flags only.
 
-    ``proxyAiCredentials`` is checked on its own, whatever
-    ``safeForThirdParties`` says: a present value that is not ``False`` is
-    refused. The OpenAPI does not list it as required, so its absence is
-    accepted. The four ``pass*`` flags (required) count only while the
-    environment is not safe for third parties, and then anything but
-    ``False`` counts as passing."""
+    ``proxyAiCredentials`` is required and checked on its own, whatever
+    ``safeForThirdParties`` says: it must be present and ``False``. The
+    OpenAPI does not list it as required, but the live environments shape
+    of 2026-11-09 carries it, so a record without it is refused. The four
+    ``pass*`` flags (required) count only while the environment is not safe
+    for third parties, and then anything but ``False`` counts as passing.
+    When the record carries Boat's ``effective`` flags (live, not in the
+    OpenAPI), each of the four must be ``False`` there as well, whatever
+    the switch says."""
     problems: list[str] = []
-    if "proxyAiCredentials" in env and env.get("proxyAiCredentials") is not False:
+    if "proxyAiCredentials" not in env:
+        problems.append(
+            "the record carries no proxyAiCredentials field, so whether AI "
+            "credential placeholders enter the sandbox cannot be verified"
+        )
+    elif env.get("proxyAiCredentials") is not False:
         shown = _shown(env.get("proxyAiCredentials"), 40)
         problems.append(
             f"proxyAiCredentials is {shown}, not false (AI credential placeholders "
@@ -994,6 +1004,12 @@ def _environment_problems(env: Mapping[str, Any]) -> list[str]:
         passing = [flag for flag in _ENV_PASS_FLAGS if env.get(flag) is not False]
         if passing:
             problems.append(f"safeForThirdParties is off and {', '.join(passing)} not off")
+    if "effective" in env:
+        effective = env.get("effective")
+        applied: Mapping[str, Any] = effective if isinstance(effective, Mapping) else {}
+        passing = [flag for flag in _ENV_PASS_FLAGS if applied.get(flag) is not False]
+        if passing:
+            problems.append(f"Boat's effective flags do not turn off {', '.join(passing)}")
     return problems
 
 
@@ -2741,11 +2757,11 @@ class BoatBackend:
         )
         try:
             seen = _check_sandbox_record(
-                record, sandbox_id=sandbox_id, pin=pin, environment=environment
+                record, sandbox_id=sandbox_id, pin=pin, environment=environment, started=False
             )
             ready = await self._wait_ready(api, sandbox_id)
             seen |= _check_sandbox_record(
-                ready, sandbox_id=sandbox_id, pin=pin, environment=environment
+                ready, sandbox_id=sandbox_id, pin=pin, environment=environment, started=True
             )
             if pin is not None and "team" not in seen:
                 raise BackendUnavailable(
@@ -3005,7 +3021,12 @@ def _log_accepted(
 
 
 def _check_sandbox_record(
-    record: Mapping[str, Any], *, sandbox_id: str, pin: str | None, environment: str
+    record: Mapping[str, Any],
+    *,
+    sandbox_id: str,
+    pin: str | None,
+    environment: str,
+    started: bool,
 ) -> frozenset[str]:
     """Refuse a ``Sandbox`` record that bills another organization, sits in
     another environment, holds the creator's logins or has snapshots on.
@@ -3023,7 +3044,17 @@ def _check_sandbox_record(
                 f"Boat sandbox {sid} bills {_shown(team_id or 'the personal wallet')}, not the "
                 f"{BOAT_ORG_ENV} pin {pin!r}; the sandbox was deleted"
             )
-    if "environment" in record and record.get("environment") != environment:
+    # A sandbox "freezes onto one environment version when it starts"
+    # (OpenAPI): the create answer, before the start, may name none yet (live,
+    # 2026-11-09). Once started, the record must name the configured
+    # environment (the live readiness record does); null means attached to none.
+    named = record.get("environment")
+    if started and "environment" not in record:
+        raise BackendUnavailable(
+            f"Boat sandbox {sid} reported no environment once started, so {environment!r} "
+            "cannot be verified; the sandbox was deleted"
+        )
+    if "environment" in record and named != environment and (started or named is not None):
         raise BackendUnavailable(
             f"Boat sandbox {sid} is attached to environment {_shown(record.get('environment'))}, "
             f"not {environment!r}; the sandbox was deleted"
