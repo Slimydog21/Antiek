@@ -653,7 +653,7 @@ shape-checked tokens, never the key. `boat info --json` answers with a `sandbox`
 | `usage` | a bill for the sandbox (format not documented) | non-zero `rc`: record; the list-price bound stands |
 | `destroy` | printed once after two calls; `lived_s` and `list_price_bound_usd` | an exception: I6 is broken |
 | `gone` | a not-found answer (`rc` non-zero, a not-found `code`) where `info` had answered | `info` still answers: teardown failed; delete the id with `P delete <id> --yes --json` and record the failure |
-| `create` (deny) | either `result: "NetPolicyUnsupported"` (the cascade join then cannot use Boat, G3.3 is skipped, and the product plane fails G3.2 as the decision's reconsider-if says), or a workspace whose `egress` exits non-zero while `info` still reads `health: "ok"` | `egress` exit 0, or `health: "degraded"` |
+| `create` (deny) | either `result: "NetPolicyUnsupported"` (the cascade join then cannot use Boat, G3.3 is skipped, and the product plane fails G3.2 Part A as the decision's reconsider-if says), or a workspace whose `egress` exits non-zero while `info` still reads `health: "ok"` | `egress` exit 0, or `health: "degraded"` |
 
 The `info` and `gone` pair keeps the teardown proof from being vacuous: the
 key could see the sandbox before the delete, so its absence afterwards means
@@ -706,8 +706,8 @@ None of the three can expose a credential: `antiek-build` and
 `api_key_sandbox_forbidden` [M, `api-keys_scopes.md`; the exact code for a
 create is not documented]) and no `id`. If either returns an `id`, delete it
 with the key that made it (`P delete <id> --yes --json` for the first,
-`B delete <id> --yes --json` for the second), record it, and stop: G3.2 fails
-on separation. The third is an observation, not a pass or fail. It shows
+`B delete <id> --yes --json` for the second), record it, and stop: G3.2 Part
+B fails on separation. The third is an observation, not a pass or fail. It shows
 whether an environment-restricted key may still create a sandbox attached to
 no environment (`noEnv`). The product code never does that (it names its
 environment). If the build key can, its environment restriction does not
@@ -876,12 +876,12 @@ Of the activation gates the decision record's §5 keeps open, the mandatory
 org pin, exact-environment enforcement, code-side per-plane cost and pacing
 limits and the policy-versus-code TTL gap are closed, or accepted by the
 owner in writing, before the plane they concern is activated; env-scoped
-live acceptance closes only by passing G3.2 before G2, and is never
-accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
+live acceptance closes only by passing G3.2 Parts A and B before G2, and is
+never accepted in writing. The module's own sixth, the live `proxyAiCredentials` shape
 (§5 item 11), closes earlier, before G2's registration, from G3.1 step 6's
 record. Each item closes where the decision record's §5 "Prerequisites by
-gate" puts it; a failed or incomplete G3.2 blocks G2 and cannot be waived
-there.
+gate" puts it; a failed or incomplete G3.2 Part A or B blocks G2 and cannot
+be waived there; Part C gates build activation only.
 
 **Product plane**, after G3.3 and the owner's go, on whatever host is
 production at the time (this runbook moves no host), mirroring

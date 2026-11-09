@@ -489,7 +489,7 @@ environment, `ANTIEK_BOAT_ORG` set there, and later two keys beside it make
 Boat reachable and nothing more. Until the owner approves activation in
 writing (product plane: G1 to G3.3 closed, the open activation gates of
 Decision §5 that concern it closed or accepted in writing, item 10 only by
-passing G3.2, and the owner's go; build plane: G3.2 Parts B and C passed,
+passing G3.2 Parts A and B, and the owner's go; build plane: G3.2 Parts B and C passed,
 the owner's explicit ruling on the build plane under §16 (open sign-off
 4), any amendment that ruling requires ratified with the other doctrine
 rulings of G2, the Decision §5 activation gates that concern the build
@@ -803,7 +803,7 @@ aggregate test count certifies: the mandatory org pin (item 3),
 exact-environment enforcement (item 8), code-side per-plane cost and pacing
 limits (items 4 and 5, and the build plane's, which has none in code
 either), the policy-versus-code TTL gap (item 9) and env-scoped live
-acceptance (item 10). Item 10 closes with G3.2, before G2; the other four
+acceptance (item 10). Item 10 closes with G3.2 Parts A and B, before G2; the other four
 are closed in code or accepted by the owner in writing before the plane they
 concern is activated.
 The module names a sixth itself, the live `proxyAiCredentials` shape (item
@@ -819,7 +819,7 @@ activation.
 |---|---|
 | G3.2, the paid smoke | G4 and K done. G3.1 passed, which closes item 1 (each environment's flags recorded, with the owner's dashboard record) and item 2 (each key's reads recorded, and a missing `account.read` accepted by the owner in writing or the key re-minted), and records item 11's live field (`proxyAiPresent`). The owner's separate written approval of the smoke envelope (Decision §7). |
 | G2, the ratification and the product registration | G3.2 Parts A and B passed, with their receipt, which closes item 10; a failed or incomplete Part A or B blocks G2 until it is rerun and passes, and cannot be waived at G2 (Part C concerns the build plane and gates only its activation). Item 11 closed: if any environment carries `proxyAiCredentials`, an environment without it is refused in code. Items 6 and 7 closed, or accepted by the owner in writing. Item 5 accepted for now: the spend ceilings stay a daily check (Decision §7), with the code-side cap scheduled. The envelopes of Decision §7 ratified. The doctrine rulings: the §16 amendment (Decision §6), the three 2026-10-07 clause amendments (Decision §3), and open sign-off 4's build ruling with any amendment it requires. Open sign-offs 1 and 2 answered (sign-off 3 is K; sign-off 5 needs no answer while the runbook's "Credentials" table stays as it is). |
-| Activation of the product plane | G2 met. G3.3 passed. Items 3, 4, 5, 8 and 9 closed in code, or accepted by the owner in writing (item 10 is already closed by G3.2, never by acceptance). The owner's separate written go. |
+| Activation of the product plane | G2 met. G3.3 passed. Items 3, 4, 5, 8 and 9 closed in code, or accepted by the owner in writing (item 10 is already closed by G3.2 Parts A and B, never by acceptance). The owner's separate written go. |
 | Activation of the build plane | The doctrine rulings of G2 ratified (the product registration is not needed). G3.2 Parts B and C passed; a failure of Part A alone blocks only the product plane. The build plane's code-side cost and pacing limits closed, or accepted by the owner in writing. The owner's written approval of the build envelope after Part C. |
 
 `RemoteExecProvider` is not targeted. Its contract streams events out of a
@@ -1027,7 +1027,7 @@ is public [M]; moving `ci.yml` is not part of this decision.
 | **G3.2** | A paid create, exec, collect and delete smoke, authorized separately by the owner after reading the G3.1 receipt, inside the Decision §7 envelopes: Part A product (`BoatBackend` directly, still unregistered), Part B cross-plane refusals (the wrappers' pins bypassed on purpose), Part C build box and its systemd packing primitives | the owner authorizes; the cloud CEO runs it | runbook "G3.2" receipt: sandbox ids and workspace ids; create-to-ready and per-step timings; exit codes; cost from `boat usage` where readable and, always, the list-price bound computed from each sandbox's create and delete times; starts used; teardown proof (each id not-found after a found-before; the active count back to baseline where the org read carries it, otherwise recorded as unavailable); no key, no token URL | not run |
 | **G2** | After open sign-off 4 is answered, the owner ratifies: the §16 amendment (Decision §6); the three 2026-10-07 clause amendments of Decision §3 (its Decision §1 heading, its Decision §1 "Why not a sandbox vendor as the backbone" paragraph and its Decision §8 row L18), for Antiek's own planes only; and the envelopes, including that the spend ceilings are a daily check until a code-side ledger and cap land. The registration lands with its tests and with the "Before G2" row of Decision §5's "Prerequisites by gate" met: G3.2 Parts A and B passed (a failed or incomplete Part A or B blocks it and cannot be waived here), item 11 closed (the live `proxyAiCredentials` shape recorded by G3.1 step 6 and, if the field is present, an environment without it refused in code), and items 6 and 7 closed or accepted in writing | the owner | CLAUDE.md carries the Decision §6 block verbatim between its markers; the 2026-10-07 record carries, under each of the three clauses, a dated one-line note pointing to Decision §3 of this record, with the clause text itself byte-identical (the cloud CEO adds the notes in the ratifying change, since it owns the PR; this lane edits neither file); this Status reads ACCEPTED with the date; the factory diff and the inverted dark-module test in the same change | not ratified |
 | **G3.3** | The cascade through the factory, three leaves at once, in a staging run of the service in the cloud CEO's environment, or on another staging host the owner names and the runbook's "Credentials" table records first | the owner authorizes | runbook "G3.3" receipt: the factory names `boat`; three sandboxes ran together; three notes promoted through the funnel only; teardown proof as G3.2; list-price bounds at the 900 s default TTL | cannot run before G2 |
-| **Activation** | As Decision §5 "Prerequisites by gate" sets it for each plane. Product: the owner's written go after G3.3, with the open activation gates of Decision §5 closed or accepted in writing (item 10 only by passing G3.2). Build: G3.2 Parts B and C passed, the owner's explicit ruling on the build plane under §16 (open sign-off 4), any amendment that ruling requires ratified with the other doctrine rulings of G2, the Decision §5 activation gates that concern the build plane (at least code-side cost and pacing limits) closed or accepted in writing, then the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
+| **Activation** | As Decision §5 "Prerequisites by gate" sets it for each plane. Product: the owner's written go after G3.3, with the open activation gates of Decision §5 closed or accepted in writing (item 10 only by passing G3.2 Parts A and B). Build: G3.2 Parts B and C passed, the owner's explicit ruling on the build plane under §16 (open sign-off 4), any amendment that ruling requires ratified with the other doctrine rulings of G2, the Decision §5 activation gates that concern the build plane (at least code-side cost and pacing limits) closed or accepted in writing, then the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
 
 The order is G1 (met), G4, G3.1, K, G3.2, G2, G3.3, activation. The swarm
 runs none of them.
@@ -1533,7 +1533,19 @@ the new S3 and D5 tests fail, each for its intended reason. The receipt
 to K45), with both files restored byte-exact after each. Two read-only
 review lenses, one on the code and tests and one on the doctrine, checked
 round 3 against the cloud CEO's citations before the handoff, and this
-revision carries their points. None of this was re-run in the cloud.
+revision carries their points.
+
+The cloud CEO applied round 3 unchanged as `6662ee87` and reran the same
+checks in the cloud with the same results (429 passed and 1 skipped, 333
+Boat cases with no skip, the docs checker and the runbook suites passing,
+the ops kit 203 OK). Its re-review found no remaining code finding (S3 P2
+and D5 closed for source review) and one runbook sentence that dropped the
+Parts A and B qualifier from the G2 rule [M, the cloud CEO's review of PR
+#3826]. This revision makes that sentence read "a failed or incomplete
+G3.2 Part A or B blocks G2 and cannot be waived there; Part C gates build
+activation only", and qualifies the same way every other place that named
+G3.2 as a whole where Parts A and B are meant. The mutation campaign and
+the comparison against `d0b2e85aa` were not re-run in the cloud.
 
 ## Evidence
 
