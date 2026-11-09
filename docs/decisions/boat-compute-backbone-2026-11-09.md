@@ -1,19 +1,31 @@
 # Decision: Boat full VMs as Antiek's compute backbone, on a product plane and a build plane that share one bill and never a key
 
 **Date:** 2026-11-09 (UTC)
-**Status:** PROPOSED. The owner ratified it on 2026-11-09 on one condition, a
-live test of the backend, and that test passed ("Owner rulings of
-2026-11-09"; "Live evidence" run 6); the cloud CEO's ratifying change in PR
-#3826 sets ACCEPTED, and the owner merges it. Until that merge nothing in
-this record is in force. Its CLAUDE.md §16 amendment (Decision §6) takes effect only at
-gate G2, and activation on either plane needs the owner's written go after the
-gates below. **This proposal neither authorizes nor executes the AWS
-production migration** of `docs/decisions/aws-production-and-agent-backbone-2026-10-07.md`,
-and it **does not displace that record's lane-host arrangement for the peer
-research tenants** (solcoa, volantis, inferact). The cloud CEO's review of
-the first handoff (draft PR #3826) and its re-review of v2 (`d0b2e85aa`)
-requested changes; this revision answers both ("Review of PR #3826 and round
-2", with its "Round 3") and stays PROPOSED.
+**Status:** ACCEPTED, 2026-11-09. The owner ratified this decision on the
+live-test condition, as relayed in the current CEO collaboration message;
+"Owner rulings of 2026-11-09" and "Live evidence" run 6 record that basis.
+The ratifying source change in PR #3826 adds the §16 block, the three
+October 7 notes and opt-in factory registration. The owner merges it;
+until that merge the repository's deployed doctrine and runtime are unchanged.
+Registration is not activation. Both planes still require their documented
+plane-key acceptance, remaining gates and the owner's separate written go.
+**No AWS production migration or peer-tenant displacement is authorized.**
+
+**Receipt qualification for owner merge review.** Uploaded run 6 records both
+successful sandbox ids as 404 after deletion and `all_ok: true`, but its final
+`limits_after.activeSandboxes` is 1, not the reported zero. Run 5 logs deletion
+of its rejected sandbox but carries no retained not-found row. The collaborator
+reports eventual zero and all three ids 404; those final observations are
+owner/collaborator attestations, not independent CEO API readback. The CEO made
+no Boat calls. Preserve this difference and obtain supplemental teardown/baseline
+receipts before treating aggregate teardown as independently evidenced. The
+current readiness rule was added after the live module; its retained live
+readiness records satisfy it, and the changed rule is exercised hermetically.
+
+The first handoff and earlier revisions were PROPOSED and dark. Their stated
+hashes, test totals and dark-state descriptions below are attributed historical
+handoff evidence. The current PR head, factory tests and ratification diff are
+the source of truth for this ratifying revision.
 **Lane:** `boat-backbone-decision-20261109`: this record and
 `infrastructure/runbooks/boat-backbone.md` only. The adapter
 `runtime/exec_backend/boat_backend.py` belongs to the code lane and is

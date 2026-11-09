@@ -36,9 +36,9 @@ Hermetic: no network, no real key, no Boat sandbox. Three layers:
   file, signals nothing and exits with that status (``signal``: it kills
   itself). A command keeps running when its HTTP request is cancelled or its
   answer is dropped, as on a real VM.
-* **Dark-module guards**: the factory still rejects ``kind="boat"``, the
-  package does not export the adapter, the activation diff is documented, and
-  the I2 zero-file grep still holds with this module in the package.
+* **Opt-in factory guards**: the factory selects Boat only explicitly and
+  propagates probe refusal without downgrade. The package does not export the
+  adapter; the registration diff and I2 zero-file grep remain pinned.
 """
 
 from __future__ import annotations
@@ -116,9 +116,9 @@ VM_HOME = "/home/user"
 #: ``^(boat|ascii|sk)[_-]``; the exact value was not recorded).
 KEYLESS_CLI_CONFIG = '{\n  "api_url": "https://boat.dev",\n  "channel": "boat_prod1"\n}\n'
 
-#: The factory's kinds while the adapter is dark. The ratification PR flips
-#: this to include "boat" (see the module docstring's activation section).
-EXPECTED_FACTORY_KINDS = frozenset({"local", "docker"})
+#: Registered factory kinds after the owner-ratified opt-in Boat addition.
+#: Registration does not change defaults or authorize operational activation.
+EXPECTED_FACTORY_KINDS = frozenset({"local", "docker", "boat"})
 
 # Field and query names copied from boat-v1.yaml (OpenAPI 3.1, v1.0.0).
 #: components.schemas.CreateSandboxRequest.properties
@@ -1362,28 +1362,55 @@ def _workload_sudo_lines(fake: FakeBoat) -> list[str]:
     return [line for line in fake.log_lines("sudo") if "\tenv " in line]
 
 
-# --- dark-module guards (no fake VM needed) -------------------------------------
+# --- factory registration (hermetic; never calls the Boat API) ------------------
 
 
-class TestStaysDark:
-    def test_factory_kinds_unchanged(self) -> None:
+class TestFactoryBoatKind:
+    def test_factory_kinds_registered(self) -> None:
         assert factory_mod._VALID_KINDS == EXPECTED_FACTORY_KINDS
 
-    def test_factory_rejects_boat_kind(self) -> None:
-        with pytest.raises(BackendUnavailable, match=r"\['docker', 'local'\]"):
-            build_execution_backend(kind="boat")
+    @pytest.mark.parametrize("via_env", [False, True], ids=["kind", "environment"])
+    def test_factory_returns_probed_boat(
+        self, monkeypatch: pytest.MonkeyPatch, via_env: bool
+    ) -> None:
+        probed: list[BoatBackend] = []
 
-    def test_factory_rejects_boat_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ANTIEK_EXEC_BACKEND", "boat")
-        with pytest.raises(BackendUnavailable, match="unknown ExecutionBackend kind 'boat'"):
-            build_execution_backend()
+        def probe(backend: BoatBackend) -> None:
+            probed.append(backend)
 
-    def test_package_does_not_export_or_import_the_adapter(self) -> None:
+        monkeypatch.setattr(BoatBackend, "probe", probe)
+        if via_env:
+            monkeypatch.setenv("ANTIEK_EXEC_BACKEND", "boat")
+        backend = build_execution_backend() if via_env else build_execution_backend(kind="boat")
+        assert isinstance(backend, BoatBackend)
+        assert backend.name == "boat"
+        assert probed == [backend]
+
+    @pytest.mark.parametrize("via_env", [False, True], ids=["kind", "environment"])
+    def test_probe_failure_never_downgrades_to_local(
+        self, monkeypatch: pytest.MonkeyPatch, via_env: bool
+    ) -> None:
+        def probe(backend: BoatBackend) -> None:
+            raise BackendUnavailable("boat probe refused in hermetic factory test")
+
+        monkeypatch.setattr(BoatBackend, "probe", probe)
+        if via_env:
+            monkeypatch.setenv("ANTIEK_EXEC_BACKEND", "boat")
+        with pytest.raises(BackendUnavailable, match="boat probe refused"):
+            if via_env:
+                build_execution_backend()
+            else:
+                build_execution_backend(kind="boat")
+
+    def test_package_does_not_export_and_factory_import_is_lazy(self) -> None:
         assert not hasattr(exec_backend_pkg, "BoatBackend")
         assert "BoatBackend" not in exec_backend_pkg.__all__
         factory_src = pathlib.Path(inspect.getfile(factory_mod)).read_text(encoding="utf-8")
         init_src = pathlib.Path(inspect.getfile(exec_backend_pkg)).read_text(encoding="utf-8")
-        assert "boat" not in factory_src.lower()
+        assert (
+            "from .boat_backend import BoatBackend"
+            not in factory_src.split("def build_execution_backend", 1)[0]
+        )
         assert "boat" not in init_src.lower()
 
     def test_activation_section_shows_the_exact_factory_diff(self) -> None:

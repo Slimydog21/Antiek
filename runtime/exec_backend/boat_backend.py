@@ -1,4 +1,4 @@
-"""Boat backend: one disposable Boat cloud VM per workspace. DARK, not registered.
+"""Boat backend: disposable cloud VMs, registered opt-in, not activated.
 
 ``BoatBackend`` is an ``ExecutionBackend`` whose workspaces are Boat sandboxes
 (https://boat.dev): full Linux virtual machines with their own kernel, disk
@@ -25,16 +25,18 @@ There is no credential fallback between planes: this module reads
 ``$BOAT_API_KEY`` and nothing else, never the build key, and it refuses
 ``antiek-build`` as its environment.
 
-Status: DARK
-------------
-CLAUDE.md §16 rejects external execution vendors except the ratified
-research-fanout exemption (``docs/decisions/s16-research-fanout-exemption.md``),
-which names Daytona behind ``RemoteExecProvider`` and nothing else. This
-module is therefore not registered in ``factory.py``, not re-exported from the
-package ``__init__``, and imported by no production module.
-``tests/test_exec_backend_boat.py`` pins the factory's valid kinds to
-``{"local", "docker"}`` so wiring Boat in is a deliberate, visible flip, the
-precedent ``runtime/remote_exec/prime_exec.py`` set.
+Status: registered opt-in, not activated
+---------------------------------------
+The owner ratified the scoped Boat amendment on 2026-11-09, conditional on
+its personal-key Part A live test, as relayed in the current CEO collaboration
+message and recorded in the ADR. This PR adds the lazy ``factory.py`` branch
+and hermetic factory tests. The default remains ``local``; no service env flag
+is changed, and operational activation still requires env-scoped plane-key
+acceptance, remaining gates and the owner's written go. The package does not
+re-export this adapter. No scheduled task may select Boat under this change.
+
+The activation diff below is the preserved registration instruction applied
+by this ratifying PR, not authorization to activate either plane.
 
 Activation (after ratification)
 -------------------------------

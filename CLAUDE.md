@@ -145,6 +145,40 @@ window.
   `docs/decisions/s16-research-fanout-exemption.md`.
 <!-- END: s16-research-fanout-exemption -->
 
+<!-- BEGIN: s16-boat-execution-backend (operator-ratified 2026-11-09) -->
+- **§16 amendment: Boat as the product's compute backbone, `ExecutionBackend` only.**
+  The operator ratified on 2026-11-09 a second scoped carve-out: agent-code
+  execution behind the `ExecutionBackend` seam (`runtime/exec_backend/`) may
+  run in Boat full-VM sandboxes, selected only by `ANTIEK_EXEC_BACKEND=boat`,
+  billed to the Boat organization Antiek and authenticated only by
+  `BOAT_API_KEY`, a `ci`-preset organization key restricted to the
+  `antiek-product` environment, with `ANTIEK_BOAT_ORG` pinned. Every Boat
+  workspace starts in `antiek-product`, an environment that passes nothing
+  of the owner's (Boat's *Safe for third parties*), checked before every
+  create and again before any workload runs; it has snapshots off and an
+  auto-stop, is deleted on
+  `destroy()`, and either enforces its declared net policy or refuses it
+  with `NetPolicyUnsupported`. This
+  authorizes no general Boat execution and no inference or dispatch routing
+  change: dispatch stays Hermes-primary (`substrate/dispatch/` untouched, no
+  Boat integrated agents, no Boat AI-credentials proxy), and the DuckDB
+  single-writer invariant is untouched (a workspace receives and returns
+  bytes, and the promotion funnel through `runtime/db_lock` remains the only
+  graph writer; `--workers 1` holds). `RemoteExecProvider` stays Daytona-only
+  under the research fan-out exemption above; ε > 10 on DP claims and
+  premature scaling stay rejected; the 2026-10-07 AWS decision and its
+  peer-tenant lane hosts are unchanged and no AWS step is executed. Nothing
+  schedules Boat, including the cloud CEO's hourly swarm, before the
+  operator's written activation. Unsetting `ANTIEK_EXEC_BACKEND` returns the
+  cascade to its default gather loop with no code change; while it is set
+  there is no silent fallback. Boat boxes used to build Antiek (development,
+  production testing, CI, coding swarms) are operator tooling under their
+  own key `BOAT_BUILD_API_KEY` in the `antiek-build` environment; this
+  paragraph neither covers nor authorizes them, and no key is shared between
+  the two. Rationale, gates and reconsider-if:
+  `docs/decisions/boat-compute-backbone-2026-11-09.md`.
+<!-- END: s16-boat-execution-backend -->
+
 <!-- BEGIN: agent-failure-regression (managed by SPR-E2 of antiek-hashimoto-engineering) -->
 - **Agent-failure regression library.** Every observed agent failure
   (a production path that produced wrong/surprising output) gets a YAML
