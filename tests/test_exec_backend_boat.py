@@ -20,15 +20,22 @@ Hermetic: no network, no real key, no Boat sandbox. Three layers:
   overlap unless the backend serializes them), with a stub directory first on
   ``PATH`` that shadows the privileged tools (``sudo``, ``useradd``, ``id`` for
   the runner account, ``chown``, ``pkill``, ``sysctl``, ``iptables``,
-  ``ip6tables``). The workspace root lives under ``tmp_path`` (which the
-  fake's files API serves as the VM's ``/tmp``). So the wrapper's real
-  quoting, env scrub, cwd jail, ``timeout`` group kill, ``chmod`` restore and
+  ``ip6tables``). The VM's ``/tmp`` and ``/home/user`` are two dirs under
+  ``tmp_path`` wherever pytest puts it (no test needs the host's ``/tmp``):
+  the backend is given the VM path ``/tmp/antiek-ws`` as its root base,
+  the fake rewrites that prefix to its host dir in every command before it
+  runs and back in every answer, and its files API maps the two VM roots
+  onto their host dirs. So the wrapper's real quoting, env scrub, cwd jail,
+  ``timeout`` group kill, ``flock`` exec lock, ``chmod`` restore and
   ``head -c`` truncation run here, not a re-implementation of them. The stubs
   never escalate: the real ``sudo`` is asserted to be shadowed before any
   command runs. The ``sudo`` stub logs the account each command was asked to
   run as; the ``pkill`` stub kills the "runner" processes of the fake VM (the
   test user's processes whose ``HOME`` is a workspace root, which only the
-  wrapper's ``env -i`` sets).
+  wrapper's ``env -i`` sets), or, when a test writes its ``pkill.rc`` state
+  file, signals nothing and exits with that status (``signal``: it kills
+  itself). A command keeps running when its HTTP request is cancelled or its
+  answer is dropped, as on a real VM.
 * **Dark-module guards**: the factory still rejects ``kind="boat"``, the
   package does not export the adapter, the activation diff is documented, and
   the I2 zero-file grep still holds with this module in the package.
@@ -44,6 +51,7 @@ import json
 import logging
 import os
 import pathlib
+import posixpath
 import re
 import shutil
 import signal
@@ -51,7 +59,7 @@ import stat
 import subprocess
 import sys
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Coroutine, Iterator
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -96,6 +104,11 @@ OTHER_ORG = "team_00000000-0000-4000-8000-0000000000bb"
 PROTECTED_SANDBOXES = frozenset({"bx_235rmpn3", "bx_35hs5p53"})
 
 RUNNER_UID = 4242
+
+#: The root base the backend is given: a VM path (the production default).
+#: The fake maps the VM's /tmp and /home/user onto dirs under tmp_path.
+VM_ROOT_BASE = "/tmp/antiek-ws"
+VM_HOME = "/home/user"
 
 #: The boat CLI config Boat wrote into the measured noEnv VMs, in the shape
 #: measured on 2026-11-09: 63 bytes, two-space indent, exactly ``api_url``
@@ -192,6 +205,15 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 printf '%s\\t%s %s %s\\n' "${as:-root}" "${1-}" "${2-}" "${3-}" >> "$STUB_STATE/sudo.log"
+# sudo itself failing (status 1, the same as pkill's "none matched").
+if [ -e "$STUB_STATE/sudo.fail" ]; then
+  if [ -e "$STUB_STATE/sudo.stderr" ]; then
+    cat "$STUB_STATE/sudo.stderr" >&2
+  else
+    echo "sudo: a password is required" >&2
+  fi
+  exit 1
+fi
 if [ "$as" = "antiek-runner" ] && [ "$1" = "sudo" ] && [ ! -e "$STUB_STATE/runner_can_sudo" ]; then
   echo "sudo: a password is required" >&2
   exit 1
@@ -230,6 +252,13 @@ _PKILL_STUB = """#!/bin/sh
 # is a workspace root (only the wrapper's env -i sets that). Exit 0 when
 # something was signalled, 1 when nothing matched: pkill's own convention.
 printf '%s\\n' "$*" >> "$STUB_STATE/pkill.log"
+# A forced outcome: signal nothing, exit with the given status (or die by a
+# signal), to exercise the wrapper's reading of pkill's status.
+if [ -e "$STUB_STATE/pkill.rc" ]; then
+  rc="$(cat "$STUB_STATE/pkill.rc")"
+  [ "$rc" = signal ] && kill -KILL "$$"
+  exit "$rc"
+fi
 prefix="$(cat "$STUB_STATE/runner_home_prefix")"
 pids="$(grep -lzx -e "HOME=$prefix/.*" /proc/[0-9]*/environ 2>/dev/null \\
   | sed -n 's|^/proc/\\([0-9]*\\)/environ$|\\1|p')"
@@ -267,6 +296,7 @@ case "$1" in
       { printf '%s\\n' "$rule"; cat "$f" 2>/dev/null; } > "$f.new" && mv "$f.new" "$f"
     fi ;;
   -S)
+    if [ -e "$STUB_STATE/$t.S.stderr" ]; then cat "$STUB_STATE/$t.S.stderr" >&2; exit 1; fi
     printf '%s\\n' "-P OUTPUT ACCEPT"
     cat "$f" 2>/dev/null ;;
   *) echo "$t: unsupported $*" >&2; exit 2 ;;
@@ -293,6 +323,7 @@ def _vm_tools_ok() -> bool:
         ["date", "+%s%N"],
         ["sleep", "0.01"],
         ["grep", "-lzx", "-e", ".*", "/proc/self/environ"],
+        ["sh", "-c", "command exec 9>/dev/null && flock -n 9"],
     )
     try:
         for argv in probes:
@@ -325,7 +356,10 @@ class Injected:
     transport error ``exc`` instead (its text carries the Authorization
     header, to prove redaction). ``after_effect`` lets the real handler run
     first (a create Boat accepted whose answer was lost); ``hang`` then never
-    answers (until the caller is cancelled)."""
+    answers (until the caller is cancelled). ``detach_effect`` starts the
+    real handler and answers without waiting for it (a command still running
+    when its answer is lost); ``wait_for`` holds the answer until that host
+    path exists (the workload has started)."""
 
     method: str
     route: str
@@ -337,6 +371,8 @@ class Injected:
     hang: bool = False
     skip: int = 0
     exc: type[httpx.TransportError] = httpx.ConnectError
+    detach_effect: bool = False
+    wait_for: pathlib.Path | None = None
 
 
 @dataclass
@@ -351,6 +387,20 @@ class FakeClock:
         self.sleeps.append(seconds)
         self.t += seconds
         await asyncio.sleep(0)  # a real suspension point, so cancellation can land
+
+
+@dataclass
+class PacedClock(FakeClock):
+    """A fake clock whose sleeps also take a little real time, so a detached
+    exec's poll loop does not reach its backstop before a real workload has
+    started."""
+
+    real_s: float = 0.02
+
+    async def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.t += seconds
+        await asyncio.sleep(self.real_s)
 
 
 def _err(status: int, code: str, message: str) -> httpx.Response:
@@ -391,7 +441,18 @@ def _env_record(name: str, **flags: Any) -> dict[str, Any]:
         "versions": [],
     }
     record.update(flags)
-    return record
+    # ``_DROP`` removes a field (proxyAiCredentials is optional in the OpenAPI).
+    return {key: value for key, value in record.items() if value is not _DROP}
+
+
+#: An environment that is not safe for third parties but passes nothing.
+_PASSING_NOTHING_UNSAFE: dict[str, Any] = {
+    "safeForThirdParties": False,
+    "passGithub": False,
+    "passSecrets": False,
+    "passSandboxCredentials": False,
+    "passAgentsCredentials": False,
+}
 
 
 def _boat_stream(raw: bytes) -> tuple[str, bool]:
@@ -406,9 +467,24 @@ class FakeBoat:
 
     def __init__(self, tmp_path: pathlib.Path) -> None:
         self.tmp_path = tmp_path
-        self.root_base = tmp_path / "antiek-ws"
+        #: The VM's /tmp and /home/user, on the host (see the module docstring).
+        self.vm_tmp = tmp_path / "vm_tmp"
+        self.vm_tmp.mkdir()
         self.home = tmp_path / "home-user"
         self.home.mkdir()
+        #: The backend's root base (a VM path) and where it lives on the host.
+        self.vm_root_base = VM_ROOT_BASE
+        self.root_base = self.host(VM_ROOT_BASE)
+        #: Host spellings of the VM roots, longest first, for answers.
+        self._to_vm_pairs = sorted(
+            {
+                (os.path.realpath(self.root_base), VM_ROOT_BASE),
+                (str(self.root_base), VM_ROOT_BASE),
+                (os.path.realpath(self.home), VM_HOME),
+                (str(self.home), VM_HOME),
+            },
+            key=lambda pair: -len(pair[0]),
+        )
         # Every Boat VM has a keyless CLI config (measured 2026-11-09, noEnv).
         cli_config = self.home / ".config/ascii/boat/config.json"
         cli_config.parent.mkdir(parents=True)
@@ -438,6 +514,12 @@ class FakeBoat:
         self.team_for_new: str | None = None
         self.omit_team = False
         self.record_extras: dict[str, Any] = {}
+        # Merged into every finished command answer (a server echo in one).
+        self.command_extras: dict[str, Any] = {}
+        # Rewrites a finished command answer, given the command's script.
+        self.answer_rewrite: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+        # Merged into GET /sandboxes/{id} answers only, not the create answer.
+        self.poll_extras: dict[str, Any] = {}
         self.key_org: str | None = FAKE_ORG
         self.limits_override: dict[str, Any] = {}
         self.environments = [
@@ -456,11 +538,20 @@ class FakeBoat:
         self.idem_keys: dict[str, tuple[Any, str]] = {}
         self.idem_in_progress = 0
         self.detached_hang = False
+        #: Detached commands run on in the background (status: running until
+        #: they end; a stop kills the wrapper's process group).
+        self.detached_background = False
         self.delete_delay_s = 0.0
+        #: Seconds a cleanup command waits before it runs (a slow answer).
+        self.cleanup_delay_s = 0.0
         self.processes: dict[int, dict[str, Any]] = {}
-        #: Exec wrappers running right now, and every call that overlapped one.
+        #: Exec wrappers running right now, and every call that overlapped one
+        #: (a cleanup command may: it is how an interrupted wrapper is ended).
         self.exec_running = 0
         self.overlaps: list[str] = []
+        #: Every command run in the fake VM, as a task: a command keeps running
+        #: when its HTTP request is cancelled or its answer dropped.
+        self.vm_tasks: list[asyncio.Task[Any]] = []
         self._next_id = 0
         self._next_pid = 0
 
@@ -505,6 +596,35 @@ class FakeBoat:
         path = self.state / f"{name}.log"
         return path.read_text().splitlines() if path.exists() else []
 
+    def host(self, vm_path: str) -> pathlib.Path:
+        """The host path of a VM path under ``/tmp`` or ``/home/user``."""
+        for vm_root, host_root in ((VM_HOME, self.home), ("/tmp", self.vm_tmp)):
+            if vm_path == vm_root or vm_path.startswith(f"{vm_root}/"):
+                return host_root / vm_path[len(vm_root) :].lstrip("/")
+        raise AssertionError(f"not a VM path the fake maps: {vm_path!r}")
+
+    def _to_vm(self, text: str) -> str:
+        for host_path, vm_path in self._to_vm_pairs:
+            text = text.replace(host_path, vm_path)
+        return text
+
+    def _spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+        task = asyncio.ensure_future(coro)
+        self.vm_tasks.append(task)
+        return task
+
+    async def drain(self, within_s: float = 20.0) -> None:
+        """Wait for every command still running in the fake VM."""
+        pending = [t for t in self.vm_tasks if not t.done()]
+        if pending:
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), within_s)
+
+    def cleanups(self) -> list[str]:
+        return [c for c in self.commands() if _is_cleanup(c)]
+
+    def exec_scripts(self) -> list[str]:
+        return [c for c in self.commands() if "setsid --wait" in c]
+
     def _new_sandbox_id(self) -> str:
         n = self._next_id = self._next_id + 1
         chars = []
@@ -515,7 +635,16 @@ class FakeBoat:
         assert SANDBOX_ID_RE.match(sid) and sid not in PROTECTED_SANDBOXES
         return sid
 
-    async def run_sh(self, script: str, sandbox_id: str, timeout_s: float) -> dict[str, Any]:
+    async def run_sh(
+        self,
+        script: str,
+        sandbox_id: str,
+        timeout_s: float,
+        on_spawn: Callable[[asyncio.subprocess.Process], None] | None = None,
+    ) -> dict[str, Any]:
+        """Run ``script`` as the VM would, with the VM root base mapped onto
+        its host dir, and answer in VM paths."""
+        script = script.replace(VM_ROOT_BASE, str(self.root_base))
         env = {
             "PATH": self.path_env,
             "HOME": str(self.home),
@@ -535,12 +664,19 @@ class FakeBoat:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Its own process group, so a stop of a detached command can
+            # signal the wrapper and what it started in that group.
+            start_new_session=True,
         )
+        if on_spawn is not None:
+            on_spawn(proc)
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout_s)
         except TimeoutError:
+            # The whole group, as for a stopped detached command: a child the
+            # shell waits on must not outlive the test.
             with contextlib.suppress(ProcessLookupError):
-                proc.kill()
+                os.killpg(proc.pid, signal.SIGKILL)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), 5)
             return {
@@ -553,22 +689,50 @@ class FakeBoat:
             }
         stdout, out_cut = _boat_stream(out)
         stderr, err_cut = _boat_stream(err)
-        return {
+        answer: dict[str, Any] = {
             "exitCode": proc.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
+            "stdout": self._to_vm(stdout),
+            "stderr": self._to_vm(stderr),
             "timedOut": False,
             "stdoutTruncated": out_cut,
             "stderrTruncated": err_cut,
+            **self.command_extras,
         }
+        if self.answer_rewrite is not None:
+            answer = self.answer_rewrite(script, answer)
+        return answer
+
+    async def _run_command(
+        self,
+        script: str,
+        sandbox_id: str,
+        timeout_s: float,
+        *,
+        is_exec: bool,
+        delay_s: float = 0.0,
+        on_spawn: Callable[[asyncio.subprocess.Process], None] | None = None,
+    ) -> dict[str, Any]:
+        if delay_s:
+            await asyncio.sleep(delay_s)
+        self.exec_running += int(is_exec)
+        try:
+            return await self.run_sh(script, sandbox_id, timeout_s, on_spawn)
+        finally:
+            self.exec_running -= int(is_exec)
 
     def _vm_path(self, raw: str) -> pathlib.Path | None:
         """Canonicalize like the files API: relative to /home/user, and only
-        under /tmp or /home/user (the fake's home)."""
-        candidate = raw if raw.startswith("/") else str(self.home / raw)
+        under /tmp or /home/user (the fake's two host dirs), symlinks
+        followed."""
+        vm = posixpath.normpath(raw if raw.startswith("/") else f"{VM_HOME}/{raw}")
+        try:
+            candidate = self.host(vm)
+        except AssertionError:
+            return None
         real = os.path.realpath(candidate)
-        if real.startswith("/tmp/") or real.startswith(f"{self.home}/"):
-            return pathlib.Path(real)
+        for top in (os.path.realpath(self.vm_tmp), os.path.realpath(self.home)):
+            if real.startswith(f"{top}/"):
+                return pathlib.Path(real)
         return None
 
     # -- the handler --
@@ -589,6 +753,10 @@ class FakeBoat:
                 inj.times -= 1
                 if inj.after_effect:
                     await self._dispatch(call)
+                if inj.detach_effect:
+                    self._spawn(self._dispatch(call))
+                if inj.wait_for is not None:
+                    assert await _until(inj.wait_for.exists, 10), f"{inj.wait_for} never appeared"
                 if inj.hang:
                     await asyncio.Event().wait()
                 if inj.status == 0:
@@ -767,6 +935,7 @@ class FakeBoat:
             "snapshotAvailable": False,
             "team": {"id": team, "name": "Antiek"} if team else None,
             "createdBy": "fake",
+            "createdAt": f"2026-11-09T12:00:{self._next_id % 60:02d}Z",
             "access": "owner",
             **self.record_extras,
         }
@@ -818,7 +987,7 @@ class FakeBoat:
             record["state"] = self.state_script.pop(0)
         elif self.polls[sid] >= self.ready_after:
             record["state"] = "ready"
-        return _ok("sandbox.info", sandbox=dict(record))
+        return _ok("sandbox.info", sandbox={**record, **self.poll_extras})
 
     async def _delete(self, call: Call, sid: str) -> httpx.Response:
         if call.headers.get("x-ascii-confirm-delete") != sid:
@@ -864,13 +1033,24 @@ class FakeBoat:
             return _err(400, "invalid_timeout", "timeoutSeconds must be an integer 1-600.")
         script: str = body["command"]
         is_exec = "setsid --wait" in script
-        if self.exec_running:
+        is_cleanup = _is_cleanup(script)
+        if self.exec_running and not is_cleanup:
             self.overlaps.append(f"command sent while an exec wrapper ran: {script[:60]!r}")
         if detached:
             self._next_pid += 1
             pid = self._next_pid
             if self.detached_hang:
                 self.processes[pid] = {"hang": True, "stopped": False}
+            elif self.detached_background:
+                entry: dict[str, Any] = {"hang": False, "stopped": False, "proc": None}
+
+                def keep(proc: asyncio.subprocess.Process, entry: dict[str, Any] = entry) -> None:
+                    entry["proc"] = proc
+
+                entry["task"] = self._spawn(
+                    self._run_command(script, sid, 3600, is_exec=is_exec, on_spawn=keep)
+                )
+                self.processes[pid] = entry
             else:
                 self.processes[pid] = {
                     "hang": False,
@@ -896,11 +1076,18 @@ class FakeBoat:
                 "stderrTruncated": False,
             }
         else:
-            self.exec_running += int(is_exec)
-            try:
-                result = await self.run_sh(script, sid, timeout)
-            finally:
-                self.exec_running -= int(is_exec)
+            # The command runs as its own task: cancelling this request (the
+            # client gave up) leaves it running, as on the VM.
+            task = self._spawn(
+                self._run_command(
+                    script,
+                    sid,
+                    timeout,
+                    is_exec=is_exec,
+                    delay_s=self.cleanup_delay_s if is_cleanup else 0.0,
+                )
+            )
+            result = dict(await asyncio.shield(task))
             if is_exec and self.force_timed_out > 0:
                 self.force_timed_out -= 1
                 result["timedOut"] = True
@@ -912,7 +1099,7 @@ class FakeBoat:
             success=result["exitCode"] == 0,
             commandId="cmd_fake",
             signal=None,
-            cwd=str(self.home),
+            cwd=VM_HOME,
             **result,
         )
 
@@ -921,7 +1108,10 @@ class FakeBoat:
         proc = self.processes.get(int(pid))
         if self._sandbox(sid) is None or proc is None:
             return _err(404, "not_found", "Process not found.")
-        if proc["hang"] and not proc["stopped"]:
+        task = proc.get("task")
+        if task is not None and task.done():
+            proc.update(task.result())
+        if (proc["hang"] and not proc["stopped"]) or (task is not None and not task.done()):
             return _ok(
                 "command.status",
                 success=True,
@@ -948,6 +1138,12 @@ class FakeBoat:
         if self._sandbox(sid) is None or proc is None:
             return _err(404, "not_found", "Process not found.")
         proc["stopped"] = True
+        running = proc.get("proc")
+        if running is not None and running.returncode is None:
+            # The wrapper and what it started in its process group; a
+            # workload that setsid moved out of it is left to the reap.
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(running.pid, signal.SIGKILL)
         return _ok(
             "command.stopped", processId=int(pid), running=False, signaled=True, command=None
         )
@@ -991,7 +1187,11 @@ class FakeBoat:
             return _err(400, "invalid_path", "Not a regular file.")
         target.write_bytes(data)
         return _ok(
-            "file.written", success=True, path=str(target), encoding=encoding, size=len(data)
+            "file.written",
+            success=True,
+            path=self._to_vm(str(target)),
+            encoding=encoding,
+            size=len(data),
         )
 
     def _read_file(self, call: Call, sid: str) -> httpx.Response:
@@ -1012,7 +1212,7 @@ class FakeBoat:
         return _ok(
             "file.read",
             success=True,
-            path=str(target),
+            path=self._to_vm(str(target)),
             encoding="base64",
             size=len(data) + self.read_size_delta,
             content=base64.b64encode(data).decode(),
@@ -1037,20 +1237,29 @@ def _boat_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def fake(tmp_path: pathlib.Path) -> Iterator[FakeBoat]:
+    # Wherever pytest puts tmp_path: the fake maps the VM's /tmp onto it.
     if not _VM_TOOLS_OK:
-        pytest.skip("the fake VM needs sh, GNU coreutils (env -C, timeout) and setsid --wait")
-    if not str(tmp_path).startswith("/tmp/"):
-        pytest.skip("the fake files API serves tmp_path as the VM's /tmp; it is not under /tmp")
+        why = "the fake VM needs sh, GNU coreutils (env -C, timeout), setsid --wait and flock"
+        # An acceptance run sets this, so a host without them cannot pass by skipping.
+        if os.environ.get("ANTIEK_REQUIRE_FAKE_VM") == "1":
+            pytest.fail(why)
+        pytest.skip(why)
     boat = FakeBoat(tmp_path)
     yield boat
     assert boat.violations == [], boat.violations
     assert boat.overlaps == [], boat.overlaps
+    assert all(t.done() for t in boat.vm_tasks), "a fake VM command was left running"
 
 
 def make_backend(fake: FakeBoat, clock: FakeClock | None = None, **kwargs: Any) -> BoatBackend:
     clock = clock or FakeClock()
-    kwargs.setdefault("root_base", str(fake.root_base))
+    kwargs.setdefault("root_base", fake.vm_root_base)
     return BoatBackend(transport=fake.transport(), sleep=clock.sleep, clock=clock.now, **kwargs)
+
+
+def _is_cleanup(script: str) -> bool:
+    """A cleanup command (fence, exec lock, reap, restore), not a wrapper."""
+    return ":clean=%s" in script and "pkill -KILL" in script and "setsid" not in script
 
 
 async def new_ws(
@@ -1087,6 +1296,13 @@ def all_exception_texts(exc: BaseException) -> str:
 def assert_keyless(text: str) -> None:
     assert FAKE_KEY not in text
     assert OTHER_KEY not in text
+
+
+def assert_no_key_fragment(text: str, size: int = 8) -> None:
+    """Not even a piece of the key: a cut taken before the scrub keeps one."""
+    for key in (FAKE_KEY, OTHER_KEY):
+        pieces = {key[i : i + size] for i in range(len(key) - size + 1)}
+        assert not [p for p in pieces if p in text], text
 
 
 def _proc_alive(pid: int) -> bool:
@@ -1331,10 +1547,176 @@ class TestProtocolAndUnits:
                 },
                 True,
             ),
+            # S1: proxying is refused whatever safeForThirdParties says.
+            (
+                {
+                    "safeForThirdParties": False,
+                    "passGithub": False,
+                    "passSecrets": False,
+                    "passSandboxCredentials": False,
+                    "passAgentsCredentials": False,
+                    "proxyAiCredentials": True,
+                },
+                False,
+            ),
+            # Not required by the OpenAPI: absent is accepted, any present
+            # value but false is refused.
+            ({"safeForThirdParties": True, "proxyAiCredentials": _DROP}, True),
+            (
+                {
+                    "safeForThirdParties": False,
+                    "passGithub": False,
+                    "passSecrets": False,
+                    "passSandboxCredentials": False,
+                    "passAgentsCredentials": False,
+                    "proxyAiCredentials": _DROP,
+                },
+                True,
+            ),
+            ({"safeForThirdParties": True, "proxyAiCredentials": None}, False),
+            ({"safeForThirdParties": True, "proxyAiCredentials": "false"}, False),
+            ({"safeForThirdParties": True, "proxyAiCredentials": 0}, False),
+        ],
+        ids=[
+            "safe",
+            "safe-proxied",
+            "unsafe-passing",
+            "unsafe-passing-nothing",
+            "unsafe-passing-nothing-proxied",
+            "safe-proxy-absent",
+            "unsafe-passing-nothing-proxy-absent",
+            "proxy-null",
+            "proxy-string",
+            "proxy-zero",
         ],
     )
     def test_environment_flag_rule(self, flags: dict[str, Any], ok: bool) -> None:
         assert (bb._environment_problems(_env_record("e", **flags)) == []) is ok
+
+    def test_proxied_environment_named_in_the_problem(self) -> None:
+        env = _env_record(
+            "e",
+            safeForThirdParties=False,
+            passGithub=False,
+            passSecrets=False,
+            passSandboxCredentials=False,
+            passAgentsCredentials=False,
+            proxyAiCredentials=True,
+        )
+        (problem,) = bb._environment_problems(env)
+        assert "proxyAiCredentials is True" in problem
+
+    def test_snapshots_cannot_be_turned_on(self) -> None:
+        # D5: no constructor override; every create sends snapshots: false.
+        assert "snapshots" not in inspect.signature(BoatBackend).parameters
+        with pytest.raises(TypeError, match="snapshots"):
+            BoatBackend(snapshots=True)  # type: ignore[call-arg]
+
+    @pytest.mark.parametrize(
+        ("value", "token"),
+        [
+            ("bx_23456789", "bx_23456789"),
+            ("2026-11-09T12:00:00.123+00:00", "2026-11-09T12:00:00.123+00:00"),
+            (900, "900"),
+            (None, "unknown"),
+            (True, "unknown"),
+            ("two words", "unknown"),
+            ("x\ny", "unknown"),
+            ("", "unknown"),
+            # A key a server echoes is never a token, alone or inside one.
+            (FAKE_KEY, "unknown"),
+            (OTHER_KEY, "unknown"),
+            (f"x-{FAKE_KEY}", "unknown"),
+        ],
+    )
+    def test_ledger_tokens(self, value: Any, token: str) -> None:
+        assert bb._log_token(value) == token
+
+    def test_scrub_runs_before_any_cut(self) -> None:
+        # Cutting first could keep a piece of a key that no longer looks like one.
+        assert bb._tail(FAKE_KEY + "\n" + "y" * 380) == "[redacted]\n" + "y" * 380
+        assert bb._shown("x" * 100 + FAKE_KEY) == "'" + "x" * 100 + "[redacted]'"
+        assert bb._shown(f"{OTHER_KEY} and {FAKE_KEY}") == "'[redacted] and [redacted]'"
+        assert bb._shown(1) == "1"
+        assert bb._shown(None) == "None"
+        assert bb._shown("z" * 300) == "'" + "z" * 119
+        # Not only the current key ($BOAT_API_KEY is FAKE_KEY here): every key-shaped run.
+        assert bb._tail(OTHER_KEY + " x") == "[redacted] x"
+        other2 = "boat_" + "Q" * 30
+        assert bb._shown(f"{OTHER_KEY} and {other2}") == "'[redacted] and [redacted]'"
+        assert bb._scrub(f"{OTHER_KEY} and {other2}") == "[redacted] and [redacted]"
+        # A value that is not a string is scrubbed as its repr, still before the cut.
+        assert bb._shown(["x" * 100 + FAKE_KEY]) == "['" + "x" * 100 + "[redacted]']"
+
+    def test_scrub_with_no_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("BOAT_API_KEY")
+        assert bb._scrub("abc") == "abc"
+        assert bb._tail(" abc ") == "abc"
+        assert bb._scrub(f"x {OTHER_KEY}") == "x [redacted]"
+
+    @pytest.mark.parametrize("key", ["plain\\Key123secret", "k'ey\"Secret12345"])
+    def test_shown_scrubs_a_key_that_repr_would_escape(
+        self, monkeypatch: pytest.MonkeyPatch, key: str
+    ) -> None:
+        monkeypatch.setenv("BOAT_API_KEY", key)
+        assert bb._shown(f"saw {key}") == "'saw [redacted]'"
+
+    def test_error_answers_lose_every_key_shaped_run_before_the_cut(self) -> None:
+        cut = bb._http_error(
+            "GET", "/limits", 500, {"code": "x", "message": "m" * 290 + OTHER_KEY}, FAKE_KEY
+        )
+        whole = bb._http_error(
+            "GET", "/limits", 500, {"code": OTHER_KEY, "message": f"saw {OTHER_KEY}"}, FAKE_KEY
+        )
+        assert_no_key_fragment(cut.detail + whole.detail)
+        assert "saw [redacted]" in whole.detail
+
+    def test_scrub_removes_the_current_key_whatever_its_shape(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOAT_API_KEY", "plainKey123")
+        assert bb._scrub("saw plainKey123 here") == "saw [redacted] here"
+        assert bb._tail("x" * 395 + "plainKey123") == "x" * 390 + "[redacted]"
+        assert bb._shown("plainKey12") == "'plainKey12'"
+
+    def test_ledger_token_refuses_the_current_key_whatever_its_shape(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BOAT_API_KEY", "plainKey123")
+        assert bb._log_token("plainKey123") == "unknown"
+        assert bb._log_token("a.plainKey123.b") == "unknown"
+        assert bb._log_token("plainKey12") == "plainKey12"
+
+    @pytest.mark.parametrize(
+        ("helper", "value", "token"),
+        [
+            ("_machine_token", "small", "small"),
+            ("_machine_token", "xlarge", "xlarge"),
+            ("_machine_token", "huge", "unknown"),
+            ("_machine_token", FAKE_KEY, "unknown"),
+            ("_machine_token", None, "unknown"),
+            ("_date_time_token", "2026-11-09T12:00:00Z", "2026-11-09T12:00:00Z"),
+            (
+                "_date_time_token",
+                "2026-11-09T12:00:00.123456+03:00",
+                "2026-11-09T12:00:00.123456+03:00",
+            ),
+            ("_date_time_token", "2026-11-09", "unknown"),
+            ("_date_time_token", "yesterday", "unknown"),
+            ("_date_time_token", FAKE_KEY, "unknown"),
+            ("_date_time_token", 1762689600, "unknown"),
+            ("_wallet_token", FAKE_ORG, FAKE_ORG),
+            ("_wallet_token", None, "personal"),
+            ("_wallet_token", "", "personal"),
+            ("_wallet_token", "acme-org", "unknown"),
+            ("_wallet_token", FAKE_KEY, "unknown"),
+            ("_wallet_token", 7, "unknown"),
+        ],
+    )
+    def test_each_logged_field_keeps_its_own_shape(
+        self, helper: str, value: Any, token: str
+    ) -> None:
+        assert getattr(bb, helper)(value) == token
 
 
 # --- the key ---------------------------------------------------------------------
@@ -1518,7 +1900,10 @@ class TestProbe:
         [
             {"safeForThirdParties": False, "passSecrets": True},
             {"safeForThirdParties": True, "proxyAiCredentials": True},
+            dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=True),
+            {"safeForThirdParties": True, "proxyAiCredentials": None},
         ],
+        ids=["unsafe-passing", "safe-proxied", "unsafe-passing-nothing-proxied", "proxy-null"],
     )
     def test_probe_refuses_an_environment_that_passes_credentials(
         self, fake: FakeBoat, flags: dict[str, Any], caplog: pytest.LogCaptureFixture
@@ -1528,11 +1913,115 @@ class TestProbe:
         with pytest.raises(BackendUnavailable, match="safe for third parties") as info:
             make_backend(fake).probe()
         assert "envcontents" not in all_exception_texts(info.value) + caplog.text
+        if "proxyAiCredentials" in flags:
+            assert "proxyAiCredentials is" in str(info.value)
+
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            {"safeForThirdParties": True, "proxyAiCredentials": _DROP},
+            dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=_DROP),
+        ],
+        ids=["safe", "unsafe-passing-nothing"],
+    )
+    def test_probe_accepts_an_environment_without_the_optional_proxy_flag(
+        self, fake: FakeBoat, flags: dict[str, Any]
+    ) -> None:
+        fake.environments = [_env_record("antiek-product", **flags)]
+        assert "proxyAiCredentials" not in fake.environments[0]
+        make_backend(fake).probe()
 
     def test_probe_refuses_an_unlisted_environment(self, fake: FakeBoat) -> None:
         fake.environments = [_env_record("base")]
         with pytest.raises(BackendUnavailable, match="not in this key's GET /environments"):
             make_backend(fake).probe()
+
+    @pytest.mark.parametrize(
+        "pair",
+        [
+            ({"safeForThirdParties": True}, dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=True)),
+            (dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=True), {"safeForThirdParties": True}),
+            ({"safeForThirdParties": True}, {"safeForThirdParties": True}),
+        ],
+        ids=["safe-first", "proxied-first", "both-safe"],
+    )
+    def test_an_environment_name_listed_twice_is_refused(
+        self, fake: FakeBoat, pair: tuple[dict[str, Any], dict[str, Any]]
+    ) -> None:
+        # Which entry a create by name would use is not documented, so the
+        # verdict may not depend on listing order: refuse every such listing.
+        fake.environments = [_env_record("base")] + [
+            _env_record("antiek-product", **flags) for flags in pair
+        ]
+        with pytest.raises(BackendUnavailable, match="2 environments named 'antiek-product'"):
+            make_backend(fake).probe()
+        with pytest.raises(BackendUnavailable, match="2 environments named 'antiek-product'"):
+            asyncio.run(new_ws(fake))
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    @pytest.mark.parametrize("team_id", [FAKE_KEY, "acme-org"], ids=["key-echo", "not-an-id"])
+    def test_probe_ready_line_logs_no_string_boat_returned(
+        self,
+        fake: FakeBoat,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        team_id: str,
+    ) -> None:
+        # Unpinned, so nothing compares teamId; a server echoing a value in a
+        # success answer must not get it into the INFO line.
+        monkeypatch.delenv("ANTIEK_BOAT_ORG")
+        fake.limits_override = {
+            "teamId": team_id,
+            "activeSandboxes": FAKE_KEY,
+            "maxActiveSandboxes": 100,
+            "machineTypes": [
+                {"type": FAKE_KEY, "available": True},
+                {"type": "small", "available": True},
+                {"type": "xlarge", "available": False},
+            ],
+        }
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        make_backend(fake).probe()
+        (line,) = [r.getMessage() for r in caplog.records if "BoatBackend ready" in r.getMessage()]
+        assert "wallet=unknown;" in line
+        assert "sandboxes None/100;" in line
+        assert "available=['unknown', 'small'];" in line
+        assert team_id not in caplog.text
+        assert_keyless(caplog.text)
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            {"canStart": False, "blockedReason": FAKE_KEY},
+            {"canStart": False, "billingStatus": f"past_due {FAKE_KEY}"},
+            {
+                "canStart": False,
+                "checkoutRequired": FAKE_KEY,
+                "activeSandboxes": FAKE_KEY,
+                "maxActiveSandboxes": OTHER_KEY,
+            },
+            {"canStart": FAKE_KEY},
+            {"canStart": _DROP, FAKE_KEY: 1},
+            {"teamId": FAKE_KEY},
+        ],
+        ids=["blocked-reason", "billing", "counts", "can-start", "field-name", "team-id"],
+    )
+    def test_a_limits_answer_echoing_the_key_cannot_put_it_in_the_refusal(
+        self, fake: FakeBoat, override: dict[str, Any]
+    ) -> None:
+        fake.limits_override = override
+        with pytest.raises(BackendUnavailable) as info:
+            make_backend(fake).probe()
+        assert "[redacted]" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+
+    def test_probe_ready_line_names_the_pinned_wallet(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        make_backend(fake).probe()
+        assert f"wallet={FAKE_ORG};" in caplog.text
+        assert "available=['small', 'default', 'large'];" in caplog.text
 
     def test_build_plane_environment_refused(
         self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
@@ -1618,6 +2107,30 @@ class TestCreate:
             asyncio.run(new_ws(fake))
         assert fake.calls_to("POST", "/sandboxes") == []
 
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=True),
+            {"safeForThirdParties": True, "proxyAiCredentials": True},
+        ],
+        ids=["unsafe-passing-nothing", "safe"],
+    )
+    async def test_proxied_ai_credentials_refused_before_any_create(
+        self, fake: FakeBoat, flags: dict[str, Any]
+    ) -> None:
+        fake.environments = [_env_record("antiek-product", **flags)]
+        with pytest.raises(BackendUnavailable, match="proxyAiCredentials is True"):
+            await new_ws(fake)
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    async def test_environment_without_the_proxy_flag_creates(self, fake: FakeBoat) -> None:
+        fake.environments = [
+            _env_record("antiek-product", **dict(_PASSING_NOTHING_UNSAFE, proxyAiCredentials=_DROP))
+        ]
+        ws = await new_ws(fake)
+        assert len(fake.calls_to("POST", "/sandboxes")) == 1
+        await ws.destroy()
+
     @pytest.mark.parametrize("code", ["api_key_action_forbidden", "api_key_sandbox_forbidden"])
     async def test_unreadable_environment_flags_refuse_the_create(
         self, fake: FakeBoat, code: str
@@ -1678,6 +2191,71 @@ class TestCreate:
         with pytest.raises(WorkspaceProvisionError, match=f"entered state '{failed}'"):
             await new_ws(fake)
         assert set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize("key", [FAKE_KEY, OTHER_KEY], ids=["current", "foreign"])
+    async def test_a_failed_state_error_echoing_the_key_is_scrubbed_before_the_cut(
+        self, fake: FakeBoat, key: str
+    ) -> None:
+        # Cut at 200 first, this would keep 'boat_fAkEk' (or 'boat_rOtAt').
+        fake.state_script = ["provisioning", "error"]
+        fake.record_extras = {"error": "y" * 190 + key}
+        with pytest.raises(WorkspaceProvisionError, match="entered state 'error'") as info:
+            await new_ws(fake)
+        assert str(info.value).endswith("y" * 190 + "[redacted]")
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize(
+        "extras",
+        [{"environment": FAKE_KEY}, {"team": {"id": FAKE_KEY}}],
+        ids=["environment", "team"],
+    )
+    async def test_a_record_echoing_the_key_cannot_put_it_in_the_refusal(
+        self, fake: FakeBoat, extras: dict[str, Any]
+    ) -> None:
+        fake.record_extras = extras
+        with pytest.raises(BackendUnavailable, match="the sandbox was deleted") as info:
+            await new_ws(fake)
+        assert "[redacted]" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_a_state_echoing_the_key_is_scrubbed_from_the_timeout(
+        self, fake: FakeBoat
+    ) -> None:
+        fake.ready_after = 10**9
+        fake.state_script = [FAKE_KEY] * 20
+        with pytest.raises(WorkspaceProvisionError, match="not ready within 10s") as info:
+            await new_ws(fake, ready_timeout_s=10)
+        assert "(last state '[redacted]')" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_an_exit_code_echoing_the_key_is_scrubbed(self, fake: FakeBoat) -> None:
+        fake.command_extras = {"exitCode": FAKE_KEY}
+        with pytest.raises(WorkspaceProvisionError, match="provisioning sandbox") as info:
+            await new_ws(fake)
+        assert "(exit '[redacted]')" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize("key", [FAKE_KEY, OTHER_KEY], ids=["current", "foreign"])
+    async def test_a_command_stderr_echoing_the_key_is_scrubbed_before_the_tail(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture, key: str
+    ) -> None:
+        # The last 400 characters taken first would keep the key's tail.
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        (fake.state / "sudo.fail").touch()
+        (fake.state / "sudo.stderr").write_text(key + "\n" + "y" * 380 + "\n")
+        with pytest.raises(WorkspaceProvisionError, match="provisioning sandbox") as info:
+            await new_ws(fake)
+        assert str(info.value).endswith("[redacted]\n" + "y" * 380)
+        assert_no_key_fragment(str(info.value))
+        (sid,) = fake.sandboxes
+        assert sid in fake.deleted
+        # The unchanged ledger line is written for this delete too (module docstring).
+        assert f"BoatBackend deleted sandbox {sid} (workspace " in caplog.text
+        assert "BoatBackend created workspace" not in caplog.text
 
     @pytest.mark.parametrize(
         ("status", "code", "expected"),
@@ -1859,6 +2437,10 @@ class TestCreate:
             ({"record_extras": {"environment": "base"}}, "attached to environment 'base'"),
             ({"record_extras": {"environment": None}}, "attached to environment None"),
             ({"record_extras": {"holdsCreatorLogins": True}}, "holdsCreatorLogins"),
+            # D5: created with snapshots off, so the record must say so.
+            ({"record_extras": {"snapshots": True}}, "reports snapshots True, not false"),
+            ({"record_extras": {"snapshots": None}}, "reports snapshots None, not false"),
+            ({"record_extras": {"snapshots": FAKE_KEY}}, "reports snapshots a non-boolean"),
         ],
     )
     async def test_sandbox_record_read_back(
@@ -1866,11 +2448,18 @@ class TestCreate:
     ) -> None:
         for name, value in setup.items():
             setattr(fake, name, value)
-        with pytest.raises(BackendUnavailable, match=match):
+        with pytest.raises(BackendUnavailable, match=match) as info:
             await new_ws(fake)
+        assert_keyless(all_exception_texts(info.value))
         assert len(fake.sandboxes) == 1
         assert set(fake.sandboxes) == fake.deleted
         assert fake.commands() == []
+
+    async def test_snapshots_off_on_every_create_and_read_back(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake)
+        assert [c.body["snapshots"] for c in fake.calls_to("POST", "/sandboxes")] == [False]
+        assert fake.sandboxes[ws.sandbox_id]["snapshots"] is False
+        await ws.destroy()
 
     async def test_unpinned_create_needs_no_team(
         self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
@@ -1999,11 +2588,11 @@ class TestCreate:
 
     async def test_provision_builds_the_workspace(self, fake: FakeBoat) -> None:
         ws = await new_ws(fake)
-        root = pathlib.Path(ws.root)
+        root = fake.host(ws.root)
         assert root.parent == fake.root_base
         for sub in ("in", "out", "work"):
             assert (root / sub).is_dir()
-        ctl = pathlib.Path(f"{ws.root}.ctl")
+        ctl = fake.host(f"{ws.root}.ctl")
         assert stat.S_IMODE(ctl.stat().st_mode) == 0o700
         assert ws._runner_uid == RUNNER_UID
         assert fake.log_lines("useradd") == [
@@ -2110,7 +2699,7 @@ class TestExec:
         result = await ws.exec(["env"], timeout_s=10, env={"EXEC_VAR": "e'2"})
         seen = dict(line.split("=", 1) for line in result.stdout.splitlines())
         assert set(seen) == {"PATH", "LANG", "HOME", "PROFILE_VAR", "EXEC_VAR"}
-        assert seen["HOME"] == os.path.realpath(ws.root)
+        assert seen["HOME"] == ws.root
         assert (seen["PROFILE_VAR"], seen["EXEC_VAR"]) == ("p 1", "e'2")
         await ws.destroy()
 
@@ -2118,7 +2707,7 @@ class TestExec:
         self, fake: FakeBoat, tmp_path: pathlib.Path
     ) -> None:
         ws = await new_ws(fake)
-        root = os.path.realpath(ws.root)
+        root = ws.root
         assert (await ws.exec(["pwd"], timeout_s=10)).stdout == f"{root}/work\n"
         assert (await ws.exec(["pwd"], timeout_s=10, cwd="in")).stdout == f"{root}/in\n"
         sent = len(fake.calls)
@@ -2128,7 +2717,7 @@ class TestExec:
         assert len(fake.calls) == sent
         outside = tmp_path / "outside"
         outside.mkdir()
-        os.symlink(outside, pathlib.Path(ws.root) / "work" / "esc")
+        os.symlink(outside, fake.host(ws.root) / "work" / "esc")
         with pytest.raises(ValueError, match="escapes"):
             await ws.exec(["pwd"], timeout_s=10, cwd="work/esc")
         missing = await ws.exec(["pwd"], timeout_s=10, cwd="nope")
@@ -2143,7 +2732,8 @@ class TestExec:
         (put,) = fake.calls_to("PUT", r"/sandboxes/[^/]+/files")
         assert put.body["path"].startswith(f"{ws.root}.ctl/")
         assert put.body["encoding"] == "base64"
-        assert list(pathlib.Path(f"{ws.root}.ctl").iterdir()) == []
+        # No spool file is left; the exec lock stays.
+        assert [p.name for p in fake.host(f"{ws.root}.ctl").iterdir()] == ["lock"]
         await ws.destroy()
 
     async def test_exit_codes_and_missing_binary(self, fake: FakeBoat) -> None:
@@ -2159,7 +2749,7 @@ class TestExec:
         result = await ws.exec(["sh", "-c", script], timeout_s=0.5)
         assert result.timed_out is True
         assert result.exit_code == -1
-        bg_pid = int((pathlib.Path(ws.root) / "work" / "bg.pid").read_text())
+        bg_pid = int((fake.host(ws.root) / "work" / "bg.pid").read_text())
         assert await _gone(bg_pid), "the background child survived the timeout"
         assert {"-KILL -U antiek-runner", "-KILL -u antiek-runner"} <= set(fake.log_lines("pkill"))
         (sync,) = [
@@ -2204,7 +2794,10 @@ class TestExec:
         # init reaps it once killed).
         spawn = subprocess.run(
             ["sh", "-c", "sleep 30 </dev/null >/dev/null 2>&1 & echo $!"],
-            env={"HOME": os.path.realpath(ws.root), "PATH": os.environ.get("PATH", "/bin")},
+            env={
+                "HOME": os.path.realpath(fake.host(ws.root)),
+                "PATH": os.environ.get("PATH", "/bin"),
+            },
             capture_output=True,
             text=True,
             check=True,
@@ -2234,7 +2827,7 @@ class TestExec:
         (fake.state / "root_chmod.fail").unlink()
         sent = len(fake.commands())
         assert await ws.get_file("out/a.txt") == b"artifact"
-        assert 'pkill -KILL -U "$RUN"' in fake.commands()[sent]
+        assert _is_cleanup(fake.commands()[sent])
         assert ws._dirty is False
         await ws.destroy()
 
@@ -2247,7 +2840,7 @@ class TestExec:
 
     async def test_tree_handed_over_then_restored_without_group_write(self, fake: FakeBoat) -> None:
         ws = await new_ws(fake)
-        root = pathlib.Path(ws.root)
+        root = fake.host(ws.root)
         result = await ws.exec(
             ["sh", "-c", "chmod 0777 ../out && touch ../out/f && chmod 6777 ../out/f"],
             timeout_s=10,
@@ -2259,8 +2852,8 @@ class TestExec:
         assert stat.S_IMODE((root / "out" / "f").stat().st_mode) == 0o755
         owner = f"{os.getuid()}:{os.getgid()}"
         assert fake.log_lines("chown") == [
-            f"-hR antiek-runner:antiek-runner -- {ws.root}",
-            f"-hR {owner} -- {ws.root}",
+            f"-hR antiek-runner:antiek-runner -- {root}",
+            f"-hR {owner} -- {root}",
         ]
         await ws.destroy()
 
@@ -2347,7 +2940,7 @@ class TestExec:
         sent = len(fake.commands())
         assert await ws.get_file("out/a.txt") == b"artifact"
         cleanup, resolve = fake.commands()[sent : sent + 2]
-        assert 'pkill -KILL -U "$RUN"' in cleanup and "realpath -m" in resolve
+        assert _is_cleanup(cleanup) and "realpath -m" in resolve
         # Clean again: the next transfer goes straight to the resolve.
         sent = len(fake.commands())
         await ws.get_file("out/a.txt")
@@ -2406,7 +2999,7 @@ class TestExec:
         assert stop.route.endswith("/commands/1")
         assert sum(clock.sleeps) >= 700 + 5 + 15 + 60
         cleanup = fake.commands()[-1]
-        assert 'pkill -KILL -U "$RUN"' in cleanup and ".in" in cleanup
+        assert _is_cleanup(cleanup) and ".in" in cleanup
         assert fake.log_lines("pkill") == ["-KILL -U antiek-runner", "-KILL -u antiek-runner"]
         assert ws._dirty is False
         await ws.destroy()
@@ -2417,7 +3010,7 @@ class TestExec:
         result = await ws.exec(["echo", "never"], timeout_s=5)
         assert result.timed_out is True and result.exit_code == -1
         cleanup = fake.commands()[-1]
-        assert 'pkill -KILL -U "$RUN"' in cleanup and "chmod -R go-w,ug-s" in cleanup
+        assert _is_cleanup(cleanup) and "chmod -R go-w,ug-s" in cleanup
         assert ws._dirty is False
         await ws.destroy()
 
@@ -2440,6 +3033,27 @@ class TestExec:
             await ws.exec(["true"], timeout_s=10)
         await ws.destroy()
 
+    async def test_vanished_sandbox_behind_an_unclean_workspace_is_lost(
+        self, fake: FakeBoat
+    ) -> None:
+        # The cleanup an unclean workspace runs first must report a vanished
+        # sandbox as WorkspaceLost, not as a cleanup that merely failed.
+        ws = await new_ws(fake)
+        (fake.state / "root_chmod.fail").touch()
+        await ws.exec(["echo", "x"], timeout_s=5)
+        assert ws._dirty is True
+        (fake.state / "root_chmod.fail").unlink()
+        fake.deleted.add(ws.sandbox_id)  # deleted out of band
+        wrappers = len(fake.exec_scripts())
+        with pytest.raises(WorkspaceLost, match="is gone"):
+            await ws.exec(["true"], timeout_s=10)
+        with pytest.raises(WorkspaceLost, match="is gone"):
+            await ws.get_file("out/a.txt")
+        with pytest.raises(WorkspaceLost, match="is gone"):
+            await ws.put_file("out/b.txt", b"x")
+        assert len(fake.exec_scripts()) == wrappers
+        await ws.destroy()
+
 
 # --- files ------------------------------------------------------------------------
 
@@ -2449,7 +3063,7 @@ class TestFiles:
         ws = await new_ws(fake)
         blob = bytes(range(256)) * 4
         await ws.put_file("in/deep/blob.bin", blob)
-        assert (pathlib.Path(ws.root) / "in/deep/blob.bin").read_bytes() == blob
+        assert (fake.host(ws.root) / "in/deep/blob.bin").read_bytes() == blob
         assert await ws.get_file("in/deep/blob.bin") == blob
         (put,) = fake.calls_to("PUT", r"/sandboxes/[^/]+/files")
         assert set(put.body) == {"path", "content", "encoding"}
@@ -2475,7 +3089,7 @@ class TestFiles:
         ws = await new_ws(fake)
         secret = tmp_path / "host-secret.txt"
         secret.write_text("outside")
-        os.symlink(secret, pathlib.Path(ws.root) / "out" / "link")
+        os.symlink(secret, fake.host(ws.root) / "out" / "link")
         with pytest.raises(ValueError, match="escapes"):
             await ws.get_file("out/link")
         with pytest.raises(ValueError, match="escapes"):
@@ -2499,7 +3113,7 @@ class TestFiles:
         with pytest.raises(ExecutionBackendError, match="files-API cap"):
             await ws.put_file("in/big", b"x" * (FILE_CAP + 1))
         assert len(fake.calls) == sent
-        (pathlib.Path(ws.root) / "out" / "big").write_bytes(b"y" * (FILE_CAP + 1))
+        (fake.host(ws.root) / "out" / "big").write_bytes(b"y" * (FILE_CAP + 1))
         with pytest.raises(ExecutionBackendError, match="5 MiB"):
             await ws.get_file("out/big")
         await ws.destroy()
@@ -2516,7 +3130,7 @@ class TestFiles:
         # out/l -> "a\nb": printed unchecked, the marker parse would read the
         # path as ".../out/a", a different file.
         ws = await new_ws(fake)
-        out = pathlib.Path(ws.root) / "out"
+        out = fake.host(ws.root) / "out"
         (out / "a").write_text("WRONG FILE")
         (out / "a\nb").write_text("right file")
         os.symlink("a\nb", out / "l")
@@ -2527,7 +3141,7 @@ class TestFiles:
 
     async def test_put_onto_a_fifo_refused(self, fake: FakeBoat) -> None:
         ws = await new_ws(fake)
-        os.mkfifo(pathlib.Path(ws.root) / "out" / "pipe")
+        os.mkfifo(fake.host(ws.root) / "out" / "pipe")
         with pytest.raises(ExecutionBackendError, match="not a regular file"):
             await ws.put_file("out/pipe", b"would block")
         assert fake.calls_to("PUT", r"/sandboxes/[^/]+/files") == []
@@ -2573,3 +3187,857 @@ class TestDestroy:
         await ws.destroy()
         assert ws.sandbox_id in fake.deleted
         assert len(fake.calls_to("DELETE", r"/sandboxes/[^/]+")) == 2
+
+
+# --- the spend ledger (D4) ------------------------------------------------------------
+
+#: The two stable lines, exactly as the module docstring spells them.
+ACCEPTED_RE = re.compile(
+    r"^BoatBackend sandbox accepted: sandbox=(bx_[0-9a-z]{8}) workspace=([0-9a-f]{32}) "
+    r"type=(\w+) ttlSeconds=(\d+) createdAt=(\S+) via=(create|repost|sweep)$"
+)
+DELETED_RE = re.compile(
+    r"^BoatBackend sandbox deleted: sandbox=(bx_[0-9a-z]{8}) workspace=([0-9a-f]{32}) "
+    r"via=(destroy|orphan) result=(deleted|not-found)$"
+)
+#: The runbook's existing parse of the provisioned-workspace line.
+RUNBOOK_CREATED_RE = re.compile(
+    r"BoatBackend created workspace \S+ \(sandbox (bx_\w+) .*?type=(\w+), ttl=(\d+)s"
+)
+
+
+def _ledger(
+    caplog: pytest.LogCaptureFixture,
+) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
+    accepted: list[tuple[str, ...]] = []
+    deleted: list[tuple[str, ...]] = []
+    for record in caplog.records:
+        if record.name != "antiek.exec_backend.boat":
+            continue
+        message = record.getMessage()
+        if message.startswith("BoatBackend sandbox accepted:"):
+            match = ACCEPTED_RE.match(message)
+            assert match is not None and record.levelno == logging.INFO, message
+            accepted.append(match.groups())
+        elif message.startswith("BoatBackend sandbox deleted:"):
+            match = DELETED_RE.match(message)
+            assert match is not None and record.levelno == logging.INFO, message
+            deleted.append(match.groups())
+    assert_keyless(caplog.text)
+    return accepted, deleted
+
+
+class TestSpendLedger:
+    async def test_create_and_destroy(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        ws = await new_ws(fake)
+        sid, wid = ws.sandbox_id, ws.workspace_id
+        created_at = fake.sandboxes[sid]["createdAt"]
+        await ws.destroy()
+        accepted, deleted = _ledger(caplog)
+        assert accepted == [(sid, wid, "small", "900", created_at, "create")]
+        assert deleted == [(sid, wid, "destroy", "deleted")]
+        # The existing lines stay, unchanged, for the runbook's parse.
+        assert RUNBOOK_CREATED_RE.search(caplog.text) is not None
+        assert RUNBOOK_CREATED_RE.findall(caplog.text) == [(sid, "small", "900")]
+        assert f"BoatBackend deleted sandbox {sid} (workspace {wid})" in caplog.text
+
+    async def test_accepted_is_logged_before_readiness(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.ready_after = 10**9
+        task = asyncio.create_task(new_ws(fake))
+        assert await _until(lambda: bool(fake.polls))
+        accepted, _ = _ledger(caplog)
+        (sid,) = fake.sandboxes
+        assert [a[0] for a in accepted] == [sid]
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        _, deleted = _ledger(caplog)
+        assert deleted == [(sid, accepted[0][1], "destroy", "deleted")]
+
+    async def test_billed_provisioning_failure_is_on_the_ledger(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.exit_overrides["useradd"] = 1
+        with pytest.raises(WorkspaceProvisionError):
+            await new_ws(fake)
+        (sid,) = fake.sandboxes
+        accepted, deleted = _ledger(caplog)
+        assert [(a[0], a[5]) for a in accepted] == [(sid, "create")]
+        assert [(d[0], d[2], d[3]) for d in deleted] == [(sid, "destroy", "deleted")]
+        assert "BoatBackend created workspace" not in caplog.text
+
+    async def test_lost_create_recovered_by_the_re_post(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await new_ws(fake)
+        (sid,) = fake.sandboxes
+        wid = fake.sandboxes[sid]["labels"]["antiek-workspace"]
+        accepted, deleted = _ledger(caplog)
+        # The re-POST's delete succeeded, so the sweep after it no longer lists
+        # the sandbox (the next test has a sweep that finds it again).
+        assert accepted == [(sid, wid, "small", "900", fake.sandboxes[sid]["createdAt"], "repost")]
+        assert deleted == [(sid, wid, "orphan", "deleted")]
+
+    async def test_accepted_once_when_the_sweep_finds_a_recovered_sandbox_again(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The re-POST recovers the sandbox but its delete fails, so the label
+        # sweep lists it again: still one accepted line for one billed sandbox.
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.injected += [
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True),
+            Injected("DELETE", r"/sandboxes/[^/]+", 500, "http_500", "busy"),
+        ]
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await new_ws(fake)
+        (sid,) = fake.sandboxes
+        assert sid in fake.deleted
+        assert len(fake.calls_to("DELETE", r"/sandboxes/[^/]+")) == 2
+        accepted, deleted = _ledger(caplog)
+        assert [(a[0], a[5]) for a in accepted] == [(sid, "repost")]
+        assert [(d[0], d[2], d[3]) for d in deleted] == [(sid, "orphan", "deleted")]
+
+    @pytest.mark.parametrize(
+        ("extras", "type_", "created"),
+        [
+            ({"createdAt": FAKE_KEY}, "small", "unknown"),
+            ({"type": FAKE_KEY}, "unknown", None),
+            ({"createdAt": "yesterday"}, "small", "unknown"),
+            ({"type": "huge"}, "unknown", None),
+        ],
+        ids=["created-key-echo", "type-key-echo", "created-not-a-time", "type-not-a-name"],
+    )
+    async def test_a_record_value_of_the_wrong_shape_is_logged_as_unknown(
+        self,
+        fake: FakeBoat,
+        caplog: pytest.LogCaptureFixture,
+        extras: dict[str, Any],
+        type_: str,
+        created: str | None,
+    ) -> None:
+        # A server echoing the key (or any other string) in a success answer
+        # cannot get it into the ledger line; _ledger also checks keylessness.
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.record_extras = extras
+        ws = await new_ws(fake)
+        sid, wid = ws.sandbox_id, ws.workspace_id
+        await ws.destroy()
+        accepted, _ = _ledger(caplog)
+        expected_created = created or fake.sandboxes[sid]["createdAt"]
+        assert accepted == [(sid, wid, type_, "900", expected_created, "create")]
+        assert "yesterday" not in caplog.text and "huge" not in caplog.text
+
+    async def test_lost_create_found_by_the_sweep(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.create_id_override = "not-a-sandbox-id"
+        with pytest.raises(WorkspaceProvisionError, match="usable sandbox id"):
+            await new_ws(fake)
+        (sid,) = fake.sandboxes
+        accepted, deleted = _ledger(caplog)
+        assert [(a[0], a[5]) for a in accepted] == [(sid, "sweep")]
+        assert [(d[0], d[2], d[3]) for d in deleted] == [(sid, "orphan", "deleted")]
+
+    async def test_missing_created_time_and_already_gone(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="antiek.exec_backend.boat")
+        fake.record_extras = {"createdAt": None}
+        ws = await new_ws(fake)
+        fake.deleted.add(ws.sandbox_id)  # deleted out of band
+        await ws.destroy()
+        accepted, deleted = _ledger(caplog)
+        assert [a[4] for a in accepted] == ["unknown"]
+        assert deleted == [(ws.sandbox_id, ws.workspace_id, "destroy", "not-found")]
+
+
+# --- the reap fails closed (S2) --------------------------------------------------------
+
+
+def _reap_probe() -> str:
+    """Just the reap, reporting its status and the clean flag (the review's probe)."""
+    return "\n".join(
+        [
+            "RUN=antiek-runner",
+            "ROOT=/nonexistent",
+            "OWNER=0:0",
+            *bb._restore_functions(),
+            "_reap; st=$?",
+            'printf "reap_status=%s CLEAN=%s\\n" "$st" "$CLEAN"',
+        ]
+    )
+
+
+class TestReap:
+    @pytest.mark.parametrize(
+        ("forced", "expected"),
+        [
+            (None, "reap_status=0 CLEAN=1"),
+            ("1", "reap_status=0 CLEAN=1"),
+            ("2", "reap_status=1 CLEAN=0"),
+            ("3", "reap_status=1 CLEAN=0"),
+            ("signal", "reap_status=1 CLEAN=0"),
+            ("sudo", "reap_status=1 CLEAN=0"),
+        ],
+        ids=["nothing-running", "no-match", "syntax-error", "fatal-error", "signal", "sudo-fails"],
+    )
+    async def test_only_no_match_confirms_the_reap(
+        self, fake: FakeBoat, forced: str | None, expected: str
+    ) -> None:
+        if forced == "sudo":
+            (fake.state / "sudo.fail").touch()
+        elif forced is not None:
+            (fake.state / "pkill.rc").write_text(f"{forced}\n")
+        result = await fake.run_sh(_reap_probe(), "bx_reapprob", 30)
+        assert result["stdout"].strip() == expected, result
+
+    async def test_a_process_that_survives_every_round_is_unconfirmed(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # pkill keeps reporting a kill and nothing ever goes away.
+        monkeypatch.setattr(bb, "_REAP_ROUNDS", 3)
+        (fake.state / "pkill.rc").write_text("0\n")
+        result = await fake.run_sh(_reap_probe(), "bx_reapprob", 30)
+        assert result["stdout"].strip() == "reap_status=1 CLEAN=0"
+        assert len(fake.log_lines("pkill")) == 6
+
+    async def test_a_still_running_runner_process_is_killed_then_confirmed(
+        self, fake: FakeBoat
+    ) -> None:
+        ws = await new_ws(fake)
+        stray = subprocess.Popen(
+            ["sleep", "30"],
+            env={"HOME": os.path.realpath(fake.host(ws.root)), "PATH": os.environ["PATH"]},
+            start_new_session=True,
+        )
+        try:
+            result = await fake.run_sh(_reap_probe(), ws.sandbox_id, 30)
+            assert result["stdout"].strip() == "reap_status=0 CLEAN=1"
+            assert stray.wait(timeout=5) == -signal.SIGKILL
+            # Killed in round one, confirmed gone in a later round.
+            assert len(fake.log_lines("pkill")) >= 4
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                stray.kill()
+            stray.wait()
+        await ws.destroy()
+
+    @pytest.mark.parametrize("forced", ["2", "3", "signal", "sudo"])
+    async def test_an_unconfirmed_reap_refuses_the_exec_and_every_later_call(
+        self, fake: FakeBoat, forced: str
+    ) -> None:
+        ws = await new_ws(fake)
+        await ws.put_file("out/a.txt", b"artifact")
+        marker = fake.state / ("sudo.fail" if forced == "sudo" else "pkill.rc")
+        marker.write_text(f"{forced}\n")
+        ran = fake.host(ws.root) / "work" / "ran.txt"
+        before = len(_workload_sudo_lines(fake))
+        with pytest.raises(ExecutionBackendError, match="reap_failed") as info:
+            await ws.exec(["sh", "-c", "echo ran > ran.txt"], timeout_s=10)
+        assert "before the workload ran" in str(info.value)
+        assert not ran.exists() and len(_workload_sudo_lines(fake)) == before
+        assert ws._dirty is True
+        wrappers = len(fake.exec_scripts())
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.get_file("out/a.txt")
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.put_file("out/b.txt", b"x")
+        assert len(fake.exec_scripts()) == wrappers, "a wrapper was sent to an unclean workspace"
+        assert fake.calls_to("GET", r"/sandboxes/[^/]+/files") == []
+        # Once a cleanup is confirmed, work resumes.
+        marker.unlink()
+        assert await ws.get_file("out/a.txt") == b"artifact"
+        assert ws._dirty is False
+        assert (await ws.exec(["echo", "ok"], timeout_s=10)).stdout == "ok\n"
+        await ws.destroy()
+        assert ws.sandbox_id in fake.deleted
+
+    async def test_a_reap_that_never_empties_refuses_the_exec(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(bb, "_REAP_ROUNDS", 3)
+        ws = await new_ws(fake)
+        (fake.state / "pkill.rc").write_text("0\n")
+        with pytest.raises(ExecutionBackendError, match="reap_failed"):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        assert _workload_sudo_lines(fake) == []
+        assert fake.log_lines("pkill") == ["-KILL -U antiek-runner", "-KILL -u antiek-runner"] * 3
+        assert ws._dirty is True
+        await ws.destroy()
+        assert ws.sandbox_id in fake.deleted
+
+    async def test_an_unconfirmed_final_reap_marks_the_workspace_unclean(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        ws = await new_ws(fake)
+        # The workload itself breaks pkill for the wrapper's final reap.
+        rc_file = fake.state / "pkill.rc"
+        with caplog.at_level(logging.WARNING):
+            result = await ws.exec(["sh", "-c", f"echo 2 > {rc_file}; echo done"], timeout_s=10)
+        assert (result.exit_code, result.stdout) == (0, "done\n")
+        assert ws._dirty is True and "re-runs the cleanup" in caplog.text
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        rc_file.unlink()
+        assert (await ws.exec(["echo", "ok"], timeout_s=10)).stdout == "ok\n"
+        await ws.destroy()
+
+    async def test_a_held_exec_lock_refuses_the_exec(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(bb, "_EXEC_LOCK_WAIT_S", 1)
+        ws = await new_ws(fake)
+        lock = fake.host(f"{ws.root}.ctl") / "lock"
+        holder = subprocess.Popen(["flock", str(lock), "sleep", "30"], start_new_session=True)
+        try:
+            assert await _until(
+                lambda: subprocess.run(["flock", "-n", str(lock), "true"]).returncode != 0
+            )
+            with pytest.raises(ExecutionBackendError, match="busy"):
+                await ws.exec(["echo", "x"], timeout_s=10)
+            assert _workload_sudo_lines(fake) == [] and ws._dirty is True
+        finally:
+            os.killpg(holder.pid, signal.SIGKILL)
+            holder.wait()
+        assert (await ws.exec(["echo", "ok"], timeout_s=10)).stdout == "ok\n"
+        await ws.destroy()
+
+
+# --- an interrupted exec is cleaned up before the lock is released (S3) ------------
+
+#: A workload that records its pid, then runs long.
+_LONG = ["sh", "-c", "echo $$ > pid; exec sleep 30"]
+
+
+def _pid_file(fake: FakeBoat, ws: Any) -> pathlib.Path:
+    return fake.host(ws.root) / "work" / "pid"
+
+
+def _hold_exec_lock(fake: FakeBoat, ws: Any, seconds: float) -> subprocess.Popen[bytes]:
+    """An outside process holding the VM exec lock for ``seconds``: it stands
+    for an interrupted wrapper already past its fence check. It is not a
+    runner process (its HOME is not a workspace root), so no reap ends it."""
+    lock = fake.host(f"{ws.root}.ctl") / "lock"
+    return subprocess.Popen(["flock", str(lock), "sleep", str(seconds)], start_new_session=True)
+
+
+def _exec_lock_held(fake: FakeBoat, ws: Any) -> bool:
+    lock = fake.host(f"{ws.root}.ctl") / "lock"
+    return subprocess.run(["flock", "-n", str(lock), "true"]).returncode != 0
+
+
+def _stop_holder(holder: subprocess.Popen[bytes]) -> None:
+    if holder.poll() is None:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(holder.pid, signal.SIGKILL)
+    holder.wait()
+
+
+class TestInterruptedExec:
+    @pytest.mark.parametrize(
+        ("status", "code", "exc", "match"),
+        [
+            (502, "http_502", httpx.ConnectError, "http_502"),
+            (0, "", httpx.ReadError, "ReadError"),
+        ],
+        ids=["lost-5xx", "transport-after-send"],
+    )
+    async def test_sync_lost_answer_is_cleaned_up_before_exec_returns(
+        self,
+        fake: FakeBoat,
+        status: int,
+        code: str,
+        exc: type[httpx.TransportError],
+        match: str,
+    ) -> None:
+        ws = await new_ws(fake)
+        pid_file = _pid_file(fake, ws)
+        fake.injected.append(
+            Injected(
+                "POST",
+                r"/sandboxes/[^/]+/commands",
+                status,
+                code,
+                "lost",
+                exc=exc,
+                detach_effect=True,
+                wait_for=pid_file,
+            )
+        )
+        with pytest.raises(ExecutionBackendError, match=match):
+            await ws.exec(_LONG, timeout_s=60)
+        # Before exec returned: the old workload is dead and the old wrapper
+        # finished (the cleanup only confirms once it holds the exec lock).
+        assert not _proc_alive(int(pid_file.read_text()))
+        assert len(fake.cleanups()) == 1
+        assert ws._dirty is False and ws._fence == set()
+        await fake.drain()
+        assert (await ws.exec(["echo", "next"], timeout_s=10)).stdout == "next\n"
+        await ws.destroy()
+
+    async def test_sync_cancellation_is_cleaned_up_before_it_propagates(
+        self, fake: FakeBoat
+    ) -> None:
+        ws = await new_ws(fake)
+        pid_file = _pid_file(fake, ws)
+        task = asyncio.create_task(ws.exec(_LONG, timeout_s=60))
+        assert await _until(pid_file.exists)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not _proc_alive(int(pid_file.read_text()))
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        await fake.drain()
+        assert (await ws.exec(["echo", "next"], timeout_s=10)).stdout == "next\n"
+        await ws.destroy()
+
+    async def test_sync_second_cancel_during_cleanup(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake)
+        pid_file = _pid_file(fake, ws)
+        fake.cleanup_delay_s = 0.3
+        task = asyncio.create_task(ws.exec(_LONG, timeout_s=60))
+        assert await _until(pid_file.exists)
+        task.cancel()
+        assert await _until(lambda: bool(fake.cleanups()))
+        assert task.cancel(), "the exec should still be inside its cleanup"
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        pid = int(pid_file.read_text())
+        # The cleanup goes on; the next call waits for it before anything else.
+        probe = await ws.exec(
+            ["sh", "-c", f"if kill -0 {pid} 2>/dev/null; then echo alive; else echo dead; fi"],
+            timeout_s=10,
+        )
+        assert probe.stdout == "dead\n"
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        await ws.destroy()
+
+    async def test_detached_lost_poll_answer_stops_then_cleans_up(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake, clock=PacedClock())
+        fake.detached_background = True
+        pid_file = _pid_file(fake, ws)
+        fake.injected.append(
+            Injected(
+                "GET",
+                r"/sandboxes/[^/]+/commands/[0-9]+",
+                0,
+                "",
+                "reset",
+                exc=httpx.ReadError,
+                wait_for=pid_file,
+            )
+        )
+        with pytest.raises(ExecutionBackendError, match="ReadError"):
+            await ws.exec(_LONG, timeout_s=700)
+        (stop,) = fake.calls_to("DELETE", r"/sandboxes/[^/]+/commands/[0-9]+")
+        assert stop.route.endswith("/commands/1")
+        cleanup_at = next(
+            i
+            for i, c in enumerate(fake.calls)
+            if isinstance(c.body, dict) and _is_cleanup(str(c.body.get("command", "")))
+        )
+        assert fake.calls.index(stop) < cleanup_at
+        assert not _proc_alive(int(pid_file.read_text()))
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        await fake.drain()
+        fake.detached_background = False
+        assert (await ws.exec(["echo", "next"], timeout_s=10)).stdout == "next\n"
+        await ws.destroy()
+
+    async def test_detached_cancellation_stops_then_cleans_up(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake, clock=PacedClock())
+        fake.detached_background = True
+        pid_file = _pid_file(fake, ws)
+        task = asyncio.create_task(ws.exec(_LONG, timeout_s=700))
+        assert await _until(pid_file.exists)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert len(fake.calls_to("DELETE", r"/sandboxes/[^/]+/commands/[0-9]+")) == 1
+        assert not _proc_alive(int(pid_file.read_text()))
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        await fake.drain()
+        await ws.destroy()
+
+    async def test_detached_second_cancel_during_cleanup(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake, clock=PacedClock())
+        fake.detached_background = True
+        fake.cleanup_delay_s = 0.3
+        pid_file = _pid_file(fake, ws)
+        task = asyncio.create_task(ws.exec(_LONG, timeout_s=700))
+        assert await _until(pid_file.exists)
+        task.cancel()
+        assert await _until(lambda: bool(fake.cleanups()))
+        assert task.cancel(), "the exec should still be inside its cleanup"
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        pid = int(pid_file.read_text())
+        fake.detached_background = False
+        probe = await ws.exec(
+            ["sh", "-c", f"if kill -0 {pid} 2>/dev/null; then echo alive; else echo dead; fi"],
+            timeout_s=10,
+        )
+        assert probe.stdout == "dead\n"
+        assert len(fake.cleanups()) == 1 and ws._dirty is False
+        assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        await fake.drain()
+        await ws.destroy()
+
+    @pytest.mark.parametrize("timeout_s", [10, 700], ids=["sync", "detached"])
+    async def test_a_wrapper_that_starts_after_its_cleanup_runs_nothing(
+        self, fake: FakeBoat, timeout_s: float
+    ) -> None:
+        # The answer is lost before Boat started the command; Boat starts it
+        # later, after the cleanup: its fence file stops it.
+        ws = await new_ws(fake)
+        fake.injected.append(
+            Injected("POST", r"/sandboxes/[^/]+/commands", 502, "http_502", "lost")
+        )
+        with pytest.raises(ExecutionBackendError, match="http_502"):
+            await ws.exec(["sh", "-c", "echo ran > ran.txt"], timeout_s=timeout_s)
+        assert fake.calls_to("DELETE", r"/sandboxes/[^/]+/commands/[0-9]+") == []
+        (cleanup,) = fake.cleanups()
+        assert bb._FENCE_SUFFIX in cleanup and ws._dirty is False
+        (late,) = fake.exec_scripts()
+        answer = await fake.run_sh(late, ws.sandbox_id, 60)
+        assert ":end cancelled " in answer["stderr"]
+        assert not (fake.host(ws.root) / "work" / "ran.txt").exists()
+        assert _workload_sudo_lines(fake) == []
+        await ws.destroy()
+
+    async def test_an_unconfirmed_cleanup_keeps_every_later_call_out(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake)
+        fake.injected += [
+            Injected("POST", r"/sandboxes/[^/]+/commands", 502, "http_502", "lost"),
+            Injected("POST", r"/sandboxes/[^/]+/commands", 500, "http_500", "boom", times=2),
+        ]
+        with pytest.raises(ExecutionBackendError, match="http_502"):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        assert ws._dirty is True and len(ws._fence) == 1
+        with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+            await ws.exec(["echo", "y"], timeout_s=10)
+        assert len(fake.exec_scripts()) == 1, "a wrapper was sent to an unclean workspace"
+        # The next confirmed cleanup fences the lost wrapper too.
+        result = await ws.exec(["echo", "z"], timeout_s=10)
+        assert result.stdout == "z\n" and ws._fence == set()
+        cleanup = fake.cleanups()[-1]
+        lost_nonce = fake.exec_scripts()[0].split("ANTIEK_BOAT_", 1)[1][:32]
+        assert f"{lost_nonce}{bb._FENCE_SUFFIX}" in cleanup
+        await ws.destroy()
+
+    async def test_a_cleanup_confirms_only_once_it_holds_the_exec_lock(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An earlier wrapper holds the VM exec lock for longer than the
+        # cleanup waits: the cleanup must not confirm, so the workspace stays
+        # unclean and every later call is refused until the lock is free.
+        monkeypatch.setattr(bb, "_CLEANUP_LOCK_ROUNDS", 3)
+        ws = await new_ws(fake)
+        await ws.put_file("out/a.txt", b"artifact")
+        holder = _hold_exec_lock(fake, ws, 30)
+        try:
+            assert await _until(lambda: _exec_lock_held(fake, ws))
+            fake.injected.append(
+                Injected("POST", r"/sandboxes/[^/]+/commands", 502, "http_502", "lost")
+            )
+            with pytest.raises(ExecutionBackendError, match="http_502"):
+                await ws.exec(["echo", "x"], timeout_s=10)
+            assert len(fake.cleanups()) == 1
+            assert ws._dirty is True, "a cleanup that never held the exec lock was confirmed"
+            with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+                await ws.exec(["echo", "y"], timeout_s=10)
+            with pytest.raises(ExecutionBackendError, match="could not be taken back"):
+                await ws.get_file("out/a.txt")
+            assert ws._dirty is True and len(fake.exec_scripts()) == 1
+            assert fake.calls_to("GET", r"/sandboxes/[^/]+/files") == []
+        finally:
+            _stop_holder(holder)
+        assert await ws.get_file("out/a.txt") == b"artifact"
+        assert ws._dirty is False and ws._fence == set()
+        assert (await ws.exec(["echo", "ok"], timeout_s=10)).stdout == "ok\n"
+        await ws.destroy()
+
+    async def test_a_cleanup_waits_for_the_wrapper_that_holds_the_exec_lock(
+        self, fake: FakeBoat
+    ) -> None:
+        # The holder stands for an interrupted wrapper past its fence check
+        # that still runs for a second: exec may only return (and release the
+        # workspace lock) once that wrapper is done with the VM.
+        ws = await new_ws(fake)
+        holder = _hold_exec_lock(fake, ws, 1.0)
+        try:
+            assert await _until(lambda: _exec_lock_held(fake, ws))
+            fake.injected.append(
+                Injected("POST", r"/sandboxes/[^/]+/commands", 502, "http_502", "lost")
+            )
+            with pytest.raises(ExecutionBackendError, match="http_502"):
+                await ws.exec(["echo", "x"], timeout_s=10)
+            assert holder.poll() is not None, (
+                "exec returned while an earlier wrapper still held the VM exec lock"
+            )
+            assert ws._dirty is False and len(fake.cleanups()) == 1
+        finally:
+            _stop_holder(holder)
+        await ws.destroy()
+
+    async def test_an_answer_without_a_trailer_leaves_the_workspace_unclean(
+        self, fake: FakeBoat
+    ) -> None:
+        # Boat answers 200 without the wrapper's trailer while the wrapper
+        # still runs: nothing confirmed the reap, so the next call cleans up
+        # (fencing that wrapper and waiting for its lock) before its own.
+        ws = await new_ws(fake)
+        pid_file = _pid_file(fake, ws)
+        fake.injected.append(
+            Injected(
+                "POST",
+                r"/sandboxes/[^/]+/commands",
+                200,
+                "odd",
+                "no streams",
+                detach_effect=True,
+                wait_for=pid_file,
+            )
+        )
+        with pytest.raises(ExecutionBackendError, match="no wrapper result"):
+            await ws.exec(_LONG, timeout_s=60)
+        assert ws._dirty is True and len(ws._fence) == 1
+        assert fake.cleanups() == []
+        result = await ws.exec(["echo", "next"], timeout_s=10)
+        assert result.stdout == "next\n"
+        assert len(fake.cleanups()) == 1, "the next exec ran without a cleanup first"
+        assert not _proc_alive(int(pid_file.read_text()))
+        assert ws._dirty is False and ws._fence == set()
+        await fake.drain()
+        await ws.destroy()
+
+    @pytest.mark.parametrize(
+        ("status", "code", "exc", "expected"),
+        [
+            (409, "boat_starting", httpx.ConnectError, ExecutionBackendError),
+            (403, "api_key_action_forbidden", httpx.ConnectError, BackendUnavailable),
+            (0, "", httpx.ConnectError, ExecutionBackendError),
+        ],
+        ids=["refused-409", "refused-403", "never-connected"],
+    )
+    async def test_a_command_that_never_ran_needs_no_cleanup(
+        self,
+        fake: FakeBoat,
+        status: int,
+        code: str,
+        exc: type[httpx.TransportError],
+        expected: type[Exception],
+    ) -> None:
+        ws = await new_ws(fake)
+        fake.injected.append(
+            Injected("POST", r"/sandboxes/[^/]+/commands", status, code, "no", exc=exc)
+        )
+        with pytest.raises(expected):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        assert fake.cleanups() == [] and ws._dirty is False and ws._fence == set()
+        assert (await ws.exec(["echo", "ok"], timeout_s=10)).stdout == "ok\n"
+        await ws.destroy()
+
+
+class TestAnswerEchoes:
+    """A server that echoes a key (the current one or any key-shaped value) in
+    a 2xx answer gets no piece of it into an exception or a WARNING."""
+
+    @staticmethod
+    def _marker(script: str) -> str | None:
+        m = re.search(r"M=(ANTIEK_BOAT_[0-9a-f]{32})", script)
+        return m.group(1) if m else None
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"id": FAKE_KEY, "environment": "base"},
+            {"id": FAKE_KEY, "holdsCreatorLogins": True},
+            {"id": FAKE_KEY, "snapshots": True},
+            {"id": FAKE_KEY, "team": {"id": OTHER_ORG}},
+        ],
+        ids=["environment", "creator-logins", "snapshots", "team"],
+    )
+    async def test_a_polled_record_is_named_by_the_checked_sandbox_id(
+        self, fake: FakeBoat, changes: dict[str, Any]
+    ) -> None:
+        # Only the readiness answer carries these; the create answer's id was checked.
+        fake.poll_extras = changes
+        with pytest.raises(BackendUnavailable, match="the sandbox was deleted") as info:
+            await new_ws(fake)
+        (sid,) = fake.sandboxes
+        assert str(info.value).startswith(f"Boat sandbox {sid} ")
+        assert_no_key_fragment(str(info.value))
+        assert sid in fake.deleted
+
+    def test_a_proxy_ai_credentials_echo_is_scrubbed(self, fake: FakeBoat) -> None:
+        fake.environments = [
+            _env_record("base"),
+            _env_record("antiek-product", safeForThirdParties=True, proxyAiCredentials=FAKE_KEY),
+        ]
+        shown = re.escape("proxyAiCredentials is '[redacted]', not false")
+        with pytest.raises(BackendUnavailable, match=shown) as probed:
+            make_backend(fake).probe()
+        with pytest.raises(BackendUnavailable, match=shown) as created:
+            asyncio.run(new_ws(fake))
+        assert_no_key_fragment(str(probed.value) + str(created.value))
+        assert fake.calls_to("POST", "/sandboxes") == []
+
+    @pytest.mark.parametrize("key", [FAKE_KEY, OTHER_KEY], ids=["current", "foreign"])
+    async def test_a_hardlinks_value_echoing_a_key_is_scrubbed(
+        self, fake: FakeBoat, key: str
+    ) -> None:
+        (fake.state / "protected_hardlinks").write_text(key + "\n")
+        with pytest.raises(BackendUnavailable, match="does not protect hardlinks") as info:
+            await new_ws(fake)
+        assert "(fs.protected_hardlinks=[redacted])" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_forged_credential_markers_are_scrubbed(self, fake: FakeBoat) -> None:
+        def forge(script: str, answer: dict[str, Any]) -> dict[str, Any]:
+            marker = self._marker(script)
+            if marker is None or ":credential=" not in script:
+                return answer
+            return {**answer, "stdout": f"{marker}:credential={OTHER_KEY}\n" + answer["stdout"]}
+
+        fake.answer_rewrite = forge
+        with pytest.raises(BackendUnavailable, match="passes account credentials") as info:
+            await new_ws(fake)
+        assert ": [redacted]. Product workspaces" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_a_first_output_rule_echoing_a_key_is_scrubbed(self, fake: FakeBoat) -> None:
+        for family in ("iptables", "ip6tables"):
+            (fake.state / f"{family}.rules").write_text(
+                f"-A OUTPUT -m comment --comment {OTHER_KEY} -j ACCEPT\n"
+            )
+            (fake.state / f"{family}.append").touch()
+        with pytest.raises(NetPolicyUnsupported, match="first OUTPUT rule is") as info:
+            await new_ws(fake, net_policy=DENY_ALL)
+        assert "--comment [redacted] -j ACCEPT" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_an_iptables_read_back_error_is_scrubbed_before_the_cut(
+        self, fake: FakeBoat
+    ) -> None:
+        # Cut at 200 first, this would keep 'boat_rOtAt'.
+        for family in ("iptables", "ip6tables"):
+            (fake.state / f"{family}.S.stderr").write_text("y" * 190 + OTHER_KEY + "\n")
+        with pytest.raises(NetPolicyUnsupported, match="-S OUTPUT failed") as info:
+            await new_ws(fake, net_policy=DENY_ALL)
+        assert "y" * 190 + "[redacted]" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    async def test_a_deny_all_apply_exit_code_echo_is_scrubbed(self, fake: FakeBoat) -> None:
+        def forge(script: str, answer: dict[str, Any]) -> dict[str, Any]:
+            return {**answer, "exitCode": FAKE_KEY} if "-I OUTPUT 1 -m owner" in script else answer
+
+        fake.answer_rewrite = forge
+        with pytest.raises(NetPolicyUnsupported, match="could not be applied") as info:
+            await new_ws(fake, net_policy=DENY_ALL)
+        assert "exited '[redacted]'" in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        assert set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize("field", ["exitCode", "status"])
+    async def test_a_path_resolve_answer_echoing_a_key_is_scrubbed(
+        self, fake: FakeBoat, field: str
+    ) -> None:
+        ws = await new_ws(fake)
+
+        def forge(script: str, answer: dict[str, Any]) -> dict[str, Any]:
+            if ":status=" not in script or "setsid" in script:
+                return answer
+            if field == "exitCode":
+                stdout = answer["stdout"].replace(":status=missing", ":status=weird")
+                return {**answer, "exitCode": OTHER_KEY, "stdout": stdout}
+            stdout = answer["stdout"].replace(":status=missing", f":status={OTHER_KEY}")
+            return {**answer, "stdout": stdout}
+
+        fake.answer_rewrite = forge
+        with pytest.raises(ExecutionBackendError, match="could not resolve") as info:
+            await ws.get_file("out/nope.txt")
+        shown = "exit '[redacted]'" if field == "exitCode" else "status '[redacted]'"
+        assert shown in str(info.value)
+        assert_no_key_fragment(str(info.value))
+        fake.answer_rewrite = None
+        await ws.destroy()
+
+    async def test_a_forged_exec_trailer_status_is_scrubbed(self, fake: FakeBoat) -> None:
+        ws = await new_ws(fake)
+
+        def forge(script: str, answer: dict[str, Any]) -> dict[str, Any]:
+            marker = self._marker(script)
+            if marker is None or "setsid --wait" not in script:
+                return answer
+            stderr = answer["stderr"].replace(f"\n{marker}:end ok ", f"\n{marker}:end {OTHER_KEY} ")
+            return {**answer, "stderr": stderr}
+
+        fake.answer_rewrite = forge
+        with pytest.raises(ExecutionBackendError, match="exec wrapper failed") as info:
+            await ws.exec(["true"], timeout_s=10)
+        assert str(info.value).endswith(": '[redacted]'")
+        assert_no_key_fragment(str(info.value))
+        fake.answer_rewrite = None
+        await ws.destroy()
+
+    async def test_an_unconfirmed_cleanup_warning_scrubs_the_exit_code(
+        self, fake: FakeBoat, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        ws = await new_ws(fake)
+        (fake.state / "pkill.rc").write_text("2\n")
+        with pytest.raises(ExecutionBackendError, match="reap_failed"):
+            await ws.exec(["echo", "x"], timeout_s=10)
+        assert ws._dirty is True
+        fake.command_extras = {"exitCode": OTHER_KEY}
+        with (
+            caplog.at_level(logging.WARNING),
+            pytest.raises(ExecutionBackendError, match="could not be taken back"),
+        ):
+            await ws.get_file("out/a.txt")
+        assert "(exit '[redacted]')" in caplog.text
+        assert_no_key_fragment(caplog.text)
+        fake.command_extras = {}
+        (fake.state / "pkill.rc").unlink()
+        await ws.destroy()
+
+    @pytest.mark.parametrize("exits", [False, True], ids=["shell-waits", "shell-gone"])
+    async def test_the_fake_kills_a_timed_out_command_with_its_group(
+        self, fake: FakeBoat, exits: bool
+    ) -> None:
+        # A self-test of the fake: a child left in the command's process group
+        # must not outlive it (one moved out with setsid is left to the reap).
+        tail = "exit 0" if exits else "sleep 30"
+        script = f'sleep 30 & echo "$!" > "$STUB_STATE/bg"; {tail}'
+        answer = await fake.run_sh(script, "bx_23456789", 0.7)
+        assert answer["timedOut"] is True
+        child = int((fake.state / "bg").read_text())
+        try:
+            for _ in range(60):
+                if not _proc_alive(child):
+                    break
+                await asyncio.sleep(0.05)
+            assert not _proc_alive(child), "a child outlived the timed-out command"
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(child, signal.SIGKILL)

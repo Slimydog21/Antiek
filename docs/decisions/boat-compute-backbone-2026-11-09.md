@@ -7,20 +7,30 @@ gate G2, and activation on either plane needs the owner's written go after the
 gates below. **This proposal neither authorizes nor executes the AWS
 production migration** of `docs/decisions/aws-production-and-agent-backbone-2026-10-07.md`,
 and it **does not displace that record's lane-host arrangement for the peer
-research tenants** (solcoa, volantis, inferact).
+research tenants** (solcoa, volantis, inferact). The cloud CEO's review of
+the first handoff (draft PR #3826) requested changes; this revision answers
+its findings ("Review of PR #3826 and round 2") and stays PROPOSED.
 **Lane:** `boat-backbone-decision-20261109`: this record and
 `infrastructure/runbooks/boat-backbone.md` only. The adapter
 `runtime/exec_backend/boat_backend.py` belongs to the code lane and is
 described here as it stands, uncommitted, in the working tree on `79b66b1`
-(modified 12:01 +03 on 2026-11-09, SHA-256
-`48d924412b7d82742dda6ef19ef5adc901dfd6bd1e7c58539c323950db0618d8`, after the
-live finding in "Live evidence"); if the code changes before review, the code
-wins and this record follows.
-**Coordination:** the cloud CEO owns review and the PR. Its Beads task is
-pending via peer run `run_7f565b3db2e242189d71baf23037246f` (idempotency key
-`boat-backbone-beads-20261109-ceo`), its coordination receipt is
-`/opt/data/antiek/operations/boat-backbone-2026-11-09.json`, and it graded
-evidence completeness 75/100 pending handoff and live acceptance [M].
+(modified 16:10 +03 on 2026-11-09, SHA-256
+`ac778a27b397cb0b7dad7cbc05c6fd3d09983739931331b99b2c18f6e948edb0`, beside
+`tests/test_exec_backend_boat.py` at SHA-256
+`43b44fafe3d10836e2418e1bca80794f471785810e7c3fbf398f2c4ff430b107`, after the
+round-2 fixes of the review's findings S1 to S3, D4 and D5 and the
+orchestrator's follow-up after round 2); if the code
+changes before review, the code wins and this record follows.
+**Coordination:** the cloud CEO owns review and the PR; its review of PR
+#3826 says its manager record
+`/opt/data/antiek/operations/boat-backbone-2026-11-09.json` records that (no
+lane here read that record). The draft
+PR is #3826 (https://github.com/Slimydog21/Antiek/pull/3826), whose head for
+the first handoff is `21b0db5` on base `79b66b1`. The Beads peer run
+`run_7f565b3db2e242189d71baf23037246f` (idempotency key
+`boat-backbone-beads-20261109-ceo`) completed BLOCKED: it found no usable
+canonical ledger, so there is no Beads id and no ledger was initialized [M,
+the cloud CEO's review of PR #3826].
 **Implements on ratification:** the runbook above; the factory registration
 written out in `boat_backend.py`'s "Activation (after ratification)" section.
 **Amends on ratification:** CLAUDE.md §16, by one added block (Decision §6);
@@ -31,16 +41,19 @@ edits neither file.
 every other clause of the 2026-10-07 record.
 
 Evidence labels follow the 2026-10-07 record: **[M]** measured, **[I]**
-inferred from measured facts, **[A]** assumed. [M] here means one of four
+inferred from measured facts, **[A]** assumed. [M] here means one of five
 things: a read-only measurement the workflow orchestrator made on 2026-11-09
-with Boat CLI 1.0.96 and the REST API and passed to this lane as a verified
-fact (this lane ran no credentialed Boat call and read no key); a named Boat
+with Boat CLI 1.0.96 and the REST API, or in the cloud CEO's dashboard, and
+passed to this lane as a verified fact (this lane ran no credentialed Boat call and read no key); a named Boat
 documentation page saved from docs.boat.dev on 2026-11-09, cited by file name
 (`pricing.md` is docs.boat.dev/pricing, and so on), or the OpenAPI contract
 `boat-v1.yaml`, cited as "OpenAPI", which wins where the two disagree; or this
 repository at `79b66b1` plus the uncommitted `boat_backend.py`; or a live run
-the orchestrator made after the lanes, with its receipt ("Live evidence"). Boat's
-comparisons with other vendors are Boat's own published claims.
+the orchestrator made after the lanes, with its receipt ("Live evidence"); or
+a statement in the cloud CEO's review of PR #3826, as its PR body captures
+it, which this lane did not re-measure (cited as "the cloud CEO's review of
+PR #3826"). Boat's comparisons with other vendors are Boat's own published
+claims.
 
 ## Context
 
@@ -160,19 +173,31 @@ plane environments.
 The cloud CEO is the Hermes Agent Cloud instance "Anti-Ek"
 (`https://anti-ek-1699.agents.nousresearch.com`, `HERMES_HOME` `/opt/data`,
 model `gpt-6.1-sol`, a local terminal in an 8 GB container). It installed Boat
-CLI 1.0.96 at `/opt/data/.ascii/bin/boat` from the GitHub release asset with
-its SHA-256 verified; the boat.dev download returned HTTP 504, and the
-official installer was not used because it runs `boat onboard` by itself
-[M]. `ANTIEK_BOAT_ORG` is set in its environment; `BOAT_API_KEY` and
-`BOAT_BUILD_API_KEY` are not yet [M]. Its hourly swarm, cron `b413595fcdd5`,
-has no paid-compute or doctrine-change authority [M].
+CLI 1.0.96 at `/opt/data/.ascii/bin/boat` with Boat's official installer,
+its onboarding step removed, and supplied the verified binary locally: the
+GitHub release asset, its SHA-256 verified, because the boat.dev download
+returned HTTP 504 [M; the installer use as the cloud CEO's review of PR
+#3826 corrects it]. `ANTIEK_BOAT_ORG` is set in its environment;
+`BOAT_API_KEY` and `BOAT_BUILD_API_KEY` are not yet [M]. Its hourly swarm,
+cron `b413595fcdd5`, has no paid-compute or doctrine-change authority [M];
+its prompt now carries an explicit owner-instruction Boat hold, with its
+schedule and enabled state unchanged, and the staged `boat-backbone` skill
+is not installed [M, the cloud CEO's review of PR #3826].
 
 Omarchy, the owner's machine, has an Intel i9-9880H (16 threads), 15 GiB of
 RAM, 237 GB of free disk and Docker, and hosts the `antiek-worker` gateway on
-127.0.0.1:8643 behind Tailscale Funnel [M]. The owner's standing rules: keep
-Antiek credentials off Omarchy disk, never print secrets, do not execute the
-AWS migration, and flag any change to locked doctrine for the owner's sign-off
-[M].
+127.0.0.1:8643 behind Tailscale Funnel [M]. The owner's standing rules this
+record follows: never print secrets, do not execute the AWS migration, and
+flag any change to locked doctrine for the owner's sign-off [M]. **Omarchy
+execution and host-owned credentials are permitted** under current owner
+policy, as the cloud CEO's review in PR #3826 (Spec/doctrine finding 1)
+states it [M, the cloud CEO's review of PR #3826]; this record follows that
+statement and drops the blanket Omarchy rule its earlier drafts repeated, and
+the owner confirms which stands (open sign-off 5). Three rules stay: no
+subscription credential or owner login is copied into Boat (a sandbox, an
+environment or a key); the Boat Research boxes `bx_235rmpn3` and
+`bx_35hs5p53` stay excluded from everything here; and no Boat plane key
+appears in argv, a log or a receipt.
 
 ### What `BoatBackend` does today
 
@@ -181,13 +206,21 @@ AWS migration, and flag any change to locked doctrine for the owner's sign-off
 `BackendUnavailable` ("unknown ExecutionBackend kind 'boat'"), the package
 `__init__` does not re-export it, and no other module imports it [M, checked
 hermetically on 2026-11-09]. What it does once constructed [M, read from the
-module]:
+module at `ac778a27`]:
 
 - **Credentials.** It reads exactly one key, `BOAT_API_KEY`, at use time on
   every request, and sends it only in the `Authorization: Bearer` header; a
   missing or malformed key raises `BackendUnavailable` without echoing it, and
-  Boat's error text is scrubbed of it. It reads no `BOAT_BUILD_API_KEY` and has
-  no fallback to any other credential. `BOAT_API_URL` overrides the base URL
+  Boat's error text loses it and every other key-shaped run. So does what a
+  success answer puts in an exception or a WARNING: a `GET /limits` refusal,
+  an environment's `proxyAiCredentials`, a sandbox record's team or
+  environment, a failed state's error, and a command's exit code, status,
+  stderr tail or parsed output (the `iptables` read-back, the credential and
+  hardlink markers, the exec trailer). The current key and any key-shaped
+  run become `[redacted]` before any cut, so no piece of a key survives a
+  cut, and a message about a sandbox record names the sandbox id the create
+  answer gave, which was checked, never the record's own `id`. It reads no
+  `BOAT_BUILD_API_KEY` and has no fallback to any other credential. `BOAT_API_URL` overrides the base URL
   (default `https://boat.dev/api/v1`, `https` only except loopback).
 - **Environment.** `ANTIEK_BOAT_ENVIRONMENT` names the environment product
   workspaces are created in, default `antiek-product`; the name is validated,
@@ -206,17 +239,25 @@ module]:
   /environments` must list the product environment passing nothing: it
   refuses an environment that is not *Safe for third parties* while any of
   `passGithub`, `passSecrets`, `passSandboxCredentials`,
-  `passAgentsCredentials` is not off, or one that turns on
-  `proxyAiCredentials`, reading flags only, never `envContents`. This read
-  **fails closed**: a scope `403` on it, or the environment missing from the
-  listing, raises `BackendUnavailable`, as does any other refusal.
+  `passAgentsCredentials` is not off, and, whatever `safeForThirdParties`
+  says, one whose `proxyAiCredentials` is present and not the boolean
+  `false` (`true`, `null` or a string; review finding S1). An environment
+  without `proxyAiCredentials` is accepted on that field, because the OpenAPI
+  `SandboxEnvironment` lists the four `pass*` flags as required and not it;
+  the module names capturing a live environments shape as an activation
+  gate (Decision §5 item 11). It reads flags only, never `envContents`.
+  This read **fails closed**: a scope `403` on it, the environment missing from the listing,
+  or its name listed more than once, raises `BackendUnavailable`, as does any
+  other refusal. The `BoatBackend ready` line logs only the org id, machine
+  type names and counts, each checked for its shape.
 - **Create.** Before `POST /sandboxes`, every create repeats the fail-closed
   `GET /environments` check, so a product environment that passes anything
   is refused before anything is billed. The body is: the smallest machine
   type covering `cpu_cores`, `memory_mb` and `disk_mb` (the `ResourceLimits`
   defaults of 1.0 / 2,048 MB / 2,048 MB give `small`); `ttlSeconds` = `wall_clock_s` clamped to 60 s .. 30
   days (default 900 s), so auto-stop is never off; `environment` as above;
-  `snapshots: false` (the constructor default); `visibility: "private"`; the
+  `snapshots: false` on every create, with no constructor override (passing
+  `snapshots=` raises `TypeError`; review finding D5); `visibility: "private"`; the
   name `antiek-ws-<profile slug>-<first 8 hex of the workspace id>`; labels
   `antiek-workspace=<workspace id>` and `antiek-profile=<slug>`; and the header
   `Idempotency-Key: antiek-ws-<workspace id>`. **`noEnv` is deliberately not
@@ -226,8 +267,9 @@ module]:
   workspace id is a fresh UUID hex; the Boat id (`bx_...`) is the workspace's
   `sandbox_id` property, which is not part of the `Workspace` protocol.
 - **Record and in-VM checks.** After the create and again at readiness it
-  refuses a sandbox record that names another `environment` or says
-  `holdsCreatorLogins: true`. Its provisioning command then runs Boat's own
+  refuses a sandbox record that names another `environment`, says
+  `holdsCreatorLogins: true`, or carries `snapshots` with any value but
+  `false`. Its provisioning command then runs Boat's own
   documented check inside the VM: none of `~/.git-credentials`,
   `~/.config/gh/hosts.yml`, `~/.claude/.credentials.json` or
   `~/.codex/auth.json` may exist; `~/.config/ascii/boat/config.json`, which
@@ -243,17 +285,48 @@ module]:
   check covers secrets whose names the owner chose. Any failure deletes the
   sandbox and raises `BackendUnavailable`.
 - **Provisioning and exec.** It creates a system account `antiek-runner` with
-  no sudo and no home, and a workspace root under `/tmp/antiek-ws/`. Every
-  `exec` runs the argv as `antiek-runner` under `env -i`, `setsid` and
-  `timeout` with a 5 s kill grace, synchronously when `timeout_s` is at most
-  580 s (`ceil(timeout_s)` + 5 s kill grace + 15 s of wrapper slack fits
-  Boat's 600 s cap) and detached with polling above that; output is capped at
-  the seam's 2 MiB per stream. After every `exec`, whether the workload exited
-  or timed out, it kills every remaining `antiek-runner` process, gives the
-  tree back to `user` and strips group and other write and the set-id bits,
-  so nothing a workload starts outlives its `exec` (I7). One workspace serves
-  one `exec`, `put_file` or `get_file` at a time, under a per-workspace lock.
-  It never retries a command.
+  no sudo and no home, and a workspace root under `/tmp/antiek-ws/` with a
+  control dir `<id>.ctl/` for the exec lock and the fence files. Every `exec`
+  sends one wrapper that takes the VM's exec lock (`flock` on
+  `<id>.ctl/lock`, waiting at most 5 s before refusing `busy`), runs nothing
+  if its fence file `<nonce>.cancel` exists, and reaps every `antiek-runner`
+  process before the workload starts: an unconfirmed reap refuses the
+  workload (`_reap || _fin reap_failed`). It runs the argv as
+  `antiek-runner` under `env -i`, `setsid` and `timeout` with a 5 s kill
+  grace, synchronously when `timeout_s` is at most 580 s (`ceil(timeout_s)` +
+  5 s kill grace + 15 s of wrapper slack fits Boat's 600 s cap) and detached
+  with polling above that; output is capped at the seam's 2 MiB per stream.
+  After every `exec`, whether the workload exited or timed out, it kills
+  every remaining `antiek-runner` process, gives the tree back to `user` and
+  strips group and other write and the set-id bits, so nothing a workload
+  starts outlives its `exec` (I7).
+- **The reap fails closed (review finding S2).** `pkill` runs inside `sudo -n
+  sh -c '...; echo rc=$?'`, so only `pkill`'s own exit 1 for both selectors
+  (`-U` and `-u`) counts as "none matched", and exit 0 repeats the round.
+  Exit 2 or 3, 127, 128+n, no status at all (sudo refused), or a process
+  still found after 50 rounds 0.1 s apart leaves the reap unconfirmed.
+- **An interrupted exec is cleaned up (review finding S3).** After a lost
+  answer (a 5xx, or a transport failure once the request may have left), or
+  a cancellation, the `exec` runs a shielded cleanup before it releases the
+  workspace lock. For a detached command whose `processId` is known it first
+  sends `DELETE /commands/{processId}`. The cleanup command then writes the
+  fence file of every interrupted exec, reaps while it waits for the VM's
+  exec lock (up to 200 rounds, each a reap and 0.1 s), and, holding the
+  lock, reaps and restores. Only a cleanup that got the lock and confirmed
+  both counts. A second cancellation returns at once while the cleanup
+  carries on, and the next call waits for it. A command Boat refused with a
+  4xx, or one that never connected, gets no cleanup.
+- **Unclean workspace.** An `exec` that ends without confirming its reap and
+  restore (no trailer, a trailer whose clean flag is 0, a refused start, an
+  unconfirmed cleanup) marks the workspace unclean. Every later `exec`,
+  `put_file` or `get_file` first re-runs the cleanup and is refused
+  (`ExecutionBackendError`, "could not be taken back") until one is
+  confirmed; if the sandbox has vanished meanwhile, each raises
+  `WorkspaceLost` and sends no wrapper. The module never destroys a
+  workspace on its own (I6: the caller owns `destroy()`, which works on an
+  unclean workspace). One workspace serves one `exec`, `put_file` or
+  `get_file` at a time, under a per-workspace lock. It never retries a
+  command.
 - **Net policy (I4).** `DENY_ALL` inserts an owner REJECT for the runner's uid
   at the top of `OUTPUT` in both `iptables` and `ip6tables`, with no loopback
   or established-traffic exception (tighter than Boat's recipe), reads the
@@ -272,10 +345,24 @@ module]:
   if the first request never reached Boat, that re-`POST` may itself create
   the sandbox, at the cost of one start. A label sweep follows as a second
   net, deleting only a sandbox carrying this workspace's label whose `access`
-  is `owner`. It logs `BoatBackend created workspace <workspace id> (sandbox <bx id> ...,
-  environment=..., ...)` and `BoatBackend deleted sandbox <bx id> (workspace
-  <workspace id>)` on logger `antiek.exec_backend.boat`. It writes no file
-  ledger.
+  is `owner`. It writes no file ledger.
+- **Spend ledger lines (review finding D4).** On logger
+  `antiek.exec_backend.boat`, at INFO: `BoatBackend sandbox accepted:
+  sandbox=<bx id> workspace=<id> type=<machine type> ttlSeconds=<n>
+  createdAt=<time> via=<create|repost|sweep>` once per sandbox Boat
+  accepted, the moment its id is known, so a sandbox that then fails
+  provisioning, or that the re-`POST` or the label sweep recovers after a
+  lost answer, is on it; `BoatBackend sandbox deleted: sandbox=<bx id>
+  workspace=<id> via=<destroy|orphan> result=<deleted|not-found>` once per
+  confirmed delete; and, unchanged, `BoatBackend created workspace
+  <workspace id> (sandbox <bx id> ..., type=..., ttl=...s, environment=...,
+  ...)` for a fully provisioned workspace only, and `BoatBackend deleted
+  sandbox <bx id> (workspace <workspace id>)` when `destroy()` deletes. The
+  accepted line carries Boat's type and TTL when the record carries them in
+  the right type, the requested ones otherwise, and Boat's `createdAt`. Each
+  value is checked for its own shape before it is logged (a machine type
+  name, an integer, an RFC 3339 date-time) and logged as `unknown`
+  otherwise, as is any key-shaped value or one holding the current key.
 
 The module's own "Where the docs are silent" section names the gaps it
 handles: combining `noEnv` with `environment`; the `ci` preset's reads (a
@@ -283,13 +370,22 @@ scope refusal of `GET /limits` is tolerated, one of `GET /environments` is
 fatal); `GET /limits` without the required `canStart`, refused as shape
 drift; `environments_access.md`'s `effective` field, which the OpenAPI
 `SandboxEnvironment` lacks, so the documented rule is applied to the flags;
-how long Boat holds an `Idempotency-Key` after a failed create; and whether
-live sandbox records carry `environment` and `holdsCreatorLogins` (the
-OpenAPI documents both; the saved live shapes show neither, so each is
+whether live environments listings carry `proxyAiCredentials` (an absent
+field is accepted; capturing a live shape is an activation gate, Decision
+§5 item 11); whether
+one listing can hold two environments of one name (refused); how long Boat
+holds an `Idempotency-Key` after a failed create; whether `pkill` matches
+zombie processes (an unfinished reap is unconfirmed); whether `DELETE
+/commands/{processId}` reaches a workload that `setsid` moved into its own
+session, and whether a synchronous command keeps running after its answer
+was lost (neither is relied on: the reap and the fence files are); and
+whether live sandbox records carry `environment` and `holdsCreatorLogins`
+(the OpenAPI documents both; the saved live shapes show neither, so each is
 checked when present and the in-VM check always runs). It also records that
 "Every command and its output are kept 90 days in the command history" [M,
 OpenAPI `POST /sandboxes/{sandboxId}/commands`]. The code lane's
-`tests/test_exec_backend_boat.py` is present, uncommitted, beside it.
+`tests/test_exec_backend_boat.py` (284 tests) is present, uncommitted,
+beside it.
 
 ### The 2026-10-07 argument this proposal has to answer
 
@@ -373,8 +469,13 @@ at which the build plane moves to its own organization.
 **Installed is not activated.** Boat CLI 1.0.96 in the cloud CEO's
 environment, `ANTIEK_BOAT_ORG` set there, and later two keys beside it make
 Boat reachable and nothing more. Until the owner approves activation in
-writing (product plane: G1 to G3.3 closed and the owner's go; build plane: the
-owner's approval of the build envelope after the build smoke), **the cloud
+writing (product plane: G1 to G3.3 closed, the open activation gates of
+Decision §5 that concern it closed or accepted in writing, and the owner's
+go; build plane: the owner's explicit ruling on the build plane under §16
+(open sign-off 4), any amendment that ruling requires ratified, the Decision
+§5 activation gates that concern the build plane (at least code-side cost
+and pacing limits) closed or accepted in writing, and then the owner's
+approval of the build envelope after the build smoke), **the cloud
 CEO's hourly swarm, cron `b413595fcdd5`, does not treat installed Boat as a
 dispatch target on either plane**, and nothing selects Boat by default. The
 test of eligibility is that recorded approval, never the presence of the
@@ -564,10 +665,16 @@ USD 0.0006 of VM time [I]. The binding constraint is starts, not money.
 What the code already holds, against the seam's invariants: every create
 names the product environment and never `antiek-build`; the environment is
 checked to pass nothing at probe and before every create, fail closed, then
-on the sandbox record, and inside the VM before any workload runs; an
-auto-stop on every
-create; `snapshots: false`, so no snapshot of a product workspace exists and a
-stop erases the disk [M, OpenAPI]; the org pin checked at probe and on every
+on the sandbox record, and inside the VM before any workload runs;
+`proxyAiCredentials` refused whenever it is present and not `false` (S1); an
+auto-stop on every create; `snapshots: false` on every create, with no
+constructor override and the record's `snapshots` read back (D5), so no
+snapshot of a product workspace exists and a stop erases the disk [M,
+OpenAPI]; a reap that fails closed and refuses the next workload (S2); an
+interrupted `exec` fenced, reaped and restored under the VM's exec lock
+before any other call proceeds, or the workspace kept unclean (S3); a spend
+ledger line for every sandbox Boat accepted and every confirmed delete
+(D4); the org pin checked at probe and on every
 new sandbox; an `Idempotency-Key` on every create; delete on `destroy()`,
 idempotently (I6); `DENY_ALL` enforced and verified or refused (I4);
 `ALLOWLIST` refused; the timeout and output caps (I1); no SDK types (I5); none
@@ -624,8 +731,49 @@ in writing at G2:
    therefore sits in Boat's history for up to 90 days unless the reviewer
    rules otherwise (checklist, line 1).
 7. **No file ledger.** The record of what the product plane created is the
-   backend's journal lines and the `antiek-workspace` label. A durable ledger
-   is a follow-up; the reaper rule (runbook) works from what exists.
+   backend's journal lines (the accepted and deleted lines among them) and
+   the `antiek-workspace` label. A durable ledger is a follow-up; the reaper
+   rule (runbook) works from what exists.
+8. **Exact-environment enforcement is partial.** Every create names
+   `antiek-product`, and the code refuses `antiek-build`, but the read-back
+   refuses another environment only when Boat's record carries
+   `environment` (the saved live list and info shapes do not show it; the
+   create answers of both probe VMs did), and whether the key's `--env`
+   restriction refuses a create outside its environment is unobserved (G3.2
+   Part B). Requiring the field in code is a follow-up.
+9. **TTL policy and code differ.** Decision §7 keeps product `wall_clock_s`
+   at or below 3,600 s, but the code clamps `ttlSeconds` only to 60 s .. 30
+   days, so a caller that asks for more gets it. A code-side cap at the
+   policy value is a follow-up.
+10. **No env-scoped live acceptance.** The only live run of the module
+    (module `bb49ebe3`, "Live evidence" run 1) stopped before any create,
+    its receipt `all_ok: false`, and the current module `ac778a27` has never
+    run against Boat. G3.2 Part A, with the product key in `antiek-product`,
+    is that acceptance.
+11. **No live environments shape is recorded.** The module accepts an
+    environment that lacks `proxyAiCredentials`, because the OpenAPI
+    `SandboxEnvironment` does not require the field, and its docstring
+    names its own ACTIVATION GATE: capture a live environments shape first
+    and, if it carries the field, refuse an environment that lacks it before
+    the backend is wired in. No live shape is recorded yet: `LIVE_SHAPES.md`
+    has no `GET /environments` section, and the live smoke's receipt ("Live
+    evidence" run 1) records refusals and environment names, not fields
+    [M]. G3.1 step 6 records, through the CLI, whether each listed
+    environment carries the field (`proxyAiPresent`); if any does, the code
+    lane makes an environment without it a refusal before G2's
+    registration.
+
+**Activation gates that stay open.** The cloud CEO's review of PR #3826 keeps
+five of these as activation gates that neither a default-off adapter nor an
+aggregate test count certifies: the mandatory org pin (item 3),
+exact-environment enforcement (item 8), code-side per-plane cost and pacing
+limits (items 4 and 5, and the build plane's, which has none in code
+either), the policy-versus-code TTL gap (item 9) and env-scoped live
+acceptance (item 10). Each of the five is closed in code or by a receipt, or
+accepted by the owner in writing, before the plane it concerns is activated.
+The module names a sixth itself, the live `proxyAiCredentials` shape (item
+11), which closes as item 11 says, before G2's registration. Round 2 closed
+none of the six.
 
 `RemoteExecProvider` is not targeted. Its contract streams events out of a
 live loop and steers into it, the in-sandbox program it would run does not
@@ -690,7 +838,10 @@ The block's sentence on Boat boxes used to build Antiek assumes the answer to
 open sign-off 4 (build-plane use is operator tooling outside §16). G2 does not
 close until the owner answers it. If the owner asks for §16 cover instead,
 that sentence is replaced at G2 by a build-plane carve-out drafted then, and
-the rest of the block stands.
+the rest of the block stands. Build-plane activation waits on the same
+ruling: whichever way the owner rules, the ruling is explicit and recorded,
+and any amendment it requires (a build-plane carve-out, or a change to this
+block) is ratified before the build plane is activated.
 
 ### 7. Envelopes per plane, set before any paid run (PROPOSED defaults)
 
@@ -714,7 +865,7 @@ spent, new starts fail with `402 billing_required` rather than bill [M,
 | Max concurrency | one at a time, two in total | one attempt | three at once | 20 at once (the runner's cap); at most 8 creates in any minute (plans of at most 8 sub-questions per launch), 36 an hour, 120 a day |
 | Storage | `snapshots: false`; no saved snapshot; nothing outlives `destroy()` | nothing kept: an accepted attempt is deleted at once | as Part A | the same; `monitoring` per the reviewer's ruling |
 | Egress | Boat bills none [M]; one `ALLOW_ALL` workspace, then one `DENY_ALL` workspace whose blocked request is the expected result | none: no command runs | `DENY_ALL` (the contained gather default) | `DENY_ALL`; `ALLOW_ALL` only when a caller declares it; `ALLOWLIST` refused |
-| Credential scope | `BOAT_API_KEY` and `ANTIEK_BOAT_ORG` in the cloud CEO's environment, `BOAT_BUILD_API_KEY` removed from the process; every sandbox in `antiek-product`, which passes nothing, with the in-VM credential check passing; workload as `antiek-runner` under `env -i`; no key inside a sandbox | `BOAT_API_KEY` in the cloud CEO's environment, outside the wrapper on purpose; the target `antiek-build` passes nothing at this point | a staging run of the service in the cloud CEO's environment, never on Omarchy, with `BOAT_API_KEY`, `ANTIEK_BOAT_ORG` and `ANTIEK_EXEC_BACKEND=boat` and without `BOAT_BUILD_API_KEY` | on the production host, `BOAT_API_KEY`, `ANTIEK_BOAT_ORG` and `ANTIEK_EXEC_BACKEND=boat` only (`ANTIEK_BOAT_ENVIRONMENT` unset, so `antiek-product`), never `BOAT_BUILD_API_KEY` |
+| Credential scope | `BOAT_API_KEY` and `ANTIEK_BOAT_ORG` in the cloud CEO's environment, `BOAT_BUILD_API_KEY` removed from the process; every sandbox in `antiek-product`, which passes nothing, with the in-VM credential check passing; workload as `antiek-runner` under `env -i`; no key inside a sandbox | `BOAT_API_KEY` in the cloud CEO's environment, outside the wrapper on purpose; the target `antiek-build` passes nothing at this point | a staging run of the service in the cloud CEO's environment, or on another staging host the owner names and the runbook's "Credentials" table records first, with `BOAT_API_KEY`, `ANTIEK_BOAT_ORG` and `ANTIEK_EXEC_BACKEND=boat` and without `BOAT_BUILD_API_KEY` | on the production host, `BOAT_API_KEY`, `ANTIEK_BOAT_ORG` and `ANTIEK_EXEC_BACKEND=boat` only (`ANTIEK_BOAT_ENVIRONMENT` unset, so `antiek-product`), never `BOAT_BUILD_API_KEY` |
 | Data scope | synthetic strings only | none | three reviewed, synthetic sub-questions; the placeholder gather program | the investigation id, the sub-question and the gather program; no graph handle, DuckDB path, ingest lock, credential or user file |
 | Teardown | `destroy()` twice per workspace; each id answers not-found after it answered found; active count back to baseline where `GET /limits` carries it | an accepted attempt is deleted at once with the same key and recorded, and G3.2 fails on separation | `destroy()` through the cascade; each journaled id answers not-found | `destroy()` on every path (`contained_gather.py`'s `finally`); the auto-stop as backstop, which with snapshots off erases the disk; the reaper acts only on ids Antiek recorded |
 
@@ -733,27 +884,48 @@ spent, new starts fail with `402 billing_required` rather than bill [M,
 | Teardown | an accepted attempt is deleted at once with the build key and recorded | delete on completion; the id answers not-found; a `destroyed_at` ledger row | delete when the lane completes; stop only to resume; the reaper acts only on build-ledger ids; never touch `bx_235rmpn3` or `bx_35hs5p53` |
 
 **How the ceilings are checked.** Neither plane has a code-side cost cap or
-ledger yet (Decision §5 items 5 and 7), and `GET /limits` shows one wallet
-for both planes and the research boxes, so its deltas cannot split spend by
-plane [M, OpenAPI `LimitsFields.wallet`, "The one wallet of this account or
-organization"]. The runbook's "Watching spend" gives the daily check, and each
-method gives an upper bound at list price:
+file ledger yet (Decision §5 items 5 and 7), and `GET /limits` shows one
+wallet for both planes and the research boxes, so its deltas cannot split
+spend by plane [M, OpenAPI `LimitsFields.wallet`, "The one wallet of this
+account or organization"]. The runbook's "Watching spend" gives the daily
+check. Each method gives a list-price figure and says whether it is an upper
+bound or incomplete:
 
-- **Product:** every `BoatBackend created workspace` journal line names the
-  sandbox, its `type` and its `ttl` [M, the module]. Each workspace is
-  counted at its full TTL. That is an upper bound, because the auto-stop ends
-  billing at most one TTL after the create, and the backend neither resumes
-  nor extends a sandbox [I]. At the default 900 s on `small` that is
-  USD 0.0045 a workspace, so the product's share of 120 starts a day bounds a
-  day at USD 0.54. Only longer TTLs or larger sizes can reach USD 1 [I].
-  Above the ceiling, the actual figure is the sum of `boat usage` over those
-  ids.
+- **Product:** the backend logs one `BoatBackend sandbox accepted` line per
+  sandbox Boat accepted, the moment its id is known (`via=create`, `repost`
+  or `sweep`), and one `BoatBackend sandbox deleted` line per confirmed
+  delete [M, the module at `ac778a27`]. Billed provisioning failures and
+  lost creates that the same-key re-`POST` or the label sweep recovered are
+  therefore counted, which the earlier sum of `BoatBackend created
+  workspace` lines missed. Each accepted sandbox counts at its full
+  `ttlSeconds`, which bounds that sandbox, because the auto-stop ends
+  billing at most one TTL after the create and the backend neither resumes
+  nor extends a sandbox [I]. The sum is still **incomplete, not an upper
+  bound**: a lost create that neither the re-`POST` nor the sweep found
+  leaves at most a WARNING and no sandbox id, and none at all when the
+  create, or the same-key re-`POST`, was answered without a usable sandbox
+  id and the sweep's listing then found nothing (the module logs nothing for
+  that path; the create raises `WorkspaceProvisionError` to its caller); a
+  service killed between Boat's answer and the log line leaves nothing; and
+  a sandbox accepted before the window opened is outside it [M, the module
+  at `ac778a27`]. The check therefore counts the WARNINGs there are, lists
+  every `antiek-ws-` sandbox the product key can see that no accepted line
+  names (the only net for the silent paths), and treats either as a stop.
+  At the default 900 s on `small` a workspace costs at most USD 0.0045, so the product's share of 120
+  starts a day caps a day's VM time at USD 0.54 while that share holds (it
+  is policy, not code: Decision §5 item 4); only longer TTLs or larger
+  sizes can reach USD 1 [I]. Above the ceiling, or while the figure is
+  incomplete, the actual figure is the sum of `boat usage` over the ids and
+  the dashboard.
 - **Build:** the build ledger's `created_at` and `destroyed_at` rows, with
   the size, give each box's lifetime, and an open row counts up to the
-  moment of the check.
+  moment of the check. That is an upper bound only while every intent row
+  has its id row and every build create went through `B`; an intent row
+  without an id row (a create that returned no id) makes it incomplete, and
+  the check says so.
 
-Until a code-side ledger and cap land, a ceiling is a check, not an
-enforcement. G2 accepts that explicitly or schedules the follow-up first.
+Until a code-side cap lands, a ceiling is a check, not an enforcement. G2
+accepts that explicitly or schedules the follow-up first.
 
 The shared start windows, divided: 8 / 36 / 120 (minute / hour / day) for the
 product plane, 4 / 20 / 60 for the build plane, and 0 / 4 / 20 left for the
@@ -775,10 +947,13 @@ practice [I], and the gateway's health comes before any lane's. Build work
 moves to a Boat box in `antiek-build` when it needs what Omarchy cannot give:
 a clean full VM with root, systemd and `/dev/kvm`, a production-shaped host
 for a deploy rehearsal, or more parallel lanes than Omarchy holds. Omarchy
-needs no Boat key to do its share, which is what keeps Antiek credentials off
-its disk: Boat build work is driven from the cloud CEO's environment, where
-the build key lives. A build box is an execution target for a lane driven from
-there; no model credential needs to be inside it [I].
+needs no Boat key to do its share: Boat build work is driven from the cloud
+CEO's environment, where the build key lives. Omarchy's own lanes run with
+its host-owned credentials, which current owner policy permits (Context);
+none of them, the owner's subscription logins included, is ever copied into
+a Boat box or environment. A build box is an execution target for a lane
+driven from the cloud CEO's environment; no model credential needs to be
+inside it [I].
 
 Coding swarms follow Boat's fork recipe (one prepared box, forked N times,
 each fork one start) at the build plane's pace [M, `recipes_parallel-agents.md`].
@@ -794,13 +969,13 @@ is public [M]; moving `ci.yml` is not part of this decision.
 | Gate | What closes it | Owner | Evidence | State on 2026-11-09 |
 |---|---|---|---|---|
 | **G1** | Org Antiek on a paid plan | the owner | `box_20`, `billingStatus` active, `canStart` true, `maxActiveSandboxes` 100, 555.56 included hours to 2026-12-09T06:25:35Z | **MET** [M, about 06:27Z] |
-| **G4** | Both environments exist as Decision §1 sets them; both keys sit in the cloud CEO's environment as `BOAT_API_KEY` and `BOAT_BUILD_API_KEY`, and nowhere on Omarchy disk | the owner | the owner records, from the dashboard, each key's name, id, preset, environment, expiry and last four characters, never the value; the CEO confirms presence by variable name only; the owner's attestation and a filename-only search on Omarchy (runbook "Credentials") | in progress: environments being created, keys being minted [M] |
+| **G4** | Both environments exist as Decision §1 sets them; both keys sit in the cloud CEO's environment as `BOAT_API_KEY` and `BOAT_BUILD_API_KEY`, where the runbook's "Credentials" table places them | the owner | the owner records, from the dashboard, each key's name, id, preset, environment, expiry and last four characters, never the value; the CEO confirms presence by variable name only; the owner attests where each key was placed (runbook "Credentials") | in progress: environments being created, keys being minted [M] |
 | **G3.1** | Read-only scope verification of each key, its organization and its environment; no sandbox is created | the cloud CEO at the owner's direction | runbook "G3.1" receipt: the CLI authenticates from `BOAT_API_KEY` alone and finds no stored login; both variables set and distinct; each key refused for Personal with `403 api_key_org_mismatch`; each key's limits read naming `teamId` = `ANTIEK_BOAT_ORG` with `canStart` true (or the `account.read` refusal recorded); each key unable to list account keys; each key's listing free of the research boxes; both environments' effective flags; the baseline of active sandboxes, included hours, wallet and starts, with any of those fields the org read does not carry recorded as absent | not run |
 | **K** | The owner's ruling on the two keys pasted into a chat transcript (open sign-off 3), carried out | the owner | rotation or revocation recorded by key id; G3.1's identity steps re-run for any replacement | open |
 | **G3.2** | A paid create, exec, collect and delete smoke, authorized separately by the owner after reading the G3.1 receipt, inside the Decision §7 envelopes: Part A product (`BoatBackend` directly, still unregistered), Part B cross-plane refusals (the wrappers' pins bypassed on purpose), Part C build box and its systemd packing primitives | the owner authorizes; the cloud CEO runs it | runbook "G3.2" receipt: sandbox ids and workspace ids; create-to-ready and per-step timings; exit codes; cost from `boat usage` where readable and, always, the list-price bound computed from each sandbox's create and delete times; starts used; teardown proof (each id not-found after a found-before; the active count back to baseline where the org read carries it, otherwise recorded as unavailable); no key, no token URL | not run |
-| **G2** | After open sign-off 4 is answered, the owner ratifies: the §16 amendment (Decision §6); the three 2026-10-07 clause amendments of Decision §3 (its Decision §1 heading, its Decision §1 "Why not a sandbox vendor as the backbone" paragraph and its Decision §8 row L18), for Antiek's own planes only; and the envelopes, including that the spend ceilings are a daily check until a code-side ledger and cap land. The registration lands with its tests and with Decision §5 items 1 to 3 closed or accepted | the owner | CLAUDE.md carries the Decision §6 block verbatim between its markers; the 2026-10-07 record carries, under each of the three clauses, a dated one-line note pointing to Decision §3 of this record, with the clause text itself byte-identical (the cloud CEO adds the notes in the ratifying change, since it owns the PR; this lane edits neither file); this Status reads ACCEPTED with the date; the factory diff and the inverted dark-module test in the same change | not ratified |
-| **G3.3** | The cascade through the factory, three leaves at once, in a staging run of the service in the cloud CEO's environment (never on Omarchy) | the owner authorizes | runbook "G3.3" receipt: the factory names `boat`; three sandboxes ran together; three notes promoted through the funnel only; teardown proof as G3.2; list-price bounds at the 900 s default TTL | cannot run before G2 |
-| **Activation** | Product: the owner's written go after G3.3. Build: the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
+| **G2** | After open sign-off 4 is answered, the owner ratifies: the §16 amendment (Decision §6); the three 2026-10-07 clause amendments of Decision §3 (its Decision §1 heading, its Decision §1 "Why not a sandbox vendor as the backbone" paragraph and its Decision §8 row L18), for Antiek's own planes only; and the envelopes, including that the spend ceilings are a daily check until a code-side ledger and cap land. The registration lands with its tests, with Decision §5 items 1 to 3 closed or accepted, and with item 11 closed (the live `proxyAiCredentials` shape recorded by G3.1 step 6 and, if the field is present, an environment without it refused in code) | the owner | CLAUDE.md carries the Decision §6 block verbatim between its markers; the 2026-10-07 record carries, under each of the three clauses, a dated one-line note pointing to Decision §3 of this record, with the clause text itself byte-identical (the cloud CEO adds the notes in the ratifying change, since it owns the PR; this lane edits neither file); this Status reads ACCEPTED with the date; the factory diff and the inverted dark-module test in the same change | not ratified |
+| **G3.3** | The cascade through the factory, three leaves at once, in a staging run of the service in the cloud CEO's environment, or on another staging host the owner names and the runbook's "Credentials" table records first | the owner authorizes | runbook "G3.3" receipt: the factory names `boat`; three sandboxes ran together; three notes promoted through the funnel only; teardown proof as G3.2; list-price bounds at the 900 s default TTL | cannot run before G2 |
+| **Activation** | Product: the owner's written go after G3.3, with the open activation gates of Decision §5 closed or accepted in writing. Build: the owner's explicit ruling on the build plane under §16 (open sign-off 4), any amendment that ruling requires ratified, the Decision §5 activation gates that concern the build plane (at least code-side cost and pacing limits) closed or accepted in writing, then the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
 
 The order is G1 (met), G4, G3.1, K, G3.2, G2, G3.3, activation. The swarm
 runs none of them.
@@ -846,8 +1021,10 @@ Each line is answered yes or no, with its evidence, before G2.
    the other or to a stored login; `ANTIEK_BOAT_ORG` set to the team id
    wherever `BOAT_API_KEY` is, and `ANTIEK_BOAT_ENVIRONMENT` unset or
    `antiek-product` (the code refuses `antiek-build`); the organization admin
-   key and the personal account key in no agent's environment; no key on
-   Omarchy disk, in argv, in a log, in a receipt or in a Boat environment;
+   key and the personal account key in no agent's environment; no plane key
+   in argv, in a log, in a receipt or in a Boat environment, and each key
+   only where the runbook's "Credentials" table places it; no subscription
+   credential or owner login copied into Boat;
    `delete-own` limits each key's deletes to its own sandboxes [M,
    `api-keys_scopes.md`]; revocation path confirmed. Every build-plane create
    goes through the runbook's `B`, which pins `antiek-build` and refuses
@@ -866,11 +1043,15 @@ Each line is answered yes or no, with its evidence, before G2.
    person; the absence of a code-side cap and ledger (Decision §5 items 5
    and 7) accepted or scheduled.
 7. **Activation.** The swarm (cron `b413595fcdd5`) excludes Boat on both
-   planes until the owner's written go, and runs no paid gate.
+   planes until the owner's written go, and runs no paid gate. Build
+   activation also waits for the owner's explicit §16 ruling on the build
+   plane and any amendment it requires, and for the Decision §5 activation
+   gates that concern the build plane.
 8. **AWS and peer lane hosts.** Nothing in the change touches
    `infrastructure/terraform-aws/`, the cutover, `lane-host.md` or the peer
    tenants' placement.
-9. **Code state.** Decision §5 items 1 to 3 closed or accepted;
+9. **Code state.** Decision §5 items 1 to 3 closed or accepted, and item 11
+   closed;
    `boat_backend.py` and `tests/test_exec_backend_boat.py` committed by the
    code lane; the module's plane text, `ANTIEK_BOAT_ENVIRONMENT` default and
    key name still match this record's Decision §1.
@@ -922,11 +1103,13 @@ These are locked-doctrine or credential questions this record cannot settle.
    Omarchy. With the account's active wallet now Antiek, any create through
    that login that names no organization bills Antiek [I from `api-keys.md`:
    an account key bills "The organization a request names ... else your
-   active wallet"]; the login file was deliberately not read. That sits
-   against the rule that Antiek credentials stay off Omarchy disk. The personal
+   active wallet"]; the login file was deliberately not read. The personal
    account key the orchestrator measured earlier has scope `['*']` and never
-   expires [M, earlier orchestrator measurement]. The owner rules whether the
-   login stays, is replaced by a narrower key, or moves off Omarchy.
+   expires [M, earlier orchestrator measurement]. Under current owner policy
+   the login is a host-owned credential Omarchy may hold (sign-off 5), and it
+   is never copied into Boat; what stays open is the wallet it can spend. The
+   owner rules whether the login stays account-wide, is replaced by a
+   narrower key, or must name an organization on every create.
 3. **Rotation of the two keys pasted into a chat transcript.** A key pasted
    into a chat lives in that transcript as long as the transcript does. The
    PROPOSED default: right after G3.1 passes, and before G3.2 spends anything,
@@ -942,7 +1125,18 @@ These are locked-doctrine or credential questions this record cannot settle.
    operator tooling, as the 2026-10-07 record treats the dispatcher's Modal and
    Prime tiers. The owner confirms that reading or asks for §16 cover. G2
    waits for this answer, because the Decision §6 block's sentence on Boat
-   boxes used to build Antiek depends on it.
+   boxes used to build Antiek depends on it, and so does build-plane
+   activation, together with any amendment the answer requires.
+5. **Omarchy policy.** The cloud CEO's review in PR #3826 (Spec/doctrine
+   finding 1) states that current owner policy permits Omarchy execution and
+   host-owned credentials. Beside it stands the owner's earlier instruction
+   to keep Antiek credentials and keys off Omarchy disk, which earlier drafts
+   of this record carried and the cloud CEO's own SOUL lists among the
+   owner's standing rules ("keep Antiek credentials off Omarchy") [M, read by
+   the orchestrator in the cloud CEO's dashboard on 2026-11-09]. The owner
+   confirms which stands. Until then this
+   record follows the review, and under either rule no plane key sits on a
+   host the runbook's "Credentials" table does not name, Omarchy included.
 
 ## What would change this
 
@@ -997,10 +1191,14 @@ No Boat API was called by this lane; the orchestrator's later live runs are
 under "Live evidence". The following are absent from the saved pages and the
 OpenAPI, or contradicted between them, and are G3 observations, not facts:
 
-- `BoatBackend` end to end on a real VM: the orchestrator's run stopped
-  before any create, because no environment that passes nothing exists yet
-  and the organization key may not create one; only the fail-closed path was
-  proved live;
+- `BoatBackend` end to end on a real VM: the orchestrator's run (module
+  `bb49ebe3`) stopped before any create, its receipt `all_ok: false`,
+  because no environment that passes nothing exists yet and the organization
+  key may not create one; only the fail-closed path was proved live, and the
+  current module `ac778a27` has not run against Boat at all;
+- whether the round-2 reap and cleanup (the `pkill` statuses, the exec lock,
+  the fence files, `DELETE /commands/{processId}`) behave on a Boat VM as
+  they do on the test suite's fake VM;
 - whether a VM in an environment marked safe for third parties carries the
   same keyless CLI config as the measured `noEnv` VMs [I: `api-keys_scopes.md`
   says both remove the in-sandbox key], and that Boat never puts a credential
@@ -1041,9 +1239,12 @@ and Docker; Part C checks the systemd primitives, not the density.
 
 ## Live evidence (the orchestrator, 2026-11-09, after the lanes)
 
-Three runs, each with a receipt the handoff carries. None used a plane key
-(none exists yet), none touched `bx_235rmpn3` or `bx_35hs5p53`, and the two
-VMs together lived 14.1 s.
+Three runs from Omarchy, each with a receipt the handoff carries (the cloud
+CEO's review attributes the uploaded receipts to Omarchy and did not run them
+again). None used a plane key (none exists yet), none touched `bx_235rmpn3`
+or `bx_35hs5p53`, and the two VMs together lived 14.1 s. They were one-off
+development probes: they grant no continuing permission to create a VM, and
+any further diagnostic VM needs its own approved envelope (runbook, Part A).
 
 1. **`BoatBackend` fail-closed, USD 0, no sandbox**
    (`boat-backend-live-smoke-20261109.json`, 08:24:02Z to 08:24:05Z, module
@@ -1054,7 +1255,9 @@ VMs together lived 14.1 s.
    environment that passes nothing could not be created: `POST /environments`
    answered 403 `api_key_action_forbidden` (`environment.write`). The run
    stopped there; `GET /limits` before and after carried `teamId` equal to
-   the pin and `canStart: true`.
+   the pin and `canStart: true`. The receipt's `all_ok` is `false` because
+   environment creation was forbidden: no env-scoped create ran, and the
+   module it ran, `bb49ebe3`, is an older hash than the current one.
 2. **Primitives probe** (`boat-primitives-probe-20261109.json`, `bx_pqppjbcy`,
    08:26:36Z to 08:26:46Z, 10.2 s, about USD 0.00005). The personal key
    the owner gave for development and production testing, `noEnv`, `small`,
@@ -1089,18 +1292,137 @@ a `noEnv` VM. Module `bb49ebe3` refused any such file, so it would have
 refused every workspace if a safe environment does the same [I]. The module now
 counts the file as a credential only when it is a symlink, not a readable
 regular file, carries a field other than `api_url`/`channel`, or holds a
-key-shaped string (`48d92441`). The test VM now carries the measured keyless
-file. Twenty new cases (replacing one) cover accepted and refused shapes. A
-mutation run against the final tests
-(`boat-backend-cfgguard-mutants-20261109.txt`) caught 10 of 11 mutants of the
-guard. The survivor turns the unreadable-read fallback open; the branch before
-it already refuses any unreadable or non-regular path, so that mutant changes
-nothing a test can observe. The suite is 283 passed and 1 Docker skip, with
-ruff, format and strict mypy clean. An independent read-only review (two
-lenses) found no blocker; its test gaps and wording corrections are applied.
-Runs 2 and 3 answer most of what the module's "docs are silent" list called
-unknown about the image and the files API; whether `pkill` matches zombies
-remains open, and G3.2 Part A still has to run the module itself.
+key-shaped string (module `48d92441` at the time; the guard is unchanged in
+`7d6330ab`). The test VM now carries the measured keyless file. Twenty new
+cases (replacing one) cover accepted and refused shapes. A mutation run
+against the tests of that time (`boat-backend-cfgguard-mutants-20261109.txt`,
+module `48d92441`) caught 11 of 12 mutants of the guard: 11 CAUGHT and 1
+SURVIVED. The survivor, M8, turns the unreadable-read fallback open; the
+branch before it already refuses any unreadable or non-regular path, so that
+mutant changes nothing a test can observe. That revision's suite was 283
+passed and 1 Docker skip on this host; the cloud CEO's run of it gave 142
+passed and 142 skipped (next section). Runs 2 and 3 answer most of what the
+module's "docs are silent" list called unknown about the image and the files
+API; whether `pkill` matches zombies remains open (round 2 makes an
+unfinished reap fail closed), and G3.2 Part A still has to run the module
+itself.
+
+## Review of PR #3826 and round 2
+
+The cloud CEO verified the first handoff independently (PR #3826, head
+`21b0db5`, backend SHA-256
+`48d924412b7d82742dda6ef19ef5adc901dfd6bd1e7c58539c323950db0618d8`) and
+requested changes [M, the cloud CEO's review of PR #3826]. Its run of the
+requested backend suite, with the Boat keys and org unset, gave **142 passed and 142
+skipped**: 141 Boat fake-VM cases skipped because their fixture needed a
+`/tmp` path that the cloud's mandatory `/opt/data/cache/scratch` cannot give,
+and one skip is the unavailable Docker integration test. It therefore did
+not accept the 283-pass claim. It ran no live Boat call. It raised three
+standards/security findings (S1 credential guard bypass, S2 reaping fails
+open, S3 uncertain exec cleanup missing) and six spec/doctrine findings (D1
+stale Omarchy rule, D2 incorrect history, D3 build activation missing its
+doctrine dependency, D4 incomplete spend bound, D5 snapshot prohibition not
+enforced, D6 unbounded diagnostic instruction).
+
+Round 2 answers them. In code (the code lane; module now `7d6330ab`): S1,
+S2, S3, D4 and D5 as "What `BoatBackend` does today" describes them, and
+test portability: the fake VM maps the VM's `/tmp` and `/home/user` onto
+directories under each test's `tmp_path`, so no case needs a `/tmp` path.
+The adapter stays dark: `factory.py` and `__init__.py` are untouched and the
+factory's kinds are still `docker` and `local`. In this record and the
+runbook: D1 (Context, Decision §8, the gates, checklist line 4, open
+sign-offs 2 and 5, the runbook's "Credentials"), D2 (the header and
+Context), D3 (Decision §1 and §6, the gates, checklist line 7, the runbook's
+"Enable and activation"), D4 (Decision §7, the runbook's "Watching spend")
+and D6 (the runbook's Part A). The five activation gates the review keeps
+open stay open, and so does the module's own sixth (Decision §5 item 11).
+
+Measured on this host on 2026-11-09 against module `7d6330ab` and tests
+`8f202043`, with `BOAT_API_KEY`, `BOAT_BUILD_API_KEY` and `ANTIEK_BOAT_ORG`
+unset, for `pytest tests/test_exec_backend_*.py` (381 cases, 284 of them
+Boat):
+
+- under pytest's default basetemp, under `/tmp`: **380 passed, 1 skipped**,
+  the skip being the Docker integration test (`test_exec_backend_docker.py:469`,
+  no daemon), in one run by the code lane at 11:17Z. The docs lane's own
+  full run at about 11:22Z hit the per-user `/tmp` quota (247 passed, 134
+  errors, `Disk quota exceeded`) while earlier pytest basetemps sat in
+  `/tmp` (about 4.1 GB under `/tmp/pytest-of-slimydog` when measured at about
+  12:00Z), so it was rerun in five chunks (96 passed and 1 skipped, then 78,
+  76, 56 and 74 passed);
+- under a basetemp outside `/tmp`: **380 passed, 1 skipped**, the same skip,
+  in one run;
+- `tests/test_exec_backend_boat.py` alone: 284 passed and none skipped in one
+  run outside `/tmp`; under `/tmp` only as the four class chunks above (78,
+  76, 56 and 74);
+- ruff 0.15.20 check and format clean on the two Boat files, and mypy
+  `Success: no issues found in 7 source files` for `runtime/exec_backend/`
+  and the Boat tests.
+
+These are this host's counts, not a cloud re-run; the review's test
+acceptance needs the cloud's own run.
+
+Mutation receipts, all made on this host by in-place mutation with a
+byte-exact restore, and none reproduced in the cloud:
+
+- `boat-backend-cfgguard-mutants-20261109.txt` (module `48d92441`): 11 of 12
+  mutants of the CLI-config guard caught (above).
+- `round2-code-mutants-20261109.txt` holds two runs. The first, on module
+  `8d3f0876` with the 244-test file: the control passed, and all 17 mutants
+  of the S1, S2, S3, D5 and D4 guards (M1 to M17) were caught. The second, on
+  the current module `7d6330ab` and tests `8f202043`: the control passed 284;
+  five reviewer mutants (P1 to P5: the cleanup never waiting for the exec
+  lock, a cleanup without the lock still reporting clean, an answer without
+  the wrapper trailer counted as clean, the accepted line no longer
+  deduplicated, `WorkspaceLost` swallowed behind an unclean workspace) all
+  survived the pre-fix 244-test file; against the current file all 35
+  mutants (P1 to P5, the log-echo, duplicate-environment and read-back
+  guards N1 to N13, and M1 to M17 again) were caught. The receipt records
+  the module restored byte-exact after every mutant and the tests file restored byte-exact.
+
+### Follow-up after round 2 (the orchestrator)
+
+Round 2's fix stages received the review findings cut short, so a few
+reviewer points never reached them; the orchestrator applied them after
+the workflow, and the module moved from `7d6330ab` to `ac778a27` (tests
+`8f202043` to `43b44faf`):
+
+- **Values from success answers are scrubbed** wherever they reach an
+  exception or a WARNING ("What `BoatBackend` does today", "Credentials").
+  Before, a key Boat echoed in, say, `blockedReason`, a record's
+  `environment` or a command's stderr reached the message, and taking the
+  last 400 characters of a stderr first could keep the key's tail
+  (`3456789abcdefABCDEF` of the test key, seen against `7d6330ab`). A
+  two-lens read-only review of the first draft of this follow-up (module
+  `53e1fc0f`) found two more paths, both older than the draft: the
+  readiness answer's own sandbox id reached four refusals whole, and
+  `proxyAiCredentials` was cut to 40 characters but never scrubbed, keeping
+  all of a key but its last 4. It also found five values parsed from command
+  output, and an error answer's other key-shaped runs, unscrubbed. All are
+  fixed; against `53e1fc0f` the 14 new tests of those fixes fail, each on a
+  leaked key or a piece of one.
+- **A timed-out fake-VM command dies with its process group**, so no child
+  left in the command's group outlives it (one moved out with `setsid` is
+  left to the reap); a self-test of the fake pins it.
+- **`ANTIEK_REQUIRE_FAKE_VM=1` makes a missing fake-VM tool a failure**, not
+  a skip, so an acceptance run on a host without util-linux `flock` or
+  `setsid --wait` cannot pass by skipping. With the tools probe forced off,
+  `tests/test_exec_backend_boat.py` gave 89 passed and 232 skipped without
+  the switch and 89 passed and 232 errors with it.
+- The module docstring now says that `BoatBackend deleted sandbox` is
+  written for every delete Boat accepted through `destroy()`, including the
+  one after a failed provisioning, as this record already said; the
+  runbook's Part A row names the exec refusal `no_lock`.
+
+Measured on this host against `ac778a27` and `43b44faf`, keys and org
+unset and `ANTIEK_REQUIRE_FAKE_VM=1`: `pytest tests/test_exec_backend_*.py`
+gave **417 passed, 1 skipped** (the Docker test) under the default basetemp
+in `/tmp` and the same outside `/tmp`; the Boat file has 321 cases, none
+skipped; ruff, ruff format and mypy are clean. The receipt
+`round2-echo-scrub-mutants-20261109.txt` records 35 of 35 in-place mutants
+caught (K1 to K35: 34 of the scrub in the module, one of the fake's group
+kill), with both files restored byte-exact after each; it replaces the first
+draft's run (17 of 17 on `53e1fc0f`).
 
 ## Evidence
 
@@ -1108,6 +1430,12 @@ remains open, and G3.2 Part A still has to run the module itself.
   `boat-primitives-probe-20261109.json`, `boat-credential-surface-probe-20261109.json`,
   `boat-backend-cfgguard-mutants-20261109.txt`, and the scripts that made them
   (`live_smoke_boat_backend.py`, `live_primitives_probe.py`, `live_credprobe.py`).
+- Round 2 ("Review of PR #3826 and round 2"): the cloud CEO's review of draft
+  PR #3826, as its PR body captures it (the body names the manager record
+  `/opt/data/antiek/operations/boat-backbone-2026-11-09.json`, which no lane
+  read); the receipt
+  `round2-code-mutants-20261109.txt` and `round2-echo-scrub-mutants-20261109.txt`;
+  this host's test runs on modules `7d6330ab` and `ac778a27`.
 - Orchestrator measurements of 2026-11-09, read-only, Boat CLI 1.0.96 and the
   REST API: `GET /limits`, `boat org list` and `boat list` at about 06:27Z,
   after the payment of about 06:25Z (`periodEnd` 2026-12-09T06:25:35Z);

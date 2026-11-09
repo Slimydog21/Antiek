@@ -116,9 +116,14 @@ Provisioning (``create``)
   the limit, before any network call.
 * ``wall_clock_s`` becomes ``ttlSeconds`` (Boat's auto-stop, which counts
   from creation; clamped to 60 s .. 30 days), so an abandoned workspace stops
-  by itself. Sandboxes are created with ``snapshots: false`` by default, which
-  per the OpenAPI makes a stop erase the disk "the way zero data retention
-  does": an abandoned workspace leaves no snapshot behind (I6).
+  by itself. Sandboxes are always created with ``snapshots: false``: the
+  proposed product doctrine keeps snapshots off, so the constructor has no
+  override (passing ``snapshots=`` is a ``TypeError``). Per the OpenAPI that
+  makes a stop erase the disk "the way zero data retention does": an
+  abandoned workspace leaves no snapshot behind (I6). The ``Sandbox``
+  record's ``snapshots`` ("False when the sandbox was created with snapshots
+  off") is read back like ``environment``: a record that carries it with any
+  value but ``false`` is refused and the sandbox deleted.
 * ``environment: <ANTIEK_BOAT_ENVIRONMENT>`` (default ``antiek-product``).
   ``noEnv`` is deliberately **not** sent: per the OpenAPI a ``noEnv`` sandbox
   is attached to no environment (``Sandbox.environment`` is null), which would
@@ -152,7 +157,8 @@ Provisioning (``create``)
   creates the workload account ``antiek-runner`` (a system account, no sudo,
   no home) and the workspace root ``<root_base>/<id>/`` with the conventional
   ``in/``, ``out/`` and ``work/`` dirs, plus a ``<id>.ctl/`` control dir (mode
-  0700, owned by Boat's ``user`` account) for stdin and output spool files.
+  0700, owned by Boat's ``user`` account) for stdin and output spool files,
+  the exec lock and the fence files (see "Execution").
   ``root_base`` (default ``/tmp/antiek-ws``) must lie under ``/tmp`` or
   ``/home/user``, because the files API accepts nothing else
   (``FileWriteRequest.path``).
@@ -166,9 +172,16 @@ The product environment must pass nothing of the account into a sandbox
    billed) read ``GET /environments?org=<pin>`` and refuse an environment
    that is not "safe for third parties" while any of ``passGithub``,
    ``passSecrets``, ``passSandboxCredentials``, ``passAgentsCredentials`` is
-   on, or that turns on ``proxyAiCredentials`` (AI-credential placeholders).
-   This read fails closed: an environment missing from the listing, or a key
-   whose scope may not read it (``403 api_key_action_forbidden`` /
+   not ``false``, and, whatever ``safeForThirdParties`` says, an environment
+   whose ``proxyAiCredentials`` (AI-credential placeholders) is present and
+   not ``false``. The OpenAPI ``SandboxEnvironment`` lists the four ``pass*``
+   flags as required but not ``proxyAiCredentials``, so an environment
+   without that field is accepted on it; a present value that is not the
+   boolean ``false`` (``true``, ``null``, a string) is refused.
+   This read fails closed: an environment missing from the listing, listed
+   more than once under its name (which one a create by name uses is not
+   documented, so no one entry's flags can stand for it), or a key whose
+   scope may not read it (``403 api_key_action_forbidden`` /
    ``api_key_sandbox_forbidden``), is refused with ``BackendUnavailable``,
    because nothing inside the VM can see secrets whose names the owner chose
    (``passSecrets``). Only these flags are read; ``envContents`` is never
@@ -198,10 +211,14 @@ Boat's agent runs commands as ``user``, which has passwordless sudo. Workload
 code never runs as ``user``: every ``exec`` sends one POSIX ``sh`` wrapper
 that
 
-1. kills anything still running as ``antiek-runner`` (nothing should be; see
-   step 4) and, under ``DENY_ALL``, re-checks that the owner REJECT rule is
-   still the first ``OUTPUT`` rule for both address families, refusing to run
-   if it drifted;
+1. takes the workspace's exec lock (``flock`` on ``<id>.ctl/lock``; one
+   wrapper at a time in the VM: it waits at most 5 s, then refuses with
+   ``busy``), exits without running anything if its fence file exists (see
+   "Interrupted exec" below), kills anything still running as
+   ``antiek-runner`` (nothing should be; see step 4) and refuses to start
+   unless that reap is confirmed (status ``reap_failed``), and, under
+   ``DENY_ALL``, re-checks that the owner REJECT rule is still the first
+   ``OUTPUT`` rule for both address families, refusing to run if it drifted;
 2. hands the workspace tree to ``antiek-runner`` (``chown -hR``, never
    following symlinks), resolves the requested ``cwd`` with ``realpath`` *as
    the runner* and refuses one that escapes the root (a symlink planted by an
@@ -218,9 +235,10 @@ that
    read the control dir);
 4. spools stdout/stderr to files in the control dir, then, whether the
    workload exited or timed out, kills every remaining ``antiek-runner``
-   process (real or effective uid, repeated until none is left; the account
-   exists only for this workspace). Nothing a workload starts outlives its
-   ``exec``: one process tree per ``exec``, no reuse (I7);
+   process (real or effective uid, repeated until ``pkill`` reports that
+   nothing matched; the account exists only for this workspace). Nothing a
+   workload starts outlives its ``exec``: one process tree per ``exec``, no
+   reuse (I7);
 5. gives the tree back to ``user`` (``chown -hR``) and strips group/other
    write and set-id bits (``chmod -R go-w,ug-s``; the group bits are the ACL
    mask, so a named-user ACL entry loses write too), so no path in the tree
@@ -235,12 +253,47 @@ the tree too; with ``fs.protected_hardlinks = 1`` the runner can only
 hardlink files it owns or may already read and write, so the handoff gives it
 nothing new. Provisioning refuses a VM without that setting.
 
+The reap fails closed. ``pkill`` runs inside a root ``sh -c`` that prints
+its exit status, so sudo's own failure (also status 1) cannot pass for
+``pkill``'s "no process matched" (1). Status 0 (something was signalled)
+repeats the round; 1 for both selectors (``-U`` and ``-u``) confirms the
+reap; anything else (2 syntax error, 3 fatal error, 127 missing tool,
+128+n killed by a signal, no status printed because sudo refused) is an
+error that ends the reap unconfirmed at once, as does a reap still finding
+processes after 50 rounds, 0.1 s apart. Unconfirmed at the start of an
+``exec``, it refuses the workload (nothing has been handed to the runner);
+at the end, the tree is still taken back and the trailer's clean flag is 0.
+
 A workspace serves one ``exec``, ``put_file`` or ``get_file`` at a time:
 calls queue on a per-workspace lock, because steps 1, 4 and 5 act on the
-whole account and the whole tree. ``destroy`` does not queue. If an ``exec``
-ends without a trailer that confirms steps 4-5 (an API-level timeout, a lost
-answer), the workspace is marked unclean and the next file transfer first
-re-runs them, refusing to proceed if that fails.
+whole account and the whole tree. ``destroy`` does not queue.
+
+Interrupted exec. When an ``exec``'s wrapper may still run, or may still
+start, while this host no longer waits for it (a lost answer: a 5xx, or a
+transport failure after the request may have left; a cancellation of the
+caller; anything else raised once the request was sent), the ``exec`` runs a
+cleanup before it releases the lock. For a detached command whose
+``processId`` is known it first stops it (``DELETE /commands/{processId}``).
+Then one cleanup command writes the fence file ``<id>.ctl/<nonce>.cancel`` of
+every interrupted exec (a wrapper that has not taken the exec lock yet finds
+it there and runs nothing), waits for the exec lock while reaping (a wrapper
+that holds it sees its workload killed and finishes), and, holding the
+lock, reaps and restores. Only a cleanup that got the lock and confirmed the
+reap and restore counts. It runs shielded: a second cancellation returns at
+once, but the cleanup keeps running and the next call on the workspace waits
+for it before anything else. A command Boat refused (4xx) or one that never
+left this host (no connection was made) needs none. The API-level timeouts
+(a synchronous ``timedOut: true``, the detached backstop) run the same
+cleanup.
+
+Unclean workspace. If an ``exec`` ends without confirming steps 4-5 (no
+trailer, a trailer whose clean flag is 0, a refused start, a cleanup that
+could not be confirmed), the workspace is marked unclean: every later
+``exec``, ``put_file`` or ``get_file`` first re-runs the cleanup and is
+refused (``ExecutionBackendError``, "could not be taken back") until one is
+confirmed. This module does not destroy the workspace on its own (I6: the
+caller owns ``destroy()``, which always works); a caller that cannot wait
+destroys it.
 
 A ``timeout_s`` whose wrapper budget (``ceil(timeout_s) + 20`` s) fits Boat's
 600 s synchronous cap (``CommandRequest.timeoutSeconds``, 1-600) uses
@@ -309,8 +362,9 @@ and ``requestId`` are carried into every message.
   ``trial_compute_limit_reached``, ``canStart: false`` (Boat's
   ``blockedReason`` is in the message), a ``GET /limits`` answer without the
   required ``canStart`` (shape drift), an org-pin mismatch, an environment
-  that passes account credentials or whose flags cannot be read, a VM that
-  does not protect hardlinks.
+  that passes account credentials, whose flags cannot be read or whose name
+  is listed more than once, a sandbox record that reports snapshots on, a VM
+  that does not protect hardlinks.
 * ``WorkspaceProvisionError``: oversize limits, 429 start/concurrency limits,
   503 capacity, 5xx and transport failures on create (and on its environment
   read), machine-class refusals (``trial_machine_class_not_allowed``,
@@ -320,12 +374,50 @@ and ``requestId`` are carried into every message.
 * ``WorkspaceLost``: the sandbox vanished mid-use (404) or has no machine any
   more (409 ``machine_not_running`` / ``sandbox_not_ready``, e.g. it hit its
   auto-stop), the workspace root vanished, or the workspace was destroyed.
-* ``ExecutionBackendError``: anything else mid-use.
+* ``ExecutionBackendError``: anything else mid-use, including an ``exec``
+  refused because its reap could not be confirmed (``reap_failed``), the
+  exec lock is held (``busy``) or cannot be opened (``no_lock``), and any
+  call refused on an unclean workspace.
 
 ``destroy()`` sends ``DELETE /sandboxes/{id}`` with the required
 ``X-Ascii-Confirm-Delete: <id>`` header; it is idempotent (a 404 or a second
 call is a no-op) and never raises, logging loudly instead, like
-``DockerBackend``.
+``DockerBackend``. It works on an unclean workspace too.
+
+Spend ledger lines
+------------------
+Every sandbox Boat accepted is logged once at INFO on logger
+``antiek.exec_backend.boat``, the moment its id is known: when the create
+answered (``via=create``), when the documented same-key re-``POST`` found it
+after a lost answer (``via=repost``), or when the label sweep found it
+(``via=sweep``)::
+
+    BoatBackend sandbox accepted: sandbox=<bx id> workspace=<id>
+    type=<machine type> ttlSeconds=<n> createdAt=<time> via=<how>
+
+(one line in the log; wrapped here). Every confirmed delete is logged once,
+``result=deleted`` for an accepted delete and ``result=not-found`` for a 404::
+
+    BoatBackend sandbox deleted: sandbox=<bx id> workspace=<id>
+    via=<destroy|orphan> result=<deleted|not-found>
+
+``type``, ``ttlSeconds`` and ``createdAt`` are the ``Sandbox`` record's values
+when it carries them (``createdAt`` is optional in the OpenAPI), the
+requested type and TTL otherwise. Each is checked for its own shape before
+it is logged: ``type`` must be one of the four machine type names,
+``ttlSeconds`` an integer and ``createdAt`` an RFC 3339 date-time; anything
+else is logged as ``unknown``. A sandbox that then fails provisioning was
+still accepted (and billed), so it has an accepted line and, once deleted, a
+deleted line, but no ``BoatBackend created workspace`` line. That line and
+``BoatBackend deleted sandbox`` are kept unchanged for the existing ledger
+parse; the first is written only for a fully provisioned workspace, the
+second for every delete Boat accepted through ``destroy()``, including the
+one after a failed provisioning. No line
+carries the key, even from a server that echoes it in a success answer: of
+what Boat returns, the ledger lines and the probe's ``BoatBackend ready``
+line log only ids, machine type names, numbers and date-times, each checked
+for its shape, and a key-shaped value (or one holding the current key) is
+always logged as ``unknown``.
 
 Where the docs are silent (and what this module does)
 -----------------------------------------------------
@@ -343,6 +435,16 @@ Where the docs are silent (and what this module does)
   environment's sandboxes really get; the OpenAPI ``SandboxEnvironment`` has
   no such field, so the documented rule ("safe for third parties" on means
   nothing passes, whatever the toggles say) is applied to the flags instead.
+* Whether live ``GET /environments`` answers always carry
+  ``proxyAiCredentials``: the OpenAPI does not list it as required and no
+  live environments shape is recorded (``LIVE_SHAPES.md`` has none), so an
+  environment without the field is accepted on it. ACTIVATION GATE: capture
+  a live environments shape first; if it carries the field, refuse an
+  environment that lacks it before this backend is wired in.
+* Whether one ``GET /environments`` listing can hold two environments with
+  the same name (personal and organization environments both exist, per
+  ``ResourceAccess`` and the ``OrgId`` parameter text): not documented. Such
+  a listing is refused (see "Credentials").
 * ``GET /limits`` without ``canStart``: the OpenAPI marks it required; the
   2026-11-09 personal-key shape in ``LIVE_SHAPES.md`` lacks it. ``probe``
   refuses such an answer as shape drift, naming the missing field.
@@ -350,7 +452,12 @@ Where the docs are silent (and what this module does)
   ~2 minutes"), and so whether a same-key re-``POST`` creates a new sandbox:
   not exact. Whatever the re-``POST`` returns is deleted.
 * Whether ``pkill`` matches zombie processes in the Boat image: the reap loop
-  repeats at most 50 times, 0.1 s apart, and reports an unfinished reap.
+  repeats at most 50 times, 0.1 s apart, and an unfinished reap is
+  unconfirmed (fails closed, see "Execution").
+* Whether Boat's ``DELETE /commands/{processId}`` reaches a workload that
+  ``setsid`` moved into its own session, and whether a synchronous command
+  keeps running after its HTTP answer was lost: not documented, so neither is
+  relied on; the reap and the fence files are.
 * Whether live responses carry ``environment`` and ``holdsCreatorLogins``: the
   OpenAPI documents both, the 2026-11-09 read-only shapes (``LIVE_SHAPES.md``)
   show neither, so each is checked when present and the in-VM check is the
@@ -363,13 +470,14 @@ Where the docs are silent (and what this module does)
 * What the base image ships: the wrapper needs ``sudo``, ``useradd``,
   ``iptables``/``ip6tables``, GNU coreutils (``env -C``, ``timeout``,
   ``realpath``, ``date +%s%N``, ``head -c``, ``chmod``), util-linux
-  ``setsid --wait``, procps ``pkill`` and ``sysctl`` (or a readable
-  ``/proc/sys/fs/protected_hardlinks``). A missing tool fails provisioning or
-  the exec loudly. Measured 2026-11-09 on a small VM (``bx_pqppjbcy``, a
+  ``setsid --wait`` and ``flock``, procps ``pkill`` and ``sysctl`` (or a
+  readable ``/proc/sys/fs/protected_hardlinks``). A missing tool fails
+  provisioning or the exec loudly (a missing ``pkill`` is status 127, an
+  unconfirmed reap). Measured 2026-11-09 on a small VM (``bx_pqppjbcy``, a
   primitives probe, not this module): Ubuntu 24.04.4, kernel 6.8, systemd 255
   on cgroup v2, passwordless ``sudo`` for ``user``, every tool probed present
-  (coreutils 9.4, procps-ng 4.0.4, iptables 1.8.10 nf_tables; ``realpath``
-  and ``date +%s%N`` were not probed), ``fs.protected_hardlinks = 1``;
+  (coreutils 9.4, procps-ng 4.0.4, iptables 1.8.10 nf_tables; ``realpath``,
+  ``date +%s%N`` and ``flock`` were not probed), ``fs.protected_hardlinks = 1``;
   ``setsid --wait timeout -k 5 2`` returned 124 after 2 s; with owner REJECT
   rules at ``-I OUTPUT 1`` in both families (both ``-C`` checks 0) a system
   account got no HTTPS answer while ``user`` still got 200;
@@ -418,7 +526,7 @@ import shlex
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -483,6 +591,9 @@ MACHINE_TYPES: tuple[tuple[str, int, int, int], ...] = (
     ("xlarge", 16, 32768, 251 * 1024),
 )
 
+#: The machine type names, the only ``type`` values a log line carries.
+_MACHINE_TYPE_NAMES: frozenset[str] = frozenset(name for name, *_ in MACHINE_TYPES)
+
 #: Boat's cap on a synchronous ``POST /commands`` (``timeoutSeconds`` 1-600).
 SYNC_COMMAND_CAP_S: int = 600
 
@@ -521,6 +632,33 @@ _CLEANUP_HTTP_TIMEOUT_S: float = 30.0
 #: Rounds of "kill every runner process" (0.1 s apart) before the wrapper
 #: reports an unfinished reap.
 _REAP_ROUNDS: int = 50
+
+#: How long an exec wrapper waits for the exec lock in the control dir
+#: before refusing with ``busy`` (nothing else should hold it; see
+#: "Interrupted exec").
+_EXEC_LOCK_WAIT_S: int = 5
+
+#: Rounds (each a reap and 0.1 s) a cleanup waits for an interrupted
+#: wrapper to release the exec lock before it reports itself unconfirmed.
+_CLEANUP_LOCK_ROUNDS: int = 200
+
+#: Name of the exec lock, and suffix of a fence file, in the control dir.
+_EXEC_LOCK_NAME: str = "lock"
+_FENCE_SUFFIX: str = ".cancel"
+
+#: Stable spend-ledger lines (see "Spend ledger lines"). Field names and
+#: order are a contract for the ledger parse; only ids and plain tokens go in.
+_ACCEPTED_LOG: str = (
+    "BoatBackend sandbox accepted: sandbox=%s workspace=%s type=%s ttlSeconds=%s "
+    "createdAt=%s via=%s"
+)
+_DELETED_LOG: str = "BoatBackend sandbox deleted: sandbox=%s workspace=%s via=%s result=%s"
+_LOG_TOKEN_RE = re.compile(r"^[A-Za-z0-9._:+-]{1,64}$")
+#: The OpenAPI ``format: date-time`` (RFC 3339), the only ``createdAt`` logged.
+_DATE_TIME_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?"
+    r"(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+)
 
 #: ``ttlSeconds`` bounds: a floor so a tiny ``wall_clock_s`` cannot auto-stop
 #: the VM before it is ready, and Boat's maximum (2592000 s, 30 days).
@@ -565,8 +703,9 @@ _BOAT_CLI_CONFIG_KEYLESS_ERE: str = (
     r'\{\}|\{"(api_url|channel)":"[^"\\]*"(,"(api_url|channel)":"[^"\\]*")*\}'
 )
 
-#: A boat API key anywhere in a string (POSIX ERE).
+#: A boat API key anywhere in a string (POSIX ERE; the same pattern in Python).
 _KEY_SHAPED_ERE: str = r"boat_[A-Za-z0-9_-]{24,}"
+_KEY_SHAPED_RE = re.compile(_KEY_SHAPED_ERE)
 
 #: Credential variables the same pages name (model credentials). The docs say
 #: "your GitHub token" without naming its variable; ``GH_TOKEN`` and
@@ -705,6 +844,24 @@ def _redact(text: str, key: str) -> str:
     return text.replace(key, "[redacted]") if key else text
 
 
+def _scrub(text: str, key: str | None = None) -> str:
+    """``text`` with the key (``key``, else the current ``$BOAT_API_KEY``) and
+    every key-shaped run replaced, so a server that echoes a key cannot get
+    it into an exception or a WARNING. Scrub before cutting: a cut could
+    leave part of a key that no longer looks like one."""
+    if key is None:
+        key = os.environ.get(BOAT_API_KEY_ENV, "")
+    return _KEY_SHAPED_RE.sub("[redacted]", _redact(text, key))
+
+
+def _shown(value: Any, limit: int = 120) -> str:
+    """``repr`` of a value Boat returned, for a message: scrubbed, then cut.
+    A string is scrubbed before ``repr`` as well, which could escape a key."""
+    if isinstance(value, str):
+        value = _scrub(value)
+    return _scrub(repr(value))[:limit]
+
+
 def _str(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
@@ -720,7 +877,7 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _tail(text: str, limit: int = 400) -> str:
-    return text.strip()[-limit:]
+    return _scrub(text).strip()[-limit:]
 
 
 def _new_marker() -> str:
@@ -771,17 +928,63 @@ def _validate_root_base(root_base: str) -> str:
     return root_base
 
 
+def _log_token(value: Any) -> str:
+    """``value`` as one plain token for a log line, else ``unknown``. A
+    key-shaped value, or one holding the current key, is never a token: a
+    server that echoes the key in a success answer cannot put it in a log."""
+    if isinstance(value, bool):
+        return "unknown"
+    text = str(value) if isinstance(value, int | str) else ""
+    key = os.environ.get(BOAT_API_KEY_ENV, "")
+    if _KEY_SHAPED_RE.search(text) or (key and key in text):
+        return "unknown"
+    return text if _LOG_TOKEN_RE.match(text) else "unknown"
+
+
+def _machine_token(value: Any) -> str:
+    """A machine type name for a log line; ``unknown`` for anything else."""
+    return value if isinstance(value, str) and value in _MACHINE_TYPE_NAMES else "unknown"
+
+
+def _date_time_token(value: Any) -> str:
+    """An RFC 3339 date-time for a log line; ``unknown`` for anything else."""
+    if isinstance(value, str) and _DATE_TIME_RE.match(value):
+        return _log_token(value)
+    return "unknown"
+
+
+def _wallet_token(team_id: Any) -> str:
+    """The wallet a ``GET /limits`` answer names, for the probe's log line:
+    an organization id, ``personal`` when it names none, else ``unknown``."""
+    if team_id is None or team_id == "":
+        return "personal"
+    if isinstance(team_id, str) and _ORG_ID_RE.match(team_id):
+        return _log_token(team_id)
+    return "unknown"
+
+
 def _environment_problems(env: Mapping[str, Any]) -> list[str]:
     """Why a ``SandboxEnvironment`` would pass something of the account into
-    a sandbox; empty means it passes nothing. Reads flags only."""
-    if env.get("safeForThirdParties") is True:
-        if env.get("proxyAiCredentials") is True:
-            return ["proxyAiCredentials is on (AI credential placeholders enter the sandbox)"]
-        return []
-    passing = [flag for flag in _ENV_PASS_FLAGS if env.get(flag) is not False]
-    if passing:
-        return [f"safeForThirdParties is off and {', '.join(passing)} not off"]
-    return []
+    a sandbox; empty means it passes nothing. Reads flags only.
+
+    ``proxyAiCredentials`` is checked on its own, whatever
+    ``safeForThirdParties`` says: a present value that is not ``False`` is
+    refused. The OpenAPI does not list it as required, so its absence is
+    accepted. The four ``pass*`` flags (required) count only while the
+    environment is not safe for third parties, and then anything but
+    ``False`` counts as passing."""
+    problems: list[str] = []
+    if "proxyAiCredentials" in env and env.get("proxyAiCredentials") is not False:
+        shown = _shown(env.get("proxyAiCredentials"), 40)
+        problems.append(
+            f"proxyAiCredentials is {shown}, not false (AI credential placeholders "
+            "enter the sandbox)"
+        )
+    if env.get("safeForThirdParties") is not True:
+        passing = [flag for flag in _ENV_PASS_FLAGS if env.get(flag) is not False]
+        if passing:
+            problems.append(f"safeForThirdParties is off and {', '.join(passing)} not off")
+    return problems
 
 
 # --- the in-VM scripts (pure builders, POSIX sh) ---------------------------
@@ -916,23 +1119,37 @@ def _restore_functions() -> list[str]:
     """POSIX ``sh`` shared by the exec wrapper and the cleanup command; needs
     ``RUN``, ``ROOT`` and ``OWNER`` set.
 
-    ``_reap`` kills every process whose real or effective uid is the runner's,
-    round after round until none is left (bounded). ``_restore`` reaps, then
+    ``_pk -U|-u`` runs ``pkill -KILL`` for the runner inside a root
+    ``sh -c`` that prints pkill's own status, so sudo failing (also status
+    1) cannot pass for "none matched": it returns 0 (signalled), 1 (none
+    matched) or 2 (anything else: syntax error, fatal error, missing tool,
+    killed by a signal, sudo refused). ``_reap`` repeats both selectors
+    until both say none matched, and fails closed (``CLEAN=0``, status 1)
+    on an error or after ``_REAP_ROUNDS`` rounds. ``_restore`` reaps, then
     gives the tree back to ``user`` and strips group/other write and set-id
-    bits, in that order: once no runner process exists and the tree is
-    ``user``'s with no group/other write, nothing the runner starts later can
-    rename or replace anything in it. ``CLEAN=0`` records a step that did not
-    finish."""
+    bits, in that order, even after a failed reap: once no runner process
+    exists and the tree is ``user``'s with no group/other write, nothing the
+    runner starts later can rename or replace anything in it. ``CLEAN=0``
+    records a step that did not finish."""
     return [
         "CLEAN=1",
+        "_pk() {",
+        '  case "$(sudo -n sh -c \'pkill -KILL "$1" "$2" >/dev/null 2>&1; echo "rc=$?"\' '
+        'sh "$1" "$RUN" 2>/dev/null)" in',
+        "    rc=0) return 0 ;;",
+        "    rc=1) return 1 ;;",
+        "    *) return 2 ;;",
+        "  esac",
+        "}",
+        # sh variables are global: the reap's own names (rk_*) never clash.
         "_reap() {",
-        "  i=0",
-        f'  while [ "$i" -lt {_REAP_ROUNDS} ]; do',
-        "    hit=0",
-        '    sudo -n pkill -KILL -U "$RUN" >/dev/null 2>&1 && hit=1',
-        '    sudo -n pkill -KILL -u "$RUN" >/dev/null 2>&1 && hit=1',
-        '    [ "$hit" -eq 0 ] && return 0',
-        "    i=$((i + 1))",
+        "  rk_i=0",
+        f'  while [ "$rk_i" -lt {_REAP_ROUNDS} ]; do',
+        "    _pk -U; rk_a=$?",
+        "    _pk -u; rk_b=$?",
+        '    if [ "$rk_a" -ge 2 ] || [ "$rk_b" -ge 2 ]; then CLEAN=0; return 1; fi',
+        '    if [ "$rk_a" -eq 1 ] && [ "$rk_b" -eq 1 ]; then return 0; fi',
+        "    rk_i=$((rk_i + 1))",
         "    sleep 0.1",
         "  done",
         "  CLEAN=0",
@@ -946,16 +1163,39 @@ def _restore_functions() -> list[str]:
     ]
 
 
-def _build_cleanup_script(*, marker: str, root: str, spool: Sequence[str]) -> str:
-    """After an API-level kill or a lost exec answer: end every runner
-    process, hand the tree back, and report ``<marker>:clean=1|0``."""
+def _build_cleanup_script(
+    *, marker: str, root: str, ctl: str, spool: Sequence[str], fence: Sequence[str]
+) -> str:
+    """After an API-level kill, a lost exec answer or a cancellation: fence
+    the interrupted wrappers (``fence`` holds their nonces), wait for the
+    exec lock while reaping, then, holding it, end every runner process and
+    hand the tree back; report ``<marker>:clean=1|0``. ``clean=1`` only when
+    the lock was taken and the reap and restore were confirmed."""
     q = shlex.quote
     lines = [
         f"M={q(marker)}",
         f"RUN={q(RUNNER_ACCOUNT)}",
         f"ROOT={q(root)}",
+        f"CTL={q(ctl)}",
         'OWNER="$(id -u):$(id -g)"',
         *_restore_functions(),
+    ]
+    # Fence first: a wrapper that has not taken the lock yet finds its fence
+    # file under the lock and runs nothing.
+    lines += [f'touch -- "$CTL"/{q(nonce + _FENCE_SUFFIX)} || CLEAN=0' for nonce in fence]
+    lines += [
+        "LOCKED=0",
+        f'if command exec 9>>"$CTL"/{q(_EXEC_LOCK_NAME)}; then',
+        "  lk_i=0",
+        f'  while [ "$lk_i" -lt {_CLEANUP_LOCK_ROUNDS} ]; do',
+        "    if flock -n 9; then LOCKED=1; break; fi",
+        # A wrapper still holds the lock: kill its workload so it finishes.
+        "    _reap || break",
+        "    lk_i=$((lk_i + 1))",
+        "    sleep 0.1",
+        "  done",
+        "fi",
+        '[ "$LOCKED" -eq 1 ] || CLEAN=0',
         "_restore",
     ]
     if spool:
@@ -967,7 +1207,9 @@ def _build_cleanup_script(*, marker: str, root: str, spool: Sequence[str]) -> st
 def _build_exec_script(
     *,
     marker: str,
+    nonce: str,
     root: str,
+    ctl: str,
     spool_out: str,
     spool_err: str,
     stdin_path: str | None,
@@ -996,6 +1238,7 @@ def _build_exec_script(
         f"M={q(marker)}",
         f"RUN={q(RUNNER_ACCOUNT)}",
         f"ROOT={q(root)}",
+        f"CTL={q(ctl)}",
         f"OUT={q(spool_out)}",
         f"ERR={q(spool_err)}",
         f"IN={q(stdin_path if stdin_path is not None else '/dev/null')}",
@@ -1008,9 +1251,15 @@ def _build_exec_script(
         "}",
         "printf '%s:begin\\n' \"$M\"",
         "printf '%s:begin\\n' \"$M\" >&2",
-        # Nothing of an earlier exec may run alongside this one (I7).
-        "_reap || :",
         'ROOTR="$(realpath -e -- "$ROOT")" || _fin no_root -1 0 0 0',
+        # One wrapper at a time in the VM; held until this shell exits.
+        f'command exec 9>>"$CTL"/{q(_EXEC_LOCK_NAME)} || {{ CLEAN=0; _fin no_lock -1 0 0 0; }}',
+        f"flock -w {_EXEC_LOCK_WAIT_S} 9 || {{ CLEAN=0; _fin busy -1 0 0 0; }}",
+        # Fenced by a cleanup after this host gave up on this exec: run nothing.
+        f'[ -e "$CTL"/{q(nonce + _FENCE_SUFFIX)} ] && _fin cancelled -1 0 0 0',
+        # Nothing of an earlier exec may run alongside this one (I7): start
+        # only once every runner process is confirmed gone.
+        "_reap || _fin reap_failed -1 0 0 0",
     ]
     if deny_all:
         lines += [
@@ -1034,7 +1283,8 @@ def _build_exec_script(
             *(q(a) for a in assignments),
             f"setsid --wait timeout -k {_KILL_GRACE_S} {t_arg}",
             *(q(a) for a in argv),
-            '<"$IN" >"$OUT" 2>"$ERR"',
+            # The workload never holds the exec lock.
+            '<"$IN" >"$OUT" 2>"$ERR" 9>&-',
         ]
     )
     lines += [
@@ -1141,7 +1391,7 @@ def _deny_all_problems(
     for family in ("iptables", "ip6tables"):
         errors = fields.get(f"{family}_error")
         if errors:
-            problems.append(f"{family} -S OUTPUT failed: {errors[0][:200]}")
+            problems.append(f"{family} -S OUTPUT failed: {_scrub(errors[0])[:200]}")
             continue
         rules = [line for line in fields.get(family, []) if line.startswith("-A OUTPUT ")]
         if not rules:
@@ -1150,7 +1400,7 @@ def _deny_all_problems(
         match = _REJECT_RULE_RE.match(rules[0])
         if match is None or runner is None or int(match.group(1)) != runner:
             problems.append(
-                f"{family}: first OUTPUT rule is {rules[0]!r}, expected the owner "
+                f"{family}: first OUTPUT rule is {_shown(rules[0], 200)}, expected the owner "
                 f"REJECT for uid {runner}"
             )
         if owner is not None:
@@ -1210,14 +1460,20 @@ _NOT_SENT_ERRORS: tuple[type[Exception], ...] = (
 _BACKGROUND_CLEANUPS: set[asyncio.Task[None]] = set()
 
 
+def _start_cleanup(cleanup: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+    """Start ``cleanup`` as a task that outlives its caller (referenced in
+    ``_BACKGROUND_CLEANUPS`` until it ends). ``cleanup`` must not raise."""
+    task = asyncio.ensure_future(cleanup)
+    _BACKGROUND_CLEANUPS.add(task)
+    task.add_done_callback(_BACKGROUND_CLEANUPS.discard)
+    return task
+
+
 async def _run_shielded(cleanup: Coroutine[Any, Any, None]) -> None:
     """Run ``cleanup`` to completion even if the caller is cancelled while
     waiting for it: the task keeps running on its own and the caller's
     ``CancelledError`` propagates. ``cleanup`` must not raise."""
-    task = asyncio.ensure_future(cleanup)
-    _BACKGROUND_CLEANUPS.add(task)
-    task.add_done_callback(_BACKGROUND_CLEANUPS.discard)
-    await asyncio.shield(task)
+    await asyncio.shield(_start_cleanup(cleanup))
 
 
 def _json_object(response: httpx.Response) -> dict[str, Any]:
@@ -1241,9 +1497,9 @@ def _http_error(
         method=method,
         path=path,
         status=status,
-        code=_redact(code, key)[:80],
-        message=_redact(message, key)[:300],
-        request_id=_redact(_str(payload.get("requestId")), key)[:80],
+        code=_scrub(code, key)[:80],
+        message=_scrub(message, key)[:300],
+        request_id=_scrub(_str(payload.get("requestId")), key)[:80],
     )
 
 
@@ -1296,7 +1552,7 @@ class _BoatApi:
                 timeout=timeout_s if timeout_s is not None else _HTTP_TIMEOUT_S,
             )
         except (httpx.HTTPError, httpx.InvalidURL) as exc:
-            failure = _redact(f"{type(exc).__name__}: {exc}", key)
+            failure = _scrub(f"{type(exc).__name__}: {exc}", key)
             maybe_sent = not isinstance(exc, _NOT_SENT_ERRORS)
         if response is None:
             # Raised outside the except block on purpose: the httpx exception
@@ -1323,6 +1579,36 @@ class _RawRun:
     #: Outcome of the cleanup command run after an API-level kill; ``None``
     #: when none ran (the wrapper's own trailer then says).
     cleaned: bool | None = None
+
+
+@dataclass
+class _InFlight:
+    """One ``exec`` on its way: what an interrupted exec needs cleaned up.
+    ``sent`` turns True just before the command request may leave;
+    ``process_id`` is set once a detached command is known to run."""
+
+    nonce: str
+    spool: Sequence[str]
+    sent: bool = False
+    process_id: int | None = None
+
+
+def _may_have_run(exc: BaseException, flight: _InFlight) -> bool:
+    """Whether the wrapper of ``flight`` may run (or still start) in the VM
+    after ``exc`` ended the host's wait for it. False only when the request
+    never left (no connection, or nothing sent yet) or Boat refused it with a
+    4xx; a 5xx, a transport failure after sending, a cancellation or any
+    other exception count as "may have run"."""
+    if flight.process_id is not None:
+        return True
+    if not flight.sent:
+        return False
+    cause = exc.__cause__ if isinstance(exc, ExecutionBackendError) else None
+    if isinstance(cause, _BoatTransportError):
+        return cause.maybe_sent
+    if isinstance(cause, _BoatHTTPError):
+        return cause.status >= 500
+    return True
 
 
 # --- workspace ----------------------------------------------------------------
@@ -1367,10 +1653,16 @@ class _BoatWorkspace:
         self._runner_uid: int | None = None
         #: One exec / put_file / get_file at a time (see "Execution").
         self._lock = asyncio.Lock()
-        #: True while the tree may be the runner's or a runner process may
-        #: live: set before an exec, cleared by a trailer or cleanup that
-        #: confirms the reap and restore.
+        #: True while the tree may be the runner's, a runner process may live
+        #: or an interrupted wrapper may still run: set before an exec,
+        #: cleared by a trailer or cleanup that confirms the reap and restore.
         self._dirty = False
+        #: Nonces of exec wrappers that may still start or run; every cleanup
+        #: writes their fence files, a confirmed one forgets them.
+        self._fence: set[str] = set()
+        #: The shielded cleanup of an interrupted exec while it runs; every
+        #: call waits for it before anything else (see "Interrupted exec").
+        self._settling: asyncio.Task[None] | None = None
 
     @property
     def workspace_id(self) -> str:
@@ -1497,18 +1789,23 @@ class _BoatWorkspace:
             )
         raise ExecutionBackendError(
             f"{what}: could not resolve {original!r} in sandbox {self._sandbox_id} "
-            f"(status {status!r}, exit {answer.get('exitCode')!r}): "
+            f"(status {_shown(status)}, exit {_shown(answer.get('exitCode'))}): "
             f"{_tail(_str(answer.get('stderr')))}"
         )
 
     async def _cleanup_after_kill(self, spool: Sequence[str], *, raise_lost: bool = False) -> bool:
-        """Kill every runner process and restore the tree; True when the
-        command confirmed both. Never raises, except ``WorkspaceLost`` /
-        ``BackendUnavailable`` when ``raise_lost``."""
+        """Fence every interrupted wrapper, wait for the exec lock, kill
+        every runner process and restore the tree; True when the command
+        confirmed all of it (and the fenced nonces are then forgotten).
+        Never raises, except ``WorkspaceLost`` / ``BackendUnavailable`` when
+        ``raise_lost``."""
         marker = _new_marker()
+        fence = sorted(self._fence)
         try:
             answer = await self._command(
-                _build_cleanup_script(marker=marker, root=self._root, spool=spool),
+                _build_cleanup_script(
+                    marker=marker, root=self._root, ctl=self._ctl, spool=spool, fence=fence
+                ),
                 timeout_s=_HELPER_TIMEOUT_S,
                 what="cleanup",
             )
@@ -1516,31 +1813,105 @@ class _BoatWorkspace:
             if raise_lost and isinstance(exc, WorkspaceLost | BackendUnavailable):
                 raise
             self._log.warning(
-                "cleanup after a killed exec in sandbox %s failed: %s", self._sandbox_id, exc
+                "cleanup after a killed or interrupted exec in sandbox %s failed: %s",
+                self._sandbox_id,
+                exc,
             )
             return False
         if _marker_fields(_str(answer.get("stdout")), marker).get("clean") != "1":
             self._log.warning(
-                "cleanup in sandbox %s could not confirm that every %s process is gone "
-                "and the tree restored (exit %r)",
+                "cleanup in sandbox %s could not confirm that no earlier exec wrapper runs, "
+                "every %s process is gone and the tree is restored (exit %s)",
                 self._sandbox_id,
                 RUNNER_ACCOUNT,
-                answer.get("exitCode"),
+                _shown(answer.get("exitCode")),
             )
             return False
+        self._fence.difference_update(fence)
         return True
 
+    async def _await_settling(self) -> None:
+        """Wait for the shielded cleanup of an interrupted exec, if one still
+        runs. A cancellation here leaves it running for the next caller."""
+        task = self._settling
+        if task is None:
+            return
+        await asyncio.shield(task)
+        if self._settling is task:
+            self._settling = None
+
     async def _ensure_restored(self, what: str) -> None:
-        """Before a file transfer: if the last exec did not confirm its reap
-        and restore, run them now, and refuse the transfer if they fail."""
+        """Before any exec or file transfer: let a running cleanup finish;
+        then, if the workspace is unclean, run the cleanup now, and refuse
+        the call if it cannot be confirmed."""
+        await self._await_settling()
         if not self._dirty:
             return
         if not await self._cleanup_after_kill([], raise_lost=True):
             raise ExecutionBackendError(
                 f"{what} refused on sandbox {self._sandbox_id}: the workspace tree could not "
-                f"be taken back from {RUNNER_ACCOUNT} after an interrupted exec"
+                f"be taken back from {RUNNER_ACCOUNT} after an interrupted or unclean exec "
+                "(an earlier wrapper or runner process may still run). Every call is refused "
+                "until a cleanup is confirmed; destroy() still works."
             )
         self._dirty = False
+
+    async def _settle_interrupted(self, flight: _InFlight) -> None:
+        """An exec whose wrapper may still run was interrupted: clean up
+        before the lock is released. Shielded and recorded in ``_settling``:
+        a second cancellation returns at once while the cleanup goes on, and
+        every later call waits for it first (``_ensure_restored``)."""
+        task = _start_cleanup(self._settle(flight))
+        self._settling = task
+        await asyncio.shield(task)
+
+    async def _settle(self, flight: _InFlight) -> None:
+        """Stop the detached command when its id is known, then fence, reap
+        and restore. Never raises; an unconfirmed cleanup leaves the
+        workspace unclean (every later call re-runs it first)."""
+        sid = self._sandbox_id
+        try:
+            if self._destroyed:
+                return
+            if flight.process_id is not None:
+                await self._stop_command(flight.process_id)
+            if not self._destroyed and await self._cleanup_after_kill(flight.spool):
+                self._dirty = False
+                self._log.info(
+                    "interrupted exec in sandbox %s: wrapper fenced or finished, every %s "
+                    "process gone, tree restored",
+                    sid,
+                    RUNNER_ACCOUNT,
+                )
+                return
+        except Exception as exc:  # a cleanup must never raise
+            self._log.warning(
+                "cleanup of an interrupted exec in sandbox %s failed (%s)",
+                sid,
+                type(exc).__name__,
+            )
+        self._log.warning(
+            "interrupted exec in sandbox %s could not be cleaned up; the workspace stays "
+            "unclean and every later call re-runs the cleanup first",
+            sid,
+        )
+
+    async def _stop_command(self, process_id: int) -> None:
+        """``DELETE /commands/{processId}``: stop a detached command. Never
+        raises ``ExecutionBackendError``; the reap after it is what counts."""
+        try:
+            await self._call(
+                "DELETE",
+                f"/sandboxes/{self._sandbox_id}/commands/{process_id}",
+                what="exec stop",
+            )
+        except ExecutionBackendError as exc:
+            self._log.warning(
+                "stopping detached command %s in sandbox %s failed: %s",
+                process_id,
+                self._sandbox_id,
+                exc,
+            )
 
     # -- provisioning (called by BoatBackend.create) --
 
@@ -1563,7 +1934,8 @@ class _BoatWorkspace:
         if found:
             raise BackendUnavailable(
                 f"Boat environment {self._environment!r} passes account credentials into "
-                f"sandbox {self._sandbox_id}: {', '.join(found)}. Product workspaces must get "
+                f"sandbox {self._sandbox_id}: {', '.join(_scrub(v) for v in found)}. "
+                "Product workspaces must get "
                 "nothing of the account: mark the environment 'safe for third parties' "
                 "(proxyAiCredentials off). The sandbox was deleted."
             )
@@ -1573,7 +1945,7 @@ class _BoatWorkspace:
         if answer.get("exitCode") != 0 or runner is None or owner is None:
             raise WorkspaceProvisionError(
                 f"provisioning sandbox {self._sandbox_id} failed (exit "
-                f"{answer.get('exitCode')!r}): {_tail(_str(answer.get('stderr')))}"
+                f"{_shown(answer.get('exitCode'))}): {_tail(_str(answer.get('stderr')))}"
             )
         if runner in (0, owner):
             raise WorkspaceProvisionError(
@@ -1584,7 +1956,8 @@ class _BoatWorkspace:
         if hardlinks != "1":
             raise BackendUnavailable(
                 f"sandbox {self._sandbox_id} does not protect hardlinks "
-                f"(fs.protected_hardlinks={hardlinks or 'unreadable'}): handing the workspace "
+                f"(fs.protected_hardlinks={_scrub(hardlinks)[:40] or 'unreadable'}): handing the "
+                "workspace "
                 f"tree to {RUNNER_ACCOUNT} (chown -hR) would give it any file it hardlinks "
                 "into the tree. The sandbox was deleted."
             )
@@ -1603,7 +1976,7 @@ class _BoatWorkspace:
         if applied.get("exitCode") != 0:
             raise NetPolicyUnsupported(
                 f"DENY_ALL could not be applied on sandbox {sid}: inserting the "
-                f"iptables/ip6tables owner rules exited {applied.get('exitCode')!r}: "
+                f"iptables/ip6tables owner rules exited {_shown(applied.get('exitCode'))}: "
                 f"{_tail(_str(applied.get('stderr')))}"
             )
         marker = _new_marker()
@@ -1661,8 +2034,10 @@ class _BoatWorkspace:
         assignments = _env_items(self._profile.env, "profile env")
         if env:
             assignments += _env_items(env, "exec env")
+        _read_api_key()  # a missing key refuses before anything is sent
         async with self._lock:
             self._check_alive()
+            await self._ensure_restored("exec")
             return await self._exec_locked(
                 words,
                 timeout_s=float(timeout_s),
@@ -1694,7 +2069,9 @@ class _BoatWorkspace:
         spool = [spool_out, spool_err] + ([stdin_path] if stdin_path is not None else [])
         script = _build_exec_script(
             marker=marker,
+            nonce=nonce,
             root=self._root,
+            ctl=self._ctl,
             spool_out=spool_out,
             spool_err=spool_err,
             stdin_path=stdin_path,
@@ -1705,15 +2082,33 @@ class _BoatWorkspace:
             deny_all=self._deny_all,
         )
         api_timeout_s = math.ceil(timeout_s) + _KILL_GRACE_S + _WRAPPER_SLACK_S
+        flight = _InFlight(nonce=nonce, spool=spool)
         # From here until a trailer or a cleanup confirms otherwise, the tree
-        # may be the runner's and runner processes may live.
+        # may be the runner's, runner processes may live and this wrapper may
+        # still start.
+        was_dirty = self._dirty
         self._dirty = True
-        if api_timeout_s <= SYNC_COMMAND_CAP_S:
-            raw = await self._exec_sync(script, api_timeout_s, spool)
-        else:
-            raw = await self._exec_detached(script, timeout_s, spool)
+        self._fence.add(nonce)
+        try:
+            if api_timeout_s <= SYNC_COMMAND_CAP_S:
+                raw = await self._exec_sync(script, api_timeout_s, flight)
+            else:
+                raw = await self._exec_detached(script, timeout_s, flight)
+        except BaseException as exc:
+            if _may_have_run(exc, flight):
+                # Lost answer, transport failure after sending, cancellation:
+                # the wrapper may still run. Clean up before the lock goes.
+                await self._settle_interrupted(flight)
+            else:
+                # Refused by Boat or never sent: nothing ran in the VM.
+                self._fence.discard(nonce)
+                self._dirty = was_dirty
+            raise
         duration_ms = max(0, int((self._clock() - start) * 1000))
         parsed = _parse_wrapped(raw.stdout, raw.stderr, marker)
+        if parsed is not None:
+            # The wrapper finished: it can no longer start.
+            self._fence.discard(nonce)
         if raw.cleaned is not None:
             self._dirty = not raw.cleaned
         elif parsed is not None:
@@ -1721,16 +2116,17 @@ class _BoatWorkspace:
         if self._dirty:
             self._log.warning(
                 "exec in sandbox %s ended without confirming that every %s process is gone "
-                "and the tree restored; the next file transfer re-runs the cleanup",
+                "and the tree restored; every later call re-runs the cleanup first",
                 self._sandbox_id,
                 RUNNER_ACCOUNT,
             )
         return self._finish(raw, parsed, marker, duration_ms, cwd)
 
-    async def _exec_sync(self, script: str, api_timeout_s: int, spool: Sequence[str]) -> _RawRun:
+    async def _exec_sync(self, script: str, api_timeout_s: int, flight: _InFlight) -> _RawRun:
+        flight.sent = True
         answer = await self._command(script, timeout_s=api_timeout_s, what="exec")
         api_timed_out = answer.get("timedOut") is True
-        cleaned = await self._cleanup_after_kill(spool) if api_timed_out else None
+        cleaned = await self._cleanup_after_kill(flight.spool) if api_timed_out else None
         return _RawRun(
             stdout=_str(answer.get("stdout")),
             stderr=_str(answer.get("stderr")),
@@ -1739,12 +2135,13 @@ class _BoatWorkspace:
             cleaned=cleaned,
         )
 
-    async def _exec_detached(self, script: str, timeout_s: float, spool: Sequence[str]) -> _RawRun:
+    async def _exec_detached(self, script: str, timeout_s: float, flight: _InFlight) -> _RawRun:
         """``POST /commands`` with ``detached: true`` (no time limit), then poll
         ``GET /commands/{processId}`` (``CommandStatusResponse``) until it is
         no longer ``running``; a host-side backstop deadline stops it with
         ``DELETE /commands/{processId}``."""
         sid = self._sandbox_id
+        flight.sent = True
         started = await self._call(
             "POST",
             f"/sandboxes/{sid}/commands",
@@ -1754,6 +2151,7 @@ class _BoatWorkspace:
         process_id = _int_or_none(started.get("processId"))
         if process_id is None or process_id < 1:
             raise ExecutionBackendError(f"detached exec on sandbox {sid} returned no processId")
+        flight.process_id = process_id
         path = f"/sandboxes/{sid}/commands/{process_id}"
         deadline = self._clock() + timeout_s + _KILL_GRACE_S + _WRAPPER_SLACK_S + _START_WAIT_S
         while True:
@@ -1772,9 +2170,8 @@ class _BoatWorkspace:
                 )
             if self._clock() >= deadline:
                 # Backstop only: the in-VM timeout should have fired long ago.
-                with contextlib.suppress(ExecutionBackendError):
-                    await self._call("DELETE", path, what="exec stop")
-                cleaned = await self._cleanup_after_kill(spool)
+                await self._stop_command(process_id)
+                cleaned = await self._cleanup_after_kill(flight.spool)
                 return _RawRun(
                     stdout=_str(status.get("stdout")),
                     stderr=_str(status.get("stderr")),
@@ -1816,6 +2213,17 @@ class _BoatWorkspace:
             raise WorkspaceLost(
                 f"workspace {self._id} root vanished from sandbox {self._sandbox_id}"
             )
+        if parsed.status in ("reap_failed", "busy", "no_lock"):
+            what = {
+                "reap_failed": f"could not confirm that every {RUNNER_ACCOUNT} process is gone",
+                "busy": "another exec wrapper still holds the exec lock",
+                "no_lock": "could not open the exec lock",
+            }[parsed.status]
+            raise ExecutionBackendError(
+                f"exec refused on sandbox {self._sandbox_id} before the workload ran: {what} "
+                f"({parsed.status}). The workspace is unclean: every later call re-runs the "
+                "cleanup first and is refused until it is confirmed; destroy() still works."
+            )
         if parsed.status == "cwd_escape":
             raise ValueError(f"path escapes workspace root: {cwd!r}")
         if parsed.status == "cwd_missing":
@@ -1828,7 +2236,7 @@ class _BoatWorkspace:
             )
         if parsed.status != "ok":
             raise ExecutionBackendError(
-                f"exec wrapper failed on sandbox {self._sandbox_id}: {parsed.status}"
+                f"exec wrapper failed on sandbox {self._sandbox_id}: {_shown(parsed.status)}"
             )
         out, out_cut = _cap(parsed.stdout, parsed.out_bytes)
         err, err_cut = _cap(parsed.stderr, parsed.err_bytes)
@@ -1905,9 +2313,11 @@ class _BoatWorkspace:
             )
             self._destroyed = True
             self._log.info("BoatBackend deleted sandbox %s (workspace %s)", sid, self._id)
+            self._log.info(_DELETED_LOG, sid, self._id, "destroy", "deleted")
         except _BoatHTTPError as exc:
             if exc.status == 404:
                 self._destroyed = True
+                self._log.info(_DELETED_LOG, sid, self._id, "destroy", "not-found")
             else:
                 self._log.warning(
                     "Boat delete of sandbox %s failed (%s); it will stop at its "
@@ -1938,7 +2348,8 @@ class BoatBackend:
     ``$BOAT_API_URL`` (default ``https://boat.dev/api/v1``) with
     ``$BOAT_API_KEY`` read at use time. ``org`` and ``environment`` override
     ``$ANTIEK_BOAT_ORG`` and ``$ANTIEK_BOAT_ENVIRONMENT``; both are read and
-    validated at use time, never at construction.
+    validated at use time, never at construction. There is no ``snapshots``
+    override: every sandbox is created with ``snapshots: false``.
     """
 
     def __init__(
@@ -1951,7 +2362,6 @@ class BoatBackend:
         root_base: str = DEFAULT_ROOT_BASE,
         ready_timeout_s: float = _DEFAULT_READY_TIMEOUT_S,
         poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
-        snapshots: bool = False,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         clock: Callable[[], float] | None = None,
         log: logging.Logger | None = None,
@@ -1965,7 +2375,6 @@ class BoatBackend:
         self._root_base = _validate_root_base(root_base)
         self._ready_timeout_s = float(ready_timeout_s)
         self._poll_interval_s = float(poll_interval_s)
-        self._snapshots = bool(snapshots)
         self._sleep: Callable[[float], Awaitable[None]] = sleep or _default_sleep
         self._clock: Callable[[], float] = clock or time.monotonic
         self._log = log or logging.getLogger("antiek.exec_backend.boat")
@@ -2057,9 +2466,11 @@ class BoatBackend:
             )
             return
         types = limits.get("machineTypes")
+        # Only ids, machine type names and numbers reach the log: Boat's own
+        # strings are not logged, so an answer echoing the key cannot leak it.
         available = (
             [
-                str(t.get("type"))
+                _machine_token(t.get("type"))
                 for t in types
                 if isinstance(t, dict) and t.get("available") is True
             ]
@@ -2070,11 +2481,11 @@ class BoatBackend:
             "BoatBackend ready; wallet=%s; environment=%s (%s); sandboxes %s/%s; machine "
             "types available=%s; limits enforced=[cpu_cores, memory_mb, disk_mb via machine "
             "type; wall_clock_s via auto-stop]",
-            limits.get("teamId") or "personal",
+            _wallet_token(limits.get("teamId")),
             environment,
             env_state,
-            limits.get("activeSandboxes"),
-            limits.get("maxActiveSandboxes"),
+            _int_or_none(limits.get("activeSandboxes")),
+            _int_or_none(limits.get("maxActiveSandboxes")),
             available or "unknown",
         )
 
@@ -2101,18 +2512,20 @@ class BoatBackend:
             # 2026-11-09 personal-key answer lacks it. Shape drift, not billing.
             raise BackendUnavailable(
                 "Boat's GET /limits answer carries no boolean 'canStart' (required by the "
-                f"OpenAPI LimitsFields; got {can_start!r}), so whether this wallet can start "
+                f"OpenAPI LimitsFields; got {_shown(can_start)}), so whether this wallet can start "
                 "sandboxes is unknown. The response shape drifted from boat-v1.yaml: update "
                 "this adapter before relying on it. Fields present: "
-                f"{', '.join(sorted(k for k in limits if isinstance(k, str))[:40])}"
+                f"{_scrub(', '.join(sorted(k for k in limits if isinstance(k, str))[:40]))}"
             )
         if can_start is not True:
             blocked = limits.get("blockedReason") or limits.get("startBlockedReason") or "unknown"
             raise BackendUnavailable(
                 "Boat scope cannot start sandboxes now: "
-                f"blockedReason={blocked!r}, billingStatus={limits.get('billingStatus')!r}, "
-                f"checkoutRequired={limits.get('checkoutRequired')!r}, sandboxes "
-                f"{limits.get('activeSandboxes')}/{limits.get('maxActiveSandboxes')}. "
+                f"blockedReason={_shown(blocked)}, "
+                f"billingStatus={_shown(limits.get('billingStatus'))}, "
+                f"checkoutRequired={_shown(limits.get('checkoutRequired'))}, sandboxes "
+                f"{_shown(limits.get('activeSandboxes'))}/"
+                f"{_shown(limits.get('maxActiveSandboxes'))}. "
                 "Resolve it in the Boat dashboard (billing is not part of the v1 API)."
             )
         if pin is not None:
@@ -2125,14 +2538,15 @@ class BoatBackend:
             if team_id != pin:
                 raise BackendUnavailable(
                     f"{BOAT_ORG_ENV} pins organization {pin!r}, but the key's limits are "
-                    f"for {team_id!r}"
+                    f"for {_shown(team_id)}"
                 )
         return limits
 
     async def _verify_environment(self, api: _BoatApi, pin: str | None, environment: str) -> None:
         """``GET /environments`` (``?org=`` is the only scope selector there)
         and refuse, fail closed, an environment that passes anything of the
-        account, that is not listed, or whose flags this key may not read.
+        account, that is not listed, that is listed more than once under its
+        name, or whose flags this key may not read.
 
         Raises ``BackendUnavailable`` for those; lets ``_BoatHTTPError`` (other
         refusals, 5xx) and ``_BoatTransportError`` through for the caller to
@@ -2157,25 +2571,32 @@ class BoatBackend:
                 ) from exc
             raise
         entries = listing.get("environments")
-        match = next(
-            (
-                e
-                for e in (entries if isinstance(entries, list) else [])
-                if isinstance(e, dict) and e.get("name") == environment
-            ),
-            None,
-        )
-        if match is None:
+        matches = [
+            e
+            for e in (entries if isinstance(entries, list) else [])
+            if isinstance(e, dict) and e.get("name") == environment
+        ]
+        if not matches:
             raise BackendUnavailable(
                 f"Boat environment {environment!r} is not in this key's GET /environments "
                 "listing, so its flags cannot be verified: create it (safe for third "
                 f"parties) or set {BOAT_ENVIRONMENT_ENV} to one this key can read"
             )
-        problems = _environment_problems(match)
+        if len(matches) > 1:
+            # Which one a create by name lands in is not documented, so no
+            # single entry's flags can stand for it.
+            raise BackendUnavailable(
+                f"this key's GET /environments listing has {len(matches)} environments "
+                f"named {environment!r}, so which one a create would use, and whether it "
+                "passes account credentials into product workspaces, cannot be verified. "
+                f"Give the product environment a unique name (and set {BOAT_ENVIRONMENT_ENV})."
+            )
+        problems = _environment_problems(matches[0])
         if problems:
             raise BackendUnavailable(
                 f"Boat environment {environment!r} would pass account credentials into "
-                f"product workspaces: {'; '.join(problems)}. Mark it 'safe for third parties'."
+                f"product workspaces: {'; '.join(problems)}. Mark it 'safe for third parties' "
+                "with proxyAiCredentials off."
             )
 
     # -- create --
@@ -2235,7 +2656,8 @@ class BoatBackend:
             "environment": environment,
             "name": name,
             "labels": {"antiek-workspace": wid, "antiek-profile": _slug(profile.name)},
-            "snapshots": self._snapshots,
+            # Always off: no constructor override (proposed product doctrine).
+            "snapshots": False,
             "visibility": "private",
         }
         lost = _LostCreate(api=api, wid=wid, pin=pin, body=body, headers=headers)
@@ -2267,6 +2689,9 @@ class BoatBackend:
                 "Boat sandbox create answered without a usable sandbox id"
             )
             lost.sweep = True
+        if failure is None:
+            # Accepted and billed from here, whatever happens next.
+            _log_accepted(self._log, record, lost, via="create")
         if failure is not None:
             if lost.sweep:
                 await _run_shielded(self._discard_lost_create(lost))
@@ -2290,9 +2715,16 @@ class BoatBackend:
             log=self._log,
         )
         try:
-            team_seen = _check_sandbox_record(record, pin=pin, environment=environment)
+            team_seen = _check_sandbox_record(
+                record, sandbox_id=sandbox_id, pin=pin, environment=environment
+            )
             ready = await self._wait_ready(api, sandbox_id)
-            team_seen = _check_sandbox_record(ready, pin=pin, environment=environment) or team_seen
+            team_seen = (
+                _check_sandbox_record(
+                    ready, sandbox_id=sandbox_id, pin=pin, environment=environment
+                )
+                or team_seen
+            )
             if pin is not None and not team_seen:
                 raise BackendUnavailable(
                     f"Boat never reported which organization sandbox {sandbox_id} bills "
@@ -2339,7 +2771,7 @@ class BoatBackend:
                     error = _str(record.get("error"))
                     raise WorkspaceProvisionError(
                         f"Boat sandbox {sandbox_id} entered state {state!r} before ready"
-                        + (f": {error[:200]}" if error else "")
+                        + (f": {_scrub(error)[:200]}" if error else "")
                     )
             except _BoatHTTPError as exc:
                 if exc.status == 404:
@@ -2360,7 +2792,7 @@ class BoatBackend:
             if self._clock() >= deadline:
                 raise WorkspaceProvisionError(
                     f"Boat sandbox {sandbox_id} not ready within {self._ready_timeout_s:g}s "
-                    f"(last state {last!r}); it was deleted"
+                    f"(last state {_shown(last)}); it was deleted"
                 )
             await self._sleep(self._poll_interval_s)
 
@@ -2379,11 +2811,14 @@ class BoatBackend:
         try:
             deleted: set[str] = set()
             if lost.rediscover:
-                sid = await self._rediscover(lost)
-                if sid is not None and await self._delete_orphan(api, sid, lost.wid):
-                    deleted.add(sid)
+                found = await self._rediscover(lost)
+                if found is not None:
+                    sid = _str(found.get("id"))
+                    _log_accepted(self._log, found, lost, via="repost")
+                    if await self._delete_orphan(api, sid, lost.wid):
+                        deleted.add(sid)
             if lost.sweep:
-                await self._sweep_orphan(api, lost.wid, lost.pin, skip=deleted)
+                await self._sweep_orphan(api, lost, skip=deleted)
         except Exception as exc:  # cleanup must never mask the real failure
             self._log.warning(
                 "cleanup after the lost create of workspace %s failed (%s); any sandbox it "
@@ -2394,9 +2829,9 @@ class BoatBackend:
         finally:
             await api.aclose()
 
-    async def _rediscover(self, lost: _LostCreate) -> str | None:
-        """The sandbox id Boat bound to ``lost``'s ``Idempotency-Key``, or
-        ``None``. Never raises ``ExecutionBackendError``."""
+    async def _rediscover(self, lost: _LostCreate) -> dict[str, Any] | None:
+        """The ``Sandbox`` record Boat bound to ``lost``'s ``Idempotency-Key``
+        (with a valid id), or ``None``. Never raises ``ExecutionBackendError``."""
         for attempt in range(1, _REDISCOVER_ATTEMPTS + 1):
             try:
                 again = await lost.api.request(
@@ -2422,8 +2857,9 @@ class BoatBackend:
                 )
                 return None
             sandbox = again.get("sandbox")
-            sid = _str(sandbox.get("id")) if isinstance(sandbox, dict) else ""
-            return sid if _SANDBOX_ID_RE.match(sid) else None
+            if isinstance(sandbox, dict) and _SANDBOX_ID_RE.match(_str(sandbox.get("id"))):
+                return sandbox
+            return None
         return None
 
     async def _delete_orphan(self, api: _BoatApi, sid: str, wid: str) -> bool:
@@ -2438,6 +2874,7 @@ class BoatBackend:
             )
         except _BoatHTTPError as exc:
             if exc.status == 404:
+                self._log.info(_DELETED_LOG, sid, wid, "orphan", "not-found")
                 return True
             self._log.warning(
                 "could not delete orphaned Boat sandbox %s (%s); it stops at its "
@@ -2455,15 +2892,15 @@ class BoatBackend:
             )
             return False
         self._log.warning("deleted orphaned Boat sandbox %s of workspace %s", sid, wid)
+        self._log.info(_DELETED_LOG, sid, wid, "orphan", "deleted")
         return True
 
-    async def _sweep_orphan(
-        self, api: _BoatApi, wid: str, pin: str | None, *, skip: set[str]
-    ) -> None:
+    async def _sweep_orphan(self, api: _BoatApi, lost: _LostCreate, *, skip: set[str]) -> None:
         """Delete a sandbox carrying this workspace's label that this caller
         owns. In an organization's scope ``GET /sandboxes`` also lists
         teammates' sandboxes, so an entry whose ``access`` is not ``owner`` or
         whose labels do not carry this workspace id is never touched."""
+        wid, pin = lost.wid, lost.pin
         try:
             listing = await api.request(
                 "GET",
@@ -2494,13 +2931,15 @@ class BoatBackend:
                 or entry.get("access", "owner") != "owner"
             ):
                 continue
+            _log_accepted(self._log, entry, lost, via="sweep")
             await self._delete_orphan(api, sid, wid)
 
 
 @dataclass
 class _LostCreate:
     """What ``_discard_lost_create`` needs to find a create's sandbox again:
-    the exact body and headers (same key, same body) and the label."""
+    the exact body and headers (same key, same body) and the label. Also
+    the create's spend-ledger state (the ids already logged as accepted)."""
 
     api: _BoatApi
     wid: str
@@ -2509,31 +2948,71 @@ class _LostCreate:
     headers: Mapping[str, str]
     rediscover: bool = False
     sweep: bool = False
+    accepted: set[str] = field(default_factory=set)
 
 
-def _check_sandbox_record(record: Mapping[str, Any], *, pin: str | None, environment: str) -> bool:
+def _log_accepted(
+    log: logging.Logger, record: Mapping[str, Any], lost: _LostCreate, *, via: str
+) -> None:
+    """The spend-ledger line for a sandbox Boat accepted, once per id (see
+    "Spend ledger lines"). Boat's record values win over the requested type
+    and TTL. Each field is checked for its own shape (a machine type name, an
+    integer, an RFC 3339 date-time) and logged as ``unknown`` otherwise, so
+    no string Boat returns reaches the line unchecked."""
+    sid = _str(record.get("id"))
+    if sid in lost.accepted:
+        return
+    lost.accepted.add(sid)
+    machine = record.get("type") if isinstance(record.get("type"), str) else lost.body.get("type")
+    ttl = _int_or_none(record.get("ttlSeconds"))
+    log.info(
+        _ACCEPTED_LOG,
+        _log_token(sid),
+        _log_token(lost.wid),
+        _machine_token(machine),
+        _log_token(ttl if ttl is not None else lost.body.get("ttlSeconds")),
+        _date_time_token(record.get("createdAt")),
+        via,
+    )
+
+
+def _check_sandbox_record(
+    record: Mapping[str, Any], *, sandbox_id: str, pin: str | None, environment: str
+) -> bool:
     """Refuse a ``Sandbox`` record that bills another organization, sits in
-    another environment or holds the creator's logins. Each field is checked
-    when the record carries it; returns whether it carried ``team``."""
-    sid = _str(record.get("id")) or "?"
+    another environment, holds the creator's logins or has snapshots on.
+    Each field is checked when the record carries it; returns whether it
+    carried ``team``. Messages name ``sandbox_id``, the id the create answer
+    gave and that was checked, never the record's own ``id``."""
+    sid = sandbox_id
     team_seen = "team" in record
     if pin is not None and team_seen:
         team = record.get("team")
         team_id = _str(team.get("id")) if isinstance(team, dict) else ""
         if team_id != pin:
             raise BackendUnavailable(
-                f"Boat sandbox {sid} bills {team_id or 'the personal wallet'!r}, not the "
+                f"Boat sandbox {sid} bills {_shown(team_id or 'the personal wallet')}, not the "
                 f"{BOAT_ORG_ENV} pin {pin!r}; the sandbox was deleted"
             )
     if "environment" in record and record.get("environment") != environment:
         raise BackendUnavailable(
-            f"Boat sandbox {sid} is attached to environment {record.get('environment')!r}, "
+            f"Boat sandbox {sid} is attached to environment {_shown(record.get('environment'))}, "
             f"not {environment!r}; the sandbox was deleted"
         )
     if record.get("holdsCreatorLogins") is True:
         raise BackendUnavailable(
             f"Boat sandbox {sid} holds its creator's personal logins "
             "(holdsCreatorLogins); the sandbox was deleted"
+        )
+    # Created with ``snapshots: false``; the record's ``snapshots`` is
+    # "False when the sandbox was created with snapshots off" (OpenAPI).
+    snapshots = record.get("snapshots")
+    if "snapshots" in record and snapshots is not False:
+        shown = repr(snapshots) if snapshots is None or snapshots is True else "a non-boolean"
+        raise BackendUnavailable(
+            f"Boat sandbox {sid} reports snapshots {shown}, not false, although it was "
+            "created with snapshots off (product doctrine keeps snapshots off); the "
+            "sandbox was deleted"
         )
     return team_seen
 
