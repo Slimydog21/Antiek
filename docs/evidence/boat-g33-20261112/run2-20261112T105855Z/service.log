@@ -1,0 +1,45 @@
+2026-11-12 10:58:26,608 WARNING interfaces.research.api.boot_providers 0 providers registered — LLM features will fail; set ANTIEK_ENV_FILE or place keys in platform/.env (auto-loaded at boot) then restart
+2026-11-12 10:58:28,799 INFO uvicorn.error Started server process [765067]
+2026-11-12 10:58:28,799 INFO uvicorn.error Waiting for application startup.
+2026-11-12 10:58:28,876 INFO uvicorn.error Application startup complete.
+2026-11-12 10:58:28,877 INFO uvicorn.error Uvicorn running on http://127.0.0.1:18001 (Press CTRL+C to quit)
+2026-11-12 10:58:29,591 INFO uvicorn.access 127.0.0.1:54686 - "GET /health HTTP/1.1" 200
+2026-11-12 10:58:33,743 INFO uvicorn.access 127.0.0.1:54686 - "POST /research/plans HTTP/1.1" 200
+2026-11-12 10:58:33,803 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/plans/question-edc3397e368a916d HTTP/1.1" 200
+2026-11-12 10:58:33,816 INFO uvicorn.access 127.0.0.1:54686 - "POST /research/plans/question-edc3397e368a916d/spend-preview HTTP/1.1" 200
+2026-11-12 10:58:33,941 INFO uvicorn.access 127.0.0.1:54686 - "POST /research/plans/question-edc3397e368a916d/approve HTTP/1.1" 200
+2026-11-12 10:58:34,835 INFO uvicorn.access 127.0.0.1:54686 - "POST /research/plans/question-edc3397e368a916d/spend-approval HTTP/1.1" 200
+2026-11-12 10:58:35,971 INFO antiek.exec_backend.boat BoatBackend ready; wallet=team_50b5a1d3-82bd-433e-b203-4f0f7fd3adb3; environment=antiek-product (passes nothing); sandboxes 0/100; machine types available=['small', 'default', 'large']; limits enforced=[cpu_cores, memory_mb, disk_mb via machine type; wall_clock_s via auto-stop]
+2026-11-12 10:58:35,972 INFO antiek.exec_backend.factory ExecutionBackend selected: boat (via $ANTIEK_EXEC_BACKEND='boat')
+2026-11-12 10:58:36,817 INFO antiek.exec_backend.boat BoatBackend ignores profile.image='python:3.12-alpine': Boat boots its own VM image
+2026-11-12 10:58:37,051 INFO antiek.exec_backend.boat BoatBackend ignores profile.image='python:3.12-alpine': Boat boots its own VM image
+2026-11-12 10:58:37,358 INFO antiek.exec_backend.boat BoatBackend ignores profile.image='python:3.12-alpine': Boat boots its own VM image
+2026-11-12 10:58:37,364 INFO uvicorn.access 127.0.0.1:54686 - "POST /research/plans/question-edc3397e368a916d/launch HTTP/1.1" 200
+2026-11-12 10:58:37,574 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:38,060 INFO antiek.exec_backend.boat BoatBackend sandbox accepted: sandbox=bx_4bbtfdtt workspace=41297c276d4245319bb56816e9a3da52 type=small ttlSeconds=900 createdAt=2026-11-12T10:58:37.982Z via=create
+2026-11-12 10:58:38,164 INFO antiek.exec_backend.boat BoatBackend sandbox accepted: sandbox=bx_mhnfkvg5 workspace=959fa580ced843219e1d4dc676ef802e type=small ttlSeconds=900 createdAt=2026-11-12T10:58:38.074Z via=create
+2026-11-12 10:58:38,189 INFO antiek.exec_backend.boat BoatBackend sandbox accepted: sandbox=bx_fgr3ggse workspace=a35d4521a79c49e0a722ba5e152be83f type=small ttlSeconds=900 createdAt=2026-11-12T10:58:38.107Z via=create
+2026-11-12 10:58:38,763 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:39,666 INFO antiek.exec_backend.boat BoatBackend DENY_ALL verified on sandbox bx_fgr3ggse (owner REJECT first in iptables and ip6tables OUTPUT for uid 996)
+2026-11-12 10:58:39,667 INFO antiek.exec_backend.boat BoatBackend created workspace a35d4521a79c49e0a722ba5e152be83f (sandbox bx_fgr3ggse 'antiek-ws-antiek-contained-gather-a35d4521', type=small, ttl=900s, environment=antiek-product, network=deny_all, runner uid=996)
+2026-11-12 10:58:39,720 INFO antiek.exec_backend.boat BoatBackend DENY_ALL verified on sandbox bx_4bbtfdtt (owner REJECT first in iptables and ip6tables OUTPUT for uid 996)
+2026-11-12 10:58:39,720 INFO antiek.exec_backend.boat BoatBackend created workspace 41297c276d4245319bb56816e9a3da52 (sandbox bx_4bbtfdtt 'antiek-ws-antiek-contained-gather-41297c27', type=small, ttl=900s, environment=antiek-product, network=deny_all, runner uid=996)
+2026-11-12 10:58:39,821 INFO antiek.exec_backend.boat BoatBackend DENY_ALL verified on sandbox bx_mhnfkvg5 (owner REJECT first in iptables and ip6tables OUTPUT for uid 996)
+2026-11-12 10:58:39,821 INFO antiek.exec_backend.boat BoatBackend created workspace 959fa580ced843219e1d4dc676ef802e (sandbox bx_mhnfkvg5 'antiek-ws-antiek-contained-gather-959fa580', type=small, ttl=900s, environment=antiek-product, network=deny_all, runner uid=996)
+2026-11-12 10:58:39,963 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:41,155 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:42,348 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:42,365 INFO antiek.research_runner.contained_gather contained gather complete: investigation=session-question-edc3397e368a916d-hard-3be6e78e952cba7a-leaf-0 backend=boat workspace=41297c276d4245319bb56816e9a3da52 passes=2 ran_as_uid=[996]
+2026-11-12 10:58:42,375 INFO antiek.research_runner.contained_gather contained gather complete: investigation=session-question-edc3397e368a916d-hard-3be6e78e952cba7a-leaf-2 backend=boat workspace=a35d4521a79c49e0a722ba5e152be83f passes=2 ran_as_uid=[996]
+2026-11-12 10:58:42,507 INFO antiek.research_runner.contained_gather contained gather complete: investigation=session-question-edc3397e368a916d-hard-3be6e78e952cba7a-leaf-1 backend=boat workspace=959fa580ced843219e1d4dc676ef802e passes=2 ran_as_uid=[996]
+2026-11-12 10:58:42,601 INFO antiek.exec_backend.boat BoatBackend deleted sandbox bx_4bbtfdtt (workspace 41297c276d4245319bb56816e9a3da52)
+2026-11-12 10:58:42,601 INFO antiek.exec_backend.boat BoatBackend sandbox deleted: sandbox=bx_4bbtfdtt workspace=41297c276d4245319bb56816e9a3da52 via=destroy result=deleted
+2026-11-12 10:58:42,994 INFO antiek.exec_backend.boat BoatBackend deleted sandbox bx_fgr3ggse (workspace a35d4521a79c49e0a722ba5e152be83f)
+2026-11-12 10:58:42,994 INFO antiek.exec_backend.boat BoatBackend sandbox deleted: sandbox=bx_fgr3ggse workspace=a35d4521a79c49e0a722ba5e152be83f via=destroy result=deleted
+2026-11-12 10:58:42,994 INFO antiek.exec_backend.boat BoatBackend deleted sandbox bx_mhnfkvg5 (workspace 959fa580ced843219e1d4dc676ef802e)
+2026-11-12 10:58:42,994 INFO antiek.exec_backend.boat BoatBackend sandbox deleted: sandbox=bx_mhnfkvg5 workspace=959fa580ced843219e1d4dc676ef802e via=destroy result=deleted
+2026-11-12 10:58:43,941 INFO uvicorn.access 127.0.0.1:54686 - "GET /research/sessions/session-question-edc3397e368a916d-hard-3be6e78e952cba7a HTTP/1.1" 200
+2026-11-12 10:58:44,038 INFO uvicorn.error Shutting down
+2026-11-12 10:58:44,139 INFO uvicorn.error Waiting for application shutdown.
+2026-11-12 10:58:44,159 INFO uvicorn.error Application shutdown complete.
+2026-11-12 10:58:44,159 INFO uvicorn.error Finished server process [765067]

@@ -1,0 +1,25 @@
+{"host": "omarchy", "port": 18001, "src_sha": "b2de382d0ece2b25908aeee1d2346c14e7c73cb8", "step": "start", "utc": "20261112T095351Z"}
+{"expiresAt": "2026-11-12T10:53:52.407Z", "key_id": "52ddaeb2-ec68-4bd8-8cc6-c0723f6af465", "scope": {"actions": ["sandbox.create", "sandbox.read", "sandbox.update", "sandbox.stop", "sandbox.resume", "sandbox.fork", "sandbox.delete-own", "agent.prompt", "exec", "file.read", "file.write", "ssh", "desktop", "host", "snapshot.read", "snapshot.write", "environment.read", "account.read"], "environments": ["953bf1f4-078f-40e6-b8be-625848ac2876"], "expiresAt": "2026-11-12T10:53:52.407Z", "grandfathered": false, "sandboxes": []}, "status": 201, "step": "mint"}
+{"activeSandboxes": 0, "canStart": true, "nextStartDollars": 0, "starts": {"day": {"limit": 200, "remaining": 191, "used": 9}, "hour": {"limit": 60, "remaining": 60, "used": 0}, "minute": {"limit": 12, "remaining": 12, "used": 0}, "unlimited": false}, "step": "limits_before", "teamId": "team_50b5a1d3-82bd-433e-b203-4f0f7fd3adb3", "vmHoursRemaining": 538.21, "wallet": 0}
+{"code": "api_key_org_mismatch", "status": 403, "step": "org_key"}
+{"err": "", "rc": 0, "set": "boat", "step": "factory", "unset": "local"}
+{"drw_gather_mode": "contained", "status": "ok", "step": "health"}
+{"capped": [], "children": 3, "grandchildren": 0, "over_broad": [], "root": "question-edc3397e368a916d", "status": 200, "step": "plan"}
+{"eligible": true, "reasons": [], "step": "spend_preview"}
+{"authority_digest": "28a0a115de56bdfe111ae492841a946e2ffee614e9f0b04f288f1b5d9ebaf950", "recovery_session_id": "session-question-edc3397e368a916d-hard-dce74dffb55e048c", "status": 200, "step": "spend_approval"}
+{"detail": null, "replayed": false, "researches": 3, "session_id": "session-question-edc3397e368a916d-hard-dce74dffb55e048c", "status": 200, "step": "launch"}
+{"elapsed_s": 10.8, "max_live": 3, "run_state": "closed_reconciled", "seen_ids": ["bx_gef6yrgc", "bx_p9eymtay", "bx_rhayr9d5"], "seen_states": ["idle"], "states": ["done", "done", "done"], "step": "watch"}
+{"rc": 0, "step": "service_stopped"}
+{"accepted": 3, "antiek_warnings": 0, "created": 3, "deleted": 3, "gathered": 3, "key_shaped_lines": 0, "ledger": ["bx_gef6yrgc", "bx_p9eymtay", "bx_rhayr9d5"], "ready": 1, "selected": 1, "step": "journal", "workspaces": ["75c9a6014a7246208b8eb567002dd533", "8ae9a9e48b8d4a5680e062ede8edfbcb", "b0b4d293400449278adc103f560fc991"]}
+{"attempts": 3, "binds": ["bx_gef6yrgc", "bx_p9eymtay", "bx_rhayr9d5"], "other_rows": {"send": 0, "settle": 0, "void": 0}, "step": "boat_ledger"}
+{"insights": [["insight-46709e1f37129dc0", {"backend": "boat", "contained_passes": 2, "gather_mode": "exec_backend", "investigation_id": "session-question-edc3397e368a916d-hard-dce74dffb55e048c-leaf-0", "promoted_kind": "insight", "ran_as_uid": 996, "source": "research_runner", "workspace_id": "b0b4d293400449278adc103f560fc991"}], ["insight-7132c92da47ec213", {"backend": "boat", "contained_passes": 2, "gather_mode": "exec_backend", "investigation_id": "session-question-edc3397e368a916d-hard-dce74dffb55e048c-leaf-1", "promoted_kind": "insight", "ran_as_uid": 996, "source": "research_runner", "workspace_id": "75c9a6014a7246208b8eb567002dd533"}], ["insight-fec0018f0578aab7", {"backend": "boat", "contained_passes": 2, "gather_mode": "exec_backend", "investigation_id": "session-question-edc3397e368a916d-hard-dce74dffb55e048c-leaf-2", "promoted_kind": "insight", "ran_as_uid": 996, "source": "research_runner", "workspace_id": "8ae9a9e48b8d4a5680e062ede8edfbcb"}]], "rc": 0, "relations": {"decomposes_into": 3, "resolved_by": 3}, "resolved_by": [["question-1d510a938d97aac0", "insight-46709e1f37129dc0"], ["question-b0689d57ddc9b3fa", "insight-7132c92da47ec213"], ["question-ba863e96e265b7b1", "insight-fec0018f0578aab7"]], "step": "graph", "step4_verbatim": 7, "types": {"insight": 3, "question": 4}}
+{"completed": 1, "insight_inserted": 1, "leaf": 0, "step": "events"}
+{"completed": 1, "insight_inserted": 1, "leaf": 1, "step": "events"}
+{"completed": 1, "insight_inserted": 1, "leaf": 2, "step": "events"}
+{"sandbox": "bx_gef6yrgc", "status": 404, "step": "gone"}
+{"sandbox": "bx_p9eymtay", "status": 404, "step": "gone"}
+{"sandbox": "bx_rhayr9d5", "status": 404, "step": "gone"}
+{"activeSandboxes": 0, "canStart": true, "nextStartDollars": 0, "starts": {"day": {"limit": 200, "remaining": 188, "used": 12}, "hour": {"limit": 60, "remaining": 57, "used": 3}, "minute": {"limit": 12, "remaining": 9, "used": 3}, "unlimited": false}, "step": "limits_after", "teamId": "team_50b5a1d3-82bd-433e-b203-4f0f7fd3adb3", "vmHoursRemaining": 538.21, "wallet": 0}
+{"after": 0, "before": 0, "step": "active_delta"}
+{"cap_usd": 0.1, "full_ttl_bound_usd": 0.0135, "list_price_bound_usd": 7.7e-05, "step": "cost"}
+{"after_status": 401, "key_id": "52ddaeb2-ec68-4bd8-8cc6-c0723f6af465", "revoke_status": 200, "step": "revoke"}

@@ -1,0 +1,506 @@
+"""G3.3 on Omarchy: the cascade through the factory, three Boat leaves at once.
+
+Runbook infrastructure/runbooks/boat-backbone.md "G3.3"; decision record owner ruling 10.
+Mints a temporary `ci` key limited to antiek-product with the owner's personal key, runs the
+staging service on loopback with that key in its environment only, drives one three-leaf
+hard-ceiling cascade through the HTTP API exactly as the Research UI does, verifies, tears
+down, revokes. No key is printed, written, or put in any argv; every receipt line is scrubbed.
+
+Inputs (environment): BOAT_OWNER_KEY (popped at once), G33_T, G33_SRC, G33_REAL_HOME, G33_PORT.
+Run with "$G33_SRC/.venv/bin/python -I" (stdlib + httpx only; never imports the repo).
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+import httpx
+
+BOAT_API = "https://boat.dev/api/v1"
+ORG = "team_50b5a1d3-82bd-433e-b203-4f0f7fd3adb3"
+ENV_NAME = "antiek-product"
+ENV_ID_RECORDED = "953bf1f4-078f-40e6-b8be-625848ac2876"  # 2026-11-09 plane-tests receipt
+PROTECTED = {"bx_235rmpn3", "bx_35hs5p53"}                 # research boxes: never touched
+SMALL_USD_PER_H, TTL_S, CAP_USD = 0.018, 900, 0.10
+TERMINAL = {"done", "stopped", "failed", "budget_halted"}
+GONE_STATES = {"stopped", "deleted", "deleting", "error", "failed"}
+
+T, SRC, REAL_HOME = os.environ["G33_T"], os.environ["G33_SRC"], os.environ["G33_REAL_HOME"]
+PORT = int(os.environ.get("G33_PORT", "18001"))
+STAMP = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+OWNER_KEY = os.environ.pop("BOAT_OWNER_KEY")
+OPERATOR_TOKEN = secrets.token_urlsafe(32)
+SECRETS = [OWNER_KEY, OPERATOR_TOKEN]
+KEY_SHAPED = re.compile(r"boat_[A-Za-z0-9_-]{24,}")
+PY, UVICORN = f"{SRC}/.venv/bin/python", f"{SRC}/.venv/bin/uvicorn"
+ST = f"{T}/state"
+for _d in ("home", "tmp", "cache", "config", "data", "state", "logs", "receipts"):
+    os.makedirs(f"{T}/{_d}", exist_ok=True)
+RECEIPT = open(f"{T}/receipts/g33.jsonl", "a", encoding="utf-8")  # noqa: SIM115
+FAILS: list[str] = []
+
+BASE_ENV = {  # allowlist: nothing else from the operator's shell reaches a child
+    "PATH": f"{SRC}/.venv/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "TZ": "UTC",
+    "HOME": f"{T}/home", "TMPDIR": f"{T}/tmp", "XDG_CACHE_HOME": f"{T}/cache",
+    "XDG_CONFIG_HOME": f"{T}/config", "XDG_DATA_HOME": f"{T}/data",
+    "PYTHONPATH": SRC, "PYTHONDONTWRITEBYTECODE": "1",
+    "ANTIEK_HOME": ST, "ANTIEK_STATE_DIR": ST,
+    "ANTIEK_DUCKDB_PATH": f"{ST}/antiek.duckdb",
+    "ANTIEK_RESEARCH_EVENTS_DIR": f"{ST}/research_events",
+    "ANTIEK_EVENT_LOG_DIR": f"{ST}/research_events",
+    "ANTIEK_KNOWLEDGE_SKILLS_DIR": f"{ST}/knowledge_skills",
+    "ANTIEK_RESEARCH_DIR": f"{ST}/research",
+    "ANTIEK_BYOK_ARTIFACT": f"{ST}/byok/credentials.enc",
+    "ANTIEK_BYOK_KEY_FILE": f"{ST}/byok/byok_master.key",
+    "ANTIEK_USER_MODELS_PATH": f"{ST}/settings/user_models.json",
+    "ANTIEK_PASSKEY_STORE": f"{ST}/auth/passkeys.json",
+    "ANTIEK_OWNER_LAUNCH_DB": f"{ST}/owner-launches.sqlite3",
+    "HF_HOME": f"{ST}/cache/hf", "SENTENCE_TRANSFORMERS_HOME": f"{ST}/cache/st",
+    "TORCH_HOME": f"{ST}/cache/torch", "HF_HUB_OFFLINE": "1",
+    "ANTIEK_EMBEDDING_PROVIDER": "hash", "ANTIEK_BYOT_ONLY": "1",
+    "ANTIEK_ENFORCE_TEST_STORE_ISOLATION": "1",
+    "ANTIEK_CANONICAL_REAL_DUCKDB": f"{REAL_HOME}/.antiek/research_graph.duckdb",
+}
+
+LINE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) (\w+) (\S+) (.*)$")
+SELECTED = "ExecutionBackend selected: boat (via $ANTIEK_EXEC_BACKEND='boat')"
+READY = re.compile(r"BoatBackend ready; wallet=(\S+); environment=antiek-product \(passes nothing\)")
+ACC = re.compile(r"BoatBackend sandbox accepted: sandbox=(bx_\w+) workspace=(\w+) type=(\S+) "
+                 r"ttlSeconds=(\S+) createdAt=(\S+) via=(\w+)")
+CREATED = re.compile(r"BoatBackend created workspace (\w+) \(sandbox (bx_\w+) '([^']*)', type=(\w+), "
+                     r"ttl=(\d+)s, environment=([\w-]+), network=(\w+), runner uid=(\d+)\)")
+GATHER = re.compile(r"contained gather complete: investigation=(\S+) backend=(\w+) workspace=(\w+) "
+                    r"passes=(\d+) ran_as_uid=\[(\d+)\]")
+DELETED = re.compile(r"BoatBackend sandbox deleted: sandbox=(bx_\w+) workspace=(\w+) via=(\w+) result=([\w-]+)")
+
+GRAPH = r'''
+import json, os
+from runtime.db_lock import connect_read
+con = connect_read(os.environ["ANTIEK_DUCKDB_PATH"]); q = lambda s: con.execute(s).fetchall()
+keep = ("source", "promoted_kind", "gather_mode", "backend", "workspace_id", "contained_passes",
+        "ran_as_uid", "investigation_id", "origin_event_id", "source_event_ids")
+print(json.dumps({
+  "step4_verbatim": q("SELECT count(*) FROM nodes WHERE node_type IN ('insight','question')")[0][0],
+  "types": dict(q("SELECT node_type, count(*) FROM nodes GROUP BY 1")),
+  "relations": dict(q("SELECT relation, count(*) FROM edges GROUP BY 1")),
+  "insights": [[n, {k: v for k, v in json.loads(m or "{}").items() if k in keep}]
+               for n, m in q("SELECT node_id, metadata FROM nodes WHERE node_type='insight' ORDER BY 1")],
+  "resolved_by": q("SELECT source_node_id, target_node_id FROM edges WHERE relation='resolved_by' ORDER BY 1, 2"),
+}, default=str))
+'''
+
+
+def scrub(text: str) -> str:
+    for s in SECRETS:
+        if s:
+            text = text.replace(s, "[redacted]")
+    return KEY_SHAPED.sub("[redacted]", text)
+
+
+def emit(**fields: object) -> None:
+    line = scrub(json.dumps(fields, sort_keys=True, default=str))
+    RECEIPT.write(line + "\n")
+    RECEIPT.flush()
+    print(line, flush=True)
+
+
+def judge(ok: object, what: str) -> bool:
+    if not ok:
+        FAILS.append(what)
+        emit(step="FAIL", what=what)
+    return bool(ok)
+
+
+def body(r: httpx.Response) -> dict:
+    try:
+        d = r.json()
+    except ValueError:
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def boat(key: str, org: str = ORG) -> httpx.Client:
+    return httpx.Client(base_url=BOAT_API, timeout=60.0,
+                        headers={"Authorization": f"Bearer {key}", "X-Boat-Org": org})
+
+
+def live_ws(prod: httpx.Client) -> dict[str, str]:
+    """antiek-ws- sandboxes this key can list, id -> state (ids and states only: never urls)."""
+    rows = body(prod.get("/sandboxes", params={"namePrefix": "antiek-ws-"})).get("sandboxes") or []
+    return {str(x.get("id")): str(x.get("state")) for x in rows
+            if isinstance(x, dict) and str(x.get("name", "")).startswith("antiek-ws-")
+            and str(x.get("state")) not in GONE_STATES}
+
+
+def ts(text: str) -> float:
+    return datetime.strptime(text, "%Y-%m-%d %H:%M:%S,%f").replace(tzinfo=timezone.utc).timestamp()
+
+
+def limits(prod: httpx.Client, step: str) -> dict:
+    lim = body(prod.get("/limits"))
+    emit(step=step, teamId=lim.get("teamId"), canStart=lim.get("canStart"),
+         activeSandboxes=lim.get("activeSandboxes"), nextStartDollars=lim.get("nextStartDollars"),
+         starts=lim.get("starts"), vmHoursRemaining=(lim.get("planIncluded") or {}).get("vmHoursRemaining"),
+         wallet=(lim.get("wallet") or {}).get("balanceDollars"))
+    return lim
+
+
+def run(ctx: dict) -> None:
+    owner = boat(OWNER_KEY)
+    # A. Resolve antiek-product's id (never print the listing: it carries envContents) and mint.
+    envs = body(owner.get("/environments", params={"org": ORG})).get("environments") or []
+    ids = [e.get("id") for e in envs if isinstance(e, dict) and e.get("name") == ENV_NAME]
+    if not judge(ids == [ENV_ID_RECORDED], "antiek-product id is not the 2026-11-09 record"):
+        return
+    r = owner.post("/api-keys/scoped", json={"name": f"antiek-product-ci-temp-g33-{STAMP}", "ttl": "1h",
+                                             "preset": "ci", "environmentIds": ids})
+    d = body(r)
+    doc = d.get("apiKey") if isinstance(d.get("apiKey"), dict) else d
+    temp, kid = d.get("secret") or doc.get("secret") or "", doc.get("id") or ""
+    if temp:
+        SECRETS.append(temp)
+    ctx.update(kid=kid, temp=temp)
+    emit(step="mint", status=r.status_code, key_id=kid, scope=doc.get("scope"), expiresAt=doc.get("expiresAt"))
+    if not judge(r.status_code < 300 and temp and kid, "mint failed"):
+        return
+    judge((doc.get("scope") or {}).get("environments") == ids, "temp key is not limited to antiek-product")
+    prod = ctx["prod"] = boat(temp)
+    # B. Read-only identity and start budget (G3.1 steps 2-3 for this key).
+    lim = ctx["lim_before"] = limits(prod, "limits_before")
+    personal = boat(temp, org="personal").get("/limits")
+    emit(step="org_key", status=personal.status_code, code=body(personal).get("code"))
+    judge(lim.get("teamId") == ORG and lim.get("canStart") is True, "limits: wrong team or cannot start")
+    judge(lim.get("nextStartDollars") == 0, "the next start is not free: extra starts would bill the wallet")
+    judge(personal.status_code == 403, "temp key can name Personal")
+    judge(not live_ws(prod), "antiek-ws- sandboxes are already live")
+    if FAILS:
+        return
+    # C. Runbook step 1: the factory names boat with the variable set, local without.
+    code = "from runtime.exec_backend.factory import build_execution_backend as b; print(b().name)"
+    keyed = {**BASE_ENV, "ANTIEK_EXEC_BACKEND": "boat", "ANTIEK_BOAT_ORG": ORG, "BOAT_API_KEY": temp}
+    a = subprocess.run([PY, "-c", code], cwd=SRC, env=keyed, capture_output=True, text=True, timeout=180)
+    b = subprocess.run([PY, "-c", code], cwd=SRC, env=BASE_ENV, capture_output=True, text=True, timeout=180)
+    emit(step="factory", set=a.stdout.strip(), rc=a.returncode, err=scrub(a.stderr)[-400:], unset=b.stdout.strip())
+    if not judge(a.stdout.strip() == "boat" and b.stdout.strip() == "local", "runbook step 1"):
+        return
+    # D. The staging service: production's command line plus a log config (antiek.service.j2:100-108).
+    cfg = {"version": 1, "disable_existing_loggers": False,
+           "formatters": {"p": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
+           "handlers": {"file": {"class": "logging.FileHandler", "filename": f"{T}/logs/service.log", "formatter": "p"}},
+           "root": {"level": "WARNING", "handlers": ["file"]},
+           "loggers": {"antiek": {"level": "INFO"}, "interfaces.research.api.cascade_routes": {"level": "INFO"},
+                       "orchestration.cascade_session": {"level": "INFO"}, "uvicorn": {"level": "INFO"},
+                       "httpx": {"level": "WARNING"}, "httpcore": {"level": "WARNING"}}}
+    with open(f"{T}/log.json", "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh)
+    svc_env = {**keyed, "ANTIEK_OPERATOR_TOKEN": OPERATOR_TOKEN}
+    console = open(f"{T}/logs/console.log", "wb")  # noqa: SIM115
+    ctx["svc"] = subprocess.Popen(
+        [UVICORN, "interfaces.research.api.app:app", "--host", "127.0.0.1", "--port", str(PORT),
+         "--workers", "1", "--timeout-keep-alive", "900", "--timeout-graceful-shutdown", "30",
+         "--log-config", f"{T}/log.json"],
+        cwd=SRC, env=svc_env, stdin=subprocess.DEVNULL, stdout=console, stderr=subprocess.STDOUT)
+    api = httpx.Client(base_url=f"http://127.0.0.1:{PORT}", timeout=120.0, trust_env=False,
+                       headers={"Authorization": f"Bearer {OPERATOR_TOKEN}"})
+    health: dict = {}
+    for _ in range(180):
+        if ctx["svc"].poll() is not None:
+            break
+        try:
+            health = body(api.get("/health"))
+            if health:
+                break
+        except httpx.TransportError:
+            pass
+        time.sleep(1)
+    emit(step="health", drw_gather_mode=health.get("drw_gather_mode"), status=health.get("status"))
+    if not judge(health.get("drw_gather_mode") == "contained", "/health does not report contained"):
+        return
+    # E. Plan: three reviewed synthetic leaves, no model call (cascade_routes.py:697-705).
+    subs = [f"G3.3 synthetic leaf {c}: echo this fixed text from a contained Boat workspace" for c in "ABC"]
+    r = api.post("/research/plans", json={"problem": "G3.3 synthetic cascade: Boat containment smoke",
+                                          "sub_questions": subs, "max_depth": 1})
+    plan = body(r)
+    root = plan.get("root_node_id")
+    kids = ((plan.get("tree") or {}).get("root") or {}).get("children") or []
+    emit(step="plan", status=r.status_code, root=root, children=len(kids),
+         grandchildren=sum(len(k.get("children") or []) for k in kids),
+         capped=plan.get("capped_nodes"), over_broad=plan.get("over_broad_leaves"))
+    if not judge(r.status_code == 200 and len(kids) == 3 and not any(k.get("children") for k in kids)
+                 and plan.get("capped_nodes") == [] and plan.get("over_broad_leaves") == [], "plan shape"):
+        return
+    judge(body(api.get(f"/research/plans/{root}")).get("launchable") is False, "launchable before approval")
+    # F. The UI's hard-ceiling order (CascadeProposal.tsx:186, 279-284, 248-256).
+    pv = body(api.post(f"/research/plans/{root}/spend-preview", json={"spend_mode": "hard_ceiling", "amount_usd": "0.10"}))
+    emit(step="spend_preview", eligible=pv.get("eligible"), reasons=pv.get("reasons"))
+    judge(pv.get("eligible") is True, "hard-ceiling preview not eligible")
+    ap = api.post(f"/research/plans/{root}/approve", json={"approver": "__operator__"})
+    judge(ap.status_code == 200 and body(ap).get("launchable") is True, "approve")
+    sa = api.post(f"/research/plans/{root}/spend-approval",
+                  json={"spend_mode": "hard_ceiling", "amount_usd": "0.10", "per_research_budget_usd": 0.5})
+    sad = body(sa)
+    digest, expected_sid = sad.get("authority_digest"), sad.get("recovery_session_id")
+    emit(step="spend_approval", status=sa.status_code, authority_digest=digest, recovery_session_id=expected_sid)
+    judge(sa.status_code == 200 and isinstance(digest, str) and len(digest) == 64, "spend approval")
+    if FAILS:
+        return
+    # G. Launch exactly once; never retried from here.
+    t0 = time.time()
+    r = api.post(f"/research/plans/{root}/launch",
+                 json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "0.10", "authority_digest": digest})
+    ld = body(r)
+    sid = ld.get("session_id")
+    ctx.update(sid=sid, qids=sorted(x.get("question_node_id") for x in ld.get("researches") or []))
+    emit(step="launch", status=r.status_code, session_id=sid, researches=len(ld.get("researches") or []),
+         replayed=ld.get("replayed"), detail=None if r.status_code == 200 else ld.get("detail"))
+    if not judge(r.status_code == 200 and sid == expected_sid and len(ctx["qids"]) == 3
+                 and ld.get("replayed") is False, "launch"):
+        return
+    # H. Runbook step 3 (REST form of `P list`) while it runs; done = leaves terminal and merge closed.
+    seen: dict[str, str] = ctx["seen"]
+    max_live, states, run_state, done = 0, [], None, False
+    while time.time() - t0 < 1200:
+        live = live_ws(prod)
+        seen.update(live)
+        max_live = max(max_live, len(live))
+        st = body(api.get(f"/research/sessions/{sid}"))
+        states = [x.get("state") for x in st.get("researches") or []]
+        run_state = (st.get("hard_ceiling") or {}).get("run_state")
+        if len(states) == 3 and set(states) <= TERMINAL and str(run_state).startswith("closed"):
+            done = True
+            break
+        time.sleep(1)
+    emit(step="watch", max_live=max_live, seen_ids=sorted(seen), seen_states=sorted(set(seen.values())),
+         states=states, run_state=run_state, elapsed_s=round(time.time() - t0, 1))
+    judge(done, "session not terminal and merged within 20 minutes")
+    judge(states == ["done"] * 3, "a leaf did not end done")
+    judge(max_live >= 3, "runbook step 3: three antiek-ws- sandboxes were never listed together")
+    ctx["ran"] = True
+
+
+def stop_service(ctx: dict) -> None:
+    svc = ctx.get("svc")
+    if svc is None or svc.poll() is not None:
+        return
+    svc.send_signal(signal.SIGINT)
+    try:
+        svc.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        svc.kill()
+        svc.wait()
+    emit(step="service_stopped", rc=svc.returncode)
+
+
+def verify_log(ctx: dict) -> None:
+    path = f"{T}/logs/service.log"
+    lines = open(path, encoding="utf-8", errors="replace").read().splitlines() if os.path.exists(path) else []
+    sel = ready = 0
+    acc: dict[str, dict] = {}
+    made: dict[str, dict] = {}
+    gath: dict[str, dict] = {}
+    gone: dict[str, float] = {}
+    gone_n: dict[str, int] = {}
+    warn = manual = shaped = 0
+    for n, raw in enumerate(lines):
+        shaped += bool(KEY_SHAPED.search(raw))
+        m = LINE.match(raw)
+        if not m:
+            continue
+        t, level, name, msg = ts(m[1]), m[2], m[3], m[4]
+        warn += level in ("WARNING", "ERROR", "CRITICAL") and name.startswith("antiek")
+        manual += "Delete it manually" in msg
+        sel += msg == SELECTED
+        ready += bool(READY.search(msg))
+        if (g := ACC.search(msg)) and g[1] not in acc:
+            acc[g[1]] = {"ws": g[2], "type": g[3], "ttl": g[4], "createdAt": g[5], "via": g[6], "t": t, "n": n}
+        if g := CREATED.search(msg):
+            made[g[1]] = {"bx": g[2], "type": g[4], "ttl": g[5], "env": g[6], "net": g[7], "uid": int(g[8])}
+        if g := GATHER.search(msg):
+            gath[g[3]] = {"iid": g[1], "backend": g[2], "passes": int(g[4]), "uid": int(g[5])}
+        if (g := DELETED.search(msg)) and g[3] == "destroy" and g[4] == "deleted":
+            gone[g[1]] = t
+            gone_n.setdefault(g[1], n)
+    ctx.update(acc=acc, made=made, gone=gone)
+    leaf_ids = {f"{ctx.get('sid')}-leaf-{i}" for i in range(3)}
+    emit(step="journal", selected=sel, ready=ready, accepted=len(acc), created=len(made), gathered=len(gath),
+         deleted=len(gone), antiek_warnings=warn, key_shaped_lines=shaped,
+         ledger=sorted(acc), workspaces=sorted(a["ws"] for a in acc.values()))
+    if not ctx.get("sid"):
+        judge(not acc, "sandboxes were accepted although no launch succeeded")
+        return
+    judge(sel == 1 and ready == 1, "selected/ready lines")
+    judge(len(acc) == 3 and all(a["via"] == "create" and a["type"] == "small" and a["ttl"] == str(TTL_S)
+                                for a in acc.values()), "three accepted via=create small 900")
+    judge({a["ws"] for a in acc.values()} == set(made) == set(gath), "workspace ids do not join")
+    judge(all(made[a["ws"]]["bx"] == bx for bx, a in acc.items() if a["ws"] in made), "sandbox ids do not join")
+    judge(all(w["env"] == ENV_NAME and w["net"] == "deny_all" and w["uid"] != 0 and w["type"] == "small"
+              for w in made.values()), "created lines: environment, network or uid")
+    judge({g["iid"] for g in gath.values()} == leaf_ids and all(
+        g["backend"] == "boat" and g["passes"] == 2 and g["uid"] == made.get(w, {}).get("uid")
+        for w, g in gath.items()), "gather lines")
+    judge(set(gone) == set(acc), "a deleted line is missing for an accepted id")
+    # All three alive at once: the last accepted line precedes the first deleted line.
+    judge(acc and gone_n and max(a["n"] for a in acc.values()) < min(gone_n.values()), "lifetimes did not overlap")
+    judge(manual == 0 and shaped == 0, "delete failure or key-shaped text in the service log")
+
+
+def verify_state(ctx: dict) -> None:
+    sid, acc, made = ctx.get("sid"), ctx.get("acc", {}), ctx.get("made", {})
+    rows = [json.loads(x) for x in open(f"{ST}/boat_ledger.jsonl", encoding="utf-8") if x.strip()]
+    attempts = [x for x in rows if "id" in x]
+    binds = {x.get("sandbox") for x in rows if "bind" in x}
+    kinds = {k: sum(k in x for x in rows) for k in ("send", "settle", "void")}
+    emit(step="boat_ledger", attempts=len(attempts), binds=sorted(binds), other_rows=kinds)
+    judge(len(attempts) == 3 and all(x.get("type") == "small" and x.get("ttl") == TTL_S for x in attempts)
+          and binds == set(acc) and kinds["void"] == 0, "Boat ledger")
+    g = subprocess.run([PY, "-c", GRAPH], cwd=SRC, env=BASE_ENV, capture_output=True, text=True, timeout=120)
+    out = json.loads(g.stdout or "{}")
+    ins = out.get("insights") or []
+    emit(step="graph", rc=g.returncode, **out)
+    uid_by_ws = {w: v["uid"] for w, v in made.items()}
+    judge(out.get("types") == {"insight": 3, "question": 4}, "node types are not 3 insight + 4 question")
+    judge(out.get("step4_verbatim") == 7, "remote-exec-fanout Step 4 query (4 plan questions + 3 insights)")
+    judge((out.get("relations") or {}).get("decomposes_into") == 3
+          and (out.get("relations") or {}).get("resolved_by") == 3, "edge counts")
+    judge(sorted(m.get("investigation_id") for _, m in ins) == [f"{sid}-leaf-{i}" for i in range(3)]
+          and all(m.get("source") == "research_runner" and m.get("promoted_kind") == "insight"
+                  and m.get("gather_mode") == "exec_backend" and m.get("backend") == "boat"
+                  and m.get("contained_passes") == 2 and m.get("workspace_id") in uid_by_ws
+                  and m.get("ran_as_uid") == uid_by_ws.get(m.get("workspace_id"))
+                  and "origin_event_id" not in m and "source_event_ids" not in m for _, m in ins),
+          "insight metadata: not funnel-promoted contained notes")
+    rb = out.get("resolved_by") or []
+    judge(sorted(s for s, _ in rb) == ctx.get("qids") and sorted(t for _, t in rb) == sorted(n for n, _ in ins),
+          "resolved_by edges do not join the launch's question nodes to the insights")
+    ev = f"{ST}/research_events"
+    for i in range(3):
+        evs = [json.loads(x) for x in open(f"{ev}/{sid}-leaf-{i}.jsonl", encoding="utf-8") if x.strip()]
+        n_ins = sum(e.get("action_type") == "graph.node.inserted" and (e.get("payload") or {}).get("node_type") == "insight" for e in evs)
+        n_done = sum(e.get("action_type") == "investigation.completed" for e in evs)
+        emit(step="events", leaf=i, insight_inserted=n_ins, completed=n_done)
+        judge(n_ins == 1 and n_done == 1, f"event log of leaf {i}")
+    launched = [json.loads(x) for x in open(f"{ev}/{sid}.jsonl", encoding="utf-8") if '"cascade.launched"' in x]
+    judge(len(launched) == 1 and (launched[0].get("payload") or {}).get("leaf_count") == 3, "cascade.launched")
+
+
+def teardown_and_revoke(ctx: dict) -> None:
+    prod, acc, gone = ctx.get("prod"), ctx.get("acc", {}), ctx.get("gone", {})
+    if prod is not None:
+        now = time.time()
+        for bx in sorted(acc):
+            if bx in PROTECTED:
+                judge(False, f"{bx} is a research box: not touched")
+                continue
+            status = prod.get(f"/sandboxes/{bx}").status_code
+            if status != 404:
+                prod.delete(f"/sandboxes/{bx}", headers={"X-Ascii-Confirm-Delete": bx})
+                status = prod.get(f"/sandboxes/{bx}").status_code
+                gone.setdefault(bx, time.time())
+            emit(step="gone", sandbox=bx, status=status)
+            judge(status == 404, f"{bx} still answers after teardown")
+        unlogged = sorted(set(ctx["seen"]) - set(acc))
+        judge(not unlogged, f"listed with no accepted line (not deleted; owner decides): {unlogged}")
+        after = limits(prod, "limits_after")
+        # Recorded, not judged: the research boxes share the org (runbook "After all three parts").
+        emit(step="active_delta", before=ctx.get("lim_before", {}).get("activeSandboxes"),
+             after=after.get("activeSandboxes"))
+        bound = 0.0
+        for bx, a in acc.items():
+            try:
+                start = datetime.fromisoformat(a["createdAt"]).timestamp()
+            except ValueError:
+                start = a["t"]
+            bound += max(0.0, gone.get(bx, now) - start) / 3600 * SMALL_USD_PER_H
+        emit(step="cost", list_price_bound_usd=round(bound, 6),
+             full_ttl_bound_usd=round(len(acc) * TTL_S / 3600 * SMALL_USD_PER_H, 4), cap_usd=CAP_USD)
+        judge(bound < CAP_USD, "cost bound above the G3.3 ceiling")
+    if ctx.get("kid"):
+        rv = boat(OWNER_KEY).delete(f"/api-keys/{ctx['kid']}").status_code
+        dead = boat(ctx["temp"]).get("/limits").status_code
+        emit(step="revoke", key_id=ctx["kid"], revoke_status=rv, after_status=dead)
+        judge(rv < 300 and dead == 401, "temp key not dead after revoke")
+
+
+def repo_fixtures() -> set[bytes]:
+    """Key-shaped strings committed at the checked-out SHA: the suite's synthetic fixtures.
+    They are public by construction, and the hermetic pre-flight echoes them into --basetemp
+    (the 2026-11-12 run found exactly these four, nothing else), so they are not leaks."""
+    dirty = subprocess.run(["git", "-C", SRC, "status", "--porcelain", "--untracked-files=no"],
+                           capture_output=True, text=True, check=True).stdout
+    judge(not dirty.strip(), "the source checkout differs from its commit")
+    found = subprocess.run(["git", "-C", SRC, "grep", "-I", "-h", "-o", "-E", "-e",
+                            KEY_SHAPED.pattern, "HEAD"], capture_output=True, check=False)
+    judge(found.returncode in (0, 1), f"git grep for committed fixtures exited {found.returncode}")
+    return {line for line in found.stdout.splitlines() if line}
+
+
+def leak_scan() -> None:
+    needles = [s.encode() for s in SECRETS if s]
+    public, shape = repo_fixtures(), re.compile(KEY_SHAPED.pattern.encode())
+    exact, shaped, skipped = [], [], []
+    for root, dirs, files in os.walk(T):
+        if root == SRC:
+            dirs[:] = [d for d in dirs if d not in (".venv", ".git")]
+        for fn in files:
+            p = os.path.join(root, fn)
+            # O_NONBLOCK, then fstat: the suite leaves FIFOs in --basetemp, and a plain open()
+            # of one blocks forever (the 2026-11-12 run hung here after teardown and revoke).
+            try:
+                fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+            except OSError as exc:
+                skipped.append(f"{p}: {type(exc).__name__}")
+                continue
+            with os.fdopen(fd, "rb") as fh:
+                mode = os.fstat(fd).st_mode
+                if not stat.S_ISREG(mode):
+                    skipped.append(f"{p}: {stat.filemode(mode)}")
+                    continue
+                data = fh.read()
+            if any(n in data for n in needles):
+                exact.append(p)
+            if any(m.group() not in public for m in shape.finditer(data)):
+                shaped.append(p)
+    emit(step="leak_scan", exact_value_files=exact, key_shaped_files=shaped,
+         repo_fixtures=len(public), skipped_non_regular=skipped)
+    judge(not exact and not shaped, "a secret or key-shaped string reached a file")
+
+
+def main() -> int:
+    sha = subprocess.run(["git", "-C", SRC, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    emit(step="start", utc=STAMP, host="omarchy", src_sha=sha, port=PORT)
+    ctx: dict = {"seen": {}}
+    try:
+        run(ctx)
+    except Exception as exc:  # recorded; teardown and revoke still run
+        judge(False, f"exception: {type(exc).__name__}: {scrub(str(exc))[:300]}")
+    finally:
+        stop_service(ctx)
+        # verify_log always runs once the service started: its accepted ids drive teardown.
+        for check, needed in ((verify_log, "svc"), (verify_state, "sid")):
+            if ctx.get(needed):
+                try:
+                    check(ctx)
+                except Exception as exc:
+                    judge(False, f"{check.__name__}: {type(exc).__name__}: {scrub(str(exc))[:300]}")
+        try:
+            teardown_and_revoke(ctx)
+        finally:
+            try:
+                leak_scan()
+            except Exception as exc:  # a scan that cannot finish is a failed scan, not a lost summary
+                judge(False, f"leak_scan: {type(exc).__name__}: {scrub(str(exc))[:300]}")
+            emit(step="summary", pass_=not FAILS, fails=FAILS, finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+            RECEIPT.close()
+    return 0 if not FAILS else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
