@@ -1299,6 +1299,24 @@ orchestrator's session]:
    own": it publishes v7 and the NotDiamond PR, and merges each once its
    GitHub CI is green, under ruling 4. That changes who acts, not any gate:
    activation on either plane still needs everything this record lists.
+9. **Item 6, accepted.** Product workspaces keep Boat's default monitoring:
+   each command's output stays in Boat's history for up to 90 days. They
+   hold only the public research inputs and outputs of a gather (no
+   credential reaches a VM, which `probe` and every create verify), so §5
+   item 6 is accepted in writing on that basis.
+10. **G3.3 on Omarchy, with a temporary key.** The staging host is Omarchy
+    (runbook "Credentials"). The orchestrator mints a temporary `ci` key
+    limited to `antiek-product` with the owner's personal key, in its own
+    process only (never on disk), runs G3.3 within at most 3 `small` VMs,
+    the 900 s default TTL and USD 0.10, deletes every box with proof, and
+    revokes the key.
+11. **The written go.** The product plane: go, on the condition that G3.3
+    passes; the last step stays the owner's (mint the permanent product key
+    with `--env antiek-product` and set `ANTIEK_EXEC_BACKEND=boat` on the
+    production host, "Enable and activation"). The build plane: the
+    orchestrator writes its code-side cost and pacing limits (4 / 20 / 60
+    creates a minute / hour / day, USD 5 a day, USD 50 a period), then the
+    owner approves its envelope.
 
 ## Open owner sign-offs
 

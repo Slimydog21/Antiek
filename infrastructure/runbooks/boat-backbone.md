@@ -136,7 +136,7 @@ a shell holding a key. Check a key's presence by name only:
 
 | Variable or key | Plane | Kind | Lives in | Never |
 |---|---|---|---|---|
-| `BOAT_API_KEY` | product | organization key, `ci` preset, `--env antiek-product` | the cloud CEO's environment, including the G3.3 staging run of the service there; another staging host only once the owner names it and it is added here; at enable, also the production host's `/etc/antiek/secrets.env` (`root:antiek 0640`) | argv, a log, a receipt, a Boat environment, a build command, a host this table does not name |
+| `BOAT_API_KEY` | product | organization key, `ci` preset, `--env antiek-product` | the cloud CEO's environment, including the G3.3 staging run of the service there; another staging host only once the owner names it and it is added here. **Named 2026-11-12 (decision record, owner ruling 10): Omarchy, for G3.3 only, with a temporary key the orchestrator mints and revokes, held in the staging process's environment, never on disk**; at enable, also the production host's `/etc/antiek/secrets.env` (`root:antiek 0640`) | argv, a log, a receipt, a Boat environment, a build command, a host this table does not name |
 | `BOAT_BUILD_API_KEY` | build | organization key, `ci` preset, `--env antiek-build` | the cloud CEO's environment only | a production host, argv, a log, a receipt, the product process, a host this table does not name |
 | `ANTIEK_BOAT_ORG` | both | the team id; not a secret | the cloud CEO's environment (G3.3 included); the production host at enable | |
 | The unscoped organization admin key, the personal account key | the owner's | admin-scoped | with the owner | any agent's environment (the personal key is the decision record's open sign-off 2) |
