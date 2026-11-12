@@ -32,7 +32,7 @@ logger = logging.getLogger("antiek.exec_backend.factory")
 #: Env var that selects the backend.  Unset → ``"local"``.
 BACKEND_ENV: str = "ANTIEK_EXEC_BACKEND"
 
-_VALID_KINDS: frozenset[str] = frozenset({"local", "docker"})
+_VALID_KINDS: frozenset[str] = frozenset({"local", "docker", "boat"})
 
 
 def build_execution_backend(
@@ -101,6 +101,20 @@ def build_execution_backend(
         # untrusted agent code on the bare host while the operator believed it
         # was contained.
         backend = DockerBackend()
+        backend.probe()
+        logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
+        return backend
+
+    if effective == "boat":
+        # Local import, the docker branch's idiom: the default path never
+        # loads the Boat adapter. probe() is the loud gate: a missing
+        # BOAT_API_KEY, a wallet that cannot start sandboxes or an org-pin
+        # mismatch (both when GET /limits is readable), or an environment
+        # that passes account credentials raises BackendUnavailable here,
+        # never a local backend wearing boat's name.
+        from .boat_backend import BoatBackend
+
+        backend = BoatBackend()
         backend.probe()
         logger.info("ExecutionBackend selected: %s (via %s)", backend.name, selected_via)
         return backend

@@ -87,6 +87,8 @@ are restated here so it stands without them.
 
 ### 1. The agent-CPU backbone is Antiek-owned Linux lane hosts, governed by the compute dispatcher
 
+2026-11-09: For Antiek's own product/build planes only, amended by addition under Decision §3 of `boat-compute-backbone-2026-11-09.md`; peer-tenant lane hosts remain unchanged, and no AWS migration is authorized.
+
 Lane host #1 is an AWS **r8g.xlarge** (Graviton4, 4 vCPU / 32 GiB) in the
 same account and VPC as production, a separate instance that is never the
 production box. About 24 lanes at ≤1-2 GiB fit under a system `lanes.slice`
@@ -111,6 +113,8 @@ waiting-bound, RAM-bound lanes into one host under cgroups is 3-5x cheaper
 per lane-month, gives cgroup kill-the-tree semantics and node-local dedupe
 (a duplicate unit name is refused), and keeps lanes resumable from PROGRESS
 files without a 24-hour session cap.
+
+2026-11-09: For Antiek's own product/build planes only, see the scoped rationale amendment in Decision §3 of `boat-compute-backbone-2026-11-09.md`; this paragraph remains unchanged for peer research tenants.
 
 The lane host carries **no Antiek code or credential** (D-18/D-19/D-36;
 compute 1.6.0 refuses project `antiek` on hosts). It holds per-node,
@@ -255,6 +259,7 @@ and the beads-fleet skill]. So:
 | L11 / L21 one-shot boot work fails silently, nothing retries | the boot failsafe is armed before any step that can fail and powers off a host that is not provisioned, mounted and sweeping 60 minutes after boot; every external wait in the bootstrap is bounded; a `bootstrap-failed` marker is left for the SSM check |
 | L17 vacuous gates | budgets filter on instance type, which reads from the first hour, not on a tag that reads USD 0 until activated; each budget is sized so it can fire for its failure (one prod instance cannot trip the prod budget, two do; the lane-host alert sits at expected spend, below one host's month); the stop action is tag-scoped and carries the SSM resources of AWS's own budget-action policy. It has not run against the live account: the runbook's Budgets-path drill is the bar, owed before it is relied on. The quota and AZ checks fail at plan |
 | L18 low CPU with long wall time is billed waiting | the backbone is a packed host, not per-sandbox metering |
+| 2026-11-09 amendment note | For Antiek's own product/build planes only, see Decision §3 of `boat-compute-backbone-2026-11-09.md`; L18 remains unchanged for peer research tenants. |
 | L24 control-plane checks must not run on the overloaded host | lane-host health is PSI read over SSH by the dispatcher; budget enforcement and the daily wake are AWS-side |
 | L27 a terminal-state contract | the ExecStopPost exit record plus `.DONE` tested on the node |
 
