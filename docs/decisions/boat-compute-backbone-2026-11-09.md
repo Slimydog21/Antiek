@@ -1288,6 +1288,18 @@ that session]:
    create pacing and the spend cap in code rather than accept them in
    writing. Done (v6, "What `BoatBackend` does today").
 
+On 2026-11-12 the owner answered two more [M, the owner's answers in the
+orchestrator's session]:
+
+7. **NotDiamond.** Its Tier 2 authorization expired on 2026-11-07 and turned
+   every branch's CI red (`test_live_registry_passes_checker`). Demote it to
+   Tier 0 in a separate PR (`chore(integrations): demote NotDiamond to Tier 0`).
+8. **The orchestrator acts for the cloud CEO.** With the Anti-Ek instance
+   unreachable, the owner directed the orchestrator to "execute on your
+   own": it publishes v7 and the NotDiamond PR, and merges each once its
+   GitHub CI is green, under ruling 4. That changes who acts, not any gate:
+   activation on either plane still needs everything this record lists.
+
 ## Open owner sign-offs
 
 These are locked-doctrine or credential questions this record cannot settle.
