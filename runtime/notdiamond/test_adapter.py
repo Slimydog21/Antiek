@@ -11,6 +11,7 @@ import runtime.notdiamond.adapter as adapter_mod
 from runtime.notdiamond import (
     NotDiamondAPIError,
     NotDiamondAuthError,
+    NotDiamondNotInstalled,
     NotDiamondTimeout,
     Recommendation,
     select_model,
@@ -79,76 +80,22 @@ def test_parse_best_string_form(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec.model == "gpt-4o-mini"
 
 
-def test_default_selector_uses_native_model_router_and_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: dict[str, object] = {}
+def test_tier_0_never_reaches_the_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    # notdiamond is Tier 0 (integrations.toml): even with an SDK importable,
+    # the default selector refuses with the error every caller falls through on.
+    constructed: list[object] = []
 
-    class _Provider:
-        provider = "anthropic"
-        model = "claude-3-5-haiku-20241022"
-
-    class _Response:
-        session_id = "sess-native"
-        providers = [_Provider()]
-
-    class _Router:
-        def select_model(self, **kwargs: object) -> _Response:
-            calls.update(kwargs)
-            return _Response()
-
-    class _NotDiamond:
-        def __init__(
-            self,
-            *,
-            api_key: str,
-            timeout: float,
-            max_retries: int,
-        ) -> None:
-            calls["api_key"] = api_key
-            calls["client_timeout"] = timeout
-            calls["max_retries"] = max_retries
-            self.model_router = _Router()
-
-    fake_module = types.SimpleNamespace(NotDiamond=_NotDiamond)
-    monkeypatch.setitem(sys.modules, "notdiamond", fake_module)
-
-    session_id, best = adapter_mod._default_selector(
-        "sk-test",
-        _MESSAGES,
-        _CANDIDATES,
-        "cost",
-        0.5,
-    )
-
-    assert session_id == "sess-native"
-    assert best is _Response.providers[0]
-    assert calls["api_key"] == "sk-test"
-    assert calls["client_timeout"] == 0.5
-    assert calls["max_retries"] == 0
-    assert calls["llm_providers"] == [
-        {"provider": "openai", "model": "gpt-4o-mini"},
-        {"provider": "anthropic", "model": "claude-3-5-haiku-20241022"},
-    ]
-    assert calls["messages"] == _MESSAGES
-    assert calls["tradeoff"] == "cost"
-    assert calls["timeout"] == 0.5
-
-
-def test_invalid_candidate_rejected_before_sdk_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
     class _NotDiamond:
         def __init__(self, **kwargs: object) -> None:
-            self.model_router = object()
+            constructed.append(kwargs)
 
-    monkeypatch.setitem(
-        sys.modules,
-        "notdiamond",
-        types.SimpleNamespace(NotDiamond=_NotDiamond),
-    )
-    with pytest.raises(NotDiamondAPIError):
-        adapter_mod._default_selector("sk-test", _MESSAGES, ["gpt-4o-mini"], "cost", 0.5)
+    monkeypatch.setitem(sys.modules, "notdiamond", types.SimpleNamespace(NotDiamond=_NotDiamond))
+    monkeypatch.setenv("NOTDIAMOND_API_KEY", "sk-test-not-real")
+    with pytest.raises(NotDiamondNotInstalled, match="Tier 0"):
+        adapter_mod._default_selector("sk-test", _MESSAGES, _CANDIDATES, "cost", 0.5)
+    with pytest.raises(NotDiamondNotInstalled, match="Tier 0"):
+        select_model(_MESSAGES, _CANDIDATES)
+    assert constructed == []
 
 
 def test_unparseable_best_raises_api_error(monkeypatch: pytest.MonkeyPatch) -> None:

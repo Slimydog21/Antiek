@@ -178,14 +178,10 @@ spec_doc = "docs/integration_posthog.md"
 
 [notdiamond]
 package = "notdiamond"
-tier = 2
-voucher = "slimydog"
-vouched_at = "2026-07-09"
-sunset_date = "2026-11-07"
-justification = "SUNSET EXTENDED 2026-10-07→2026-11-07 on 2026-10-08 by the frontend lane to unblock fleet CI (every pytest shard 3 failed at midnight UTC); the operator (voucher) must promote to Tier 3 or demote to Tier 0 before 2026-11-07. Wave 1 advisory adapter (runtime/notdiamond/) — measured wedge only, NEVER an authoritative dispatch provider (§16). Lazy import inside select_model(); optional extra antiek[notdiamond]. Promote to Tier 3 only after §14.4 baseline is beaten with evidence (Wave 3 SPR-05/08); demote to Tier 0 if the wedge fails. Spec: ~/specs/antiek-notdiamond/."
-prod_call_sites = [
-    "runtime/notdiamond/adapter.py",
-]
+tier = 0
+voucher = ""
+vouched_at = "2026-11-12"
+justification = "DEMOTED 2→0 on 2026-11-12 by the operator (the voucher), after the Tier 2 sunset of 2026-11-07 passed with no §14.4 baseline evidence (Wave 3 SPR-05/08) to promote it. Spec only: the SDK is imported nowhere. runtime/notdiamond keeps its advisory contract: its default selector raises NotDiamondNotInstalled without importing the SDK, so every caller (substrate/dispatch/notdiamond_shadow.py, substrate/model_routing/notdiamond_advisor.py) falls through to the existing dispatch path, as it already did whenever the optional extra was absent. The extra antiek[notdiamond] stays declared until a lock change removes it. Re-promotion needs a voucher and that evidence. Spec: ~/specs/antiek-notdiamond/."
 spec_doc = "~/specs/antiek-notdiamond/"
 
 [turbopuffer]

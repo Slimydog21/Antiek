@@ -96,10 +96,9 @@ embedding = ["sentence-transformers>=3.0", "numpy>=1.26"]
 interview = ["openai-whisper>=20240930"]  # for ASR, swap for API client when wired
 youtube = ["yt-dlp>=2024.8.6", "youtube-transcript-api>=0.6"]
 rss = ["feedparser>=6.0"]
-# NotDiamond advisory model-router adapter (Wave 1). Optional and lazy:
-# runtime/notdiamond imports the SDK only inside select_model(), so dispatch
-# still runs when this extra is absent. TODO(SPR-ND): relax the exact pin after
-# a second SDK version is smoke-tested against Antiek's adapter contract.
+# NotDiamond advisory model-router adapter (Wave 1). Tier 0 since 2026-11-12
+# (integrations.toml): the adapter never imports the SDK, so this extra is
+# inert; it stays declared until a lock change removes it.
 notdiamond = [
   "notdiamond==1.7.0",
 ]

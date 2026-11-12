@@ -2,6 +2,10 @@
 
 SPR-01 scope: importable, smoke-tested adapter behind an optional dependency.
 There is no dispatch integration here; SPR-03 owns any pre-dispatch hook.
+
+``notdiamond`` is Tier 0 (spec only) since 2026-11-12 (``integrations.toml``):
+the SDK is never imported, and the default selector raises
+``NotDiamondNotInstalled``, so every caller falls through to dispatch.
 """
 
 from __future__ import annotations
@@ -9,7 +13,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Sequence
-from typing import Any, cast
+from typing import Any
 
 from .types import (
     NotDiamondAPIError,
@@ -48,33 +52,12 @@ def _default_selector(
     tradeoff: str,
     timeout_s: float,
 ) -> tuple[Any, Any]:
-    try:
-        from notdiamond import NotDiamond  # type: ignore[import-not-found, unused-ignore]
-    except ImportError as exc:
-        raise NotDiamondNotInstalled(
-            "notdiamond SDK not installed. Install the optional extra "
-            "(`pip install 'antiek[notdiamond]'`) to enable advisory routing."
-        ) from exc
-
-    llm_providers = [_candidate_to_provider(candidate) for candidate in candidates]
-    client = NotDiamond(api_key=api_key, timeout=timeout_s, max_retries=0)
-    response = client.model_router.select_model(
-        llm_providers=cast(Any, llm_providers),
-        messages=cast(Any, list(messages)),
-        tradeoff=tradeoff,
-        timeout=timeout_s,
+    """The live SDK call, retired with the integration: ``notdiamond`` is
+    Tier 0, so the SDK is never imported and advisory routing is off."""
+    raise NotDiamondNotInstalled(
+        "notdiamond is Tier 0 (spec only) since 2026-11-12 (integrations.toml): "
+        "advisory routing is off, and callers fall through to dispatch."
     )
-    return response.session_id, response.providers[0]
-
-
-def _candidate_to_provider(candidate: str) -> dict[str, str]:
-    provider, sep, model = candidate.partition("/")
-    if not sep or not provider or not model:
-        raise NotDiamondAPIError(
-            "notdiamond: candidates must use provider/model form; "
-            f"got {candidate!r}."
-        )
-    return {"provider": provider, "model": model}
 
 
 def _parse_best(best: Any) -> tuple[str, str]:
