@@ -82,7 +82,12 @@ jobs:
   pytest-suite:
     name: pytest shard ${{ matrix.shard_index }} of 4
     needs: dependency-lock
-    runs-on: ubuntu-latest
+    # Production's OS (infrastructure/terraform: Ubuntu 24.04 LTS), not the
+    # moving ubuntu-latest label, which became ubuntu-26.04 on 2026-11-12. Its
+    # ffmpeg 8.0.1 writes "Error parsing Opus packet header." to stderr for valid
+    # Opus, which the bounded decoder (acquisition/voice/audio_bound.py) rightly
+    # refuses, so the suite would test an ffmpeg production does not run.
+    runs-on: ubuntu-24.04
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.

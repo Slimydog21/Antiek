@@ -27,6 +27,20 @@ def valid_image() -> dict[str, object]:
     }
 
 
+def containerd_image() -> dict[str, object]:
+    """The same image as the containerd image store reports it (Docker 29.7.0,
+    measured 2026-11-12): named by its manifest digest."""
+    return {
+        **valid_image(),
+        "Id": image.MANIFEST_DIGEST,
+        "Descriptor": {
+            "digest": image.MANIFEST_DIGEST,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "size": 1022,
+        },
+    }
+
+
 class SyntheticDocker:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
@@ -186,6 +200,56 @@ class DockerImagePreparationTests(unittest.TestCase):
 
     def test_local_tag_wrong_architecture_refuses_success(self) -> None:
         self.tag_field("Architecture", "arm64")
+
+    def test_containerd_store_identity_is_the_approved_image(self) -> None:
+        self.docker.source_data = json.dumps(containerd_image()).encode()
+        self.docker.tag_data = json.dumps(containerd_image()).encode()
+        image.prepare_image()
+        self.assertEqual(len(self.docker.calls), 4)
+
+    def containerd_source(self, descriptor: object) -> None:
+        data = containerd_image()
+        data["Descriptor"] = descriptor
+        self.docker.source_data = json.dumps(data).encode()
+        self.assert_refused(2)
+
+    def test_containerd_identity_without_a_descriptor_refuses(self) -> None:
+        self.containerd_source(None)
+
+    def test_containerd_identity_with_a_scalar_descriptor_refuses(self) -> None:
+        self.containerd_source("sha256:x")
+
+    def test_containerd_identity_with_another_manifest_refuses(self) -> None:
+        self.containerd_source(
+            {"digest": "sha256:wrong", "mediaType": "application/vnd.oci.image.manifest.v1+json"}
+        )
+
+    def test_containerd_identity_naming_an_index_refuses(self) -> None:
+        self.containerd_source(
+            {
+                "digest": image.MANIFEST_DIGEST,
+                "mediaType": "application/vnd.oci.image.index.v1+json",
+            }
+        )
+
+    def test_containerd_identity_without_a_media_type_refuses(self) -> None:
+        self.containerd_source({"digest": image.MANIFEST_DIGEST})
+
+    def test_a_descriptor_does_not_excuse_a_wrong_id(self) -> None:
+        data = containerd_image()
+        data["Id"] = "sha256:wrong"
+        self.docker.source_data = json.dumps(data).encode()
+        self.assert_refused(2)
+
+    def test_local_tag_containerd_identity_must_match_too(self) -> None:
+        self.docker.source_data = json.dumps(containerd_image()).encode()
+        data = containerd_image()
+        data["Descriptor"] = {
+            "digest": "sha256:wrong",
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        }
+        self.docker.tag_data = json.dumps(data).encode()
+        self.assert_refused(4)
 
     def test_local_tag_malformed_refuses_success(self) -> None:
         self.docker.tag_data = b"null"

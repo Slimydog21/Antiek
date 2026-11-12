@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("NOTDIAMOND_API_KEY"),
-    reason="NOTDIAMOND_API_KEY not set; live ND smoke is advisory and skipped.",
-)
+# notdiamond is Tier 0 (spec only) since 2026-11-12 (integrations.toml): the
+# adapter never calls the service, so there is no live round trip to smoke.
+pytestmark = pytest.mark.skip(reason="notdiamond is Tier 0; no live call to smoke.")
 
 _CANDIDATES = [
     "openai/gpt-4o-mini",
     "anthropic/claude-3-5-haiku-20241022",
 ]
-_MESSAGES = [
-    {"role": "user", "content": "Summarize general relativity in one sentence."}
-]
+_MESSAGES = [{"role": "user", "content": "Summarize general relativity in one sentence."}]
 
 
 def test_cross_provider_round_trip() -> None:
