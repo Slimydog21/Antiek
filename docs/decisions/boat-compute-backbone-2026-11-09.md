@@ -36,10 +36,10 @@ the source of truth for this ratifying revision.
 `infrastructure/runbooks/boat-backbone.md` only. The adapter
 `runtime/exec_backend/boat_backend.py` belongs to the code lane and is
 described here as it stands, uncommitted, in the working tree on `79b66b1`
-(modified 07:42 +03 on 2026-11-12, SHA-256
-`1628ec9ae1a8dea859b972427413f91f5036f7673520a4290fa89010c411296e`, beside
+(modified 09:19 +03 on 2026-11-12, SHA-256
+`f8826975d3c46ddd02ffa15dd894a28a5b164990ebae12a3039e7ead9d8f0f89`, beside
 `tests/test_exec_backend_boat.py` at SHA-256
-`36bb6cd729a94efd2acde419534431b2b367d114fd3403353b1e44a72538b4bf`, after the
+`b1d2e1ea8c182a69af6db59dce2ad9ddf9e162a2313ee6874ca800a1b48580c1`, after the
 round-2 fixes of the review's findings S1 to S3, D4 and D5, the
 orchestrator's follow-up after round 2, round 3's answers to the v2
 re-review, v5's live-shape rules, v6's activation gates in code and v7's
@@ -236,7 +236,7 @@ not operationally activated. `_VALID_KINDS` contains `local`, `docker` and
 explicitly selected. The default stays `local`; the package does not
 re-export Boat. Before the ratifying change the handoff was dark and the
 factory refused Boat. The behavior below describes the runtime logic at
-`1628ec9a`: v5's (`8ba8c1e7`, which run 7 exercised live; runs 5 and 6 ran its
+`f8826975`: v5's (`8ba8c1e7`, which run 7 exercised live; runs 5 and 6 ran its
 predecessors `5498a137` and `252e4b15`) plus v6's
 activation gates in code and Python 3.12 parsing; the ratifying change
 altered only the module-status prose.
@@ -1037,7 +1037,7 @@ always labelled incomplete:
 - **Product:** the backend logs one `BoatBackend sandbox accepted` line per
   sandbox id it learns through the create or a recovery (`via=create`, `repost`
   or `sweep`), and one `BoatBackend sandbox deleted` line per confirmed
-  delete [M, the module at `1628ec9a`]. Billed provisioning failures and
+  delete [M, the module at `f8826975`]. Billed provisioning failures and
   lost creates that the same-key re-`POST` or the label sweep recovered are
   therefore counted, which the earlier sum of `BoatBackend created
   workspace` lines missed. Each accepted sandbox counts at its full
@@ -1051,7 +1051,7 @@ always labelled incomplete:
   that path; the create raises `WorkspaceProvisionError` to its caller); a
   service killed between Boat's answer and the log line leaves nothing; and
   a sandbox accepted before the window opened is outside it [M, the module
-  at `1628ec9a`]. The check therefore counts the WARNINGs there are, lists
+  at `f8826975`]. The check therefore counts the WARNINGs there are, lists
   every `antiek-ws-` sandbox the product key can see that no accepted line
   names (the only net for the silent paths), and treats either as a stop.
   At the default 900 s on `small` a workspace costs at most USD 0.0045, so the product's share of 120
@@ -1443,7 +1443,7 @@ The remaining observations still gate the affected operation:
   key may not create one; only the fail-closed path was proved live then.
   Runs 6 and 7 later ran the module end to end, run 7 on v5's `8ba8c1e7`
   ("Live evidence");
-  v6's gates (`1628ec9a`) are proved hermetically, not yet live;
+  v6's gates (`f8826975`) are proved hermetically, not yet live;
 - whether the round-2 reap and cleanup (the `pkill` statuses, the exec lock,
   the fence files, `DELETE /commands/{processId}`) behave on a Boat VM as
   they do on the test suite's fake VM;
@@ -1841,6 +1841,16 @@ The CEO applied v6 unchanged as `193a35dd` and requested changes on it
 5. **Found in review before this handoff:** the prune horizon is taken
    from the newest earlier attempt only, so a mark stamped by a clock that
    jumped forward cannot prune rows a corrected clock still counts.
+6. **Found while preparing G3.3:** the research launch route builds the
+   execution backend on its event loop (`cascade_routes.py`), and `probe`
+   called `asyncio.run`, which raises there, so every launch with
+   `ANTIEK_EXEC_BACKEND=boat` would have answered 500. The factory tests
+   stubbed `probe`, so none caught it. `probe` now runs its two reads on a
+   worker thread's own loop when it is called from a running loop; three
+   tests (the probe itself, its refusal, and the factory call the route
+   makes, over the fake Boat) fail on the old code with that
+   `RuntimeError` and pass now. The Docker backend's `probe` has the same
+   latent pattern and is left to its own change.
 
 GitHub CI on `193a35dd` failed one test outside this change:
 `tests/test_integration_tiers.py::test_live_registry_passes_checker`,

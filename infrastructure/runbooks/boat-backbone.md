@@ -1,14 +1,14 @@
 # Runbook: Boat compute backbone (both planes: keys, read-only verification, paid smoke, enable, reaper, disable)
 
-**Decision:** `docs/decisions/boat-compute-backbone-2026-11-09.md` (PROPOSED,
-awaiting the owner's ratification). Read its Decision §1 (the two planes), §5
+**Decision:** `docs/decisions/boat-compute-backbone-2026-11-09.md` (ACCEPTED,
+2026-11-09). Read its Decision §1 (the two planes), §5
 (what `BoatBackend` does and does not yet do) and §7 (the envelopes) first.
-**State today:** OFF. `boat` is not a registered `ANTIEK_EXEC_BACKEND` kind
-until gate G2 (`factory.py:35` accepts `local` and `docker`). G1 is met: org
-Antiek holds one `box_20` subscription with `canStart` true since about
-06:25Z on 2026-11-09. Neither plane key is installed yet (G4). The cloud
-CEO's review of draft PR #3826 requested changes; this revision answers it,
-and the decision stays PROPOSED.
+**State today:** OFF. `boat` is a registered `ANTIEK_EXEC_BACKEND` kind, opt-in
+(`factory.py:35`); nothing selects it by default, and neither plane is
+activated. G1 is met: org Antiek holds one `box_20` subscription with
+`canStart` true since about 06:25Z on 2026-11-09. Neither permanent plane key
+is installed yet (G4). The owner's rulings and the gates still open are in the
+decision record ("Owner rulings of 2026-11-09", "Prerequisites by gate").
 **Who runs it:** the owner, or the cloud CEO at the owner's explicit
 direction, step by step. Every command that carries a plane key runs where
 the "Credentials" table installs that key: the cloud CEO's environment
@@ -863,7 +863,10 @@ the `ResourceLimits()` defaults: `small`, TTL 900 s (`contained_gather.py:241`,
    line without a created line is a billed provisioning failure and counts
    at its TTL.
 5. Three notes were promoted through the funnel, and only through it (the
-   graph query of `remote-exec-fanout.md` Step 4).
+   graph query of `remote-exec-fanout.md` Step 4). That query counts every
+   node of the run: 7, the plan's root and three sub-question `question`
+   nodes (`roles/cascade_planner/persist.py`) plus the three funnel-stamped
+   `insight` nodes; the three insights are the ones to check.
 6. Each `bx_` id answers not-found from `P info <id> --json`, the journal shows
    a `BoatBackend sandbox deleted:` line for each accepted id, and the
    list-price bounds sum under USD 0.10 (at most USD 0.0135: three `small` at
@@ -939,6 +942,14 @@ Never `BOAT_BUILD_API_KEY` on a production host. Leave
 `ANTIEK_BOAT_ENVIRONMENT` unset (the code's default is `antiek-product`; it
 refuses `antiek-build`). `ANTIEK_DRW_GATHER` must not be `exa`. The backend is built at each cascade launch, not at service start,
 so launch one small cascade and read
+Before this check can show anything, the service needs a log configuration:
+the unit starts uvicorn without `--log-config`
+(`infrastructure/ansible/templates/antiek.service.j2`) and the
+service configures no logging of its own, so INFO lines from
+`antiek.exec_backend.boat` and the factory never reach the journal. Add a
+`--log-config` that sends those loggers at INFO to stderr (the G3.3 run
+used one, decision record "Live evidence") before the enable, or the
+journal checks here and in "Watching spend" read nothing.
 `journalctl -u antiek -n 200 --no-pager | grep "ExecutionBackend selected"`:
 expected `ExecutionBackend selected: boat (via $ANTIEK_EXEC_BACKEND='boat')`.
 
@@ -965,7 +976,10 @@ the source's `antiek-build` [M, OpenAPI fork]. No `boat prompt`, no AI-credentia
 
 ## Ledgers and the reaper rule
 
-**Product.** The code writes no file ledger. Its record is the journal on
+**Product.** The create ledger (`boat_ledger.jsonl`, "Enable and
+activation") records every create attempt and how each request ended, for the
+pacing and spend gates; it records no delete. The record of sandbox ids and
+deletes is the journal on
 logger `antiek.exec_backend.boat`: `BoatBackend sandbox accepted:
 sandbox=<bx id> ...` for each sandbox id the process learns through the
 create or a recovery (provisioning failures and recovered lost creates

@@ -4337,6 +4337,36 @@ class TestActivationGates:
             asyncio.run(new_ws(fake))
         assert fake.calls == []
 
+    async def test_probe_works_inside_a_running_event_loop(self, fake: FakeBoat) -> None:
+        # The research launch route builds the backend on its event loop; an
+        # asyncio.run there raised, and every Boat launch answered 500.
+        make_backend(fake).probe()
+        assert [call.route for call in fake.calls] == ["/limits", "/environments"]
+
+    async def test_probe_inside_a_running_loop_still_refuses_loudly(self, fake: FakeBoat) -> None:
+        fake.limits_override = {"canStart": False, "blockedReason": "subscription_required"}
+        with pytest.raises(BackendUnavailable):
+            make_backend(fake).probe()
+
+    async def test_the_factory_builds_boat_inside_a_running_event_loop(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The route's own call, with the fake Boat behind the real factory.
+        real = bb.BoatBackend
+
+        class Faked(real):  # type: ignore[misc, valid-type]
+            def __init__(self) -> None:
+                super().__init__(transport=fake.transport(), root_base=fake.vm_root_base)
+
+        monkeypatch.setattr(bb, "BoatBackend", Faked)
+        monkeypatch.setenv("ANTIEK_EXEC_BACKEND", "boat")
+        backend = factory_mod.build_execution_backend()
+        assert backend.name == "boat"
+        ws = await backend.create(
+            WorkspaceProfile(name="route"), limits=ResourceLimits(), net_policy=DENY_ALL
+        )
+        await ws.destroy()
+
     def test_a_key_pasted_as_the_pin_is_not_echoed(
         self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
     ) -> None:

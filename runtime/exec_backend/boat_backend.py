@@ -589,6 +589,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import concurrent.futures
 import contextlib
 import decimal
 import fcntl
@@ -2017,6 +2018,19 @@ async def _void_unsent(
         await api.aclose()
 
 
+def _run_blocking(work: Coroutine[Any, Any, None]) -> None:
+    """Run ``work`` to completion from sync code: with ``asyncio.run``, or,
+    on a thread whose event loop is running (where ``asyncio.run`` raises),
+    on a fresh loop in a worker thread while the caller waits."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(work)
+        return
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, work).result()
+
+
 async def _run_shielded(cleanup: Coroutine[Any, Any, None]) -> None:
     """Run ``cleanup`` to completion even if the caller is cancelled while
     waiting for it: the task keeps running on its own and the caller's
@@ -2893,8 +2907,9 @@ class _BoatWorkspace:
 
 
 class BoatBackend:
-    """``ExecutionBackend`` over Boat sandboxes. DARK: not registered in the
-    factory (see the module docstring, "Activation (after ratification)").
+    """``ExecutionBackend`` over Boat sandboxes, registered opt-in in the
+    factory (``ANTIEK_EXEC_BACKEND=boat``; see the module docstring,
+    "Activation (after ratification)").
 
     Construct with an injected ``transport`` (an ``httpx.MockTransport`` in
     tests), ``sleep`` and ``clock``; in production the defaults talk to
@@ -2994,14 +3009,16 @@ class BoatBackend:
         a WARNING and left to the per-create org checks.
         ``GET /environments?org=<pin>`` must list the environment passing
         nothing of the account; that read fails closed. Every other failure
-        raises ``BackendUnavailable``. Synchronous by contract
-        (``asyncio.run``); call it from a sync context."""
+        raises ``BackendUnavailable``. Synchronous by contract: from a
+        thread that runs an event loop (the research launch route builds the
+        backend there) the two reads run on a worker thread's own loop, and
+        the caller waits for them."""
         _read_api_key()
         pin = self._org_pin()
         environment = self._environment()
         _check_gates()
         _CreateLedger(_ledger_path(), self._wall_clock).check()
-        asyncio.run(self._probe(pin, environment))
+        _run_blocking(self._probe(pin, environment))
 
     async def _probe(self, pin: str | None, environment: str) -> None:
         api = self._new_api()
