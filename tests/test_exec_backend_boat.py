@@ -47,8 +47,10 @@ import ast
 import asyncio
 import base64
 import contextlib
+import decimal
 import errno
 import fcntl
+import fractions
 import inspect
 import json
 import logging
@@ -4316,6 +4318,8 @@ class TestActivationGates:
             300.0,
             1_000,
         )
+        assert (bb._START_GRACE_S, bb._OPEN_REQUEST_LIMIT_S, bb._NANO) == (120.0, 3_600.0, 10**9)
+        assert bb._SEND_DEADLINE_S == 3_600.0 - 4 * 90.0
         # The 3.12 spelling of the three ``except BackendUnavailable, WorkspaceLost:``.
         assert (BackendUnavailable, WorkspaceLost) == bb._UNAVAILABLE_OR_LOST
 
@@ -4585,6 +4589,9 @@ class TestActivationGates:
             with pytest.raises(ExecutionBackendError, match=code):
                 await self._create(backend)
         assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+        # The same-key recovery re-POST was admitted (the attempt itself does
+        # not count against its own re-POST) and went out.
+        assert len(fake.calls_to("POST", "/sandboxes")) == 2
         (attempt,) = [row for row in self._rows() if "id" in row]
         assert {"void": attempt["id"]} not in self._rows()
         with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
@@ -4662,8 +4669,11 @@ class TestActivationGates:
         assert stat.S_IMODE(pathlib.Path(f"{path}.lock").stat().st_mode) == 0o600
         rows = self._rows(path)
         (attempt,) = [r for r in rows if "id" in r]
-        assert attempt["type"] == "small" and attempt["ttl"] == 900 and attempt["usd"] == 0.0045
-        assert {"bind": attempt["id"], "sandbox": ws.sandbox_id} in rows
+        assert attempt["type"] == "small" and attempt["ttl"] == 900
+        assert attempt["nusd"] == 4_500_000  # USD 0.0045 in nano-dollars, never a float
+        (bind,) = [r for r in rows if "bind" in r]
+        assert (bind["bind"], bind["sandbox"]) == (attempt["id"], ws.sandbox_id)
+        assert bind["at"] >= attempt["at"]
         assert_keyless(path.read_text())
         path.chmod(0o644)  # a widened ledger is narrowed again on the next read
         await (await new_ws(fake)).destroy()
@@ -4697,6 +4707,16 @@ class TestActivationGates:
             '{"id": "x", "at": true, "usd": 0.1}',
             '{"bind": 7, "sandbox": "bx_xxxxxxxx"}',
             '{"id": "x", "at": 1, "usd": 0.1, "ttl": NaN}',
+            '{"id": "x", "at": 1}',
+            '{"id": "x", "at": 1, "nusd": 1.5}',
+            '{"id": "x", "at": 1, "nusd": -1}',
+            '{"id": "x", "at": 1, "nusd": true}',
+            '{"id": "x", "at": 1, "nusd": 1, "usd": 0.1}',
+            '{"id": "x", "at": 1, "nusd": 18446744073709551616}',
+            '{"send": "x"}',
+            '{"settle": "x", "at": "soon"}',
+            '{"send": "x", "settle": "x", "at": 1}',
+            '{"bind": "x", "sandbox": "bx_xxxxxxxx", "at": -1}',
         ],
     )
     async def test_an_unreadable_ledger_refuses_every_create(
@@ -4822,6 +4842,10 @@ class TestActivationGates:
             for i in range(900)
         ] + [
             {"id": f"day{i}", "at": self.T0 - 3_600, "type": "small", "ttl": 900, "usd": 0.0045}
+            for i in range(120)
+        ]
+        rows += [
+            {"bind": f"day{i}", "sandbox": f"bx_day{i:05d}", "at": self.T0 - 3_600}
             for i in range(120)
         ]
         path.write_text("".join(json.dumps(row) + "\n" for row in rows))
@@ -5110,6 +5134,613 @@ class TestActivationGates:
         first, again = fake.calls_to("POST", "/sandboxes")
         assert again.headers["idempotency-key"] == first.headers["idempotency-key"]
         assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+
+    @pytest.mark.parametrize(
+        ("env", "window_s"),
+        [
+            ("ANTIEK_BOAT_CREATES_PER_MINUTE", 60),
+            ("ANTIEK_BOAT_CREATES_PER_HOUR", 3_600),
+            ("ANTIEK_BOAT_CREATES_PER_DAY", 86_400),
+        ],
+    )
+    def test_a_create_paused_after_reserving_counts_until_it_settles(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, env: str, window_s: int
+    ) -> None:
+        # The CEO's counterexample: creates reserve, pause past the window
+        # before sending, then start beside a new cohort. Counted from their
+        # first request until they settle, they never share a window with it.
+        monkeypatch.setenv(env, "2")
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        paused = [ledger.reserve("small", 900) for _ in range(2)]
+        now[0] = self.T0 + window_s + 1  # still unsent: their requests are open
+        with pytest.raises(WorkspaceProvisionError, match=f"2 creates in the last {window_s} s"):
+            ledger.reserve("small", 900)
+        for entry in paused:  # now they start: Boat names their sandboxes
+            ledger.mark({"bind": entry, "sandbox": f"bx_{entry[:8]}"})
+        bound_at = now[0]
+        now[0] = bound_at + window_s - 1
+        with pytest.raises(WorkspaceProvisionError, match=f"2 creates in the last {window_s} s"):
+            ledger.reserve("small", 900)
+        now[0] = bound_at + window_s
+        ledger.reserve("small", 900)
+
+    def test_eight_paused_creates_hold_off_the_next_eight(self, tmp_path: pathlib.Path) -> None:
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        for _ in range(8):
+            ledger.reserve("small", 900)
+        now[0] = self.T0 + 61
+        with pytest.raises(WorkspaceProvisionError, match="8 creates in the last 60 s"):
+            ledger.reserve("small", 900)
+
+    async def test_an_unsent_create_holds_its_slot_end_to_end(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A create whose POST is still in flight a minute and more later keeps
+        # its slot: the next create is refused, not started beside it.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        now = [self.T0]
+        backend = make_backend(fake, wall_clock=lambda: now[0])
+        fake.injected.append(Injected("POST", "/sandboxes", 0, "", "never", hang=True))
+        first = asyncio.create_task(self._create(backend))
+        try:
+            assert await _until(lambda: bool(fake.calls_to("POST", "/sandboxes")))
+            now[0] = self.T0 + 61
+            with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+                await self._create(backend)
+            assert len(fake.calls_to("POST", "/sandboxes")) == 1
+        finally:
+            first.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await first
+            assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+
+    def test_a_settled_request_counts_for_the_start_grace(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        entry = ledger.reserve("small", 900)
+        now[0] = self.T0 + 10
+        ledger.mark({"settle": entry})  # its request ended without a sandbox id
+        now[0] = self.T0 + 10 + 120 + 59
+        with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+            ledger.reserve("small", 900)
+        now[0] = self.T0 + 10 + 120 + 60
+        ledger.reserve("small", 900)
+
+    def test_a_request_that_never_ended_counts_for_an_hour(self, tmp_path: pathlib.Path) -> None:
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        for _ in range(8):
+            ledger.reserve("small", 900)  # their process dies: nothing settles them
+        now[0] = self.T0 + 3_600 + 59
+        with pytest.raises(WorkspaceProvisionError, match="8 creates in the last 60 s"):
+            ledger.reserve("small", 900)
+        now[0] = self.T0 + 3_600 + 60
+        ledger.reserve("small", 900)
+
+    def test_a_recovery_request_is_admitted_like_a_create(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        path = tmp_path / "l.jsonl"
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(path), lambda: now[0])
+        lost = ledger.reserve("small", 900)
+        ledger.mark({"settle": lost})  # its answer was lost at T0
+        now[0] = self.T0 + 190  # past its grace and the minute: another create starts
+        other = ledger.reserve("small", 900)
+        now[0] = self.T0 + 200
+        with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+            ledger.send(lost)  # the same-key re-POST could start it now: refused
+        assert not [row for row in self._rows(path) if "send" in row]
+        ledger.mark({"bind": other, "sandbox": "bx_other000"})
+        now[0] = self.T0 + 200 + 60
+        ledger.send(lost)
+        assert {"send": lost, "at": self.T0 + 260} in self._rows(path)
+        now[0] = self.T0 + 260 + 150  # past any grace: its reopened request still counts
+        with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+            ledger.reserve("small", 900)
+        for settled in ({"void": lost}, {"bind": lost, "sandbox": "bx_lost0000"}):
+            ledger.mark(settled)
+            with pytest.raises(WorkspaceProvisionError, match="is settled"):
+                ledger.send(lost)
+
+    async def test_a_refused_recovery_request_is_not_sent_and_the_sweep_still_runs(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(ledger: Any, entry: str) -> None:
+            raise WorkspaceProvisionError("Boat create pacing: refused for the test")
+
+        monkeypatch.setattr(bb._CreateLedger, "send", refuse)
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert len(fake.calls_to("POST", "/sandboxes")) == 1, "no re-POST went out"
+        (orphan,) = fake.sandboxes
+        assert len(fake.calls_to("GET", "/sandboxes")) == 1
+        assert fake.deleted == {orphan}
+        (attempt,) = [row for row in self._rows() if "id" in row]
+        assert any(row.get("settle") == attempt["id"] for row in self._rows())
+
+    async def test_a_recovery_request_records_its_send_and_bind(self, fake: FakeBoat) -> None:
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        (orphan,) = fake.sandboxes
+        rows = self._rows()
+        (attempt,) = [row for row in rows if "id" in row]
+        kinds = [next(k for k in ("settle", "send", "bind") if k in row) for row in rows[1:]]
+        assert kinds == ["settle", "send", "bind"]
+        assert rows[-1] == {"bind": attempt["id"], "sandbox": orphan, "at": self.T0}
+
+    @pytest.mark.parametrize(
+        ("cap", "admitted"),
+        [
+            ("0.0066665", 1),
+            ("0.006666667", 1),
+            ("0.0066666675", 1),  # half a nano-dollar: the cap rounds down
+            ("0.006666668", 2),
+            ("0.0067", 2),
+        ],
+    )
+    def test_spend_is_exact_and_rounds_against_the_caller(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, cap: str, admitted: int
+    ) -> None:
+        # Two xlarge 60 s creates cost 2/300 USD = 6,666,666.67 nano-dollars;
+        # each is charged 3,333,334 (rounded up), the cap is rounded down.
+        monkeypatch.setenv("ANTIEK_BOAT_DAILY_USD", cap)
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: self.T0)
+        for _ in range(admitted):
+            ledger.reserve("xlarge", 60)
+        if admitted < 2:
+            with pytest.raises(WorkspaceProvisionError, match="Boat spend cap"):
+                ledger.reserve("xlarge", 60)
+        assert bb._create_nusd("xlarge", 60) == 3_333_334
+        assert bb._cap_nusd("ANTIEK_BOAT_DAILY_USD", 1.00) == int(
+            fractions.Fraction(decimal.Decimal(cap)) * 10**9
+        )
+
+    def test_a_voided_create_spends_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        # Room for one small 900 s create: a refused one (voided) leaves it free.
+        monkeypatch.setenv("ANTIEK_BOAT_DAILY_USD", "0.0045")
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: self.T0)
+        ledger.mark({"void": ledger.reserve("small", 900)})
+        ledger.reserve("small", 900)
+        with pytest.raises(WorkspaceProvisionError, match="Boat spend cap"):
+            ledger.reserve("small", 900)
+
+    def test_a_row_from_before_integer_amounts_is_read_high(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        # A v6 row held USD rounded to six decimals: read half a micro-dollar
+        # high, USD 0.0045 plus a small create no longer fits a USD 0.009 cap.
+        monkeypatch.setenv("ANTIEK_BOAT_DAILY_USD", "0.009")
+        path = tmp_path / "l.jsonl"
+        self._write(path, [self._attempt("v6", self.T0 - 60, usd=0.0045)])
+        assert bb._attempt_nusd(self._rows(path)[0]) == 4_500_500
+        with pytest.raises(WorkspaceProvisionError, match="Boat spend cap"):
+            bb._CreateLedger(str(path), lambda: self.T0).reserve("small", 900)
+
+    def test_probe_refuses_a_clock_that_moved_back(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = pathlib.Path(os.environ["ANTIEK_BOAT_LEDGER"])
+        future = self._attempt("ahead", self.T0 + 301)
+        for rows in ([future], [future, {"void": "ahead"}], [{"settle": "x", "at": self.T0 + 301}]):
+            self._write(path, rows)
+            with pytest.raises(BackendUnavailable, match="the clock moved back"):
+                make_backend(fake, wall_clock=lambda: self.T0).probe()
+        assert fake.calls == [], "refused before any Boat read"
+
+    def test_marks_are_stamped_and_voids_are_not(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0 + 5)
+        ledger.mark({"settle": "a"})
+        ledger.mark({"bind": "a", "sandbox": "bx_aaaaaaaa"})
+        ledger.mark({"void": "b"})
+        assert self._rows(path) == [
+            {"settle": "a", "at": self.T0 + 5},
+            {"bind": "a", "sandbox": "bx_aaaaaaaa", "at": self.T0 + 5},
+            {"void": "b"},
+        ]
+
+    @staticmethod
+    def _kinds(rows: list[dict[str, Any]]) -> list[str]:
+        return [next(k for k in ("id", "send", "settle", "bind", "void") if k in r) for r in rows]
+
+    @staticmethod
+    def _record_starts(fake: FakeBoat, now: list[float]) -> list[float]:
+        """The wall time of every new sandbox Boat mints."""
+        starts: list[float] = []
+        real = fake._create
+
+        def recording(call: Any) -> Any:
+            before = set(fake.sandboxes)
+            answer = real(call)
+            starts.extend(now[0] for _ in set(fake.sandboxes) - before)
+            return answer
+
+        fake._create = recording  # type: ignore[method-assign]
+        return starts
+
+    @staticmethod
+    def _most_in_a_window(times: list[float], window: float) -> int:
+        times = sorted(times)
+        best, first = 0, 0
+        for i, at in enumerate(times):
+            while times[first] <= at - window:
+                first += 1
+            best = max(best, i - first + 1)
+        return best
+
+    def test_send_refuses_an_attempt_not_in_the_ledger(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        ledger.check()
+        with pytest.raises(WorkspaceProvisionError, match="is not in the ledger"):
+            ledger.send("f" * 32)
+        assert path.read_text() == ""
+
+    def test_send_refuses_a_bound_attempt(self, tmp_path: pathlib.Path) -> None:
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: self.T0)
+        entry = ledger.reserve("small", 900)
+        ledger.mark({"bind": entry, "sandbox": "bx_aaaaaaaa"})  # bound, never voided
+        with pytest.raises(WorkspaceProvisionError, match="is settled"):
+            ledger.send(entry)
+
+    def test_a_send_that_cannot_be_written_is_not_sent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        entry = ledger.reserve("small", 900)
+        ledger.mark({"settle": entry})
+
+        def full(fd: int, data: Any) -> int:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "write", full)
+            with pytest.raises(BackendUnavailable, match="so the request is not sent"):
+                ledger.send(entry)
+        assert not [row for row in self._rows(path) if "send" in row]
+
+    def test_send_waits_for_the_lock(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_LOCK_WAIT_S", 0.3)
+        path = tmp_path / "l.jsonl"
+        ledger = bb._CreateLedger(str(path), lambda: self.T0)
+        entry = ledger.reserve("small", 900)
+        holder = os.open(f"{os.path.realpath(path)}.lock", os.O_RDWR)
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+            with pytest.raises(WorkspaceProvisionError, match="stayed locked"):
+                ledger.send(entry)
+        finally:
+            os.close(holder)
+        assert not [row for row in self._rows(path) if "send" in row]
+
+    def test_send_refuses_a_clock_that_moved_back(self, tmp_path: pathlib.Path) -> None:
+        now = [self.T0 + 400]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        entry = ledger.reserve("small", 900)
+        now[0] = self.T0  # stepped back 400 s between the create and its recovery
+        with pytest.raises(BackendUnavailable, match="the clock moved back"):
+            ledger.send(entry)
+
+    def test_a_re_post_that_never_ends_counts_an_hour_from_its_send(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(tmp_path / "l.jsonl"), lambda: now[0])
+        entry = ledger.reserve("small", 900)
+        now[0] = self.T0 + 10
+        ledger.mark({"settle": entry})
+        now[0] = self.T0 + 200
+        ledger.send(entry)  # the process dies during this re-POST
+        now[0] = self.T0 + 200 + 3_600 + 59  # its start may still fall in this minute
+        with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+            ledger.reserve("small", 900)
+        now[0] = self.T0 + 200 + 3_600 + 60
+        ledger.reserve("small", 900)
+
+    def test_a_v6_bind_without_a_time_counts_as_an_open_request(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        # A v6 bind has no ``at``: when its sandbox started is unknown, so the
+        # attempt counts as an open request (attempt + an hour), not as bound.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        path = tmp_path / "l.jsonl"
+        self._write(
+            path,
+            [self._attempt("v6", self.T0 - 1_000), {"bind": "v6", "sandbox": "bx_v6000000"}],
+        )
+        with pytest.raises(WorkspaceProvisionError, match="1 creates in the last 60 s"):
+            bb._CreateLedger(str(path), lambda: self.T0).reserve("small", 900)
+
+    def test_a_prune_drops_every_row_of_a_pruned_attempt(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        monkeypatch.setattr(bb, "_LEDGER_PRUNE_ROWS", 3)
+        path = tmp_path / "l.jsonl"
+        old = self.T0 - 32 * 86_400
+        rows: list[dict[str, Any]] = []
+        for i in range(3):
+            rows += [
+                self._attempt(f"old{i}", old),
+                {"settle": f"old{i}", "at": old + 1},
+                {"send": f"old{i}", "at": old + 2},
+                {"bind": f"old{i}", "sandbox": f"bx_old0000{i}", "at": old + 3},
+            ]
+        rows.append(self._attempt("recent", self.T0 - 60))
+        self._write(path, rows)
+        entry = bb._CreateLedger(str(path), lambda: self.T0).reserve("small", 900)
+        assert [bb._row_attempt(row) for row in self._rows(path)] == ["recent", entry]
+
+    def _jumped_ledger(self, path: pathlib.Path) -> tuple[Any, list[float]]:
+        """900 attempts 40 days old, the day's 119 creates bound an hour ago,
+        then a 120th create in flight while the clock jumps 40 days forward:
+        its answer (a bind) is stamped by the jumped clock, and the next create
+        is refused by Boat (voided)."""
+        rows = [self._attempt(f"old{i}", self.T0 - 40 * 86_400) for i in range(900)]
+        rows += [self._attempt(f"day{i}", self.T0 - 3_600) for i in range(119)]
+        rows += [
+            {"bind": f"day{i}", "sandbox": f"bx_day{i:05d}", "at": self.T0 - 3_600}
+            for i in range(119)
+        ]
+        self._write(path, rows)
+        now = [self.T0]
+        ledger = bb._CreateLedger(str(path), lambda: now[0])
+        entry = ledger.reserve("small", 900)
+        now[0] = self.T0 + 40 * 86_400
+        ledger.mark({"bind": entry, "sandbox": "bx_inflight"})
+        ledger.mark({"void": ledger.reserve("small", 900)})
+        return ledger, now
+
+    def test_a_mark_stamped_by_a_jumped_clock_prunes_nothing_a_corrected_one_counts(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "l.jsonl"
+        self._jumped_ledger(path)
+        assert len([row for row in self._rows(path) if "id" in row]) == 1_021
+
+    def test_after_the_runbook_repair_the_day_cap_still_holds(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        ledger, now = self._jumped_ledger(path)
+        now[0] = self.T0 + 1  # the clock is corrected
+        with pytest.raises(BackendUnavailable, match="the clock moved back"):
+            ledger.reserve("small", 900)
+        # The runbook's repair: the well-formed rows of the last 31 days, each
+        # attempt with its rows, the future-stamped ones dropped.
+        horizon, future = self.T0 + 1 - 31 * 86_400, self.T0 + 301
+        kept = {r["id"] for r in self._rows(path) if "id" in r and horizon < r["at"] <= future}
+        self._write(
+            path,
+            [
+                r
+                for r in self._rows(path)
+                if bb._row_attempt(r) in kept and r.get("at", self.T0) <= future
+            ],
+        )
+        with pytest.raises(WorkspaceProvisionError, match="120 creates in the last 86400 s"):
+            ledger.reserve("small", 900)
+
+    async def test_a_ledger_failure_on_the_recovery_send_still_sweeps(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def broken(ledger: Any, entry: str) -> None:
+            raise BackendUnavailable("the Boat create ledger cannot be written (test)")
+
+        monkeypatch.setattr(bb._CreateLedger, "send", broken)
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert len(fake.calls_to("POST", "/sandboxes")) == 1, "no re-POST went out"
+        (orphan,) = fake.sandboxes
+        assert len(fake.calls_to("GET", "/sandboxes")) == 1, "the label sweep still ran"
+        assert fake.deleted == {orphan}
+
+    @pytest.mark.parametrize(
+        ("in_progress", "kinds", "bound"),
+        [
+            (2, ["id", "settle", "send", "send", "send", "bind"], True),
+            (3, ["id", "settle", "send", "send", "send"], False),
+        ],
+    )
+    async def test_every_409_re_post_is_admitted_and_an_in_progress_one_stays_open(
+        self, fake: FakeBoat, in_progress: int, kinds: list[str], bound: bool
+    ) -> None:
+        # Each re-POST is admitted first; "still being minted" settles
+        # nothing, so after the last such answer the attempt counts for the
+        # open-request hour, not the 2-minute grace.
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        fake.idem_in_progress = in_progress
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert len(fake.calls_to("POST", "/sandboxes")) == 4
+        rows = self._rows()
+        assert self._kinds(rows) == kinds
+        assert fake.sandboxes and set(fake.sandboxes) == fake.deleted
+        (attempt,) = [row for row in rows if "id" in row]
+        end = bb._start_ends(rows)[attempt["id"]]
+        assert end == (self.T0 if bound else self.T0 + bb._OPEN_REQUEST_LIMIT_S)
+
+    async def test_a_re_post_lost_in_transport_is_settled(self, fake: FakeBoat) -> None:
+        fake.injected += [
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True),
+            Injected("POST", "/sandboxes", 0, "", "reset", exc=httpx.ReadError),
+        ]
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert self._kinds(self._rows()) == ["id", "settle", "send", "settle"]
+
+    async def test_a_re_post_refused_by_boat_is_settled(self, fake: FakeBoat) -> None:
+        # Not "still minting": the re-POST's request ended, so the attempt
+        # counts for the grace after it, not the open-request hour.
+        fake.injected += [
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True),
+            Injected("POST", "/sandboxes", 500, "http_500", "boom"),
+        ]
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        rows = self._rows()
+        assert self._kinds(rows) == ["id", "settle", "send", "settle"]
+        (attempt,) = [row for row in rows if "id" in row]
+        assert bb._start_ends(rows)[attempt["id"]] == self.T0 + bb._START_GRACE_S
+
+    async def test_a_re_post_answer_without_a_sandbox_is_settled(self, fake: FakeBoat) -> None:
+        fake.injected += [
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True),
+            Injected("POST", "/sandboxes", 200, "odd", "an answer with no sandbox"),
+        ]
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert self._kinds(self._rows()) == ["id", "settle", "send", "settle"]
+
+    async def test_recovery_ledger_work_is_off_the_event_loop(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loop_thread = threading.get_ident()
+        seen: list[tuple[str, int]] = []
+        real_send, real_mark = bb._CreateLedger.send, bb._CreateLedger.mark
+
+        def send(ledger: Any, entry: str) -> None:
+            seen.append(("send", threading.get_ident()))
+            real_send(ledger, entry)
+
+        def mark(ledger: Any, row: dict[str, Any]) -> None:
+            seen.append((next(iter(row)), threading.get_ident()))
+            real_mark(ledger, row)
+
+        monkeypatch.setattr(bb._CreateLedger, "send", send)
+        monkeypatch.setattr(bb._CreateLedger, "mark", mark)
+        fake.injected.append(
+            Injected("POST", "/sandboxes", 502, "http_502", "gateway", after_effect=True)
+        )
+        with pytest.raises(WorkspaceProvisionError, match="http_502"):
+            await self._create(make_backend(fake, wall_clock=lambda: self.T0))
+        assert [kind for kind, _ in seen] == ["settle", "send", "bind"]
+        assert loop_thread not in {thread for _, thread in seen}, seen
+
+    def test_the_clock_check_covers_bind_and_send_rows(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "l.jsonl"
+        for late in (
+            {"bind": "a", "sandbox": "bx_aaaaaaaa", "at": self.T0 + 301},
+            {"send": "a", "at": self.T0 + 301},
+        ):
+            self._write(path, [self._attempt("a", self.T0 - 10), late])
+            with pytest.raises(BackendUnavailable, match="the clock moved back"):
+                bb._CreateLedger(str(path), lambda: self.T0).check()
+
+    @pytest.mark.parametrize("pause_s", [3_000.0, 3_661.0])
+    async def test_a_create_suspended_after_reserving_never_shares_a_minute(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, pause_s: float
+    ) -> None:
+        # The process stops (SIGSTOP, a VM pause, a sleeping host) after its
+        # reservation is on disk and before its POST leaves. Under the send
+        # deadline it is still counted and the next create is refused; past it
+        # the paused create is not sent, so the next one may start alone.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        now = [self.T0]
+        starts = self._record_starts(fake, now)
+        paused, release = threading.Event(), threading.Event()
+        real_reserve = bb._CreateLedger.reserve
+        calls = [0]
+
+        def reserve(ledger: Any, machine_type: str, ttl: int) -> str:
+            calls[0] += 1
+            entry = real_reserve(ledger, machine_type, ttl)
+            if calls[0] == 1:
+                paused.set()
+                release.wait(30)
+            return entry
+
+        monkeypatch.setattr(bb._CreateLedger, "reserve", reserve)
+        backend = make_backend(fake, wall_clock=lambda: now[0])
+        first = asyncio.create_task(self._create(backend))
+        try:
+            assert await _until(paused.is_set)
+            now[0] = self.T0 + pause_s
+            if pause_s < bb._SEND_DEADLINE_S:
+                with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+                    await self._create(backend)
+                release.set()
+                await (await first).destroy()
+            else:
+                await (await self._create(backend)).destroy()
+                release.set()
+                with pytest.raises(WorkspaceProvisionError, match="Boat create not sent"):
+                    await first
+                paused_entry = self._rows()[0]["id"]
+                assert {"void": paused_entry} in self._rows()
+        finally:
+            release.set()
+            if not first.done():
+                first.cancel()
+                with contextlib.suppress(BaseException):
+                    await first
+        assert len(starts) == 1 and self._most_in_a_window(starts, 60) == 1
+
+    @pytest.mark.parametrize("pause_s", [3_000.0, 3_661.0])
+    async def test_a_re_post_suspended_after_its_admission_never_shares_a_minute(
+        self, fake: FakeBoat, monkeypatch: pytest.MonkeyPatch, pause_s: float
+    ) -> None:
+        # The first POST reached Boat, which failed before minting (a 502), so
+        # the same-key re-POST is what would start the sandbox. Suspended past
+        # the deadline after its admission, it is not sent.
+        monkeypatch.setenv("ANTIEK_BOAT_CREATES_PER_MINUTE", "1")
+        now = [self.T0]
+        starts = self._record_starts(fake, now)
+        paused, release = threading.Event(), threading.Event()
+        real_send = bb._CreateLedger.send
+
+        def send(ledger: Any, entry: str) -> None:
+            real_send(ledger, entry)
+            paused.set()
+            release.wait(30)
+
+        monkeypatch.setattr(bb._CreateLedger, "send", send)
+        fake.injected.append(Injected("POST", "/sandboxes", 502, "http_502", "gateway"))
+        backend = make_backend(fake, wall_clock=lambda: now[0])
+        first = asyncio.create_task(self._create(backend))
+        try:
+            assert await _until(paused.is_set)
+            now[0] = self.T0 + pause_s
+            if pause_s < bb._SEND_DEADLINE_S:
+                with pytest.raises(WorkspaceProvisionError, match="Boat create pacing"):
+                    await self._create(backend)
+            else:
+                await (await self._create(backend)).destroy()
+            release.set()
+            with pytest.raises(WorkspaceProvisionError, match="http_502"):
+                await first
+            assert await _until(lambda: not bb._BACKGROUND_CLEANUPS)
+        finally:
+            release.set()
+            if not first.done():
+                first.cancel()
+                with contextlib.suppress(BaseException):
+                    await first
+        assert self._most_in_a_window(starts, 60) <= 1
+        keys = [call.headers["idempotency-key"] for call in fake.calls_to("POST", "/sandboxes")]
+        re_posts = keys.count(keys[0]) - 1  # the first create's same-key re-POSTs
+        assert re_posts == (1 if pause_s < bb._SEND_DEADLINE_S else 0)
 
     def test_ledger_path_follows_the_state_dir_convention(
         self, monkeypatch: pytest.MonkeyPatch

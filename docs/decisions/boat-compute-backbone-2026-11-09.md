@@ -5,7 +5,8 @@
 live-test condition, as relayed in the current CEO collaboration message;
 "Owner rulings of 2026-11-09" and "Live evidence" run 6 record that basis.
 The ratifying source change in PR #3826 adds the §16 block, the three
-October 7 notes and opt-in factory registration. The owner merges it;
+October 7 notes and opt-in factory registration. The owner or the cloud
+CEO merges it once GitHub CI is green on its head (owner ruling 4);
 until that merge the repository's deployed doctrine and runtime are unchanged.
 Registration is not activation. Both planes still require their documented
 plane-key acceptance, remaining gates and the owner's separate written go.
@@ -35,13 +36,14 @@ the source of truth for this ratifying revision.
 `infrastructure/runbooks/boat-backbone.md` only. The adapter
 `runtime/exec_backend/boat_backend.py` belongs to the code lane and is
 described here as it stands, uncommitted, in the working tree on `79b66b1`
-(modified 23:56 +03 on 2026-11-09, SHA-256
-`91d74305a8c4bbc6b8929d46e68627a80fed81cd5bd1f3ea4648cd99340ef848`, beside
+(modified 07:42 +03 on 2026-11-12, SHA-256
+`1628ec9ae1a8dea859b972427413f91f5036f7673520a4290fa89010c411296e`, beside
 `tests/test_exec_backend_boat.py` at SHA-256
-`993d6266b3e7685bbd0e6668fcfffa4496a6a6c83593d93c8025a180ec57c43d`, after the
+`36bb6cd729a94efd2acde419534431b2b367d114fd3403353b1e44a72538b4bf`, after the
 round-2 fixes of the review's findings S1 to S3, D4 and D5, the
 orchestrator's follow-up after round 2, round 3's answers to the v2
-re-review, v5's live-shape rules and v6's activation gates in code); if the code
+re-review, v5's live-shape rules, v6's activation gates in code and v7's
+start-time pacing after the cloud CEO's review of v6); if the code
 changes before review, the code wins and this record follows.
 **Coordination:** the cloud CEO owns review and the PR; its review of PR
 #3826 says its manager record
@@ -234,17 +236,21 @@ not operationally activated. `_VALID_KINDS` contains `local`, `docker` and
 explicitly selected. The default stays `local`; the package does not
 re-export Boat. Before the ratifying change the handoff was dark and the
 factory refused Boat. The behavior below describes the runtime logic at
-`91d74305`: v5's (`8ba8c1e7`, which run 7 exercised live; runs 5 and 6 ran its
+`1628ec9a`: v5's (`8ba8c1e7`, which run 7 exercised live; runs 5 and 6 ran its
 predecessors `5498a137` and `252e4b15`) plus v6's
 activation gates in code and Python 3.12 parsing; the ratifying change
 altered only the module-status prose.
 
 - **Activation gates in code (v6).** `ANTIEK_BOAT_ORG` is required; a
   `wall_clock_s` above 3,600 s is refused before anything bills; at most 8 /
-  36 / 120 creates start in any rolling minute / hour / day; and a create is
+  36 / 120 creates start in any rolling minute / hour / day, each counted
+  from its first request until its sandbox can no longer start (v7), and
+  every same-key recovery re-`POST` admitted like a create; and a create is
   refused when the list-price VM time committed in the last 24 hours or 31
   days, each create at its full `ttlSeconds`, would pass USD 1.00 or USD
-  15.00 (VM time only; Boat's fee for an extra start is not counted).
+  15.00 (VM time only; Boat's fee for an extra start is not counted), in
+  integer nano-dollars with each price rounded up and each cap rounded
+  down (v7).
   Pacing and spend read `boat_ledger.jsonl` (in `$ANTIEK_HOME` or
   `~/.antiek`, or `$ANTIEK_BOAT_LEDGER`), written off the event loop under
   a lock on `boat_ledger.jsonl.lock` before each `POST`; an attempt counts
@@ -786,7 +792,9 @@ gate" below gives it:
    `DEFAULT_MAX_CONCURRENCY = 20`). Decision §7's start shares are policy that
    the owner applies when approving a plan, not code. **Closed in code
    (v6):** at most 8 / 36 / 120 creates in any rolling minute / hour / day,
-   counted in the durable ledger (item 7), changeable through
+   each counted from its first request until its sandbox can no longer
+   start, with recovery re-`POST`s admitted like creates (v7), counted in
+   the durable ledger (item 7), changeable through
    `ANTIEK_BOAT_CREATES_PER_MINUTE` / `_HOUR` / `_DAY`, never switched off.
 5. **No spend cap in code.** `ExecutionBackend` has no cost channel; the
    contained loop charges a notional USD 0.01 a step
@@ -904,7 +912,7 @@ run 6; it does not skip the plane-key and operational gates before activation.
 | Before | What must hold |
 |---|---|
 | G3.2, the paid smoke | G4 and K done. G3.1 passed, which closes item 1 (each environment's flags recorded, with the owner's dashboard record) and item 2 (each key's reads recorded, and a missing `account.read` accepted by the owner in writing or the key re-minted), and records item 11's live field (`proxyAiPresent`). The owner's separate written approval of the smoke envelope (Decision §7). |
-| G2, the ratification and the product registration | By the owner's dated ruling, personal-key Part A run 6 is the conditional source-ratification basis, with the receipt qualifications above retained for merge review. The §16 block, three October 7 notes and opt-in factory registration are prepared in this PR; the owner merges. Earlier pre-G2 requirements for full item 10, plane-key acceptance and answers to sign-offs 1 and 2 do not prevent this source preparation under that ruling. They are not deemed satisfied or waived for operation: product-key Part A and Part B remain mandatory before product activation; privacy/retention item 6 remains unresolved, the durable ledger/item 7 remains absent, and sign-offs 1, 2, 3 and 5 retain their restrictions. No GitHub token in build boxes, broader key placement, scheduled work or live operation is authorized by registration. |
+| G2, the ratification and the product registration | By the owner's dated ruling, personal-key Part A run 6 is the conditional source-ratification basis, with the receipt qualifications above retained for merge review. The §16 block, three October 7 notes and opt-in factory registration are prepared in this PR; the owner or the cloud CEO merges once GitHub CI is green (owner ruling 4). Earlier pre-G2 requirements for full item 10, plane-key acceptance and answers to sign-offs 1 and 2 do not prevent this source preparation under that ruling. They are not deemed satisfied or waived for operation: product-key Part A and Part B remain mandatory before product activation; privacy/retention item 6 remains unresolved, item 7's durable create ledger is closed in code for the product plane (v6) while the realized-spend journal stays incomplete, and sign-offs 1, 2, 3 and 5 retain their restrictions. No GitHub token in build boxes, broader key placement, scheduled work or live operation is authorized by registration. |
 | Activation of the product plane | G2 met. G3.2 Part B passed and Part A rerun with the product key, which close item 10, never by acceptance (both passed on 2026-11-09, run 7). G3.3 passed. Items 3, 4, 5, 8 and 9 closed in code, or accepted by the owner in writing (closed in code by v6 and run 7). The owner's separate written go. |
 | Activation of the build plane | The doctrine rulings of G2 ratified (the product registration is not needed). G3.2 Parts B and C passed; a failure of Part A alone blocks only the product plane. The build plane's code-side cost and pacing limits closed, or accepted by the owner in writing. The owner's written approval of the build envelope after Part C. |
 
@@ -1016,8 +1024,10 @@ spent, new starts fail with `402 billing_required` rather than bill [M,
 | Data scope | none | the public repository `Slimydog21/Antiek` | the same plus build outputs and synthetic fixtures; no production data, no `/etc/antiek/secrets.env` content, no DuckDB file |
 | Teardown | an accepted attempt is deleted at once with the build key and recorded | delete on completion; the id answers not-found; a `destroyed_at` ledger row | delete when the lane completes; stop only to resume; the reaper acts only on build-ledger ids; never touch `bx_235rmpn3` or `bx_35hs5p53` |
 
-**How the ceilings are checked.** Neither plane has a code-side cost cap or
-file ledger yet (Decision §5 items 5 and 7), and `GET /limits` shows one
+**How the ceilings are checked.** The build plane has no code-side cost cap
+or file ledger yet; the product plane's (Decision §5 items 5 and 7, closed
+in code by v6) refuse a create by committed list-price VM time, not by
+the bill. `GET /limits` shows one
 wallet for both planes and the research boxes, so its deltas cannot split
 spend by plane [M, OpenAPI `LimitsFields.wallet`, "The one wallet of this
 account or organization"]. The runbook's "Watching spend" gives the daily
@@ -1027,7 +1037,7 @@ always labelled incomplete:
 - **Product:** the backend logs one `BoatBackend sandbox accepted` line per
   sandbox id it learns through the create or a recovery (`via=create`, `repost`
   or `sweep`), and one `BoatBackend sandbox deleted` line per confirmed
-  delete [M, the module at `91d74305`]. Billed provisioning failures and
+  delete [M, the module at `1628ec9a`]. Billed provisioning failures and
   lost creates that the same-key re-`POST` or the label sweep recovered are
   therefore counted, which the earlier sum of `BoatBackend created
   workspace` lines missed. Each accepted sandbox counts at its full
@@ -1041,12 +1051,12 @@ always labelled incomplete:
   that path; the create raises `WorkspaceProvisionError` to its caller); a
   service killed between Boat's answer and the log line leaves nothing; and
   a sandbox accepted before the window opened is outside it [M, the module
-  at `91d74305`]. The check therefore counts the WARNINGs there are, lists
+  at `1628ec9a`]. The check therefore counts the WARNINGs there are, lists
   every `antiek-ws-` sandbox the product key can see that no accepted line
   names (the only net for the silent paths), and treats either as a stop.
   At the default 900 s on `small` a workspace costs at most USD 0.0045, so the product's share of 120
   starts a day caps a day's VM time at USD 0.54 while that share holds (it
-  is policy, not code: Decision §5 item 4); only longer TTLs or larger
+  is enforced in code since v6: Decision §5 item 4); only longer TTLs or larger
   sizes can reach USD 1 [I]. Above the ceiling, or while the figure is
   incomplete, the actual figure is the sum of `boat usage` over the ids and
   the dashboard.
@@ -1111,7 +1121,7 @@ is public [M]; moving `ci.yml` is not part of this decision.
 | **G3.1** | Read-only scope verification of each key, its organization and its environment; no sandbox is created | the cloud CEO at the owner's direction | runbook "G3.1" receipt: the CLI authenticates from `BOAT_API_KEY` alone and finds no stored login; both variables set and distinct; each key refused for Personal with `403 api_key_org_mismatch`; each key's limits read naming `teamId` = `ANTIEK_BOAT_ORG` with `canStart` true (or the `account.read` refusal recorded); each key unable to list account keys; each key's listing free of the research boxes; both environments' effective flags; the baseline of active sandboxes, included hours, wallet and starts, with any of those fields the org read does not carry recorded as absent | not run |
 | **K** | The owner's ruling on the two keys pasted into a chat transcript (open sign-off 3), carried out | the owner | rotation or revocation recorded by key id; G3.1's identity steps re-run for any replacement | open |
 | **G3.2** | Paid create, exec, collect and delete smoke, with the dated personal-key Part A exception recorded separately; future scoped-key runs require their own owner-approved envelopes. Part B covers cross-plane refusals and Part C build primitives | the owner authorizes each envelope; the credential-owning worker executes within it | retained receipts and their explicit qualification above; future runs require per-id found/not-found evidence, timings, measured or bounded cost and reconciled baseline, never keys or token URLs | personal-key Part A reported passed in run 6; aggregate teardown qualification open; product-key Part A and Part B pending before product activation; Part C pending before build activation |
-| **G2** | Record the owner's conditional ratification and stage the §16 block, three scoped October 7 notes and opt-in product factory registration under the current prerequisite matrix. Registration does not satisfy remaining operational prerequisites | the owner ratifies and merges; the CEO prepares the source change | dated ACCEPTED header; exact CLAUDE §6 block with date filled; three additive October 7 notes with original text preserved; lazy factory branch and hermetic selection/refusal tests; explicit live-receipt qualifications | ratification recorded from the relayed owner ruling; source registration prepared in PR #3826, awaiting owner merge; not an operational activation |
+| **G2** | Record the owner's conditional ratification and stage the §16 block, three scoped October 7 notes and opt-in product factory registration under the current prerequisite matrix. Registration does not satisfy remaining operational prerequisites | the owner ratifies; the owner or the cloud CEO merges once GitHub CI is green (owner ruling 4); the CEO prepares the source change | dated ACCEPTED header; exact CLAUDE §6 block with date filled; three additive October 7 notes with original text preserved; lazy factory branch and hermetic selection/refusal tests; explicit live-receipt qualifications | ratification recorded from the relayed owner ruling; source registration prepared in PR #3826, awaiting merge; not an operational activation |
 | **G3.3** | The cascade through the factory, three leaves at once, in a staging run of the service in the cloud CEO's environment, or on another staging host the owner names and the runbook's "Credentials" table records first | the owner authorizes | runbook "G3.3" receipt: the factory names `boat`; three sandboxes ran together; three notes promoted through the funnel only; teardown proof as G3.2; list-price bounds at the 900 s default TTL | cannot run before G2 |
 | **Activation** | As Decision §5 "Prerequisites by gate" sets it for each plane. Product: the owner's written go after G3.3, with the open activation gates of Decision §5 closed or accepted in writing (item 10 only by passing G3.2 Parts A and B). Build: G3.2 Parts B and C passed, the owner's explicit ruling on the build plane under §16 (open sign-off 4), any amendment that ruling requires ratified with the other doctrine rulings of G2, the Decision §5 activation gates that concern the build plane (at least code-side cost and pacing limits) closed or accepted in writing, then the owner's written approval of the build envelope after Part C | the owner | the go, dated, appended to this record; until then the swarm (cron `b413595fcdd5`) keeps Boat out of its targets | not given |
 
@@ -1403,7 +1413,7 @@ The remaining observations still gate the affected operation:
   key may not create one; only the fail-closed path was proved live then.
   Runs 6 and 7 later ran the module end to end, run 7 on v5's `8ba8c1e7`
   ("Live evidence");
-  v6's gates (`91d74305`) are proved hermetically, not yet live;
+  v6's gates (`1628ec9a`) are proved hermetically, not yet live;
 - whether the round-2 reap and cleanup (the `pkill` statuses, the exec lock,
   the fence files, `DELETE /commands/{processId}`) behave on a Boat VM as
   they do on the test suite's fake VM;
@@ -1768,6 +1778,46 @@ the default basetemp in `/tmp` and the same outside `/tmp`; the Boat file has
 `v5-mutants-20261109.txt` records 51 of 51 in-place mutants caught (K1 to
 K51, the round-3 set plus six of the new rules), with both files restored
 byte-exact after each.
+
+### The cloud CEO's review of v6 (`193a35dd`) and v7
+
+The CEO applied v6 unchanged as `193a35dd` and requested changes on it
+(PR body; source-gate score 70/100). v7 answers each finding with a test:
+
+1. **P1, reservation age is not start age.** v6 aged a create from its
+   reservation, so eight creates could reserve, pause past a minute
+   before sending, and start beside eight new ones; a recovery re-`POST`
+   was never admitted. v7 counts a create from its first request until
+   its sandbox can no longer start: until Boat names it, 2 minutes after
+   its last request ended, or, while a request never ended, an hour after
+   that request began. Every same-key recovery re-`POST` is admitted by
+   the pacing gate first, and is not sent when refused (the label sweep
+   still runs). The ledger records each request (`send`) and how it ended
+   (`settle`, `bind`, `void`); an answer that Boat is still minting the
+   key's sandbox settles nothing. A request whose stamp is more than 54
+   minutes old when it would be sent (its process was suspended) is not
+   sent at all, so no request outlives its count; the one gap left is a
+   process suspended inside the HTTP client while it connects, which
+   cannot be closed client-side.
+2. **P2, stored spend rounded down.** v7 keeps amounts as integer
+   nano-dollars, each create's list price rounded up and each cap rounded
+   down, with no epsilon; a v6 row (USD rounded to six decimals) is read
+   half a micro-dollar high.
+3. **P2, `probe` did not check the clock.** `probe` and every create now
+   share the check: a row of any kind, voided or not, stamped more than 5
+   minutes ahead refuses `probe` before any Boat read.
+4. **Current text reconciled:** the G2 rows, the ceilings paragraph and
+   the product pacing sentence; historical sections stay as written.
+5. **Found in review before this handoff:** the prune horizon is taken
+   from the newest earlier attempt only, so a mark stamped by a clock that
+   jumped forward cannot prune rows a corrected clock still counts.
+
+GitHub CI on `193a35dd` failed one test outside this change:
+`tests/test_integration_tiers.py::test_live_registry_passes_checker`,
+because NotDiamond's Tier 2 authorization in `integrations.toml` expired
+on 2026-11-07. It fails on the base too and needs the owner's integration
+disposition (promote with evidence, demote or retire); it is not extended
+or bypassed here.
 
 ## Evidence
 

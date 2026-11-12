@@ -919,8 +919,14 @@ real file first); keep both on the host's local disk
 with the state dir. `probe` fails, and every create is refused, while the
 ledger cannot be opened or locked, holds a malformed line, or holds a row
 stamped more than 5 minutes ahead of the clock (the clock moved back).
-To repair: stop the service, move the ledger aside, copy back only the
-well-formed rows of the last 31 days (dropping one under-counts), and
+A create counts against pacing from its first request until its sandbox
+can no longer start (an hour at most when its process died mid-request),
+so a crash can hold a slot for that hour; that is the safe side, not a
+fault. A create suspended for more than 54 minutes between reserving and
+sending is not sent; it fails with `Boat create not sent`, and a retry
+starts afresh. To repair: stop the service, move the ledger aside, copy back only
+the well-formed rows of the last 31 days, each attempt with all its
+`send`, `settle`, `bind` and `void` rows (dropping one under-counts), and
 start it again. Leave `ANTIEK_BOAT_MAX_TTL_S`,
 `ANTIEK_BOAT_CREATES_PER_MINUTE` / `_HOUR` / `_DAY`, `ANTIEK_BOAT_DAILY_USD`
 and `ANTIEK_BOAT_PERIOD_USD` unset to keep the decision record's §7

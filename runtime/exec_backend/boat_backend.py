@@ -126,36 +126,47 @@ the backend (``BackendUnavailable``) rather than leave a gate open.
   below Boat's 60 s minimum auto-stop could never be kept and is refused too.
 * **Pacing** (item 4): at most ``ANTIEK_BOAT_CREATES_PER_MINUTE`` /
   ``_PER_HOUR`` / ``_PER_DAY`` creates (default 8 / 36 / 120, the product's
-  share of the organization's start windows) in any rolling minute, hour
-  and day.
+  share of the organization's start windows) may start in any rolling
+  minute, hour and day. A create counts from its first request until its
+  sandbox can no longer start, so one that pauses between reserving and
+  sending is counted the whole pause; one paused so long (54 minutes) that
+  its count could lapse is not sent at all. Every same-key recovery
+  re-``POST`` is admitted like a new create, under the same deadline.
 * **Spend** (item 5): the list-price VM time committed in the last 24 hours
   and the last 31 days (so no billing period can pass it), each create
   counted at its full ``ttlSeconds`` (the auto-stop bounds it), may not pass
   ``ANTIEK_BOAT_DAILY_USD`` (default USD 1.00) or ``ANTIEK_BOAT_PERIOD_USD``
-  (default USD 15.00). This bounds VM time only: Boat's wallet fee for a
-  start beyond the organization's included windows is not counted; pacing
-  keeps the product inside its share of those windows.
+  (default USD 15.00). Amounts are integer nano-dollars, each create's
+  price rounded up and each cap rounded down, so no rounding admits spend
+  past a cap. This bounds VM time only: Boat's wallet fee for a start beyond
+  the organization's included windows is not counted; pacing keeps the
+  product inside its share of those windows.
 
 Pacing and spend read a durable ledger, ``$ANTIEK_BOAT_LEDGER``, else
 ``boat_ledger.jsonl`` in ``$ANTIEK_HOME`` or ``~/.antiek`` (item 7): one JSON
-line per create attempt, written before the ``POST`` under an exclusive
+line per create attempt, written before its ``POST`` under an exclusive
 ``flock`` on ``<ledger>.lock`` (waited for at most 10 s, then the create is
-refused), off the event loop. A symlinked ledger path is resolved to the
-one real file. An attempt stops counting only when nothing can have
-started: Boat refused it with a status it documents as a refusal before any
-start (``400``, ``401``, ``402``, ``403``, ``404``, ``429``), the request
-never left this host, or the create ended before its ``POST``. A ``409``,
-any other ``4xx``, a ``5xx`` or a lost answer keeps counting, the safe side,
-and is recovered like a lost create. Times are wall-clock, so the windows
-hold across restarts and across the per-launch backends the factory builds;
-a row, voided or not, stamped more than 5 minutes ahead of the clock means
-the clock moved back, and creates are refused until it or the ledger is
+refused), off the event loop, and a line for each recovery request and for
+how each request ended (``_CreateLedger``). A symlinked ledger path is
+resolved to the one real file. An attempt stops counting only when nothing
+can have started: Boat refused it with a status it documents as a refusal
+before any start (``400``, ``401``, ``402``, ``403``, ``404``, ``429``),
+the request never left this host, or the create ended before its ``POST``.
+Otherwise it counts in a pacing window until Boat names its sandbox, 2
+minutes after its last request ended, or, while a request never ended (its
+process died), an hour after that request began. A ``409``, any other
+``4xx``, a ``5xx`` or a lost answer is recovered like a lost create. Times
+are wall-clock, so the windows hold across restarts and across the
+per-launch backends the factory builds; a row of any kind, voided or not,
+stamped more than 5 minutes ahead of the clock means the clock moved back,
+and ``probe`` and every create are refused until it or the ledger is
 repaired. Rows older than the longest window, counted back from the newest
-earlier attempt rather than from the clock (which may have jumped), are
+earlier attempt rather than from the clock or a mark (either may carry a
+jump), are
 pruned once 1,000 accumulate. A refused create raises
 ``WorkspaceProvisionError`` (try later) and writes nothing; a ledger that
 cannot be opened or locked, or holds a line that is not a well-formed row
-(finite, non-negative times and amounts), refuses every create and fails
+(finite, non-negative times, integer amounts), refuses every create and fails
 ``probe`` (``BackendUnavailable``) until it is repaired.
 
 Provisioning (``create``)
@@ -579,7 +590,9 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import decimal
 import fcntl
+import fractions
 import json
 import logging
 import math
@@ -929,6 +942,19 @@ _LEDGER_PRUNE_ROWS: int = 1_000
 _LEDGER_LOCK_WAIT_S: float = 10.0
 #: A row stamped this far ahead of the clock means the clock moved back.
 _LEDGER_SKEW_S: float = 300.0
+#: How long after a request ended Boat may still start its sandbox (it reached
+#: Boat, which went on after the client gave up).
+_START_GRACE_S: float = 120.0
+#: How long a request that never ended (its process died) may still start a
+#: sandbox: ten times the longest the client keeps one request open.
+_OPEN_REQUEST_LIMIT_S: float = 3_600.0
+#: A request is sent only while its ledger stamp is younger than this, so it
+#: cannot outlive its count even with the client's every timeout running out
+#: (connect, write, read, pool: four times ``_HTTP_TIMEOUT_S``). A request
+#: older than this (its process was suspended) is not sent.
+_SEND_DEADLINE_S: float = _OPEN_REQUEST_LIMIT_S - 4 * _HTTP_TIMEOUT_S
+#: Ledger amounts are integer nano-dollars.
+_NANO: int = 10**9
 
 
 def _no_constant(name: str) -> float:
@@ -937,18 +963,39 @@ def _no_constant(name: str) -> float:
 
 class _CreateLedger:
     """The durable record behind the pacing and spend gates (see "Activation
-    gates in code"). One JSON object per line: an attempt row ``{id, at, type,
-    ttl, usd}`` written before the ``POST``, then ``{void: id}`` when Boat
-    refused the create or it never left this host, or ``{bind: id, sandbox:
-    bx_...}`` once its id is known. An attempt counts until voided. Every read
-    and write holds an exclusive ``flock`` on the sidecar ``<ledger>.lock``,
-    taken with a bounded wait, so a pruning rewrite (temporary file, ``fsync``,
-    rename) is safe for other processes too."""
+    gates in code"). One JSON object per line, each stamped ``at`` by the
+    wall clock when it is written:
+
+    * ``{id, at, type, ttl, nusd}``, a create attempt, written before its
+      ``POST``, which it opens: ``nusd`` is its full-TTL list price in
+      nano-dollars, rounded up;
+    * ``{send: id, at}``, a further request for it (the same-key recovery
+      re-``POST``), admitted by the pacing gate like a new create;
+    * ``{settle: id, at}``, its open request ended without a sandbox id;
+    * ``{bind: id, sandbox, at}``, Boat answered with its sandbox, which had
+      started by ``at``;
+    * ``{void: id}``, nothing can have started.
+
+    A sandbox starts only while a request for it is open, or within
+    ``_START_GRACE_S`` after one ended. So an attempt counts in a pacing
+    window from its first request until its ``bind``, its last ``settle``
+    plus that grace, or, while a request is open, ``_OPEN_REQUEST_LIMIT_S``
+    after the request began; a voided attempt never counts. A create that
+    pauses between reserving and sending is counted the whole pause, and
+    one whose stamp is older than ``_SEND_DEADLINE_S`` when it would send is
+    not sent at all (``stamp`` is the last ``reserve`` or ``send`` time). The
+    one gap left is a process suspended inside the HTTP client after that
+    check, while it connects, for longer than the remaining margin; it
+    cannot be closed client-side. Every read and write holds an exclusive ``flock`` on the sidecar
+    ``<ledger>.lock``, taken with a bounded wait, so a pruning rewrite
+    (temporary file, ``fsync``, rename) is safe for other processes too."""
 
     def __init__(self, path: str, now: Callable[[], float]) -> None:
         # The real file: a symlinked path must not lock or replace another one.
         self._path = os.path.realpath(path)
         self._now = now
+        #: When this instance's last ``reserve`` or ``send`` row was stamped.
+        self.stamp: float | None = None
 
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:
@@ -1011,6 +1058,20 @@ class _CreateLedger:
             rows.append(row)
         return rows
 
+    def _read_checked(self) -> tuple[list[dict[str, Any]], float]:
+        """The rows and the clock, refusing a clock that moved back: a row,
+        of any kind and voided or not, stamped past now plus the tolerance."""
+        rows = self._read()
+        now = self._now()
+        ahead = [row["at"] for row in rows if "at" in row and row["at"] > now + _LEDGER_SKEW_S]
+        if ahead:
+            raise BackendUnavailable(
+                f"the Boat create ledger {self._path!r} has {len(ahead)} rows stamped "
+                f"after now ({now:.0f} s, latest {max(ahead):.0f} s): the clock moved "
+                "back; creates are refused until the clock or the ledger is repaired"
+            )
+        return rows, now
+
     def _append(self, row: Mapping[str, Any]) -> None:
         data = (json.dumps(row, sort_keys=True) + "\n").encode()
         fd = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -1023,15 +1084,20 @@ class _CreateLedger:
             os.close(fd)
 
     def _prune(self, rows: list[dict[str, Any]], latest: float) -> None:
-        """Rewrite without the rows no window can see, once enough accumulate.
-        ``latest`` is the newest attempt before this one, never the clock: a
-        clock that jumped forward must not drop rows a corrected one still
-        counts."""
+        """Rewrite without the attempts no window can see, once enough
+        accumulate. ``latest`` is the newest attempt before this one, never
+        the clock or a mark: a clock that jumped forward (and stamped a mark)
+        must not drop rows a corrected one still counts."""
         horizon = latest - max(window for _, window, _ in (*PACING_GATES, *SPEND_GATES))
-        old = {row["id"] for row in rows if "id" in row and row["at"] < horizon}
+        ends = _start_ends(rows)
+        old = {
+            row["id"]
+            for row in rows
+            if "id" in row and max(row["at"], ends.get(row["id"], row["at"])) < horizon
+        }
         if len(old) < _LEDGER_PRUNE_ROWS:
             return
-        keep = [row for row in rows if row.get("id", row.get("void", row.get("bind"))) not in old]
+        keep = [row for row in rows if _row_attempt(row) not in old]
         tmp = f"{self._path}.{uuid.uuid4().hex}.tmp"
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
@@ -1045,59 +1111,51 @@ class _CreateLedger:
                 os.unlink(tmp)
             raise
 
+    def _pace(self, rows: list[dict[str, Any]], now: float, exclude: str | None) -> None:
+        """Refuse when one more start would pass a pacing window's cap,
+        counting every attempt but ``exclude`` whose sandbox may have started
+        inside the window (``WorkspaceProvisionError``: try later)."""
+        ends = _start_ends(rows)
+        for name, window, cap in [(n, w, _gate(n, c)) for n, w, c in PACING_GATES]:
+            used = sum(1 for aid, end in ends.items() if aid != exclude and end > now - window)
+            if used + 1 > cap:
+                raise WorkspaceProvisionError(
+                    f"Boat create pacing: {used} creates in the last {window} s, "
+                    f"at the cap of {cap:g} ({name}); try again later"
+                )
+
     def check(self) -> None:
-        """Open, lock and parse the ledger without writing (``probe``): every
-        failure is ``BackendUnavailable``, a lock held too long included."""
+        """Open, lock, parse and clock-check the ledger without writing
+        (``probe``): every failure is ``BackendUnavailable``, a lock held too
+        long included."""
         try:
             with self._locked():
-                self._read()
+                self._read_checked()
         except WorkspaceProvisionError as exc:
             raise BackendUnavailable(str(exc)) from exc
 
     def reserve(self, machine_type: str, ttl: int) -> str:
         """Refuse a create that a pacing window or a spend cap would not
         allow (``WorkspaceProvisionError``: try later); else record the
-        attempt and return its id. Blocking file work: run it off the loop."""
-        pacing = [(name, window, _gate(name, cap)) for name, window, cap in PACING_GATES]
-        spend = [(name, window, _gate(name, cap)) for name, window, cap in SPEND_GATES]
-        rate = LIST_PRICE_USD_PER_H.get(machine_type, max(LIST_PRICE_USD_PER_H.values()))
-        usd = rate * ttl / 3600
+        attempt, which opens its first request, and return its id. Blocking
+        file work: run it off the loop."""
+        spend = [(name, window, _cap_nusd(name, cap)) for name, window, cap in SPEND_GATES]
+        nusd = _create_nusd(machine_type, ttl)
         with self._locked():
-            rows = self._read()
-            now = self._now()
+            rows, now = self._read_checked()
+            self._pace(rows, now, exclude=None)
             voided = {row["void"] for row in rows if "void" in row}
             live = [row for row in rows if "id" in row and row["id"] not in voided]
-            attempts = [row for row in rows if "id" in row]
-            ahead = [row["at"] for row in attempts if row["at"] > now + _LEDGER_SKEW_S]
-            if ahead:
-                raise BackendUnavailable(
-                    f"the Boat create ledger {self._path!r} has {len(ahead)} rows stamped "
-                    f"after now ({now:.0f} s, latest {max(ahead):.0f} s): the clock moved "
-                    "back; creates are refused until the clock or the ledger is repaired"
-                )
-            for name, window, cap in pacing:
-                used = sum(1 for row in live if now - row["at"] < window)
-                if used + 1 > cap:
-                    raise WorkspaceProvisionError(
-                        f"Boat create pacing: {used} creates in the last {window} s, "
-                        f"at the cap of {cap:g} ({name}); try again later"
-                    )
             for name, window, cap in spend:
-                committed = sum(row["usd"] for row in live if now - row["at"] < window)
-                if committed + usd > cap + 1e-9:
+                committed = sum(_attempt_nusd(row) for row in live if now - row["at"] < window)
+                if committed + nusd > cap:
                     raise WorkspaceProvisionError(
-                        f"Boat spend cap: USD {committed:.4f} committed in the last "
-                        f"{window} s plus USD {usd:.4f} for this create would pass "
-                        f"USD {cap:g} ({name}); try again later"
+                        f"Boat spend cap: USD {committed / _NANO:.4f} committed in the last "
+                        f"{window} s plus USD {nusd / _NANO:.4f} for this create would pass "
+                        f"USD {cap / _NANO:g} ({name}); try again later"
                     )
             entry = uuid.uuid4().hex
-            row = {
-                "id": entry,
-                "at": round(now, 3),
-                "type": machine_type,
-                "ttl": ttl,
-                "usd": round(usd, 6),
-            }
+            row = {"id": entry, "at": now, "type": machine_type, "ttl": ttl, "nusd": nusd}
             try:
                 self._append(row)
             except OSError as exc:
@@ -1105,36 +1163,132 @@ class _CreateLedger:
                     f"the Boat create ledger {self._path!r} cannot be written "
                     f"({exc.strerror}), so the create is not sent"
                 ) from exc
+            stamps = [r["at"] for r in rows if "id" in r]
+            self.stamp = now
             with contextlib.suppress(OSError):  # the attempt is on disk already
-                self._prune([*rows, row], min(now, max((r["at"] for r in attempts), default=now)))
+                self._prune([*rows, row], min(now, max(stamps, default=now)))
             return entry
 
+    def send(self, entry: str) -> None:
+        """Admit and record one more request for ``entry`` (the same-key
+        recovery re-``POST``): a request that may start its sandbox now, so
+        the pacing gate counts it like a new create. Raises
+        ``WorkspaceProvisionError`` when refused or when the attempt is
+        settled for good (voided or bound); the request must not go out."""
+        with self._locked():
+            rows, now = self._read_checked()
+            if any(row.get("void") == entry or row.get("bind") == entry for row in rows):
+                raise WorkspaceProvisionError(f"create attempt {entry} is settled; nothing to send")
+            if not any(row.get("id") == entry for row in rows):
+                raise WorkspaceProvisionError(f"create attempt {entry} is not in the ledger")
+            self._pace(rows, now, exclude=entry)
+            try:
+                self._append({"send": entry, "at": now})
+            except OSError as exc:
+                raise BackendUnavailable(
+                    f"the Boat create ledger {self._path!r} cannot be written "
+                    f"({exc.strerror}), so the request is not sent"
+                ) from exc
+            self.stamp = now
+
     def mark(self, row: Mapping[str, Any]) -> None:
-        """Append a ``void`` or ``bind`` row. Never raises: a lost mark only
-        over-counts, which is the safe side."""
+        """Append a ``void``, ``settle`` or ``bind`` row, stamping the last
+        two with the clock. Never raises: a lost mark only over-counts, which
+        is the safe side."""
         try:
             with self._locked():
-                self._append(row)
+                self._append(row if "void" in row else {**row, "at": self._now()})
         except Exception:  # a mark must never break the create it records
             return
+
+
+def _row_attempt(row: Mapping[str, Any]) -> Any:
+    """The attempt id a row belongs to."""
+    for kind in ("id", "send", "settle", "bind", "void"):
+        if kind in row:
+            return row[kind]
+    return None
+
+
+def _start_ends(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """For each attempt not voided, the latest time its sandbox can have
+    started (``_CreateLedger``). Rows are in file order."""
+    voided = {row["void"] for row in rows if "void" in row}
+    opened: dict[str, float] = {}  # the attempt's open request began at
+    settled: dict[str, float] = {}  # its last request ended at
+    bound: dict[str, float] = {}
+    for row in rows:
+        if "id" in row:
+            opened[row["id"]] = row["at"]
+        elif "send" in row and row["send"] in opened:
+            opened[row["send"]] = row["at"]
+            settled.pop(row["send"], None)
+        elif "settle" in row:
+            settled[row["settle"]] = row["at"]
+        elif "bind" in row and "at" in row:
+            bound[row["bind"]] = row["at"]
+    ends: dict[str, float] = {}
+    for aid, began in opened.items():
+        if aid in voided:
+            continue
+        if aid in bound:
+            ends[aid] = bound[aid]
+        elif aid in settled:
+            ends[aid] = settled[aid] + _START_GRACE_S
+        else:
+            ends[aid] = began + _OPEN_REQUEST_LIMIT_S
+    return ends
+
+
+def _price(value: float) -> fractions.Fraction:
+    """A list price or cap as written (``0.018`` is 18/1000), not its binary float."""
+    return fractions.Fraction(decimal.Decimal(repr(value)))
+
+
+def _create_nusd(machine_type: str, ttl: int) -> int:
+    """A create's full-TTL list price in nano-dollars, rounded up."""
+    rate = LIST_PRICE_USD_PER_H.get(machine_type, max(LIST_PRICE_USD_PER_H.values()))
+    return math.ceil(_price(rate) * ttl * _NANO / 3600)
+
+
+def _cap_nusd(name: str, default: float) -> int:
+    """A spend cap in nano-dollars, rounded down; validated like every gate."""
+    _gate(name, default)
+    raw = os.environ.get(name, "").strip()
+    value = fractions.Fraction(decimal.Decimal(raw)) if raw else _price(default)
+    return math.floor(value * _NANO)
+
+
+def _attempt_nusd(row: Mapping[str, Any]) -> int:
+    """An attempt's committed nano-dollars. A row from before integer amounts
+    holds ``usd`` rounded to six decimals: read it half a micro-dollar high."""
+    if "nusd" in row:
+        return int(row["nusd"])
+    return math.ceil((_price(row["usd"]) + fractions.Fraction(1, 2_000_000)) * _NANO)
 
 
 def _valid_row(row: Any) -> bool:
     """One ledger line's shape; anything else refuses every create."""
     if not isinstance(row, dict):
         return False
-    kinds = [kind for kind in ("id", "void", "bind") if kind in row]
-    if kinds == ["id"]:
-        return (
-            isinstance(row["id"], str)
-            and _ledger_number(row.get("at"))
-            and _ledger_number(row.get("usd"))
-        )
-    if kinds == ["void"]:
-        return isinstance(row["void"], str)
-    if kinds == ["bind"]:
-        return isinstance(row["bind"], str) and isinstance(row.get("sandbox"), str)
-    return False
+    kinds = [kind for kind in ("id", "send", "settle", "bind", "void") if kind in row]
+    if len(kinds) != 1 or not isinstance(row[kinds[0]], str):
+        return False
+    kind = kinds[0]
+    if kind == "void":
+        return True
+    # A bind from before stamped rows has no ``at``; every other kind needs one.
+    if ("at" in row or kind != "bind") and not _ledger_number(row.get("at")):
+        return False
+    if kind == "id":
+        amounts = [key for key in ("nusd", "usd") if key in row]
+        if amounts == ["nusd"]:
+            value = row["nusd"]
+            return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 2**63
+        return amounts == ["usd"] and _ledger_number(row["usd"])
+    if kind == "bind":
+        return isinstance(row.get("sandbox"), str)
+    return True
 
 
 def _ledger_number(value: Any) -> bool:
@@ -3088,7 +3242,18 @@ class BoatBackend:
             "snapshots": False,
             "visibility": "private",
         }
-        lost = _LostCreate(api=api, wid=wid, pin=pin, body=body, headers=headers)
+        lost = _LostCreate(
+            api=api, wid=wid, pin=pin, body=body, headers=headers, ledger=ledger, entry=entry
+        )
+        if ledger.stamp is not None and self._wall_clock() - ledger.stamp > _SEND_DEADLINE_S:
+            # Suspended since the reservation: its count could lapse before
+            # Boat sees the POST, so it is not sent. Nothing can have started.
+            age = self._wall_clock() - ledger.stamp
+            await _run_shielded(self._settle_failed_create(lost, ledger, entry))
+            raise WorkspaceProvisionError(
+                f"Boat create not sent: its reservation is {age:.0f} s old (the process was "
+                f"suspended; the deadline is {_SEND_DEADLINE_S:g} s); try again"
+            )
         failure: ExecutionBackendError | None = None
         void = False  # nothing can have started: the attempt stops counting
         created: dict[str, Any] = {}
@@ -3244,6 +3409,7 @@ class BoatBackend:
         started, then sweep what may exist (closing ``lost.api``) or just
         close the client."""
         if void is not None:
+            lost.voided = True
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(ledger.mark, {"void": void})
         if lost.sweep:
@@ -3265,6 +3431,10 @@ class BoatBackend:
         is the last backstop."""
         api = lost.api
         try:
+            if not lost.voided:
+                # The create's request ended: from here its sandbox can start
+                # only within the grace, unless a recovery request reopens it.
+                await self._ledger_mark(lost, {"settle": lost.entry})
             deleted: set[str] = set()
             if lost.rediscover:
                 found = await self._rediscover(lost)
@@ -3289,6 +3459,29 @@ class BoatBackend:
         """The ``Sandbox`` record Boat bound to ``lost``'s ``Idempotency-Key``
         (with a valid id), or ``None``. Never raises ``ExecutionBackendError``."""
         for attempt in range(1, _REDISCOVER_ATTEMPTS + 1):
+            if lost.ledger is not None and lost.entry is not None:
+                # A re-POST may start the sandbox now: admitted like a create.
+                try:
+                    await asyncio.to_thread(lost.ledger.send, lost.entry)
+                except ExecutionBackendError as exc:
+                    self._log.warning(
+                        "same-key re-POST for the lost create of workspace %s not sent: %s",
+                        lost.wid,
+                        exc,
+                    )
+                    return None
+                stamp = lost.ledger.stamp
+                if stamp is not None and self._wall_clock() - stamp > _SEND_DEADLINE_S:
+                    # Suspended since its admission: its count could lapse first.
+                    self._log.warning(
+                        "same-key re-POST for the lost create of workspace %s not sent: "
+                        "admitted %.0f s ago (the deadline is %g s)",
+                        lost.wid,
+                        self._wall_clock() - stamp,
+                        _SEND_DEADLINE_S,
+                    )
+                    await self._ledger_mark(lost, {"settle": lost.entry})
+                    return None
             try:
                 again = await lost.api.request(
                     "POST",
@@ -3298,6 +3491,10 @@ class BoatBackend:
                     timeout_s=_CLEANUP_HTTP_TIMEOUT_S,
                 )
             except _BoatHTTPError as exc:
+                if exc.code != "idempotency_in_progress":
+                    await self._ledger_mark(lost, {"settle": lost.entry})
+                # else: Boat is still minting the key's sandbox; the request
+                # stays open (the next send, bind or the hour closes it).
                 if exc.code == "idempotency_in_progress" and attempt < _REDISCOVER_ATTEMPTS:
                     await self._sleep(self._poll_interval_s)
                     continue
@@ -3308,15 +3505,27 @@ class BoatBackend:
                 )
                 return None
             except ExecutionBackendError as exc:
+                await self._ledger_mark(lost, {"settle": lost.entry})
                 self._log.warning(
                     "same-key re-POST for the lost create of workspace %s: %s", lost.wid, exc
                 )
                 return None
             sandbox = again.get("sandbox")
             if isinstance(sandbox, dict) and _SANDBOX_ID_RE.match(_str(sandbox.get("id"))):
+                await self._ledger_mark(
+                    lost, {"bind": lost.entry, "sandbox": _str(sandbox.get("id"))}
+                )
                 return sandbox
+            await self._ledger_mark(lost, {"settle": lost.entry})
             return None
         return None
+
+    @staticmethod
+    async def _ledger_mark(lost: _LostCreate, row: Mapping[str, Any]) -> None:
+        """Record ``row`` for ``lost``'s attempt, off the loop; never raises."""
+        if lost.ledger is not None and lost.entry is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(lost.ledger.mark, row)
 
     async def _delete_orphan(self, api: _BoatApi, sid: str, wid: str) -> bool:
         """``DELETE /sandboxes/{sid}``; True when it is gone (404 included).
@@ -3405,6 +3614,9 @@ class _LostCreate:
     rediscover: bool = False
     sweep: bool = False
     accepted: set[str] = field(default_factory=set)
+    ledger: _CreateLedger | None = None
+    entry: str | None = None
+    voided: bool = False
 
 
 def _log_accepted(
