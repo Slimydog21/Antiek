@@ -15,6 +15,14 @@ MANIFEST_DIGEST = "sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8
 IMAGE_ID = "sha256:320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8"
 SOURCE_REFERENCE = f"{REPOSITORY}@{MANIFEST_DIGEST}"
 LOCAL_TAG = "alpine:latest"
+# Docker's containerd image store (the default since Docker 29, as on GitHub's
+# ubuntu-26.04 runners) names an image by its manifest digest; the classic store
+# names it by its config digest, IMAGE_ID. The pinned manifest commits to that
+# config digest, so either identity is the approved image, and nothing else is.
+_MANIFEST_MEDIA_TYPES = (
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+)
 PLATFORM = "linux/amd64"
 LOCAL_DAEMON = "unix:///var/run/docker.sock"
 MAX_INSPECT_BYTES = 65536
@@ -147,8 +155,15 @@ def _verify(data: bytes, *, source: bool) -> None:
         raise ImagePreparationError("Docker inspection is not valid JSON") from error
     if not isinstance(value, dict):
         raise ImagePreparationError("Docker inspection is not an image object")
+    descriptor = value.get("Descriptor")
+    by_manifest = (
+        value.get("Id") == MANIFEST_DIGEST
+        and isinstance(descriptor, dict)
+        and descriptor.get("digest") == MANIFEST_DIGEST
+        and descriptor.get("mediaType") in _MANIFEST_MEDIA_TYPES
+    )
     if (
-        value.get("Id") != IMAGE_ID
+        (value.get("Id") != IMAGE_ID and not by_manifest)
         or value.get("Os") != "linux"
         or value.get("Architecture") != "amd64"
     ):
