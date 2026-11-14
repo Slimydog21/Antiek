@@ -80,7 +80,7 @@ jobs:
         run: uv lock --check
 
   pytest-suite:
-    name: pytest shard ${{ matrix.shard_index }} of 4
+    name: pytest shard ${{ matrix.shard_index }} of 4 (diag attempt ${{ matrix.attempt }})
     needs: dependency-lock
     # Production's OS (infrastructure/terraform: Ubuntu 24.04 LTS), not the
     # moving ubuntu-latest label, which became ubuntu-26.04 on 2026-11-12. Its
@@ -101,6 +101,7 @@ jobs:
       fail-fast: false
       matrix:
         shard_index: [0]  # TEMPORARY diagnostic branch: shard 0 only
+        attempt: [1, 2, 3]  # three copies, to catch the intermittent timeout
 
     steps:
       - name: Checkout

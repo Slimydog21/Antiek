@@ -66,34 +66,56 @@ def pytest_runtest_setup(item: object) -> None:
         return
     out = os.environ.get("DIAG_OUT", "/dev/stderr")
 
+    # v2: an observer only. The awaited coroutine still runs inside the caller's task
+    # under the real asyncio.wait_for (v1 moved it into its own task, and passed).
     async def wait_for(fut: object, timeout: float) -> object:
+        loop = asyncio.get_running_loop()
         t0 = time.perf_counter()
-        task = asyncio.ensure_future(fut)  # type: ignore[arg-type]
-        done, _ = await asyncio.wait({task}, timeout=timeout)
-        if task in done:
+        seen: dict[str, float] = {}
+
+        def snap() -> None:  # on the loop, shortly before the deadline
+            seen["loop_snapshot"] = time.perf_counter() - t0
             with open(out, "a") as fh:
-                fh.write(f"wait_for ok in {time.perf_counter() - t0:.3f}s\n")
+                fh.write(f"LOOP SNAPSHOT at {seen['loop_snapshot']:.3f}s (timeout {timeout})\n")
                 _state(fh)
-            return task.result()
+                fh.flush()
+                faulthandler.dump_traceback(file=fh, all_threads=True)
+                for t in asyncio.all_tasks(loop):
+                    fh.write(f"--- task {t!r}\n")
+                    t.print_stack(file=fh)
+
+        def thread_snap() -> None:  # off the loop: shows a loop that is itself blocked
+            if "done" in seen:
+                return
+            with open(out, "a") as fh:
+                fh.write(f"THREAD SNAPSHOT at {time.perf_counter() - t0:.3f}s; "
+                         f"loop snapshot ran: {'loop_snapshot' in seen}\n")
+                fh.flush()
+                faulthandler.dump_traceback(file=fh, all_threads=True)
+
+        handle = loop.call_later(timeout * 0.9, snap)
+        timer = threading.Timer(timeout * 1.5, thread_snap)
+        timer.daemon = True
+        timer.start()
+        try:
+            result = await _ORIG(fut, timeout)  # type: ignore[arg-type]
+        except TimeoutError:
+            with open(out, "a") as fh:
+                fh.write(f"TIMEOUT raised at {time.perf_counter() - t0:.3f}s\n")
+            raise
+        finally:
+            seen["done"] = time.perf_counter() - t0
+            handle.cancel()
+            timer.cancel()
         with open(out, "a") as fh:
-            fh.write(f"TIMEOUT after {time.perf_counter() - t0:.3f}s\n")
+            fh.write(f"wait_for ok in {seen['done']:.3f}s\n")
             _state(fh)
-            fh.flush()
-            faulthandler.dump_traceback(file=fh, all_threads=True)
-            for t in asyncio.all_tasks():
-                fh.write(f"--- task {t!r}\n")
-                t.print_stack(file=fh)
-        done, _ = await asyncio.wait({task}, timeout=5)
-        with open(out, "a") as fh:
-            fh.write(f"after 5 s more: done={task in done} at {time.perf_counter() - t0:.3f}s\n")
-            _state(fh)
-        task.cancel()
-        raise TimeoutError
+        return result
 
     asyncio.wait_for = wait_for  # type: ignore[assignment]
     _GC.clear()
     gc.callbacks.append(_gc_cb)
-    print(f"diag armed for {TARGET}", file=sys.__stderr__)
+    print(f"diag v2 armed for {TARGET}", file=sys.__stderr__)
 
 
 def pytest_runtest_teardown(item: object) -> None:
