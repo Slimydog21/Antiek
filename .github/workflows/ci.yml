@@ -153,6 +153,18 @@ jobs:
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
 
+      - name: Ensure the suite's host tools (ansible-playbook, shellcheck)
+        # GitHub's ubuntu-24.04 image ships both; a Boat VM does not, and the suite SKIPS rather than fails without them: on
+        # 2026-11-25 eleven deploy-playbook gate tests and one terraform check skipped on Boat and ran on GitHub. Idempotent:
+        # a no-op wherever both are already on PATH.
+        run: |
+          missing=""
+          command -v ansible-playbook >/dev/null || missing="$missing ansible-core"
+          command -v shellcheck >/dev/null || missing="$missing shellcheck"
+          if [ -n "$missing" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq $missing; fi
+          ansible-playbook --version | head -n 1
+          shellcheck --version | sed -n 2p
+
       - name: Prepare verified official Docker test image
         timeout-minutes: 10
         run: python tools/ci/prepare_docker_test_image.py
