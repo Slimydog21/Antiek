@@ -596,6 +596,7 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         temperature: float,
         api_key: str,
         extra_body: Mapping[str, Any] | None = None,
+        _vendor_defaults: Mapping[str, Any] | None = None,
     ) -> BuiltProviderRequest:
         """Build a catalog variant as the provider knows it: its wire model name
         plus its mode switch, so a legacy or mode-split id keeps the behaviour
@@ -622,6 +623,7 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
             temperature=temperature,
             api_key=api_key,
             extra_body=body or None,
+            _vendor_defaults=_vendor_defaults,
         )
 
 

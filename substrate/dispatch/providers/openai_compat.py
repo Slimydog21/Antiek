@@ -220,6 +220,7 @@ class OpenAICompatProvider:
         temperature: float,
         api_key: str,
         extra_body: Mapping[str, Any] | None = None,
+        _vendor_defaults: Mapping[str, Any] | None = None,
     ) -> BuiltProviderRequest:
         """``extra_body`` adds fields for this call only, after the
         constructor's; a shared adapter instance is never mutated per call."""
@@ -235,8 +236,9 @@ class OpenAICompatProvider:
             "messages": [{"role": "user", "content": prompt}],
         }
         # Preserve constructor overrides followed by per-call overrides.
-        if self._extra_body:
-            body.update(self._extra_body)
+        vendor_defaults = self._extra_body if _vendor_defaults is None else _vendor_defaults
+        if vendor_defaults:
+            body.update(vendor_defaults)
         if extra_body:
             body.update(extra_body)
         return BuiltProviderRequest(url=url, headers=headers, body=body, model=model)
@@ -250,10 +252,28 @@ class OpenAICompatProvider:
         temperature: float,
         extra_body: Mapping[str, Any] | None = None,
     ) -> RawProviderResponse:
+        vendor_defaults = dict(self._extra_body)
+        caller_options = dict(extra_body) if extra_body is not None else {}
+        if any(
+            key in vendor_defaults or key in caller_options
+            for key in ("model", "max_tokens", "temperature", "messages")
+        ):
+            raise ProviderError(
+                f"{self.name}: vendor options cannot replace core request fields",
+                provider=self.name,
+                model=model,
+                latency_ms=0,
+                retryable=False,
+            )
         api_key = self._resolve_api_key()
         built = self.build_request(
-            model=model, prompt=prompt, max_tokens=max_tokens,
-            temperature=temperature, api_key=api_key, extra_body=extra_body,
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            api_key=api_key,
+            extra_body=caller_options,
+            _vendor_defaults=vendor_defaults,
         )
         model = built.model
 

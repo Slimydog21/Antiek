@@ -64,7 +64,7 @@ def test_openai_call_uses_variant_builder_once_and_preserves_override_order(
         provider = VariantProvider(
             name="selected-provider", base_url="https://example.invalid/root/",
             chat_completions_path="/chat/completions", api_key=_KEY, client=client,
-            extra_body={"model": "constructor-model", "max_tokens": 100, "vendor": True},
+            extra_body={"top_p": 0.2, "vendor": True},
         )
         parser = provider.parse_response
 
@@ -75,7 +75,7 @@ def test_openai_call_uses_variant_builder_once_and_preserves_override_order(
         monkeypatch.setattr(provider, "parse_response", parse)
         raw = provider.call(
             model="catalog-model", prompt=_PROMPT, max_tokens=30, temperature=0.4,
-            extra_body={"model": "call-model", "max_tokens": 20},
+            extra_body={"top_p": 0.8},
         )
 
     assert len(builds) == len(requests) == 1
@@ -85,10 +85,10 @@ def test_openai_call_uses_variant_builder_once_and_preserves_override_order(
     assert str(requests[0].url) == built.url == "https://example.invalid/root/chat/completions"
     assert requests[0].headers["authorization"] == built.headers["Authorization"] == f"Bearer {_KEY}"
     assert json.loads(requests[0].content) == built.body == {
-        "model": "call-model", "max_tokens": 20, "temperature": 0.4,
-        "messages": [{"role": "user", "content": _PROMPT}], "vendor": True,
+        "model": "wire-model", "max_tokens": 30, "temperature": 0.4,
+        "messages": [{"role": "user", "content": _PROMPT}], "vendor": True, "top_p": 0.8,
     }
-    assert provider._extra_body == {"model": "constructor-model", "max_tokens": 100, "vendor": True}
+    assert provider._extra_body == {"top_p": 0.2, "vendor": True}
     assert raw == parser(
         httpx.Response(200, json=_openai_payload(), headers={"x-request-id": "req-1"}),
         model="wire-model", api_key=_KEY, latency_ms=raw.latency_ms, request_url=built.url,
@@ -254,7 +254,7 @@ def test_openai_error_keeps_captured_url_and_pre_override_model() -> None:
         )
         with pytest.raises(ProviderError) as failure:
             provider.call(model="original-model", prompt=_PROMPT, max_tokens=30, temperature=0.4,
-                          extra_body={"model": "overridden-model"})
+                          extra_body={"top_p": 0.8})
 
     assert failure.value.model == "original-model"
     assert failure.value.endpoint == "https://original.invalid/v1/chat/completions"
