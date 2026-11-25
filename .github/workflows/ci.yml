@@ -26,6 +26,12 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:  # let the operator trigger from the Actions tab
+    inputs:
+      shard_runner:
+        description: "Runner for the four pytest shards: auto (follow repo variable ANTIEK_CI_SHARD_RUNNER), github or boat (see the pytest-suite comment)"
+        type: choice
+        options: [auto, github, boat]
+        default: auto
 
 concurrency:
   # One CI run per PR branch: a new push to a PR cancels the previous run,
@@ -87,7 +93,19 @@ jobs:
     # ffmpeg 8.0.1 writes "Error parsing Opus packet header." to stderr for valid
     # Opus, which the bounded decoder (acquisition/voice/audio_bound.py) rightly
     # refuses, so the suite would test an ffmpeg production does not run.
-    runs-on: ubuntu-24.04
+    # Boat.dev runners for the four shards when repo variable ANTIEK_CI_SHARD_RUNNER=boat (set 2026-11-25 by owner ruling,
+    # docs/decisions/boat-compute-backbone-2026-11-09.md "Owner ruling of 2026-11-25"); a manual run's shard_runner input
+    # overrides it for that run (github or boat; auto follows the variable). Measured 2026-11-24 with the same tests back to back:
+    # whole run 24.0 min on Boat `default` (4 vCPU, run 45500931045) against 31.8 min on ubuntu-24.04 (run 45495248383), equal
+    # passed/skipped counts on every shard; about USD 0.04 of plan credit a run. Boat runs a public-repo job only when its author
+    # AND trigger are allowlisted (Slimydog21), so Dependabot and any other actor always get ubuntu-24.04 (Boat would refuse them
+    # and the required checks would never report). A Boat job gets no Boat environment, owner GitHub token or model keys (Boat's
+    # CI docs); this job reads no secret and its GITHUB_TOKEN is the repo's read-only default. Each run takes 4 of the account's
+    # 200 starts a day (60 an hour, 12 a minute), shared with all other Boat use: past the minute limit a job waits, past the hour
+    # limit it waits up to 15 min, past the day limit it fails at once ("Paused by plan limit") and does not restart. Fall back
+    # with `gh variable set ANTIEK_CI_SHARD_RUNNER --body github`, then push or start a new run. Boat's image is Ubuntu 24.04 LTS,
+    # the production OS this job is pinned to.
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.shard_runner == 'boat') || (inputs.shard_runner != 'github' && vars.ANTIEK_CI_SHARD_RUNNER == 'boat' && github.triggering_actor == 'Slimydog21' && github.actor == 'Slimydog21' && (github.event_name != 'pull_request' || github.event.pull_request.user.login == 'Slimydog21'))) && 'boat' || 'ubuntu-24.04' }}
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.
@@ -139,6 +157,18 @@ jobs:
           python tools/ci/ensure_media_runtime.py
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
+
+      - name: Ensure the suite's host tools (ansible-playbook, shellcheck)
+        # GitHub's ubuntu-24.04 image ships both; a Boat VM does not, and the suite SKIPS rather than fails without them: on
+        # 2026-11-25 eleven deploy-playbook gate tests and one terraform check skipped on Boat and ran on GitHub. Idempotent:
+        # a no-op wherever both are already on PATH.
+        run: |
+          missing=""
+          command -v ansible-playbook >/dev/null || missing="$missing ansible-core"
+          command -v shellcheck >/dev/null || missing="$missing shellcheck"
+          if [ -n "$missing" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq $missing; fi
+          ansible-playbook --version | head -n 1
+          shellcheck --version | sed -n 2p
 
       - name: Prepare verified official Docker test image
         timeout-minutes: 10
