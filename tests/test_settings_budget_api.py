@@ -232,6 +232,87 @@ def test_budget_operator_cap_differs_from_daemon_cap_stays_consistent(
     assert budget.remaining_usd != 1.0
 
 
+@pytest.mark.parametrize(
+    ("daemon_cap", "reserved", "operator_cap", "expected_remaining"),
+    [(5.0, 4.0, 200.0, 196.0), (500.0, 50.0, 20.0, -30.0)],
+)
+def test_budget_http_uses_settings_cap_with_persisted_spend(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    daemon_cap: float,
+    reserved: float,
+    operator_cap: float,
+    expected_remaining: float,
+) -> None:
+    # Multiple valid reservations respect the daemon's $2 per-investigation cap.
+    budget = DaemonBudget(daily_cap_usd=daemon_cap)
+    for _ in range(int(reserved / 2.0)):
+        budget.reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", str(operator_cap))
+
+    response = client.get("/settings/budget")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daily_cap_usd"] == operator_cap
+    assert body["spent_status"] == "known"
+    assert body["spent_usd"] == reserved
+    assert body["remaining_usd"] == expected_remaining
+    assert body["enforcement_cap_usd"] == daemon_cap
+    assert body["over_budget"] is (expected_remaining < 0.0)
+
+
+@pytest.mark.parametrize(
+    ("daemon_cap", "reserved", "operator_cap", "input_rate", "expected_high", "exceeds"),
+    [
+        (5.0, 4.0, 200.0, 10_000.0, 12.0, False),
+        (5.0, 4.0, 200.0, 200_000.0, 240.0, True),
+        (500.0, 50.0, 20.0, 10_000.0, 12.0, True),
+    ],
+)
+def test_prompt_cost_http_checks_settings_headroom_not_daemon_cap(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    daemon_cap: float,
+    reserved: float,
+    operator_cap: float,
+    input_rate: float,
+    expected_high: float,
+    exceeds: bool,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    budget = DaemonBudget(daily_cap_usd=daemon_cap)
+    for _ in range(int(reserved / 2.0)):
+        budget.reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", str(operator_cap))
+    # Controlled pricing only; spend, cap resolution and HTTP routing are real.
+    monkeypatch.setattr(
+        sb,
+        "_load_dispatch_config",
+        lambda: {
+            "tiers": {
+                "pro": {
+                    "provider": "zai",
+                    "model": "glm-5.2",
+                    "pricing": {"input_per_mtok": input_rate},
+                }
+            }
+        },
+    )
+
+    response = client.post(
+        "/settings/prompt-cost-estimate",
+        json={"tier": "pro", "input_chars": 4000, "expected_output_tokens": 0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pricing_known"] is True
+    assert body["estimated_usd_high"] == expected_high
+    assert body["would_exceed_budget"] is exceeds
+
+
 def test_budget_reports_persisted_daemon_cap_over_changed_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
