@@ -12,7 +12,7 @@ import {
 } from "../../lib/api";
 import { createFork } from "../../api/forks";
 import { useBranchTo } from "../../workspace/useBranchTo";
-import { recordFork } from "../../workspace/forkLineage";
+import { recordFork, useForkLineage } from "../../workspace/forkLineage";
 import { awaitWorkspaceOwnerSession, isWorkspaceOwnerSession, useWorkspaceOwner } from "../../lib/accountWorkspaceOwner";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
@@ -81,6 +81,13 @@ export interface ReadingCompanionProps {
   readingThreadId: string;
   /** The reader's current page — the fork's point locator when it forks. */
   pageIndex?: number | null;
+  /** SPR-03: open the composed evidence view targeting this fork (the
+   *  reader mounts the overlay; the companion knows the threads). */
+  onComposeOutcomes?: (payload: {
+    investigationIds: string[];
+    forkId: string;
+    forkDocumentId: string;
+  }) => void;
 }
 
 export default function ReadingCompanion({
@@ -88,6 +95,7 @@ export default function ReadingCompanion({
   title,
   readingThreadId,
   pageIndex = null,
+  onComposeOutcomes,
 }: ReadingCompanionProps) {
   // Read/display only — subscribe to the book's reading thread for notes.
   const reading = useInvestigation(readingThreadId);
@@ -282,7 +290,13 @@ export default function ReadingCompanion({
       {/* Thread-merge + document fork SPR-01: the fork action. Creates the
           named divergent copy and opens it as a tab beside this one; the
           original is never touched. */}
-      <ForkSection documentId={documentId} pageIndex={pageIndex} />
+      <ForkSection
+        documentId={documentId}
+        pageIndex={pageIndex}
+        readingThreadId={readingThreadId}
+        chaseThreadIds={readyIds}
+        onComposeOutcomes={onComposeOutcomes}
+      />
 
       <CompanionSection key={documentId} documentId={documentId} />
 
@@ -345,9 +359,19 @@ export default function ReadingCompanion({
 function ForkSection({
   documentId,
   pageIndex,
+  readingThreadId,
+  chaseThreadIds,
+  onComposeOutcomes,
 }: {
   documentId: string;
   pageIndex: number | null;
+  readingThreadId: string;
+  chaseThreadIds: string[];
+  onComposeOutcomes?: (payload: {
+    investigationIds: string[];
+    forkId: string;
+    forkDocumentId: string;
+  }) => void;
 }) {
   const owner = useWorkspaceOwner();
   const lifetime = useRef<AbortController | null>(null);
@@ -365,6 +389,13 @@ function ForkSection({
     operationIdRef.current = null;
     return () => { controller.abort(); if (lifetime.current === controller) lifetime.current = null; };
   }, [documentId, owner]);
+  // SPR-03: this document IS a fork → its own surface offers "bring in
+  // outcomes" (the composed evidence view targeting this fork). The threads
+  // offered are this book's reading thread, its completed chases, and — the
+  // whole point of a fork — the ORIGINAL's reading thread, where the
+  // research on the book usually ran.
+  const forkedFrom = useForkLineage((s) => s.byFork[documentId] ?? null);
+
 
   async function fork() {
     const controller = lifetime.current;
@@ -435,6 +466,29 @@ function ForkSection({
         >
           Forked — opened in the tab beside this one.
         </p>
+      )}
+      {forkedFrom && onComposeOutcomes && (
+        <button
+          type="button"
+          data-bring-in-outcomes
+          onClick={() =>
+            onComposeOutcomes({
+              investigationIds: [
+                ...new Set([
+                  readingThreadId,
+                  `read-${forkedFrom.parent_document_id}`,
+                  ...chaseThreadIds,
+                ]),
+              ],
+              forkId: forkedFrom.fork_id,
+              forkDocumentId: documentId,
+            })
+          }
+          className="mt-2 block font-mono text-xs text-ink hover:underline dark:text-bright"
+          title="Review research outcomes side by side and merge the ones you choose into this fork — with your review, never automatically"
+        >
+          Bring in outcomes…
+        </button>
       )}
       {failed === "rights" && (
         <p role="status" className="mt-1 font-serif text-xs text-emperor">
