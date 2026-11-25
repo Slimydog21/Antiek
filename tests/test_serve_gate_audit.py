@@ -141,19 +141,19 @@ def test_all_configured_serve_modules_exist_and_are_scanned():
 
 # ── Completeness (verifier MAJOR): the blind spot is self-disclosing ──────────
 
-def test_coverage_frontier_surfaces_unaudited_label_serve_modules():
-    # The verifier-critic found substrate/graph/traverse.py serves canonical_label
-    # (path labels via the research connector) but is NOT in SERVE_MODULES. Rather
-    # than silently under-cover OR make an unadjudicated §9.0 privilege call by
-    # force-gating it, the guard REPORTS it in the coverage frontier so a reviewer
-    # sees the blind spot in the guard's own output.
+def test_traverse_label_queries_are_in_the_enforced_audit():
+    # #711 takes the defensive-gate option, not a privileged exemption.
     report = audit()
-    assert "substrate/graph/traverse.py" in report.coverage_frontier, (
-        "traverse.py serves node labels and must appear in the coverage frontier "
-        "until its privilege status is adjudicated"
-    )
-    # The frontier is INFORMATIONAL — it must not by itself fail the enforced check.
-    assert report.ok, "the coverage frontier must not red the build (informational)"
+    assert "substrate/graph/traverse.py" in report.modules_scanned
+    assert "substrate/graph/traverse.py" not in report.coverage_frontier
+    assert report.ok
+
+
+def test_coverage_frontier_surfaces_unaudited_label_serve_modules():
+    report = audit()
+    assert "substrate/graph/insight_question.py" in report.coverage_frontier
+    # The remaining frontier is informational, not an enforced failure.
+    assert report.ok
 
 
 def test_frontier_excludes_the_audited_modules():

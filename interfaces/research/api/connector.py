@@ -90,6 +90,7 @@ def _run_traversal(
     algorithm: str,
     seed: SeedPair,
     max_paths_per_pair: int,
+    policy_tag: str | None = None,
 ) -> list[dict[str, Any]]:
     """Run the requested algorithm against one seed pair. Returns
     the list of raw path dicts (the ``substrate.graph.traverse``
@@ -97,15 +98,15 @@ def _run_traversal(
     if algorithm == "top_n_shortest_paths":
         return top_n_paths(
             con, seed.source_node_id, seed.target_node_id,
-            n=max_paths_per_pair,
+            n=max_paths_per_pair, policy_tag=policy_tag,
         )
     if algorithm == "shortest_simple_path":
         # shortest_path already returns [path_dict] (or [] when no path) —
         # wrapping it again produced list[list[dict]] and crashed _paths_to_typed.
-        return shortest_path(con, seed.source_node_id, seed.target_node_id)
+        return shortest_path(con, seed.source_node_id, seed.target_node_id, policy_tag=policy_tag)
     if algorithm == "depth_first_limited":
         return dfs_with_depth(
-            con, seed.source_node_id, seed.target_node_id,
+            con, seed.source_node_id, seed.target_node_id, policy_tag=policy_tag,
         )
     if algorithm == "bfs_semantic_stop":
         # bfs_semantic_stop requires a waypoint; the bridge falls
@@ -114,7 +115,7 @@ def _run_traversal(
         # this in retrospect.
         return top_n_paths(
             con, seed.source_node_id, seed.target_node_id,
-            n=max_paths_per_pair,
+            n=max_paths_per_pair, policy_tag=policy_tag,
         )
     return []
 
@@ -189,13 +190,15 @@ def _traversal_for_request(
             flush=True,
         )
         return []
+    # Match loop_one phase-2 retrieval: absent/blank tags never imply privilege.
+    policy_tag = os.environ.get("ANTIEK_RESEARCH_POLICY_TAG", "").strip() or None
     raw_paths: list[dict[str, Any]] = []
     try:
         for seed in req.seed_pairs:
             try:
                 raw_paths.extend(_run_traversal(
                     con, algorithm=req.algorithm, seed=seed,
-                    max_paths_per_pair=req.max_paths_per_pair,
+                    max_paths_per_pair=req.max_paths_per_pair, policy_tag=policy_tag,
                 ))
             except Exception as exc:  # pragma: no cover — diagnostic
                 print(

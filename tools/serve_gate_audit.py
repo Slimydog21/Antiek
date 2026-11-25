@@ -48,10 +48,9 @@ Honest limits (named, not hidden — see the SPR-02 rigor block):
        report's ``coverage_frontier`` (informational, self-disclosing) but NOT
        vetted — because whether it serves a *non-privileged* consumer (a leak)
        or is owner/research-only (legitimately ungated) is a §9.0 privilege
-       adjudication, not a code-shape fact. As of this writing the frontier
-       includes ``substrate/graph/traverse.py`` (path labels served via the
-       research connector) — filed for privilege adjudication, deliberately not
-       silently gated.
+       adjudication, not a code-shape fact. ``substrate/graph/traverse.py``
+       now uses defensive gating for #711 and is in the enforced module set;
+       ``insight_question.py`` remains on the informational frontier.
   (ii) **Literal-SQL only.** SQL built by cross-call string concatenation, a
        column selected via ``SELECT *``, or a table/column name interpolated
        from a variable can carry the label without a matchable literal, and is
@@ -81,6 +80,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SERVE_MODULES: tuple[str, ...] = (
     "substrate/graph/search.py",
     "substrate/graph/retrieval_substrate.py",
+    "substrate/graph/traverse.py",
 )
 
 #: The single canonical gate a labelled serve SELECT must route through.
@@ -130,7 +130,7 @@ class AuditReport:
     #: modules that emit ``canonical_label`` from a SELECT but are NOT in
     #: SERVE_MODULES, so the enforcing check does not vet them. Surfaced so the
     #: completeness limit is self-disclosing — a reviewer sees the un-audited
-    #: label-serve surface (e.g. traverse.py path labels) in the guard's own
+    #: label-serve surface (e.g. insight_question.py) in the guard's own
     #: output rather than having to trust a docstring. Informational: it does
     #: NOT red the build, because whether such a module serves a *non-privileged*
     #: consumer (a leak) or is owner/research-only (legitimately ungated) is a
