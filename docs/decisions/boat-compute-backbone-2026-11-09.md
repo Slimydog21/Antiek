@@ -1110,7 +1110,9 @@ because both put model credentials in a box [M, `environments_access.md`,
 `pricing.md`]. `runs-on: boat` GitHub runners need the USD 20 plan or higher,
 now met, but connecting them needs a key with `account.admin` and Boat refuses
 jobs from public repositories by default [M, `ci.md`], and `Slimydog21/Antiek`
-is public [M]; moving `ci.yml` is not part of this decision.
+is public [M]; moving `ci.yml` is not part of this decision. The owner's
+ruling of 2026-11-25 ("Owner ruling of 2026-11-25") later moved its four
+pytest shards, and nothing else.
 
 ## Gates and acceptance evidence
 
@@ -1317,6 +1319,51 @@ orchestrator's session]:
     orchestrator writes its code-side cost and pacing limits (4 / 20 / 60
     creates a minute / hour / day, USD 5 a day, USD 50 a period), then the
     owner approves its envelope.
+
+## Owner ruling of 2026-11-25: the four CI pytest shards on Boat runners
+
+The owner ruled in the operator's session on 2026-11-25: "set
+ANTIEK_CI_SHARD_RUNNER to boat and merge #3834" [M, the owner's message in
+that session]. PR #3834 adds the switch to `.github/workflows/ci.yml`; the
+repository variable turns it on. This goes past "moving `ci.yml` is not part
+of this decision" (Decision §8) for these four jobs only.
+
+- **What moves.** The four `pytest shard N of 4` jobs, for runs whose actor
+  and triggering actor are Slimydog21 and, on a pull request, whose author is
+  Slimydog21: Boat runs public-repository jobs only for the users the owner
+  allowlisted (`boat ci public`). Dependabot, every other actor and every
+  other job in `ci.yml` stay on GitHub-hosted runners.
+- **Why.** The same tests back to back on 2026-11-24: whole run 24.0 min on
+  Boat `default` (run 45500931045) against 31.8 min on `ubuntu-24.04` (run
+  45495248383), with equal passed and skipped counts on every shard once an
+  install step for `ansible-playbook` and `shellcheck` was added (without it
+  the suite skipped 11 deploy-playbook gate tests and one terraform check on
+  Boat) [M]. About USD 0.04 of plan VM credit a run [M, `boat ci`].
+  GitHub-hosted minutes are free on this public repository, so the gain is
+  about 8 minutes off every run's critical path, not money.
+- **Not the build plane's key or envelope.** Boat's GitHub app creates these
+  runner VMs. They are not created with `BOAT_BUILD_API_KEY`, and the build
+  plane's code-side pacing (4 / 20 / 60 creates a minute / hour / day) does
+  not see them. A `runs-on: boat` job gets no Boat environment, no GitHub
+  token of the owner's and no model provider keys [M, `ci.md`, fetched
+  2026-11-25]; the shard jobs read no Actions secret and run with the
+  repository's read-only default `GITHUB_TOKEN` [M]. §16 and both planes'
+  gates are unchanged.
+- **Starts.** Each run takes 4 of the account's 200 starts a day (also 60 an
+  hour and 12 a minute), the pool the build plane's 60 a day and the
+  operator's compute lanes also draw on. Past the minute limit a job waits;
+  past the hour limit it waits up to 15 minutes; past the day limit it fails
+  at once as "Paused by plan limit" and does not restart [M, `ci.md`]. Extra
+  starts are off on the account, so a full limit costs time, not money [M,
+  `boat limits`]. 17 starts were used on 2026-11-25 before this ruling [M].
+  The busiest day for these actors since 2026-10-20 had 8 eligible CI runs
+  (32 starts) [M, Actions API]; in the September and October surges (up to
+  183 CI runs a day, all actors) the pool would have run out. One budget
+  across CI, the build plane and the compute lanes is still to be set.
+- **Reversal.** `gh variable set ANTIEK_CI_SHARD_RUNNER --body github` (or
+  deleting the variable) returns new runs to `ubuntu-24.04` with no code
+  change. One manual run can force either runner with its `shard_runner`
+  input.
 
 ## Open owner sign-offs
 

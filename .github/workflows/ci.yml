@@ -28,10 +28,10 @@ on:
   workflow_dispatch:  # let the operator trigger from the Actions tab
     inputs:
       shard_runner:
-        description: "Runner for the four pytest shards: github (default) or boat (Boat.dev VMs; see the pytest-suite comment)"
+        description: "Runner for the four pytest shards: auto (follow repo variable ANTIEK_CI_SHARD_RUNNER), github or boat (see the pytest-suite comment)"
         type: choice
-        options: [github, boat]
-        default: github
+        options: [auto, github, boat]
+        default: auto
 
 concurrency:
   # One CI run per PR branch: a new push to a PR cancels the previous run,
@@ -93,14 +93,19 @@ jobs:
     # ffmpeg 8.0.1 writes "Error parsing Opus packet header." to stderr for valid
     # Opus, which the bounded decoder (acquisition/voice/audio_bound.py) rightly
     # refuses, so the suite would test an ffmpeg production does not run.
-    # Boat.dev lever (dormant). Measured 2026-11-25 at a2f05b25 (shard 2 of 4): Boat 4 vCPU (Ryzen 9 9950X) setup 2.3 min + tests
-    # 23.6 min, 4110 passed; GitHub ubuntu-24.04 setup 4.1 min (median, 36 shard jobs) + tests 22.0-24.7 min. Same speed, so the
-    # shards stay on GitHub-hosted runners (free on this public repo; queue wait ~6 s). Boat is the overflow when GitHub's 20-job
-    # concurrency ceiling queues CI: repo variable ANTIEK_CI_SHARD_RUNNER=boat, or a manual run with shard_runner=boat. Boat runs a
-    # public-repo job only when its author AND trigger are allowlisted (Slimydog21), so Dependabot and any other actor always get
-    # ubuntu-24.04 (Boat would refuse them and the required checks would never report). Boat's image is Ubuntu 24.04 LTS, the
-    # production OS this job is pinned to. Plan: 200 Boat starts/day = 50 CI runs/day at 4 shards.
-    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.shard_runner == 'boat') || (vars.ANTIEK_CI_SHARD_RUNNER == 'boat' && github.triggering_actor == 'Slimydog21' && github.actor == 'Slimydog21' && (github.event_name != 'pull_request' || github.event.pull_request.user.login == 'Slimydog21'))) && 'boat' || 'ubuntu-24.04' }}
+    # Boat.dev runners for the four shards when repo variable ANTIEK_CI_SHARD_RUNNER=boat (set 2026-11-25 by owner ruling,
+    # docs/decisions/boat-compute-backbone-2026-11-09.md "Owner ruling of 2026-11-25"); a manual run's shard_runner input
+    # overrides it for that run (github or boat; auto follows the variable). Measured 2026-11-24 with the same tests back to back:
+    # whole run 24.0 min on Boat `default` (4 vCPU, run 45500931045) against 31.8 min on ubuntu-24.04 (run 45495248383), equal
+    # passed/skipped counts on every shard; about USD 0.04 of plan credit a run. Boat runs a public-repo job only when its author
+    # AND trigger are allowlisted (Slimydog21), so Dependabot and any other actor always get ubuntu-24.04 (Boat would refuse them
+    # and the required checks would never report). A Boat job gets no Boat environment, owner GitHub token or model keys (Boat's
+    # CI docs); this job reads no secret and its GITHUB_TOKEN is the repo's read-only default. Each run takes 4 of the account's
+    # 200 starts a day (60 an hour, 12 a minute), shared with all other Boat use: past the minute limit a job waits, past the hour
+    # limit it waits up to 15 min, past the day limit it fails at once ("Paused by plan limit") and does not restart. Fall back
+    # with `gh variable set ANTIEK_CI_SHARD_RUNNER --body github`, then push or start a new run. Boat's image is Ubuntu 24.04 LTS,
+    # the production OS this job is pinned to.
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.shard_runner == 'boat') || (inputs.shard_runner != 'github' && vars.ANTIEK_CI_SHARD_RUNNER == 'boat' && github.triggering_actor == 'Slimydog21' && github.actor == 'Slimydog21' && (github.event_name != 'pull_request' || github.event.pull_request.user.login == 'Slimydog21'))) && 'boat' || 'ubuntu-24.04' }}
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.
