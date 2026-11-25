@@ -32,6 +32,7 @@
  *   - route table:     src/App.tsx  (canonical "what is mounted")
  *   - panel registry:  src/workspace/PanelRegistry.tsx
  */
+import { isFeatureOn } from "../lib/featureFlags";
 
 export type Workflow = "research" | "read" | "write" | "speak" | "shared";
 
@@ -149,6 +150,25 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
     defaultRoute: "/speak",
   },
 };
+
+/**
+ * FFX-KPA SPR-03 M7 — while the zen home ships behind "nav.zenhome", the
+ * Research door is its entry: flag on, the door lands on /zen; flag off, it
+ * lands on WORKFLOWS.research.defaultRoute ("/", StartResearch) exactly as
+ * before. One resolver, read at click/keypress time, shared by the NavRail
+ * click and the door.research / door.researchHome hotkeys. SPR-05 moves "/"
+ * to the zen home and retires this.
+ */
+const ZEN_HOME_DOOR = { route: "/zen" } as const;
+
+export function researchDoorRoute(): string {
+  return isFeatureOn("nav.zenhome") ? ZEN_HOME_DOOR.route : WORKFLOWS.research.defaultRoute;
+}
+
+/** The route a workflow's door navigates to (Research honours the zen flag). */
+export function doorRouteFor(workflow: Exclude<Workflow, "shared">): string {
+  return workflow === "research" ? researchDoorRoute() : WORKFLOWS[workflow].defaultRoute;
+}
 
 /**
  * THE TAXONOMY. Every mode under src/modes/ (and the two Write component

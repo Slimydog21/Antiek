@@ -24,6 +24,7 @@ import {
   THOUGHT_PARTNER_SEED_EVENT,
   type ThoughtPartnerSeedDetail,
   composeThoughtPartnerSystemContext,
+  takePendingThoughtPartnerSeed,
 } from "./ai/thoughtPartnerSeed";
 
 /**
@@ -109,9 +110,7 @@ export default function AISidecar() {
 
   // Shared seed bus (BrainstormStation parked question, etc.).
   useEffect(() => {
-    const onSeed = (ev: Event) => {
-      const detail = (ev as CustomEvent<ThoughtPartnerSeedDetail>).detail;
-      if (!detail) return;
+    const applySeed = (detail: ThoughtPartnerSeedDetail) => {
       if (typeof detail.prompt === "string" && detail.prompt.trim()) {
         setDraft(detail.prompt.trim());
       }
@@ -125,6 +124,15 @@ export default function AISidecar() {
       }
       queueMicrotask(() => inputRef.current?.focus());
     };
+    const onSeed = (ev: Event) => {
+      const detail = (ev as CustomEvent<ThoughtPartnerSeedDetail>).detail;
+      if (!detail) return;
+      takePendingThoughtPartnerSeed(); // consumed live; don't replay on a later mount
+      applySeed(detail);
+    };
+    // A seed sent while this lazy panel was still loading (SPR-03 M5).
+    const parked = takePendingThoughtPartnerSeed();
+    if (parked) applySeed(parked);
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
   }, [selectModel]);

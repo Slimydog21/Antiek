@@ -8,6 +8,7 @@ import { zIndex } from "../design/zIndex";
 import {
   WORKFLOWS,
   WORKFLOW_ORDER,
+  doorRouteFor,
   workflowForPath,
   type Workflow,
 } from "./workflowTaxonomy";
@@ -354,7 +355,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
 
   const selectWorkflow = (wf: Exclude<Workflow, "shared">) => {
-    const route = WORKFLOWS[wf].defaultRoute;
+    const route = doorRouteFor(wf);
     navigate(route);
     // SPR-08/SPR-10 — a real click emits the SAME activation event the hotkey
     // path emits (source differs only). This is the click≡hotkey parity the

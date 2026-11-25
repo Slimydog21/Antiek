@@ -9,12 +9,15 @@
  * evaluation here — when an operator-created PostHog flag exists, the
  * owning sprint wires it through this same function so callers never change.
  */
-export type FeatureFlagName = "switcher.places";
+export type FeatureFlagName = "switcher.places" | "nav.zenhome";
 
 const DEV_DEFAULTS: Record<FeatureFlagName, boolean> = {
   // SPR-02 (specs/antiek-keyboard-panes-agents-20261007): places sections
   // in the Switcher + the rail strip. Flipped to prod-ON in SPR-05.
   "switcher.places": true,
+  // SPR-03: the zen home at /zen. Ships dark in every build, dev included;
+  // only an explicit localStorage "on" opens the route.
+  "nav.zenhome": false,
 };
 
 export function featureFlagKey(name: FeatureFlagName): string {
