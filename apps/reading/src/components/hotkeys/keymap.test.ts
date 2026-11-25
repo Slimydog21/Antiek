@@ -360,3 +360,98 @@ describe("the agent pane rows (SPR-07): one action, two aliases, one status, out
     expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
   });
 });
+describe("SPR-10 agent rows (lane-A-proposed, pending ratification): shift+j (jump to the toast's agent) and shift+g (the shifted Switcher key)", () => {
+  it.each([
+    ["prefix-agents-toast", "agents.gotoToast", "shift+j", "ctrl+alt+shift+j"],
+    ["prefix-agents-goto", "agents.goto", "shift+g", "ctrl+alt+g"],
+  ])("%s binds %s as prefix+%s with the %s chord twin", (id, action, prefixKey, chord) => {
+    const prefixRow = KEYMAP.find((r) => r.id === id);
+    expect(prefixRow?.action).toBe(action);
+    expect(prefixRow?.prefixKey).toBe(prefixKey);
+    expect(prefixRow?.scope).toBe("outside-text");
+    expect(prefixRow?.origin).toBe("lane-A-proposed");
+    expect(prefixRow?.decision).toMatch(/SPR-10 agent monitoring 2026-10-07T23:06Z/);
+    const chordRow = KEYMAP.find((r) => r.action === action && r.chord === chord);
+    expect(chordRow?.scope).toBe("anywhere");
+    expect(chordRow?.origin).toBe("lane-A-proposed");
+  });
+
+  it("negative controls: the literal herdr keys o and g are duplicates here, and so are PR 3751's shift+o and ctrl+alt+shift+o (on main); a and ctrl+alt+a are the agent pane's (SPR-07, on main)", () => {
+    const probe = (over: Partial<KeymapRow>): KeymapRow => ({ id: "probe", action: "agents.gotoToast", scope: "outside-text", origin: "lane-A-proposed", decision: "probe", ...over } as KeymapRow);
+    expect(validateKeymap([...KEYMAP, probe({ prefixKey: "o" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-tab-child") }));
+    // The sprint's first binding (shift+o / ctrl+alt+shift+o) is #3751's switcher.open, on main since 497a2ce05; it is a duplicate of KEYMAP itself.
+    expect(validateKeymap([...KEYMAP, probe({ prefixKey: "shift+o" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-switcher-open") }));
+    expect(validateKeymap([...KEYMAP, probe({ chord: "ctrl+alt+shift+o", scope: "anywhere" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("chord-switcher-open") }));
+    expect(validateKeymap([...KEYMAP, probe({ action: "agents.goto", prefixKey: "g" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-goto") }));
+    // a / ctrl+alt+a were island.open's reserve when this test was written;
+    // SPR-07 (#3756) took them for the agent pane, so the probe now reads as
+    // a duplicate of the real rows, not reserved-key.
+    expect(validateKeymap([...KEYMAP, probe({ prefixKey: "a" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("prefix-agent-pane") }));
+    expect(validateKeymap([...KEYMAP, probe({ chord: "ctrl+alt+a", scope: "anywhere" })], handlerIds)).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "probe", detail: expect.stringContaining("chord-agent-pane") }));
+    // ctrl+alt+shift+j carries shift in the physical-key check, so a later plain ctrl+alt+j stays free.
+    expect(validateKeymap(KEYMAP, handlerIds)).toEqual([]);
+    expect(RESERVED_FOR_LATER.prefixKeys).not.toContain("a");
+    expect(RESERVED_FOR_LATER.chords).not.toContain("ctrl+alt+a");
+  });
+
+  it("no collision with the open lanes' rows NOT yet on main: PR 3754's pane-flow rows (flag on) beside KEYMAP leave no duplicate prefix key or chord on either platform", () => {
+    // PR 3751's switcher.open rows are on main (497a2ce05), so KEYMAP itself
+    // carries them and they are not appended here; this pins that premise.
+    expect(KEYMAP.filter((r) => r.action === "switcher.open").map((r) => r.prefixKey ?? r.chord)).toEqual(["shift+o", "ctrl+alt+shift+o"]);
+    // PR 3756's agent.openPane rows are on main too (merged 2026-10-08), so
+    // KEYMAP carries them as well; same premise pin.
+    expect(KEYMAP.filter((r) => r.action === "agent.openPane").map((r) => r.prefixKey ?? r.chord)).toEqual(["a", "ctrl+alt+a"]);
+    const D = "probe";
+    const row = (id: string, action: string, key: { prefixKey: string } | { chord: string }, scope: KeymapRow["scope"] = "outside-text"): KeymapRow =>
+      ({ id, action: action as ActionId, status: "implemented", scope, origin: "lane-A-proposed", decision: D, ...key }) as KeymapRow;
+    // PR 3754 (origin/sweep/paneflow-land-spr01-20261008 @ 7f6b0569d) with
+    // antiek.flag.pane.flow on: ctrl+alt+l leaves pane.focusRight for
+    // layout.togglePreset, focus gains the arrows, reorder takes shift+arrow.
+    const paneFlowReplaced = new Set(["chord-pane-right"]);
+    const paneFlow: KeymapRow[] = [
+      row("chord-pane-right", "pane.focusRight", { chord: "ctrl+alt+arrowright" }),
+      row("chord-pane-left-arrow", "pane.focusLeft", { chord: "ctrl+alt+arrowleft" }),
+      row("prefix-pane-left-arrow", "pane.focusLeft", { prefixKey: "arrowleft" }),
+      row("prefix-pane-right-arrow", "pane.focusRight", { prefixKey: "arrowright" }),
+      row("chord-pane-reorder-left", "pane.reorderLeft", { chord: "ctrl+alt+shift+arrowleft" }),
+      row("chord-pane-reorder-right", "pane.reorderRight", { chord: "ctrl+alt+shift+arrowright" }),
+      row("prefix-pane-reorder-left", "pane.reorderLeft", { prefixKey: "shift+arrowleft" }),
+      row("prefix-pane-reorder-right", "pane.reorderRight", { prefixKey: "shift+arrowright" }),
+      row("chord-layout-preset", "layout.togglePreset", { chord: "ctrl+alt+l" }),
+    ];
+    // PR 3756's agent.openPane rows are on main, so they live in KEYMAP and
+    // are NOT appended. PR 3754's pane-flow rows are sequencing-dependent:
+    // this branch can merge before or after #3754 (the wave's union proof
+    // caught the simulation double-appending rows KEYMAP already carried),
+    // so gate the simulated append on their actual absence — the same
+    // premise-pin pattern as the 3751/3756 pins above.
+    const ids = [...handlerIds, "pane.reorderLeft", "pane.reorderRight"];
+    const duplicates = (rows: readonly KeymapRow[]) => validateKeymap(rows, ids).filter((f) => f.kind === "duplicate");
+    if (KEYMAP.some((r) => r.id === "prefix-pane-reorder-left")) {
+      // #3754 HAS landed: KEYMAP carries the real rows. Pin against them
+      // instead of simulating — the real table validates with no duplicates.
+      // (The flag-on block's chord-layout-preset is gated out of KEYMAP in the
+      // test env — antiek.flag.pane.flow is off — so the pin is the reorder
+      // prefix keys, visible in both flag states.)
+      expect(duplicates(KEYMAP)).toEqual([]);
+      expect(new Set(KEYMAP.filter((r) => r.id === "prefix-pane-reorder-left").map((r) => r.prefixKey))).toEqual(new Set(["shift+arrowleft"]));
+      expect(new Set(KEYMAP.filter((r) => r.id === "prefix-pane-reorder-right").map((r) => r.prefixKey))).toEqual(new Set(["shift+arrowright"]));
+      return;
+    }
+    expect(duplicates([...KEYMAP.filter((r) => !paneFlowReplaced.has(r.id)), ...paneFlow])).toEqual([]);
+    // Control: the check is not vacuous. Without PR 3754's replacement,
+    // ctrl+alt+l is main's pane.focusRight chord and the layout chord collides.
+    expect(duplicates([...KEYMAP, ...paneFlow.filter((r) => !paneFlowReplaced.has(r.id))])).toContainEqual(expect.objectContaining({ kind: "duplicate", row: "chord-layout-preset" }));
+  });
+
+  it("the base rows prefix-tab-child, chord-tab-child and prefix-goto are byte-identical to the SPR-06 base", () => {
+    const src = readFileSync(resolve(import.meta.dirname, "keymap.ts"), "utf8");
+    for (const line of [
+      '  { id: "prefix-goto", action: "palette.toggle", status: "implemented", prefixKey: "g", scope: "outside-text", origin: "herdr-default", decision: D },',
+      '  { id: "prefix-tab-child", action: "tab.visitChild", status: "implemented", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },',
+      '  { id: "chord-tab-child", action: "tab.visitChild", status: "implemented", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },',
+    ]) {
+      expect(src.split("\n")).toContain(line);
+    }
+  });
+});

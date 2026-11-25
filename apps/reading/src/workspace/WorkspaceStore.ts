@@ -141,6 +141,21 @@ function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
   return s.fullscreenPane === "left" ? mode === "docked-right" : mode !== "docked-right";
 }
 
+/**
+ * The side that holds the keyboard focus (the companion's tabs belong to
+ * the right pane; the mode's own surface is the left). One rule for the
+ * tab keys (shortcuts.ts tabKeySide) and for the /inv/:id pane's seen
+ * marks (ResearchWorkstation InvestigationCenter):
+ *   inset   the pane shown alone by fullscreen, else the pane with the focus
+ *           ring (PanelLayout sets it as focus enters a pane), else left.
+ *   docked  "right" while a right-dock panel has focus (the companion, the
+ *           outline), otherwise "left".
+ */
+export function focusedSide(s: Pick<Store, "layoutPreset" | "fullscreenPane" | "focusedPane" | "focusedPanelId" | "dockRightIds">): PaneSide {
+  if (s.layoutPreset === "omarchy-inset") return s.fullscreenPane ?? s.focusedPane ?? "left";
+  return s.focusedPanelId !== null && s.dockRightIds.includes(s.focusedPanelId) ? "right" : "left";
+}
+
 const initialLayoutPreset = readLayoutPreset();
 writeLayoutPreset(initialLayoutPreset);
 

@@ -25,6 +25,8 @@ const MAC_OPTION_GLYPHS: Record<string, string> = {
   // Every ctrl+alt chord key in the table, so the Mac fuzz sees real
   // composition. Option+i is a dead key (the circumflex), reported as "Dead".
   h: "˙", l: "¬", f: "ƒ", i: "Dead", "]": "‘", "[": "“",
+  // SPR-10: option+j is "∆"; with shift (ctrl+alt+shift+j) macOS composes "Ô".
+  j: "∆",
 };
 
 /** The KeyboardEventInit a keyboard produces for `spec` on `platform`. */
