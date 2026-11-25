@@ -146,6 +146,32 @@
   --mono:  "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --serif: "Charter", "Iowan Old Style", "Source Serif 4", Georgia, serif;
 
+  /* Font-size scale (CFEEL-S2 M2): the same seven named steps
+     tailwind.config.js exposes as text-xxs … text-2xl, as CSS vars so raw
+     stylesheets can sit ON the scale instead of reaching for a raw px
+     (lint_type_scale.ts flags a sub-ceiling raw `font-size: NNpx` for the
+     same reason it flags text-[Npx]: every size <= the 24px chrome ceiling
+     has a named step). Theme-invariant; type-scale.test.ts pins these
+     byte-identical to the Tailwind fontSize entries. */
+  --fs-xxs:  11px;  /* legibility floor (10px retired) */
+  --fs-xs:   12px;
+  --fs-sm:   14px;
+  --fs-base: 16px;
+  --fs-lg:   18px;
+  --fs-xl:   20px;
+  --fs-2xl:  24px;  /* chrome ceiling */
+
+  /* Placeholder cover spines (placeholderSpine.ts): three decorative,
+     theme-invariant families — glacial, weathered sun, slate — each a
+     two-stop gradient pair. A coverless book's spine is stable across
+     renders and never flips with the theme, like a real spine on a shelf. */
+  --spine-glacial-a: hsl(205 38% 34%);
+  --spine-glacial-b: hsl(214 42% 24%);
+  --spine-sun-a:     hsl(43 48% 32%);
+  --spine-sun-b:     hsl(36 52% 22%);
+  --spine-slate-a:   hsl(220 20% 32%);
+  --spine-slate-b:   hsl(226 24% 22%);
+
   /* Edge-reservation seam (SPR-06 M3): the always-on ad border's inset.
      Default 0; docs/decisions/spr-06-edge-reservation-seam.md. */
   --akb-border-inset-top:    0px;
