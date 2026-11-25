@@ -333,9 +333,9 @@ def _single_line_structural_field(value: object) -> str:
 # §9.0 guard: node_types whose ``canonical_label`` is a distilled free-text
 # SENTENCE (the DRW "atomic units of distilled truth" + a claim assertion),
 # which may reproduce personal_reading / restricted source text. The subgraph
-# read has no rights gate and nodes carry no rights provenance, so these labels
-# are withheld from the rendered block. Canonical entity labels (short names)
-# are not in this set and still surface.
+# read gates provenance in the DB; non-privileged renders additionally withhold
+# these labels. Privileged owner reads retain their authorized text. Canonical
+# entity labels (short names) are not in this set and still surface.
 _FREE_TEXT_NODE_TYPES = frozenset({"insight", "question", "claim"})
 
 
@@ -368,6 +368,7 @@ def _render_subgraph_block_for_sub_question(
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
+        from substrate.graph.retrieval_gate import PRIVILEGED_POLICY_TAGS
         from substrate.graph.search import search as graph_search
 
         db_path = default_db_path()
@@ -406,17 +407,15 @@ def _render_subgraph_block_for_sub_question(
     node_type_by_id = {nid: n.get("node_type") for nid, n in node_by_id.items()}
 
     def _safe_label(node_id: Any, label: Any) -> str:
-        """§9.0 guard on the graph read. ``_fetch_edges_and_nodes`` applies NO
-        rights gate to the edges/nodes it surfaces, and nodes carry no rights
-        provenance — so a free-text label (an ``insight`` / ``question`` /
-        ``claim`` node's ``canonical_label`` IS a distilled sentence that may be
-        derived from a personal_reading / restricted source, reachable here via
-        a cross-rights ``duplicate_of`` edge). We therefore WITHHOLD free-text
-        labels (and any unknown-type label — deny by default) and reference the
-        node by id instead; canonical entity labels (short names, not servable
-        body) still surface so the role keeps the relational structure. Over-
-        redacts clean distilled units too — the conservative §9.0 posture until
-        the substrate gives the edge/node read a real rights gate."""
+        """Preserve DB-authorized owner labels; otherwise deny free text.
+
+        ``_fetch_edges_and_nodes`` gates node provenance using the same explicit
+        policy_tag passed to graph_search above. Privileged owner reads may
+        surface those labels; all other reads retain the conservative §9.0
+        withholding of free-text and unresolved-type labels.
+        """
+        if policy_tag in PRIVILEGED_POLICY_TAGS:
+            return str(label) if label else "?"
         ntype = node_type_by_id.get(node_id)
         if ntype in _FREE_TEXT_NODE_TYPES or ntype is None:
             return f"[{node_id}: {ntype or 'unresolved'} — text withheld (§9.0)]"
