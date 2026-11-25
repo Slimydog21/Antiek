@@ -41,6 +41,9 @@ class CreatorPayoutsResponse(BaseModel):
     transfers: list[TransferSummaryResponse]
 
 
+_TransferRow = tuple[str, str, str | None, int, str, str | None, str]
+
+
 def _refuse(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -75,13 +78,13 @@ def _load_kyc_state(con: ReadConnection, recipient_ref: str) -> str | None:
     return row[0] if row else None
 
 
-def _load_transfers(con, recipient_ref: str) -> list[tuple]:
+def _load_transfers(con: ReadConnection, recipient_ref: str) -> list[_TransferRow]:
     """Load every transfer attempt routed to the recipient. Filters
     by ``recipient_account_id`` matching the recipient_ref (the
     substrate uses the user_id / ip_holder_id as the Stripe Connect
     account_id; integration layer is responsible for the mapping)."""
     try:
-        rows = con.execute(
+        rows: list[_TransferRow] = con.execute(
             "SELECT transfer_attempt_id, decision_id, stripe_transfer_id, "
             "amount_usd_cents, status, note, "
             "strftime(initiated_at, '%Y-%m-%dT%H:%M:%S') "

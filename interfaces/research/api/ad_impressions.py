@@ -22,7 +22,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from runtime.db_lock import connect_read
+from runtime.db_lock import ReadConnection, connect_read
 from substrate.ad_inventory import (
     AdInventoryItem,
     PageContext,
@@ -103,8 +103,11 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_serving_inventory(con) -> tuple[
-    list[TargetedInventoryItem], list[AdInventoryItem],
+def _load_serving_inventory(
+    con: ReadConnection,
+) -> tuple[
+    list[TargetedInventoryItem],
+    list[AdInventoryItem],
 ]:
     """Load the operator-curated active inventory from the V6
     ``ad_inventory_items`` table. The split (targeted vs flat-fallback)
