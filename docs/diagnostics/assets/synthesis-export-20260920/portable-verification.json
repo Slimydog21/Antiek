@@ -1,0 +1,30 @@
+{
+  "base_commit": "8c6e8da5b0fe34444c9c3cd58d0282b8634a5444",
+  "source_sha256": {
+    "interfaces/research/api/synthesis_artifact.py": "8ed3a0b649280245a4ffde0678ce7ee607919e4ea35c635f292f599e9fb740e7",
+    "services/html_projection/adapters/synthesis.py": "dff0bb53493939a7284b505bedbd3d6cc1afb1b7925f9e034adf9398107364d7"
+  },
+  "file": "portable-export.html",
+  "bytes": 10118,
+  "sha256": "c79cdd07be1ee74b0c5e6812f34a5b4c3c5fe830586c79ae0810dfd8288e2b19",
+  "script_free": true,
+  "public_passage_present": true,
+  "private_passage_absent": true,
+  "provenance": {
+    "complete": true,
+    "fully_sourced": 2,
+    "total": 2
+  },
+  "download_auth": "real signed session cookie on local scratch full app",
+  "configured_reader_origin": "http://127.0.0.1:18883",
+  "clicked_from": "downloaded file URL",
+  "landed_at": "http://127.0.0.1:18883/read/doc-public",
+  "observed": "actual Antiek BookReader displays PUBLIC_SOURCE_PASSAGE",
+  "fixture": "typed archived synthesis plus canonical upsert_book_asset for synthetic public document",
+  "not_proved": [
+    "deployed frontend origin",
+    "reader assets for every graph document",
+    "chunk-level deep links",
+    "federated provenance"
+  ]
+}
