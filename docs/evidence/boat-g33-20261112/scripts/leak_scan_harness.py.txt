@@ -1,0 +1,16 @@
+"""Run the driver's own repo_fixtures/leak_scan source (extracted by ast) against a directory."""
+import ast, json, os, re, stat, subprocess, sys, time
+drv, T, SRC = sys.argv[1], sys.argv[2], sys.argv[3]
+tree = ast.parse(open(drv).read())
+fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ("repo_fixtures", "leak_scan")]
+assert len(fns) == 2
+FAILS, LINES = [], []
+ns = {"os": os, "re": re, "stat": stat, "subprocess": subprocess, "T": T, "SRC": SRC,
+      "SECRETS": [s for s in sys.argv[4:]], "KEY_SHAPED": re.compile(r"boat_[A-Za-z0-9_-]{24,}"),
+      "emit": lambda **f: LINES.append(f), "judge": lambda ok, what: (ok or FAILS.append(what), bool(ok))[1]}
+exec(compile(ast.Module(body=fns, type_ignores=[]), drv, "exec"), ns)
+t0 = time.time(); ns["leak_scan"]()
+out = LINES[-1]
+print(json.dumps({"elapsed_s": round(time.time() - t0, 1), "fails": FAILS, "exact": out["exact_value_files"],
+                  "shaped": out["key_shaped_files"], "repo_fixtures": out["repo_fixtures"],
+                  "skipped": [s.rsplit("/", 1)[-1] for s in out["skipped_non_regular"]]}))

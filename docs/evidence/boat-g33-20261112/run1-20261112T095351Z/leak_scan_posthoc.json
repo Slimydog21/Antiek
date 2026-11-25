@@ -1,0 +1,1 @@
+{"elapsed_s": 4.8, "fails": [], "exact": [], "shaped": [], "repo_fixtures": 4, "skipped": ["config.json: OSError", "config.json: OSError", "config.json: prw-r--r--", "r.txt: OSError", "link: OSError", "l: OSError", "pipe: prw-r--r--", "via.jsonl: OSError"]}

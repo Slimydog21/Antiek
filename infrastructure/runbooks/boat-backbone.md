@@ -871,6 +871,16 @@ the `ResourceLimits()` defaults: `small`, TTL 900 s (`contained_gather.py:241`,
    a `BoatBackend sandbox deleted:` line for each accepted id, and the
    list-price bounds sum under USD 0.10 (at most USD 0.0135: three `small` at
    their 900 s TTL).
+7. No key reached a file: scan the run's whole directory for each key's
+   exact value and for key-shaped strings. Open each file non-blocking and
+   read only regular files: the hermetic suite leaves FIFOs in its
+   `--basetemp`, and a plain read of one blocks forever. Key-shaped strings
+   committed at the checked-out SHA are the suite's synthetic fixtures, not
+   leaks.
+
+**Passed on 2026-11-12** on Omarchy, against main `b2de382`, with a
+temporary key (decision record "Live evidence" run 8). The receipts, the
+wrapper and the driver are in `docs/evidence/boat-g33-20261112/`.
 
 ---
 
@@ -940,9 +950,9 @@ module parses as Python 3.12, the production interpreter
 
 Never `BOAT_BUILD_API_KEY` on a production host. Leave
 `ANTIEK_BOAT_ENVIRONMENT` unset (the code's default is `antiek-product`; it
-refuses `antiek-build`). `ANTIEK_DRW_GATHER` must not be `exa`. The backend is built at each cascade launch, not at service start,
-so launch one small cascade and read
-Before this check can show anything, the service needs a log configuration:
+refuses `antiek-build`). `ANTIEK_DRW_GATHER` must not be `exa`.
+
+Before the check below can show anything, the service needs a log configuration:
 the unit starts uvicorn without `--log-config`
 (`infrastructure/ansible/templates/antiek.service.j2`) and the
 service configures no logging of its own, so INFO lines from
@@ -950,6 +960,9 @@ service configures no logging of its own, so INFO lines from
 `--log-config` that sends those loggers at INFO to stderr (the G3.3 run
 used one, decision record "Live evidence") before the enable, or the
 journal checks here and in "Watching spend" read nothing.
+
+The backend is built at each cascade launch, not at service start,
+so launch one small cascade and read
 `journalctl -u antiek -n 200 --no-pager | grep "ExecutionBackend selected"`:
 expected `ExecutionBackend selected: boat (via $ANTIEK_EXEC_BACKEND='boat')`.
 
