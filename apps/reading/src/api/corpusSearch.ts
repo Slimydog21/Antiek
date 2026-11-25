@@ -30,6 +30,34 @@ export interface CorpusSearchResponse {
   count: number;
 }
 
+const INVALID_RESPONSE_MESSAGE = "Search returned an invalid response.";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCorpusSearchHit(value: unknown): value is CorpusSearchHit {
+  return isRecord(value)
+    && typeof value.chunk_id === "string"
+    && typeof value.document_id === "string"
+    && (value.document_title === null || typeof value.document_title === "string")
+    && (value.page_index === null
+      || (typeof value.page_index === "number" && Number.isInteger(value.page_index)))
+    && typeof value.page_resolved === "boolean"
+    && typeof value.snippet === "string"
+    && typeof value.similarity === "number"
+    && Number.isFinite(value.similarity);
+}
+
+function isCorpusSearchResponse(value: unknown): value is CorpusSearchResponse {
+  return isRecord(value)
+    && typeof value.query === "string"
+    && Array.isArray(value.hits)
+    && value.hits.every(isCorpusSearchHit)
+    && typeof value.count === "number"
+    && Number.isInteger(value.count);
+}
+
 /** Search the owned corpus by a natural-language query. `documentId` optionally
  * scopes to one document. Returns 503 when the embedding model isn't available
  * server-side. An empty/whitespace query returns an empty result (no request
@@ -45,5 +73,12 @@ export async function corpusSearch(
   const resp = await apiFetch(`${API_BASE}/corpus/search?${params.toString()}`);
   if (resp.status === 503) throw new Error("Search is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /corpus/search: HTTP ${resp.status}`);
-  return (await resp.json()) as CorpusSearchResponse;
+  let result: unknown;
+  try {
+    result = await resp.json();
+  } catch {
+    throw new Error(INVALID_RESPONSE_MESSAGE);
+  }
+  if (!isCorpusSearchResponse(result)) throw new Error(INVALID_RESPONSE_MESSAGE);
+  return result;
 }
