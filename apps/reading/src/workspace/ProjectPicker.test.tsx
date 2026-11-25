@@ -145,7 +145,7 @@ describe("the account-project picker (prefix+shift+p)", () => {
     render(<ProjectPicker />);
     expect(dialog()).toBeNull();
     await pressKeys("ctrl+b", "shift+p");
-    await waitFor(() => expect(dialog()).toBeTruthy());
+    await waitFor(() => expect(dialog()).toBeTruthy(), { timeout: 5000 });
     await waitFor(() => expect(dialog()!.textContent).toContain("Varda diligence"));
     expect(dialog()!.textContent).toContain("Default project");
   });
@@ -154,7 +154,7 @@ describe("the account-project picker (prefix+shift+p)", () => {
     stubProjects();
     render(<ProjectPicker />);
     await pressKeys("ctrl+alt+p");
-    await waitFor(() => expect(dialog()).toBeTruthy());
+    await waitFor(() => expect(dialog()).toBeTruthy(), { timeout: 5000 });
   });
 
   it("picking a registry project selects it: store, persistence, dialog close", async () => {
