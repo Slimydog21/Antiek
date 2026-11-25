@@ -208,8 +208,13 @@ def test_invite_landing_retries_its_second_read_open(
 def test_pushes_second_resume_never_fabricates_zero_pending_under_writer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expire: bool
 ) -> None:
-    db, _, interview_id, _ = _seed(tmp_path, monkeypatch)
-    turns = [{"role": "interviewer", "question_id": "q1", "text": "What happened?"}]
+    db, _, interview_id, token = _seed(tmp_path, monkeypatch)
+    landing = asyncio.run(speak_routes.invitee_landing(token))
+    assert len(landing["pending_questions"]) == 1
+    question = landing["pending_questions"][0]
+    turns = [{
+        "role": "interviewer", "question_id": question["id"], "text": question["text"],
+    }]
     with connect_write(str(db), purpose="test:pending-question", keepalive_s=0) as con:
         con.execute(
             "UPDATE interviews SET transcript_turns = ? WHERE interview_id = ?",

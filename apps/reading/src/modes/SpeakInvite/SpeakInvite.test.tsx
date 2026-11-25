@@ -59,6 +59,39 @@ function mount() {
 }
 
 describe("SpeakInvite — phone-first, voice-first", () => {
+  it("does not claim consent alone saved a memory and can reload a ready question", async () => {
+    apiFetchMock.mockResolvedValueOnce(landingResponse({ ...CONSENTED, pending_questions: [] }))
+      .mockResolvedValue(landingResponse(CONSENTED));
+    mount();
+    expect(await screen.findByText(/no memories yet/i)).toBeTruthy();
+    expect(screen.queryByText(/what you shared is saved/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /grant mic access/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /check again/i }));
+    expect(await screen.findByText(/what's your earliest memory/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /grant mic access/i })).toBeTruthy();
+  });
+
+  it("does not count an interviewer prompt as a saved memory", async () => {
+    apiFetchMock.mockResolvedValue(landingResponse({
+      ...CONSENTED, pending_questions: [],
+      transcript: [{ role: "interviewer", text: "An unanswered prompt", ts: null }],
+    }));
+    mount();
+    expect(await screen.findByText(/no memories yet/i)).toBeTruthy();
+    expect(screen.queryByText(/what you shared is saved/i)).toBeNull();
+  });
+
+  it("shows saved only when the server returns an informant memory", async () => {
+    apiFetchMock.mockResolvedValue(landingResponse({
+      ...CONSENTED, pending_questions: [],
+      transcript: [{ role: "informant", text: "She sang while cooking.", ts: null }],
+    }));
+    mount();
+    expect(await screen.findByText(/what you shared is saved/i)).toBeTruthy();
+    expect(screen.queryByText(/no memories yet/i)).toBeNull();
+    expect(screen.queryByText(/anytime to add more/i)).toBeNull();
+  });
+
   it("keeps consent retryable when the network fails", async () => {
     apiFetchMock.mockImplementation((url: string) => url.endsWith("/consent")
       ? Promise.reject(new TypeError("Failed to fetch"))
@@ -212,7 +245,9 @@ describe("SpeakInvite — phone-first, voice-first", () => {
       const consentDone = calls.some((c) => c.url.includes("/consent"));
       const answerDone = calls.some((c) => c.url.includes("/answer"));
       const body = answerDone
-        ? { ...CONSENTED, pending_questions: [] }
+        ? { ...CONSENTED, pending_questions: [], transcript: [
+          { role: "informant", text: "She always sang while cooking.", ts: null, question_id: "q1" },
+        ] }
         : consentDone
           ? CONSENTED
           : NOT_CONSENTED;

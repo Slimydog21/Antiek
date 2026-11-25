@@ -364,6 +364,9 @@ async def create_project(req: CreateProjectRequest) -> ProjectResponse:
                 con, title=req.title, subject_ref=req.subject_ref,
                 subject_status=req.subject_status, publish_intent=req.publish_intent,
                 topic_description=req.topic_description,
+                interview_guide={"must_cover": [{
+                    "id": "first_memory", "text": "Share a memory in your own words.",
+                }]},
             )
 
     p = await _off_loop(_sync)

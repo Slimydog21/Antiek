@@ -329,13 +329,26 @@ export default function SpeakInvite() {
             </button>
           </section>
         ) : pending.length === 0 ? (
-          // ── Done: warm, resumable, no dead end ──
           <section className="rounded-md border-2 border-ink bg-ice-0 p-5 text-center shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
-            <p className="font-serif text-lg text-ink dark:text-bright">Thank you.</p>
-            <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
-              What you shared is saved. You can close this page and come back to
-              the same link anytime to add more — there's no rush.
-            </p>
+            {landing.transcript.some((turn) => turn.role === "informant" && turn.text.trim().length > 0) ? (
+              <>
+                <p className="font-serif text-lg text-ink dark:text-bright">Thank you.</p>
+                <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
+                  What you shared is saved. You can close this page and return to
+                  the same link anytime — there's no rush.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-serif text-lg text-ink dark:text-bright">No memories yet.</p>
+                <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
+                  There isn't a question ready to answer. No memory has been saved.
+                </p>
+                <LemonButton variant="secondary" className="mt-3" onClick={() => void load()}>
+                  Check again
+                </LemonButton>
+              </>
+            )}
           </section>
         ) : (
           // ── Recording: voice-first, big tap-to-talk; text as fallback ──
