@@ -24,8 +24,14 @@ lint makes the rest countable instead of waiting for the next probe.
 
 THE RULE. A call to ``.connect(...)`` (or a bare ``connect(...)``) with
 ``read_only=True`` passed as a keyword constant, anywhere outside
-``runtime/db_lock.py``, is a violation. AST, not regex: the grep form found
-45 sites and missed 9 that span lines.
+``runtime/db_lock.py``, is a violation. The sole exception is one exact
+``duckdb.connect(str(path), read_only=True, config=_DUCKDB_CONFIG)`` call in
+``tools/deploy/backup_native_restore_verify.py:_observe_native``. That
+verifier opens an admitted offline archive: ``connect_read`` can fall back to
+a read-write handle, which would defeat the read-only observation boundary.
+The exception requires the strict DuckDB config and does not cover another
+call in that function. AST, not regex: the grep form found 45 sites and
+missed 9 that span lines.
 
 NOT FLAGGED, deliberately:
 
@@ -64,6 +70,7 @@ SKIPPED_PARTS: frozenset[str] = frozenset(
 
 #: The one module that must make the raw call — it IS the fallback.
 _SANCTIONED = ("runtime/db_lock.py",)
+_NATIVE_RESTORE_VERIFIER = ("tools", "deploy", "backup_native_restore_verify.py")
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,68 @@ def _is_skipped(path: Path) -> bool:
     return name.startswith("test_") or name.endswith("_test.py")
 
 
+class _DirectCalls(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.calls: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        self.calls.append(node)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        pass
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        pass
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        pass
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        pass
+
+
+def _native_restore_exemption(path: Path, tree: ast.Module) -> ast.Call | None:
+    if path.parts[-3:] != _NATIVE_RESTORE_VERIFIER:
+        return None
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name != "_observe_native":
+            continue
+        visitor = _DirectCalls()
+        for statement in function.body:
+            visitor.visit(statement)
+        for call in visitor.calls:
+            if (
+                isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Name)
+                and call.func.value.id == "duckdb"
+                and call.func.attr == "connect"
+                and len(call.args) == 1
+                and isinstance(call.args[0], ast.Call)
+                and isinstance(call.args[0].func, ast.Name)
+                and call.args[0].func.id == "str"
+                and len(call.args[0].args) == 1
+                and isinstance(call.args[0].args[0], ast.Name)
+                and call.args[0].args[0].id == "path"
+                and not call.args[0].keywords
+                and len(call.keywords) == 2
+                and any(
+                    kw.arg == "read_only"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                    for kw in call.keywords
+                )
+                and any(
+                    kw.arg == "config"
+                    and isinstance(kw.value, ast.Name)
+                    and kw.value.id == "_DUCKDB_CONFIG"
+                    for kw in call.keywords
+                )
+            ):
+                return call
+    return None
+
+
 def scan_file(path: Path) -> list[Violation]:
     if _is_skipped(path):
         return []
@@ -100,9 +169,12 @@ def scan_file(path: Path) -> list[Violation]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     except (SyntaxError, UnicodeDecodeError):
         return []
+    exempt_call = _native_restore_exemption(path, tree)
     out: list[Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
+            continue
+        if node is exempt_call:
             continue
         func = node.func
         name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
@@ -114,11 +186,7 @@ def scan_file(path: Path) -> list[Violation]:
                 and isinstance(kw.value, ast.Constant)
                 and kw.value.value is True
             ):
-                out.append(
-                    Violation(
-                        path=path, line=node.lineno, col=node.col_offset, call=name
-                    )
-                )
+                out.append(Violation(path=path, line=node.lineno, col=node.col_offset, call=name))
     return out
 
 
