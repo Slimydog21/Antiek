@@ -70,10 +70,29 @@ Daytona adapter can be swapped for Modal/Fly machines/EC2 without code changes.
   per-user scoping (master-spec §13.1 permits this for the first cohort).
 - Add a **job queue** (Postgres + worker processes, or keep the single-writer
   with a serialized executor) before any heavy fan-out lands.
-- **Enable Daytona (or Modal) for untrusted-content ingestion only** — the
-  highest-risk surface (uploads → anydoc → HTML). The remote-exec seam exists;
-  wire `ANTIEK_REMOTE_EXEC_ENABLED=1` + Daytona API key, scoped to
-  acquisition/ingest workflows.
+- **Sandbox untrusted-content ingestion (uploads → anydoc → HTML) — NOT yet
+  possible by configuration, and the earlier wording of this bullet said it was.**
+  It read: "The remote-exec seam exists; wire `ANTIEK_REMOTE_EXEC_ENABLED=1` +
+  Daytona API key, scoped to acquisition/ingest workflows." A reader following
+  it would enable remote exec and reasonably believe the highest-risk surface
+  was sandboxed. Measured on 2026-10-05, that belief would be false:
+
+      grep -rln 'remote_exec|exec_backend|RemoteExecProvider|build_execution_backend'
+             --include='*.py' acquisition/ processing/ services/ingestion/
+      -> ZERO hits
+
+  The seam that exists is `runtime/remote_exec/` — a real Daytona provider
+  (`runtime/remote_exec/daytona.py`, optional-SDK, loud `RemoteExecUnavailable`
+  on missing credentials, double-gated by `ANTIEK_REMOTE_EXEC_ENABLED` and
+  `ANTIEK_ENABLE_DAYTONA_RUNNER`) — whose own docstring and error message name
+  **the §16 research-fan-out exemption** as what it serves. Nothing in the
+  ingestion path consults it, so setting the flag changes nothing about uploads
+  and no failure is raised to say so.
+
+  Before this stage ships: an ingestion seam must EXIST (uploads routed through
+  `RemoteExecProvider`), and this bullet must then be re-pointed at it. Until
+  then the honest statement is the one above — **do not document isolation for
+  a surface that has no seam to the isolation mechanism.**
 - **Vertical CPU headroom**: the current box has 4 vCPU; at <10 users, 8 vCPU /
   32 GiB Hetzner (CCX33-class, ~€40-60/mo) is the cheapest correct answer.
   Re-evaluate at >10 users.
