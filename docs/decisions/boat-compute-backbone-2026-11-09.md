@@ -1111,8 +1111,8 @@ because both put model credentials in a box [M, `environments_access.md`,
 now met, but connecting them needs a key with `account.admin` and Boat refuses
 jobs from public repositories by default [M, `ci.md`], and `Slimydog21/Antiek`
 is public [M]; moving `ci.yml` is not part of this decision. The owner's
-ruling of 2026-11-25 ("Owner ruling of 2026-11-25") later moved its four
-pytest shards, and nothing else.
+ruling of 2026-11-25 ("Owner ruling of 2026-11-25") later moved its pytest
+jobs (the four shards and the `pytest` rollup), and nothing else.
 
 ## Gates and acceptance evidence
 
@@ -1320,19 +1320,24 @@ orchestrator's session]:
     creates a minute / hour / day, USD 5 a day, USD 50 a period), then the
     owner approves its envelope.
 
-## Owner ruling of 2026-11-25: the four CI pytest shards on Boat runners
+## Owner ruling of 2026-11-25: the CI pytest jobs on Boat runners
 
 The owner ruled in the operator's session on 2026-11-25: "set
 ANTIEK_CI_SHARD_RUNNER to boat and merge #3834" [M, the owner's message in
 that session]. PR #3834 adds the switch to `.github/workflows/ci.yml`; the
-repository variable turns it on. This goes past "moving `ci.yml` is not part
-of this decision" (Decision §8) for these four jobs only.
+repository variable turns it on. Later the same day the owner extended it:
+"move the pytest rollup job to boat too" [M]. This goes past "moving
+`ci.yml` is not part of this decision" (Decision §8) for these five jobs only.
 
-- **What moves.** The four `pytest shard N of 4` jobs, for runs whose actor
+- **What moves.** The four `pytest shard N of 4` jobs and the `pytest`
+  rollup that runs after them, for runs whose actor
   and triggering actor are Slimydog21 and, on a pull request, whose author is
   Slimydog21: Boat runs public-repository jobs only for the users the owner
   allowlisted (`boat ci public`). Dependabot, every other actor and every
-  other job in `ci.yml` stay on GitHub-hosted runners.
+  other job in `ci.yml` stay on GitHub-hosted runners. The rollup moved
+  because, with the shards on Boat, it became the critical path's GitHub
+  leg: on main's first Boat run (45568772950) it waited 6m16s for a GitHub
+  runner after the shards had finished [M].
 - **Why.** The same tests back to back on 2026-11-24: whole run 24.0 min on
   Boat `default` (run 45500931045) against 31.8 min on `ubuntu-24.04` (run
   45495248383), with equal passed and skipped counts on every shard once an
@@ -1349,7 +1354,7 @@ of this decision" (Decision §8) for these four jobs only.
   2026-11-25]; the shard jobs read no Actions secret and run with the
   repository's read-only default `GITHUB_TOKEN` [M]. §16 and both planes'
   gates are unchanged.
-- **Starts.** Each run takes 4 of the account's 200 starts a day (also 60 an
+- **Starts.** Each run takes 5 of the account's 200 starts a day (also 60 an
   hour and 12 a minute), the pool the build plane's 60 a day and the
   operator's compute lanes also draw on. Past the minute limit a job waits;
   past the hour limit it waits up to 15 minutes; past the day limit it fails
@@ -1357,7 +1362,7 @@ of this decision" (Decision §8) for these four jobs only.
   starts are off on the account, so a full limit costs time, not money [M,
   `boat limits`]. 17 starts were used on 2026-11-25 before this ruling [M].
   The busiest day for these actors since 2026-10-20 had 8 eligible CI runs
-  (32 starts) [M, Actions API]; in the September and October surges (up to
+  (40 starts at 5 a run) [M, Actions API]; in the September and October surges (up to
   183 CI runs a day, all actors) the pool would have run out. One budget
   across CI, the build plane and the compute lanes is still to be set.
 - **Reversal.** `gh variable set ANTIEK_CI_SHARD_RUNNER --body github` (or
