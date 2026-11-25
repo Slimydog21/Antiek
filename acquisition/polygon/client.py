@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 import httpx
@@ -82,6 +82,8 @@ _AGGREGATES_PATH = "/v2/aggs/ticker"
 # here is its 429 ``banned_until`` sentinel. (The descriptor's ``rate``
 # stays None — there is no window spec; this is the stand-in.)
 POLYGON_RATE_NO_WINDOW = RateSpec(max_calls=1_000_000, window_s=60.0)
+
+RecordT = TypeVar("RecordT")
 
 
 def redact_query(url: str) -> str:
@@ -373,7 +375,7 @@ class PolygonConnector(PasteKeyConnector):
         assert bars is not None
         return bars
 
-    def _get[RecordT](
+    def _get(
         self,
         path: str,
         *,

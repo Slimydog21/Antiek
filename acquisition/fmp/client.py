@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 import httpx
@@ -130,7 +130,10 @@ class FmpTranscript:
     content: str
 
 
-def _parse_single_record[RecordT: (FmpProfile, FmpTranscript)](
+RecordT = TypeVar("RecordT", FmpProfile, FmpTranscript)
+
+
+def _parse_single_record(  # noqa: UP047 - keep Python 3.11 syntax
     payload: Any,
     *,
     what: str,
@@ -323,7 +326,7 @@ class FmpConnector(PasteKeyConnector):
             parse=parse_transcript_response,
         )
 
-    def _get[RecordT: (FmpProfile, FmpTranscript)](
+    def _get(
         self,
         path: str,
         symbol: str,

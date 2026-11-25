@@ -52,7 +52,7 @@ import os
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from runtime.db_lock import connect_write
 from runtime.research_runner import HostLocalRunner
@@ -104,7 +104,7 @@ class IrrelevantSeed:
     name: str = "irrelevant"
 
 
-type ArmSeed = ColdSeed | WarmSeed | IrrelevantSeed
+ArmSeed: TypeAlias = ColdSeed | WarmSeed | IrrelevantSeed  # noqa: UP040 - Python 3.11 floor
 
 
 # Off-topic unit texts for the irrelevant arm. Drawn from the zero-overlap
